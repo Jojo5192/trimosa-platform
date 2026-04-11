@@ -9,7 +9,7 @@ export default async function GuestProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_url, bio, location, languages')
+    .select('display_name, avatar_url, bio, location, languages, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip, guest_country')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -25,6 +25,12 @@ export default async function GuestProfilePage() {
         initialLocation={profile?.location ?? ''}
         initialLanguages={profile?.languages ?? []}
         initialAvatarUrl={profile?.avatar_url ?? null}
+        initialFirstName={profile?.guest_first_name ?? ''}
+        initialLastName={profile?.guest_last_name ?? ''}
+        initialStreet={profile?.guest_street ?? ''}
+        initialCity={profile?.guest_city ?? ''}
+        initialZip={profile?.guest_zip ?? ''}
+        initialCountry={profile?.guest_country ?? 'Deutschland'}
       />
     </div>
   )

@@ -7,6 +7,7 @@ interface Conversation {
   guest_id: string
   host_id: string
   guest_name: string | null
+  host_name: string | null
   listing_title: string | null
   last_message_at: string
   unread: number
@@ -28,6 +29,12 @@ export default function ChatClient({ userId }: { userId: string }) {
   const [newMsg, setNewMsg] = useState('')
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Returns the name of the OTHER party we're chatting with
+  function otherName(conv: Conversation): string {
+    if (conv.guest_id === userId) return conv.host_name ?? 'Gastgeber'
+    return conv.guest_name ?? 'Gast'
+  }
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -144,12 +151,12 @@ export default function ChatClient({ userId }: { userId: string }) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700, color: '#fff',
                 }}>
-                  {(conv.guest_name ?? '?')[0].toUpperCase()}
+                  {otherName(conv)[0].toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <p style={{ fontSize: '13px', fontWeight: conv.unread > 0 ? 700 : 600, color: '#111', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
-                      {conv.guest_name ?? 'Gast'}
+                      {otherName(conv)}
                     </p>
                     <span style={{ fontSize: '10px', color: '#AAA', flexShrink: 0 }}>
                       {formatTime(conv.last_message_at)}
@@ -188,10 +195,10 @@ export default function ChatClient({ userId }: { userId: string }) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', fontWeight: 700, color: '#fff', flexShrink: 0,
                 }}>
-                  {(activeConv.guest_name ?? '?')[0].toUpperCase()}
+                  {otherName(activeConv)[0].toUpperCase()}
                 </div>
                 <div>
-                  <p style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>{activeConv.guest_name ?? 'Gast'}</p>
+                  <p style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>{otherName(activeConv)}</p>
                   <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>{activeConv.listing_title ?? '—'}</p>
                 </div>
               </div>

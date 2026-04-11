@@ -109,6 +109,14 @@ export async function POST(request: Request) {
   // Auto-create a linked conversation so host & guest can chat immediately
   try {
     const guestName = user.user_metadata?.name ?? user.email ?? 'Gast'
+    // Load host display name for the conversation
+    const { data: hostProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('display_name')
+      .eq('id', listing.host_id)
+      .maybeSingle()
+    const hostName = hostProfile?.display_name ?? 'Gastgeber'
+
     const { data: existing } = await supabaseAdmin
       .from('conversations')
       .select('id')
@@ -125,6 +133,7 @@ export async function POST(request: Request) {
           host_id: listing.host_id,
           guest_id: user.id,
           guest_name: guestName,
+          host_name: hostName,
           listing_title: listing.title ?? '',
           booking_id: newBooking.id,
           last_message_at: new Date().toISOString(),
@@ -133,10 +142,9 @@ export async function POST(request: Request) {
         .single()
       convId = newConv?.id
     } else {
-      // Link existing conversation to this booking
       await supabaseAdmin
         .from('conversations')
-        .update({ booking_id: newBooking.id })
+        .update({ booking_id: newBooking.id, host_name: hostName })
         .eq('id', convId)
     }
 

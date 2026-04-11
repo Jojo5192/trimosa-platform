@@ -134,7 +134,7 @@ export default function BookingBox({
   const [availability, setAvailability] = useState<{ available: boolean; minStayViolation: boolean } | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'not-logged-in' | 'unavailable'>('idle')
+  const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'not-logged-in' | 'unavailable' | 'profile-incomplete'>('idle')
 
   useEffect(() => {
     const from = today()
@@ -204,6 +204,27 @@ export default function BookingBox({
       return
     }
 
+    // Check guest profile completeness (name + address required)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('guest_first_name, guest_last_name, guest_street, guest_city, guest_zip')
+      .eq('id', session.user.id)
+      .maybeSingle()
+
+    const profileComplete = !!(
+      profile?.guest_first_name &&
+      profile?.guest_last_name &&
+      profile?.guest_street &&
+      profile?.guest_city &&
+      profile?.guest_zip
+    )
+
+    if (!profileComplete) {
+      setStatus('profile-incomplete')
+      setSubmitting(false)
+      return
+    }
+
     const res = await fetch('/api/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -221,11 +242,20 @@ export default function BookingBox({
 
     const data = await res.json()
 
-    if (res.status === 409) setStatus('unavailable')
-    else if (!res.ok) setStatus('error')
-    else {
-      setStatus('success')
-      setTimeout(() => router.push(`/booking/${data.bookingId}`), 1400)
+    if (res.status === 409) { setStatus('unavailable'); setSubmitting(false); return }
+    if (!res.ok) { setStatus('error'); setSubmitting(false); return }
+
+    // Redirect to Stripe payment
+    const payRes = await fetch('/api/payments/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId: data.bookingId }),
+    })
+    const payData = await payRes.json()
+    if (payData.url) {
+      window.location.href = payData.url
+    } else {
+      setStatus('error')
     }
     setSubmitting(false)
   }
@@ -453,6 +483,15 @@ export default function BookingBox({
           <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
             Bitte <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>anmelden</a> um zu buchen.
           </p>
+        </div>
+      )}
+      {status === 'profile-incomplete' && (
+        <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
+          <p style={{ fontSize: '13px', color: '#92400E', margin: '0 0 6px', fontWeight: 700 }}>Profil unvollständig</p>
+          <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 8px' }}>
+            Bitte ergänze Vor- und Nachname sowie deine Adresse, um buchen zu können.
+          </p>
+          <a href="/guest/profile" style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', textDecoration: 'underline' }}>Profil vervollständigen →</a>
         </div>
       )}
 
