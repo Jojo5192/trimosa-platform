@@ -31,8 +31,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "app/api/payments/**",
-    "lib/stripe.ts"
+    "node_modules"
   ]
 }
