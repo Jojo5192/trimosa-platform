@@ -91,51 +91,58 @@ export async function POST(req: NextRequest) {
 
         const guestData = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
         const guestEmail = guestData.data.user?.email ?? ''
-        const guestMeta  = guestData.data.user?.user_metadata ?? {}
 
-        // First: try full select incl. columns added by migration (account_type, company_name)
-        let gp: Record<string, unknown> | null = null
-        {
+        // ── Primary source: Stripe session metadata (set at checkout time) ──────
+        // These are guaranteed to be the user's data at the moment they paid.
+        const meta = session.metadata ?? {}
+        let smoobuFirstName = (meta.guestFirstName as string) || ''
+        let smoobuLastName  = (meta.guestLastName  as string) || ''
+        let smoobuStreet    = (meta.guestStreet    as string) || ''
+        let smoobuZip       = (meta.guestZip       as string) || ''
+        let smoobuCity      = (meta.guestCity      as string) || ''
+        let smoobuCountry   = (meta.guestCountry   as string) || 'DE'
+        let smoobuPhone     = (meta.guestPhone     as string) || ''
+
+        // ── Fallback: DB profile query (for bookings made before metadata was added) ─
+        if (!smoobuFirstName) {
+          console.log('[Webhook] No guest data in Stripe metadata — falling back to profile query')
+          let gp: Record<string, unknown> | null = null
           const { data, error } = await supabaseAdmin
             .from('profiles')
             .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
             .eq('id', booking.guest_id)
             .maybeSingle()
           if (error) {
-            // Likely missing columns (migration not run) — retry with safe minimal set
-            console.warn('[Webhook] Full profile select failed:', error.message, '— retrying minimal select')
-            const { data: d2, error: e2 } = await supabaseAdmin
+            const { data: d2 } = await supabaseAdmin
               .from('profiles')
               .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
               .eq('id', booking.guest_id)
               .maybeSingle()
-            if (e2) console.error('[Webhook] Minimal profile select also failed:', e2.message)
             gp = d2 as Record<string, unknown> | null
           } else {
             gp = data as Record<string, unknown> | null
           }
+          if (gp) {
+            const isBiz = gp.account_type === 'business'
+            const nameParts = ((gp.display_name as string) || '').split(' ')
+            smoobuFirstName = isBiz ? ((gp.company_name as string) || (gp.display_name as string) || 'Gast') : ((gp.guest_first_name as string) || nameParts[0] || 'Gast')
+            smoobuLastName  = isBiz ? '-' : ((gp.guest_last_name as string) || nameParts.slice(1).join(' ') || '-')
+            smoobuStreet    = (gp.guest_street  as string) || ''
+            smoobuZip       = (gp.guest_zip     as string) || ''
+            smoobuCity      = (gp.guest_city    as string) || ''
+            smoobuCountry   = resolveCountryCode((gp.guest_country as string) || 'DE')
+            smoobuPhone     = (gp.phone as string) || ''
+          }
         }
-        console.log('[Webhook] Guest profile data:', JSON.stringify(gp))
 
-        // Name resolution: business → company name; person → first/last; fallback → auth metadata
-        const isBusiness = gp?.account_type === 'business'
-        let smoobuFirstName: string
-        let smoobuLastName: string
-        if (isBusiness) {
-          smoobuFirstName = (gp?.company_name as string) || (gp?.display_name as string) || (guestMeta.name as string) || 'Gast'
-          smoobuLastName = '-'
-        } else {
-          // Use profile name, then fall back to display_name, then auth user_metadata.name
-          const fallbackName = ((gp?.display_name as string) || (guestMeta.name as string) || '').split(' ')
-          smoobuFirstName = (gp?.guest_first_name as string) || fallbackName[0] || 'Gast'
-          smoobuLastName  = ((gp?.guest_last_name as string) || fallbackName.slice(1).join(' ')) || '-'
-        }
+        // Final fallbacks
+        if (!smoobuFirstName) smoobuFirstName = 'Gast'
+        if (!smoobuLastName)  smoobuLastName  = '-'
 
         console.log('[Webhook] Creating Smoobu reservation — booking:', bookingId,
           '| apartment:', listing.smoobu_id,
           '| guest:', smoobuFirstName, smoobuLastName,
-          '| address:', gp?.guest_street, gp?.guest_zip, gp?.guest_city,
-          '| country raw:', gp?.guest_country)
+          '| address:', smoobuStreet, smoobuZip, smoobuCity, smoobuCountry)
 
         const smoobuId = await createReservation({
           smoobuApartmentId: parseInt(listing.smoobu_id),
@@ -144,11 +151,11 @@ export async function POST(req: NextRequest) {
           firstName: smoobuFirstName,
           lastName: smoobuLastName,
           email: guestEmail,
-          phone: (gp?.phone as string) || '',
-          street: (gp?.guest_street as string) || '',
-          postalCode: (gp?.guest_zip as string) || '',
-          city: (gp?.guest_city as string) || '',
-          country: resolveCountryCode((gp?.guest_country as string) || 'DE'),
+          phone: smoobuPhone || '+4900000000',
+          street: smoobuStreet,
+          postalCode: smoobuZip,
+          city: smoobuCity,
+          country: smoobuCountry,
           adults: booking.adults ?? 1,
           children: booking.children ?? 0,
           price: booking.total_price,
