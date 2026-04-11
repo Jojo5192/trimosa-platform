@@ -24,15 +24,18 @@ export default async function InvoicesPage() {
         .order('check_in', { ascending: false })
     : { data: [] }
 
+  type BookingRow = { id: string; check_in: string; check_out: string; total_price: number; guests: number; listings: unknown }
+  const typedBookings = (bookings ?? []) as unknown as BookingRow[]
+
   // Group by month (based on check_in)
   const byMonth: Record<string, {
-    bookings: typeof bookings
+    bookings: BookingRow[]
     totalRevenue: number
     commission: number
     payout: number
   }> = {}
 
-  for (const b of bookings ?? []) {
+  for (const b of typedBookings) {
     const month = (b.check_in as string).slice(0, 7)
     if (!byMonth[month]) byMonth[month] = { bookings: [], totalRevenue: 0, commission: 0, payout: 0 }
     byMonth[month].bookings!.push(b)
@@ -107,7 +110,7 @@ export default async function InvoicesPage() {
                   {/* Booking list */}
                   <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {data.bookings!.map((b) => {
-                      const listing = b.listings as { title: string } | null
+                      const listing = b.listings as unknown as { title: string } | null
                       return (
                         <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#666', padding: '4px 0' }}>
                           <span>{listing?.title ?? '—'} · {b.check_in} – {b.check_out}</span>

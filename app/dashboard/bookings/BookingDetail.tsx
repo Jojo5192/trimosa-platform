@@ -61,7 +61,7 @@ export default function BookingDetail({ bookingId }: { bookingId: string }) {
               </div>
             ))}
 
-            {detail.notes && (
+            {(detail.notes as string | undefined) && (
               <div style={{ marginTop: '14px', padding: '12px', background: '#F9F7F2', borderRadius: '10px' }}>
                 <p style={{ fontSize: '12px', color: '#888', margin: '0 0 4px', fontWeight: 600 }}>Notiz vom Gast</p>
                 <p style={{ fontSize: '13px', color: '#444', margin: 0 }}>{detail.notes as string}</p>

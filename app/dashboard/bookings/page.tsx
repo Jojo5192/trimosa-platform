@@ -74,7 +74,7 @@ export default async function BookingsPage({
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-            <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: 0, truncate: 'true' }}>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {listing?.title ?? 'Unbekannte Unterkunft'}
             </p>
             <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', ...sc }}>

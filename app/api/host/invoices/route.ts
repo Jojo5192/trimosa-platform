@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
   </div>
   <div class="invoice-meta">
     <strong>Provisionsrechnung</strong>
-    Rechnungsnummer: ${year}-${month.replace('-','')}-${user.id.slice(0,6).toUpperCase()}<br>
+    Rechnungsnummer: ${new Date().getFullYear()}-${month.replace('-','')}-${user.id.slice(0,6).toUpperCase()}<br>
     Zeitraum: ${monthLabel}<br>
     Datum: ${new Date().toLocaleDateString('de-DE')}
   </div>
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
   </thead>
   <tbody>
     ${bks.map(b => {
-      const lt = b.listings as { title: string } | null
+      const lt = b.listings as unknown as { title: string } | null
       return `<tr>
         <td>${lt?.title ?? '—'}</td>
         <td>${b.check_in} – ${b.check_out}</td>
@@ -166,5 +166,3 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// Helper
-const year = new Date().getFullYear()
