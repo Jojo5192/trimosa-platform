@@ -1,0 +1,255 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+
+const LANGUAGE_OPTIONS = ['Deutsch', 'Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch', 'Polnisch', 'Russisch']
+
+export default function ProfilePage() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [location, setLocation] = useState('')
+  const [responseTime, setResponseTime] = useState('')
+  const [languages, setLanguages] = useState<string[]>([])
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { window.location.href = '/login'; return }
+      setUserId(user.id)
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile) {
+        setDisplayName(profile.display_name ?? '')
+        setBio(profile.bio ?? '')
+        setLocation(profile.location ?? '')
+        setResponseTime(profile.response_time ?? '')
+        setLanguages(profile.languages ?? [])
+        setAvatarUrl(profile.avatar_url ?? null)
+      } else {
+        // Pre-fill from auth metadata
+        setDisplayName(user.user_metadata?.name ?? '')
+      }
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  function toggleLanguage(lang: string) {
+    setLanguages(prev => prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang])
+  }
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !userId) return
+    setUploading(true)
+    setError('')
+
+    const ext = file.name.split('.').pop()
+    const path = `avatars/${userId}.${ext}`
+
+    const { error: upErr } = await supabase.storage
+      .from('listing-images')
+      .upload(path, file, { upsert: true })
+
+    if (upErr) {
+      setError('Foto-Upload fehlgeschlagen: ' + upErr.message)
+    } else {
+      const { data } = supabase.storage.from('listing-images').getPublicUrl(path)
+      setAvatarUrl(data.publicUrl)
+    }
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleSave() {
+    if (!userId) return
+    setSaving(true)
+    setError('')
+    setSaved(false)
+
+    const { error: err } = await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        display_name: displayName,
+        bio,
+        location,
+        response_time: responseTime,
+        languages,
+        avatar_url: avatarUrl,
+      })
+
+    if (err) {
+      setError('Speichern fehlgeschlagen: ' + err.message)
+    } else {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    }
+    setSaving(false)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', borderRadius: '12px', border: '1.5px solid #E0DDD6',
+    padding: '10px 14px', fontSize: '13px', color: '#111',
+    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+    backgroundColor: '#fff',
+  }
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F5F7' }}>
+      <div style={{ fontSize: '13px', color: '#888' }}>Wird geladen…</div>
+    </div>
+  )
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
+      {/* Mini-Nav */}
+      <nav style={{ backgroundColor: '#fff', borderBottom: '1px solid #E5E5EA', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Link href="/">
+          <img src="/logo.png" alt="TRIMOSA" style={{ height: '28px', width: 'auto' }} />
+        </Link>
+        <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: '#A8882A', textDecoration: 'none' }}>
+          ← Dashboard
+        </Link>
+      </nav>
+
+      <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 20px 80px' }}>
+        <div style={{ marginBottom: '28px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Profil</p>
+          <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111', margin: 0 }}>Gastgeber-Profil</h1>
+          <p style={{ fontSize: '13px', color: '#888', margin: '4px 0 0' }}>Dein Profil ist öffentlich sichtbar für Gäste auf deinen Inseraten.</p>
+        </div>
+
+        {/* Avatar */}
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #F0EDE6' }} />
+            ) : (
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 700, color: '#fff' }}>
+                {displayName ? displayName[0].toUpperCase() : '?'}
+              </div>
+            )}
+          </div>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>{displayName || 'Kein Name'}</p>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              style={{ fontSize: '12px', fontWeight: 600, color: '#A8882A', background: 'none', border: '1px solid #E0DDD6', borderRadius: '999px', padding: '5px 14px', cursor: 'pointer' }}
+            >
+              {uploading ? 'Wird hochgeladen…' : 'Foto ändern'}
+            </button>
+          </div>
+        </div>
+
+        {/* Infos */}
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 18px' }}>Persönliche Infos</h2>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Anzeigename</label>
+            <input style={inputStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Wie sollen Gäste dich nennen?" />
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Über mich</label>
+            <textarea
+              style={{ ...inputStyle, resize: 'vertical', minHeight: '100px' }}
+              value={bio}
+              onChange={e => setBio(e.target.value)}
+              placeholder="Erzähl etwas über dich — warum vermietest du, was machst du gerne, was macht deine Region besonders?"
+              rows={4}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Wohnort</label>
+              <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. Trier, Rheinland-Pfalz" />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Antwortzeit</label>
+              <select
+                style={{ ...inputStyle, cursor: 'pointer' }}
+                value={responseTime}
+                onChange={e => setResponseTime(e.target.value)}
+              >
+                <option value="">Keine Angabe</option>
+                <option value="Innerhalb einer Stunde">Innerhalb einer Stunde</option>
+                <option value="Innerhalb weniger Stunden">Innerhalb weniger Stunden</option>
+                <option value="Innerhalb eines Tages">Innerhalb eines Tages</option>
+                <option value="Innerhalb weniger Tage">Innerhalb weniger Tage</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Sprachen */}
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 14px' }}>Sprachen</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {LANGUAGE_OPTIONS.map(lang => {
+              const active = languages.includes(lang)
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => toggleLanguage(lang)}
+                  style={{
+                    padding: '7px 16px', borderRadius: '999px', fontSize: '13px', fontWeight: active ? 600 : 400,
+                    border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`,
+                    background: active ? '#FDF6E3' : '#fff',
+                    color: active ? '#8A6818' : '#555',
+                    cursor: 'pointer', transition: 'all 0.12s',
+                  }}
+                >
+                  {lang}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ borderRadius: '12px', padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '12px' }}>
+            <p style={{ fontSize: '13px', color: '#DC2626', margin: 0 }}>{error}</p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
+            background: 'linear-gradient(135deg, #C4A235, #8A6818)',
+            color: '#fff', fontSize: '14px', fontWeight: 700,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            boxShadow: '0 4px 20px rgba(168,136,42,0.35)',
+          }}
+        >
+          {saving ? 'Wird gespeichert…' : saved ? '✓ Profil gespeichert' : 'Profil speichern'}
+        </button>
+      </div>
+    </div>
+  )
+}
