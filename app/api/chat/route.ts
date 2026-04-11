@@ -19,13 +19,42 @@ async function syncSmoobuMessages(
       if (!sm.message?.trim()) continue
       const msgId = String(sm.id)
 
-      // Skip if already synced (avoids needing a unique DB constraint)
+      // Skip if already synced by smoobu_message_id
       const { data: existing } = await supabaseAdmin
         .from('messages')
         .select('id')
         .eq('smoobu_message_id', msgId)
         .maybeSingle()
       if (existing) continue
+
+      // Check by content match: messages sent via Trimosa have no smoobu_message_id yet
+      // but already exist in DB with correct sender_id. Link them instead of duplicating.
+      const msgContent = sm.message.trim()
+      if (msgContent) {
+        const msgTs = sm.date ? new Date(sm.date) : null
+        if (msgTs && !isNaN(msgTs.getTime())) {
+          const windowStart = new Date(msgTs.getTime() - 4 * 3600 * 1000).toISOString()
+          const windowEnd   = new Date(msgTs.getTime() + 4 * 3600 * 1000).toISOString()
+          const { data: contentMatch } = await supabaseAdmin
+            .from('messages')
+            .select('id')
+            .eq('conversation_id', conversationId)
+            .eq('content', msgContent)
+            .gte('created_at', windowStart)
+            .lte('created_at', windowEnd)
+            .is('smoobu_message_id', null)
+            .maybeSingle()
+          if (contentMatch) {
+            // Attach smoobu_message_id to the original message (preserves correct sender_id)
+            await supabaseAdmin
+              .from('messages')
+              .update({ smoobu_message_id: msgId })
+              .eq('id', contentMatch.id)
+            console.log('[Chat] syncMsg: linked existing message', contentMatch.id, '↔ smoobu', msgId)
+            continue
+          }
+        }
+      }
 
       // Smoobu isHost detection — covers all known formats:
       // String: "host", "host_message", "host_to_guest", "outgoing", "sent"
