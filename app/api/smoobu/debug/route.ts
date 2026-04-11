@@ -28,25 +28,28 @@ export async function GET(request: Request) {
     })
   }
 
-  // Smoobu Rates direkt abrufen (URL-encoded brackets)
   const from = new Date().toISOString().split('T')[0]
   const to = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
-  const params = new URLSearchParams()
-  params.append('apartments[]', listing.smoobu_id)
-  params.append('startDate', from)
-  params.append('endDate', to)
-  const url = `https://login.smoobu.com/api/rates?${params.toString()}`
+  const id = listing.smoobu_id
+  const headers = { 'Api-Key': process.env.SMOOBU_API_KEY!, 'Content-Type': 'application/json' }
 
-  let smoobuRaw: unknown = null
-  let smoobuError: string | null = null
-  try {
-    const res = await fetch(url, {
-      headers: { 'Api-Key': process.env.SMOOBU_API_KEY!, 'Content-Type': 'application/json' },
-    })
-    smoobuRaw = await res.json()
-  } catch (e) {
-    smoobuError = String(e)
+  // Test all possible URL formats in parallel
+  const formats: Record<string, string> = {
+    'brackets_encoded': `https://login.smoobu.com/api/rates?${new URLSearchParams([['apartments[]', id], ['startDate', from], ['endDate', to]])}`,
+    'brackets_raw':     `https://login.smoobu.com/api/rates?apartments[]=${id}&startDate=${from}&endDate=${to}`,
+    'no_brackets':      `https://login.smoobu.com/api/rates?apartments=${id}&startDate=${from}&endDate=${to}`,
+    'indexed':          `https://login.smoobu.com/api/rates?apartments[0]=${id}&startDate=${from}&endDate=${to}`,
   }
 
-  return NextResponse.json({ listing, smoobuRaw, smoobuError, from, to })
+  const results: Record<string, unknown> = {}
+  for (const [key, url] of Object.entries(formats)) {
+    try {
+      const res = await fetch(url, { headers })
+      results[key] = { status: res.status, body: await res.json() }
+    } catch (e) {
+      results[key] = { error: String(e) }
+    }
+  }
+
+  return NextResponse.json({ listing, from, to, formatTests: results })
 }
