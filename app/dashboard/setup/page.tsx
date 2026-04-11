@@ -467,7 +467,6 @@ function Input({ value, onChange, placeholder, mono }: { value: string; onChange
 }
 
 /* ── Styles ── */
-const GOLD = '#A8882A'
 const btnStyle: React.CSSProperties = {
   display: 'block', width: '100%', padding: '14px', marginTop: '24px',
   background: `linear-gradient(135deg, ${GOLD}, #8A6818)`,
