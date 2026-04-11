@@ -453,7 +453,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             : '0 1px 0 rgba(0,0,0,0.06)',
         }}
       >
-        <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
+        <div style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
 
           {/* Logo */}
           <Link href="/" style={{ flexShrink: 0, textDecoration: 'none' }}>
@@ -462,7 +462,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           </Link>
 
           {/* Search Bar */}
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0, maxWidth: '700px', margin: '0 auto' }}>
             <form
               onSubmit={handleSubmit}
               style={{
