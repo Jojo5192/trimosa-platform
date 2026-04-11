@@ -283,7 +283,7 @@ export async function getReservationMessages(
   console.log('[Smoobu] getReservationMessages raw keys:', JSON.stringify(Object.keys(data ?? {})))
 
   // Smoobu may return { messages: [...] }, { data: [...] }, or a direct array
-  let msgs: SmoobuMessage[]
+  let msgs: unknown[]
   if (Array.isArray(data)) {
     msgs = data
   } else if (Array.isArray(data?.messages)) {
@@ -296,13 +296,16 @@ export async function getReservationMessages(
   }
 
   // Normalise field names (Smoobu may use 'body' or 'text' instead of 'message')
-  return msgs.map((m: Record<string, unknown>) => ({
-    id: (m.id ?? m.messageId) as number,
-    type: (m.type ?? m.senderType ?? '') as string,
-    message: (m.message ?? m.body ?? m.text ?? m.messageBody ?? '') as string,
-    date: (m.date ?? m.created_at ?? m.createdAt ?? '') as string,
-    sender: (m.sender ?? m.senderName ?? '') as string,
-  }))
+  return msgs.map((m) => {
+    const obj = m as Record<string, unknown>
+    return {
+      id: (obj.id ?? obj.messageId) as number,
+      type: String(obj.type ?? obj.senderType ?? ''),
+      message: String(obj.message ?? obj.body ?? obj.text ?? obj.messageBody ?? ''),
+      date: String(obj.date ?? obj.created_at ?? obj.createdAt ?? ''),
+      sender: String(obj.sender ?? obj.senderName ?? ''),
+    }
+  })
 }
 
 /**

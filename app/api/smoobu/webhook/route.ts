@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getReservationMessages } from '@/lib/smoobu'
 
 /**
  * POST /api/smoobu/webhook
@@ -21,9 +22,83 @@ export async function POST(request: Request) {
 
   console.log('[Smoobu Webhook] Received:', JSON.stringify(payload, null, 2))
 
-  // Smoobu sends reservation data directly — no separate event wrapper
-  const reservationId = payload.id ?? payload.reservationId
   const action = (payload.action as string) ?? 'created'
+
+  // ── Handle new message notifications ─────────────────────────
+  if (action === 'newMessage') {
+    const msgData = payload.data as Record<string, unknown> | undefined
+    const smoobuBookingId = ((msgData?.booking as Record<string, unknown>)?.id) as number | undefined
+
+    if (!smoobuBookingId) {
+      console.warn('[Smoobu Webhook] newMessage: missing data.booking.id')
+      return new Response('OK', { status: 200 })
+    }
+
+    // Find the booking + linked conversation
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('id, conversations(id, host_id, guest_id)')
+      .eq('smoobu_reservation_id', smoobuBookingId)
+      .maybeSingle()
+
+    if (!booking) {
+      console.warn(`[Smoobu Webhook] newMessage: no booking for smoobu_id=${smoobuBookingId}`)
+      return new Response('OK', { status: 200 })
+    }
+
+    const convArr = booking.conversations as { id: string; host_id: string; guest_id: string }[] | null
+    const conv = Array.isArray(convArr) ? convArr[0] : (convArr as unknown as { id: string; host_id: string; guest_id: string } | null)
+
+    if (!conv?.id) {
+      console.warn('[Smoobu Webhook] newMessage: no conversation linked to booking', booking.id)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Load host's Smoobu API key
+    const { data: hostProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('smoobu_api_key')
+      .eq('id', conv.host_id)
+      .maybeSingle()
+    const hostApiKey = (hostProfile as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+
+    // Fetch all messages and upsert (deduplication via smoobu_message_id)
+    const smoobuMsgs = await getReservationMessages(smoobuBookingId, hostApiKey)
+    let synced = 0
+    for (const msg of smoobuMsgs) {
+      if (!msg.message?.trim()) continue
+      const isHost = msg.type?.toLowerCase().includes('host') || msg.sender?.toLowerCase().includes('host')
+      const { error } = await supabaseAdmin
+        .from('messages')
+        .upsert(
+          {
+            conversation_id: conv.id,
+            sender_id: isHost ? conv.host_id : conv.guest_id,
+            content: msg.message.trim(),
+            smoobu_message_id: String(msg.id),
+            created_at: msg.date || new Date().toISOString(),
+          },
+          { onConflict: 'smoobu_message_id', ignoreDuplicates: true },
+        )
+      if (error && error.code !== '23505') {
+        console.error('[Smoobu Webhook] message upsert error:', error.message)
+      } else {
+        synced++
+      }
+    }
+
+    // Update conversation's last_message_at
+    await supabaseAdmin
+      .from('conversations')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', conv.id)
+
+    console.log(`[Smoobu Webhook] Synced ${synced} messages for reservation ${smoobuBookingId}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // ── Handle reservation events ─────────────────────────────────
+  const reservationId = payload.id ?? payload.reservationId
   const apartment = payload.apartment as Record<string, unknown> | undefined
   const smoobuApartmentId = apartment?.id ?? payload.apartmentId
 
