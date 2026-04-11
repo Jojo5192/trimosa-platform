@@ -32,9 +32,10 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
   const didAutoSelect = useRef(false)
 
   // Returns the name of the OTHER party we're chatting with
+  // Use || instead of ?? so empty strings also fall back to the default
   function otherName(conv: Conversation): string {
-    if (conv.guest_id === userId) return conv.host_name ?? 'Gastgeber'
-    return conv.guest_name ?? 'Gast'
+    if (conv.guest_id === userId) return conv.host_name || 'Gastgeber'
+    return conv.guest_name || 'Gast'
   }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
