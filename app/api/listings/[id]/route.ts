@@ -27,25 +27,6 @@ export async function PATCH(
 
   const body = await request.json()
 
-  // Onboarding gate: nur aktivieren wenn Einrichtung abgeschlossen
-  if (body.is_active === true) {
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('onboarding_step, iban, billing_name')
-      .eq('id', user.id)
-      .single()
-
-    const step = profile?.onboarding_step ?? 0
-    const hasBilling = !!(profile?.iban && profile?.billing_name)
-
-    if (step < 6 || !hasBilling) {
-      return NextResponse.json({
-        error: 'onboarding_incomplete',
-        message: 'Bitte schließe zuerst den Einrichtungsassistenten ab und hinterlege deine Zahlungsdaten.',
-      }, { status: 403 })
-    }
-  }
-
   const allowed = [
     'title', 'description', 'location', 'address',
     'max_guests', 'bedrooms', 'bathrooms',

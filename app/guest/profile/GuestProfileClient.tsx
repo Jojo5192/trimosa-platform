@@ -12,15 +12,18 @@ interface Props {
   initialLocation: string
   initialLanguages: string[]
   initialAvatarUrl: string | null
+  accountType?: 'person' | 'business'
   initialFirstName?: string
   initialLastName?: string
+  initialCompanyName?: string
+  initialVatId?: string
   initialStreet?: string
   initialCity?: string
   initialZip?: string
   initialCountry?: string
 }
 
-export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, initialFirstName = '', initialLastName = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland' }: Props) {
+export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland' }: Props) {
   const [displayName, setDisplayName] = useState(initialName)
   const [bio, setBio] = useState(initialBio)
   const [location, setLocation] = useState(initialLocation)
@@ -28,6 +31,8 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl)
   const [firstName, setFirstName] = useState(initialFirstName)
   const [lastName, setLastName] = useState(initialLastName)
+  const [companyName, setCompanyName] = useState(initialCompanyName)
+  const [vatId, setVatId] = useState(initialVatId)
   const [street, setStreet] = useState(initialStreet)
   const [city, setCity] = useState(initialCity)
   const [zip, setZip] = useState(initialZip)
@@ -49,15 +54,24 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    const resolvedDisplay = displayName ||
+      (accountType === 'business' ? companyName : `${firstName} ${lastName}`.trim())
+
     const { error: err } = await supabase.from('profiles').upsert({
       id: user.id,
-      display_name: displayName || `${firstName} ${lastName}`.trim(),
+      display_name: resolvedDisplay,
       bio,
       location,
       languages,
       avatar_url: avatarUrl,
-      guest_first_name: firstName,
-      guest_last_name: lastName,
+      account_type: accountType,
+      // Person
+      guest_first_name: accountType === 'person' ? firstName : null,
+      guest_last_name:  accountType === 'person' ? lastName  : null,
+      // Business
+      company_name: accountType === 'business' ? companyName : null,
+      vat_id:       accountType === 'business' ? (vatId || null) : null,
+      // Address (shared)
       guest_street: street,
       guest_city: city,
       guest_zip: zip,
@@ -117,16 +131,29 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         </div>
         <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>Diese Angaben werden für Buchungen und Rechnungen benötigt.</p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Vorname *</label>
-            <input style={inputStyle} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" />
+        {accountType === 'person' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Vorname *</label>
+              <input style={inputStyle} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Nachname *</label>
+              <input style={inputStyle} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Mustermann" />
+            </div>
           </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Nachname *</label>
-            <input style={inputStyle} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Mustermann" />
+        ) : (
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Firmenname *</label>
+              <input style={inputStyle} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Musterfirma GmbH" />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>USt-ID <span style={{ fontWeight: 400, color: '#AAA' }}>(optional)</span></label>
+              <input style={inputStyle} value={vatId} onChange={e => setVatId(e.target.value)} placeholder="DE123456789" />
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ marginBottom: '12px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Straße und Hausnummer *</label>
@@ -156,7 +183,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
 
         <div style={{ marginBottom: '14px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Anzeigename</label>
-          <input style={inputStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder={`${firstName} ${lastName}`.trim() || 'Dein Name'} />
+          <input style={inputStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder={accountType === 'business' ? companyName || 'Firmenname' : `${firstName} ${lastName}`.trim() || 'Dein Name'} />
         </div>
 
         <div style={{ marginBottom: '14px' }}>

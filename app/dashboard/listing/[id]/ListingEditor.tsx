@@ -5,28 +5,157 @@ import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import RoomEditor, { type Room } from './RoomEditor'
 
-const AMENITY_OPTIONS = [
-  { id: 'wifi',        icon: '📶', label: 'WLAN' },
-  { id: 'kitchen',     icon: '🍳', label: 'Küche' },
-  { id: 'parking',     icon: '🅿️', label: 'Parkplatz' },
-  { id: 'washer',      icon: '🧺', label: 'Waschmaschine' },
-  { id: 'dryer',       icon: '👕', label: 'Trockner' },
-  { id: 'ac',          icon: '❄️', label: 'Klimaanlage' },
-  { id: 'heating',     icon: '🔥', label: 'Heizung' },
-  { id: 'fireplace',   icon: '🪵', label: 'Kamin' },
-  { id: 'tv',          icon: '📺', label: 'TV' },
-  { id: 'balcony',     icon: '🏡', label: 'Balkon / Terrasse' },
-  { id: 'garden',      icon: '🌿', label: 'Garten' },
-  { id: 'pool',        icon: '🏊', label: 'Pool' },
-  { id: 'sauna',       icon: '🧖', label: 'Sauna' },
-  { id: 'bbq',         icon: '🍖', label: 'Grill' },
-  { id: 'pets',        icon: '🐾', label: 'Haustiere erlaubt' },
-  { id: 'ev',          icon: '⚡', label: 'E-Auto Ladepunkt' },
-  { id: 'mountain',    icon: '🏔️', label: 'Bergpanorama' },
-  { id: 'lake',        icon: '🏞️', label: 'Seenähe' },
-  { id: 'ski',         icon: '⛷️', label: 'Skigebiet in der Nähe' },
-  { id: 'baby',        icon: '👶', label: 'Babyausstattung' },
+const AMENITY_CATEGORIES = [
+  {
+    category: 'Internet & Technik',
+    items: [
+      { id: 'wifi',           icon: '📶', label: 'WLAN' },
+      { id: 'wifi_fast',      icon: '🚀', label: 'Schnelles WLAN (>100 Mbit/s)' },
+      { id: 'tv',             icon: '📺', label: 'TV' },
+      { id: 'smart_tv',       icon: '📡', label: 'Smart-TV / Netflix' },
+      { id: 'workspace',      icon: '💻', label: 'Arbeitsplatz / Schreibtisch' },
+      { id: 'printer',        icon: '🖨️', label: 'Drucker' },
+    ],
+  },
+  {
+    category: 'Küche',
+    items: [
+      { id: 'kitchen',        icon: '🍳', label: 'Küche' },
+      { id: 'kitchenette',    icon: '🍽️', label: 'Küchenzeile' },
+      { id: 'dishwasher',     icon: '🫧', label: 'Geschirrspüler' },
+      { id: 'fridge',         icon: '🧊', label: 'Kühlschrank' },
+      { id: 'freezer',        icon: '❄️', label: 'Gefrierfach' },
+      { id: 'microwave',      icon: '📦', label: 'Mikrowelle' },
+      { id: 'oven',           icon: '🥧', label: 'Backofen' },
+      { id: 'coffee',         icon: '☕', label: 'Kaffeemaschine' },
+      { id: 'espresso',       icon: '🫘', label: 'Espressomaschine' },
+      { id: 'kettle',         icon: '🫖', label: 'Wasserkocher' },
+      { id: 'toaster',        icon: '🍞', label: 'Toaster' },
+      { id: 'wine_glasses',   icon: '🍷', label: 'Weingläser' },
+      { id: 'bbq',            icon: '🍖', label: 'Grill' },
+      { id: 'dining_area',    icon: '🪑', label: 'Essbereich' },
+    ],
+  },
+  {
+    category: 'Badezimmer',
+    items: [
+      { id: 'shower',         icon: '🚿', label: 'Dusche' },
+      { id: 'bathtub',        icon: '🛁', label: 'Badewanne' },
+      { id: 'hot_tub',        icon: '♨️', label: 'Whirlpool / Hot Tub' },
+      { id: 'hair_dryer',     icon: '💨', label: 'Haartrockner' },
+      { id: 'toiletries',     icon: '🧴', label: 'Pflegeprodukte' },
+      { id: 'towels',         icon: '🛁', label: 'Handtücher gestellt' },
+    ],
+  },
+  {
+    category: 'Schlafzimmer & Wäsche',
+    items: [
+      { id: 'linens',         icon: '🛏️', label: 'Bettwäsche gestellt' },
+      { id: 'washer',         icon: '🧺', label: 'Waschmaschine' },
+      { id: 'dryer',          icon: '👕', label: 'Trockner' },
+      { id: 'iron',           icon: '👔', label: 'Bügeleisen' },
+      { id: 'wardrobe',       icon: '🚪', label: 'Kleiderschrank' },
+      { id: 'hangers',        icon: '🪝', label: 'Kleiderbügel' },
+      { id: 'extra_pillows',  icon: '🛏️', label: 'Extra Kissen & Decken' },
+      { id: 'blackout',       icon: '🌑', label: 'Verdunkelung' },
+    ],
+  },
+  {
+    category: 'Heizung & Klima',
+    items: [
+      { id: 'heating',        icon: '🔥', label: 'Heizung' },
+      { id: 'ac',             icon: '🌬️', label: 'Klimaanlage' },
+      { id: 'fireplace',      icon: '🪵', label: 'Kamin' },
+      { id: 'floor_heating',  icon: '🌡️', label: 'Fußbodenheizung' },
+      { id: 'fan',            icon: '💨', label: 'Ventilator' },
+    ],
+  },
+  {
+    category: 'Außenbereich',
+    items: [
+      { id: 'balcony',        icon: '🏡', label: 'Balkon' },
+      { id: 'terrace',        icon: '🌞', label: 'Terrasse' },
+      { id: 'garden',         icon: '🌿', label: 'Garten' },
+      { id: 'pool',           icon: '🏊', label: 'Pool' },
+      { id: 'outdoor_shower', icon: '🚿', label: 'Außendusche' },
+      { id: 'sun_loungers',   icon: '🌴', label: 'Liegestühle' },
+      { id: 'garden_furniture',icon: '🪑', label: 'Gartenmöbel' },
+      { id: 'fire_pit',       icon: '🔥', label: 'Feuerstelle' },
+      { id: 'bike_storage',   icon: '🚲', label: 'Fahrradstellplatz' },
+    ],
+  },
+  {
+    category: 'Wellness & Sport',
+    items: [
+      { id: 'sauna',          icon: '🧖', label: 'Sauna' },
+      { id: 'steam_room',     icon: '💆', label: 'Dampfbad' },
+      { id: 'gym',            icon: '🏋️', label: 'Fitnessraum' },
+      { id: 'yoga_mat',       icon: '🧘', label: 'Yogamatte' },
+      { id: 'bikes',          icon: '🚵', label: 'Fahrräder verfügbar' },
+      { id: 'ski_storage',    icon: '🎿', label: 'Skiaufbewahrung' },
+      { id: 'board_games',    icon: '🎲', label: 'Gesellschaftsspiele' },
+    ],
+  },
+  {
+    category: 'Parken & Anreise',
+    items: [
+      { id: 'parking',        icon: '🅿️', label: 'Parkplatz (kostenlos)' },
+      { id: 'parking_paid',   icon: '🚗', label: 'Parkplatz (kostenpflichtig)' },
+      { id: 'garage',         icon: '🏠', label: 'Garage' },
+      { id: 'ev',             icon: '⚡', label: 'E-Auto Ladepunkt' },
+      { id: 'self_checkin',   icon: '🔑', label: 'Self-Check-in / Schlüsselbox' },
+      { id: 'elevator',       icon: '🛗', label: 'Aufzug' },
+    ],
+  },
+  {
+    category: 'Lage & Umgebung',
+    items: [
+      { id: 'mountain',       icon: '🏔️', label: 'Bergpanorama' },
+      { id: 'lake',           icon: '🏞️', label: 'Seenähe' },
+      { id: 'beach',          icon: '🏖️', label: 'Strandnähe' },
+      { id: 'ski',            icon: '⛷️', label: 'Skigebiet in der Nähe' },
+      { id: 'city_center',    icon: '🏙️', label: 'Stadtzentrumsnähe' },
+      { id: 'forest',         icon: '🌲', label: 'Waldnähe' },
+      { id: 'quiet',          icon: '🤫', label: 'Ruhige Lage' },
+    ],
+  },
+  {
+    category: 'Familie & Kinder',
+    items: [
+      { id: 'baby',           icon: '👶', label: 'Babyausstattung' },
+      { id: 'crib',           icon: '🛏️', label: 'Kinderbett / Reisebett' },
+      { id: 'high_chair',     icon: '🪑', label: 'Hochstuhl' },
+      { id: 'toys',           icon: '🧸', label: 'Spielzeug' },
+      { id: 'child_safety',   icon: '🛡️', label: 'Kindersicherungen' },
+      { id: 'fenced_garden',  icon: '🏡', label: 'Eingezäunter Garten' },
+    ],
+  },
+  {
+    category: 'Sicherheit',
+    items: [
+      { id: 'smoke_detector', icon: '🚨', label: 'Rauchmelder' },
+      { id: 'co_detector',    icon: '⚠️', label: 'CO-Melder' },
+      { id: 'first_aid',      icon: '🩹', label: 'Erste-Hilfe-Set' },
+      { id: 'fire_ext',       icon: '🧯', label: 'Feuerlöscher' },
+      { id: 'safe',           icon: '🔒', label: 'Safe / Tresor' },
+      { id: 'security_cam',   icon: '📷', label: 'Überwachungskamera (außen)' },
+    ],
+  },
+  {
+    category: 'Haustiere & Sonstiges',
+    items: [
+      { id: 'pets',           icon: '🐾', label: 'Haustiere erlaubt' },
+      { id: 'smoking',        icon: '🚬', label: 'Rauchen erlaubt' },
+      { id: 'luggage_storage',icon: '🧳', label: 'Gepäckaufbewahrung' },
+      { id: 'long_stay',      icon: '📅', label: 'Langzeitaufenthalt möglich' },
+      { id: 'accessible',     icon: '♿', label: 'Barrierefrei' },
+      { id: 'breakfast',      icon: '🥐', label: 'Frühstück inklusive' },
+    ],
+  },
 ]
+
+// Flat list for backwards-compatible storage (uses label as value, same as before)
+const AMENITY_OPTIONS = AMENITY_CATEGORIES.flatMap(c => c.items)
 
 interface Listing {
   id: string
@@ -367,30 +496,44 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
 
       {/* ── Ausstattungsmerkmale ── */}
       <Section title="Ausstattungsmerkmale">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px' }}>
-          {AMENITY_OPTIONS.map(({ id, icon, label }) => {
-            const active = amenities.includes(label)
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => toggleAmenity(label)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '10px 12px', borderRadius: '12px',
-                  border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`,
-                  background: active ? '#FDF6E3' : '#fff',
-                  cursor: 'pointer', fontSize: '12px', fontWeight: active ? 600 : 400,
-                  color: active ? '#8A6818' : '#555',
-                  transition: 'all 0.12s',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ fontSize: '16px', lineHeight: 1 }}>{icon}</span>
-                {label}
-              </button>
-            )
-          })}
+        {amenities.length > 0 && (
+          <p style={{ fontSize: '12px', color: '#8A6818', fontWeight: 600, margin: '0 0 16px' }}>
+            {amenities.length} ausgewählt
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {AMENITY_CATEGORIES.map(({ category, items }) => (
+            <div key={category}>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
+                {category}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '7px' }}>
+                {items.map(({ id, icon, label }) => {
+                  const active = amenities.includes(label)
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleAmenity(label)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '9px 12px', borderRadius: '11px',
+                        border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`,
+                        background: active ? '#FDF6E3' : '#fff',
+                        cursor: 'pointer', fontSize: '12px', fontWeight: active ? 600 : 400,
+                        color: active ? '#8A6818' : '#555',
+                        transition: 'all 0.12s',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ fontSize: '15px', lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+                      <span style={{ lineHeight: 1.3 }}>{label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </Section>
 

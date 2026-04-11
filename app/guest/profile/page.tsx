@@ -9,9 +9,11 @@ export default async function GuestProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_url, bio, location, languages, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip, guest_country')
+    .select('display_name, avatar_url, bio, location, languages, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip, guest_country, account_type, company_name, vat_id')
     .eq('id', user.id)
     .maybeSingle()
+
+  const accountType = (profile?.account_type ?? user.user_metadata?.account_type ?? 'person') as 'person' | 'business'
 
   return (
     <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 20px 80px' }}>
@@ -25,8 +27,11 @@ export default async function GuestProfilePage() {
         initialLocation={profile?.location ?? ''}
         initialLanguages={profile?.languages ?? []}
         initialAvatarUrl={profile?.avatar_url ?? null}
+        accountType={accountType}
         initialFirstName={profile?.guest_first_name ?? ''}
         initialLastName={profile?.guest_last_name ?? ''}
+        initialCompanyName={profile?.company_name ?? ''}
+        initialVatId={profile?.vat_id ?? ''}
         initialStreet={profile?.guest_street ?? ''}
         initialCity={profile?.guest_city ?? ''}
         initialZip={profile?.guest_zip ?? ''}
