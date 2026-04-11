@@ -453,7 +453,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             : '0 1px 0 rgba(0,0,0,0.06)',
         }}
       >
-        <div className="max-w-7xl mx-auto px-6 flex items-center gap-4 h-full">
+        <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
 
           {/* Logo */}
           <Link href="/" style={{ flexShrink: 0, textDecoration: 'none' }}>
