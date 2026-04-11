@@ -99,3 +99,21 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS smoobu_api_key    TEXT,
   ADD COLUMN IF NOT EXISTS smoobu_channel_id BIGINT;
 -- Note: smoobu_api_key is sensitive — ensure RLS only lets the owner read their own row
+
+-- ══════════════════════════════════════════════════════════════
+-- Smoobu message sync + multi-host credentials
+-- Run in Supabase → SQL Editor
+-- ══════════════════════════════════════════════════════════════
+
+-- smoobu_message_id for deduplication when syncing Smoobu ↔ TRIMOSA chat
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS smoobu_message_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS messages_smoobu_message_id_idx
+  ON messages (smoobu_message_id)
+  WHERE smoobu_message_id IS NOT NULL;
+
+-- Per-host Smoobu credentials
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS smoobu_api_key    TEXT,
+  ADD COLUMN IF NOT EXISTS smoobu_channel_id BIGINT;

@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         const guestEmail = guestData.data.user?.email ?? ''
         const { data: guestProfile } = await supabaseAdmin
           .from('profiles')
-          .select('guest_first_name, guest_last_name, display_name, phone, street, postal_code, city, country')
+          .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
           .eq('id', booking.guest_id)
           .maybeSingle()
         const gp = guestProfile as Record<string, unknown> | null
@@ -87,10 +87,10 @@ export async function POST(req: NextRequest) {
           lastName: ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-',
           email: guestEmail,
           phone: (gp?.phone as string) || '',
-          street: (gp?.street as string) || '',
-          postalCode: (gp?.postal_code as string) || '',
-          city: (gp?.city as string) || '',
-          country: (gp?.country as string) || 'DE',
+          street: (gp?.guest_street as string) || '',
+          postalCode: (gp?.guest_zip as string) || '',
+          city: (gp?.guest_city as string) || '',
+          country: (gp?.guest_country as string) || 'DE',
           adults: booking.adults ?? 1,
           children: booking.children ?? 0,
           price: booking.total_price,

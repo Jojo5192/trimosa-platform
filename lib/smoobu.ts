@@ -177,10 +177,10 @@ export interface CreateReservationInput {
   lastName: string
   email: string
   phone?: string
-  street?: string
-  postalCode?: string
-  city?: string
-  country?: string
+  street?: string   // maps to profiles.guest_street
+  postalCode?: string  // maps to profiles.guest_zip
+  city?: string     // maps to profiles.guest_city
+  country?: string  // maps to profiles.guest_country
   adults?: number
   children?: number
   price?: number

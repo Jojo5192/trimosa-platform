@@ -12,25 +12,33 @@ async function syncSmoobuMessages(
 ) {
   try {
     const smoobuMsgs = await getReservationMessages(smoobuReservationId)
+    if (!smoobuMsgs.length) return
+
     for (const sm of smoobuMsgs) {
-      const isGuestMsg = sm.type?.toLowerCase().includes('guest') || sm.sender?.toLowerCase().includes('guest')
-      const senderId = isGuestMsg ? guestId : hostId
+      if (!sm.message?.trim()) continue
+      const msgId = String(sm.id)
+      // "host" type → sent by host; everything else (guest, system) → guest
+      const isHost = sm.type?.toLowerCase().includes('host') || sm.sender?.toLowerCase().includes('host')
+      const senderId = isHost ? hostId : guestId
 
       const { error } = await supabaseAdmin
         .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: senderId,
-          content: sm.message ?? '',
-          smoobu_message_id: String(sm.id),
-          created_at: sm.date ?? new Date().toISOString(),
-        })
-      if (error && !error.message?.includes('unique') && error.code !== '23505') {
-        console.error('[Chat] syncSmoobuMessages insert error', error)
+        .upsert(
+          {
+            conversation_id: conversationId,
+            sender_id: senderId,
+            content: sm.message.trim(),
+            smoobu_message_id: msgId,
+            created_at: sm.date ?? new Date().toISOString(),
+          },
+          { onConflict: 'smoobu_message_id', ignoreDuplicates: true },
+        )
+      if (error && error.code !== '23505') {
+        console.error('[Chat] Smoobu sync error:', error.message, 'id:', msgId)
       }
     }
   } catch (err) {
-    console.error('[Chat] syncSmoobuMessages failed', err)
+    console.error('[Chat] syncSmoobuMessages failed:', err)
   }
 }
 
