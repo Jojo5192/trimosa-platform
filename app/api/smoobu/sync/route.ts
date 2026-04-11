@@ -13,9 +13,10 @@ export async function POST() {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 })
   }
 
-  const apiKey = user.user_metadata?.smoobu_api_key
+  // Use env key (Vercel), fall back to per-user metadata for local dev
+  const apiKey = process.env.SMOOBU_API_KEY ?? user.user_metadata?.smoobu_api_key
   if (!apiKey) {
-    return NextResponse.json({ error: 'Kein Smoobu API Key hinterlegt. Bitte zuerst einen API Key speichern.' }, { status: 400 })
+    return NextResponse.json({ error: 'Kein Smoobu API Key konfiguriert.' }, { status: 400 })
   }
 
   // Apartments von Smoobu laden
@@ -135,9 +136,9 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 })
   }
 
-  const apiKey = user.user_metadata?.smoobu_api_key
+  const apiKey = process.env.SMOOBU_API_KEY ?? user.user_metadata?.smoobu_api_key
   if (!apiKey) {
-    return NextResponse.json({ error: 'Kein Smoobu API Key' }, { status: 400 })
+    return NextResponse.json({ error: 'Kein Smoobu API Key konfiguriert.' }, { status: 400 })
   }
 
   const { bookingId } = await request.json()
