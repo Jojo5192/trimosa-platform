@@ -264,32 +264,43 @@ export interface SmoobuMessage {
 
 /**
  * Fetches all messages for a Smoobu reservation.
+ * Pass apiKey to use the host's own Smoobu account credentials.
  */
-export async function getReservationMessages(smoobuReservationId: number): Promise<SmoobuMessage[]> {
+export async function getReservationMessages(
+  smoobuReservationId: number,
+  apiKey?: string,
+): Promise<SmoobuMessage[]> {
   const res = await fetch(`${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages`, {
-    headers: smoobuHeaders(),
+    headers: smoobuHeaders(apiKey),
     cache: 'no-store',
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    console.error('[Smoobu] getReservationMessages failed', res.status, smoobuReservationId)
+    return []
+  }
   const data = await res.json()
+  // Smoobu returns either { messages: [...] } or a direct array
   return (data?.messages ?? data ?? []) as SmoobuMessage[]
 }
 
 /**
  * Sends a message to a guest via Smoobu.
+ * Pass apiKey to use the host's own Smoobu account credentials.
  */
 export async function sendMessageToGuest(
   smoobuReservationId: number,
   message: string,
+  apiKey?: string,
 ): Promise<boolean> {
   const res = await fetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-guest`,
     {
       method: 'POST',
-      headers: smoobuHeaders(),
+      headers: smoobuHeaders(apiKey),
       body: JSON.stringify({ message }),
     },
   )
+  if (!res.ok) console.error('[Smoobu] sendMessageToGuest failed', res.status)
   return res.ok
 }
 

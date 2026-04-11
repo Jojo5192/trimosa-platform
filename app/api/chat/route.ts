@@ -9,9 +9,10 @@ async function syncSmoobuMessages(
   smoobuReservationId: number,
   hostId: string,
   guestId: string,
+  hostApiKey?: string,
 ) {
   try {
-    const smoobuMsgs = await getReservationMessages(smoobuReservationId)
+    const smoobuMsgs = await getReservationMessages(smoobuReservationId, hostApiKey)
     if (!smoobuMsgs.length) return
 
     for (const sm of smoobuMsgs) {
@@ -59,10 +60,16 @@ export async function GET(req: NextRequest) {
       .eq('id', conversationId)
       .maybeSingle()
 
-    // Pull in new Smoobu messages if the booking is linked
+    // Pull in new Smoobu messages using the host's own API key
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
     if (conv && smoobuId) {
-      await syncSmoobuMessages(conversationId, smoobuId, conv.host_id, conv.guest_id)
+      const { data: hostProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('smoobu_api_key')
+        .eq('id', conv.host_id)
+        .maybeSingle()
+      const hostApiKey = (hostProfile as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+      await syncSmoobuMessages(conversationId, smoobuId, conv.host_id, conv.guest_id, hostApiKey)
     }
 
     // Mark messages as read
@@ -179,7 +186,9 @@ export async function POST(req: NextRequest) {
 
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
     if (smoobuId && conv?.host_id === user.id) {
-      await sendMessageToGuest(smoobuId, content.trim())
+      const { data: hp } = await supabaseAdmin.from('profiles').select('smoobu_api_key').eq('id', user.id).maybeSingle()
+      const hKey = (hp as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+      await sendMessageToGuest(smoobuId, content.trim(), hKey)
     }
   } catch (err) {
     console.error('[Chat] Smoobu forward failed', err)
