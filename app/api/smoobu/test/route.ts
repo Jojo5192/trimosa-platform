@@ -45,41 +45,20 @@ export async function GET() {
     isValidNumber: !isNaN(parseInt(l.smoobu_id)),
   }))
 
-  // 3. Test creating a reservation (dry-run — we'll use a past date so it might fail, but we'll see the error format)
-  if (listings && listings.length > 0) {
-    const testListing = listings[0]
-    try {
-      const testPayload = {
-        channelId: -1,
-        apartmentId: parseInt(testListing.smoobu_id),
-        arrivalDate: '2099-01-01',
-        departureDate: '2099-01-03',
-        firstName: 'Test',
-        lastName: 'Trimosa',
-        email: 'test@trimosa.de',
-        phone: '',
-        adults: 1,
-        children: 0,
-        price: 100,
-        notice: 'TEST — bitte ignorieren',
-      }
-      results.testPayload = testPayload
-
-      const res = await fetch('https://login.smoobu.com/api/reservations', {
-        method: 'POST',
-        headers: {
-          'Api-Key': apiKey ?? '',
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
-        body: JSON.stringify(testPayload),
-      })
-      const data = await res.json().catch(() => ({}))
-      results.testReservationStatus = res.status
-      results.testReservationResponse = data
-    } catch (err) {
-      results.testReservationError = String(err)
-    }
+  // 3. Fetch available channels
+  try {
+    const res = await fetch('https://login.smoobu.com/api/channels', {
+      headers: {
+        'Api-Key': apiKey ?? '',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+      },
+    })
+    const data = await res.json().catch(() => ({}))
+    results.channelsStatus = res.status
+    results.channels = data
+  } catch (err) {
+    results.channelsError = String(err)
   }
 
   return NextResponse.json(results, { status: 200 })
