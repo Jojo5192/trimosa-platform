@@ -55,11 +55,11 @@ export async function getApartmentRates(
   from: string,   // YYYY-MM-DD
   to: string,     // YYYY-MM-DD
 ): Promise<SmoobuRateMap> {
-  // Smoobu expects URL-encoded brackets: apartments%5B%5D=123
+  // Smoobu expects underscore date params: start_date / end_date
   const params = new URLSearchParams()
   params.append('apartments[]', String(smoobuApartmentId))
-  params.append('startDate', from)
-  params.append('endDate', to)
+  params.append('start_date', from)
+  params.append('end_date', to)
   const url = `${SMOOBU_BASE}/rates?${params.toString()}`
 
   const res = await fetch(url, {
