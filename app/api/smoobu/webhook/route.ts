@@ -79,8 +79,10 @@ export async function POST(request: Request) {
 
       const typeStr = (msg.type ?? '').toLowerCase()
       const senderStr = (msg.sender ?? '').toLowerCase()
-      const isHost = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
+      const isGuestType = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === '1'
+      const isHostType = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '2'
         || senderStr.includes('host') || senderStr.includes('gastgeber')
+      const isHost = !isGuestType && (isHostType || typeStr === '')
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({

@@ -303,9 +303,13 @@ export async function getReservationMessages(
   // Normalise field names (Smoobu may use 'body' or 'text' instead of 'message')
   return msgs.map((m) => {
     const obj = m as Record<string, unknown>
+    // Log raw type for debugging (numeric vs string — crucial for isHost detection)
+    console.log('[Smoobu] msg raw — id:', obj.id, 'type(', typeof obj.type, '):', obj.type,
+      'sender:', obj.sender, 'senderType:', obj.senderType)
     return {
       id: (obj.id ?? obj.messageId) as number,
-      type: String(obj.type ?? obj.senderType ?? obj.direction ?? ''),
+      // Preserve the raw type value as string — numeric types like 1/2 are kept as "1"/"2"
+      type: obj.type !== undefined ? String(obj.type) : String(obj.senderType ?? obj.direction ?? ''),
       message: String(obj.message ?? obj.body ?? obj.text ?? obj.messageBody ?? ''),
       date: String(obj.date ?? obj.created_at ?? obj.createdAt ?? ''),
       sender: String(obj.sender ?? obj.senderName ?? obj.senderType ?? ''),

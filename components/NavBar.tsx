@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
+import ChatOverlay from '@/components/ChatOverlay'
 
 interface NavBarProps {
   initialQ?: string
@@ -328,6 +329,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [compact, setCompact] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [chatOpen, setChatOpen] = useState(false)
 
   const [q, setQ] = useState(initialQ)
   const [checkin, setCheckin] = useState(initialCheckin)
@@ -377,7 +379,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     if (data?.avatar_url) setAvatarUrl(data.avatar_url)
   }
 
-  // Poll for unread chat messages
+  // Poll for unread chat messages + refresh when overlay closes
   useEffect(() => {
     if (!user) return
     async function checkUnread() {
@@ -389,7 +391,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     checkUnread()
     const id = setInterval(checkUnread, 30000)
     return () => clearInterval(id)
-  }, [user])
+  }, [user, chatOpen])
 
   // Close popover on outside click
   useEffect(() => {
@@ -697,10 +699,10 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {user ? (
               <>
-                {/* Chat icon with unread badge */}
-                <Link
-                  href={chatHref}
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, textDecoration: 'none', color: '#555' }}
+                {/* Chat icon with unread badge — opens overlay */}
+                <button
+                  onClick={() => setChatOpen(true)}
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, cursor: 'pointer', color: '#555' }}
                   title="Nachrichten"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -711,7 +713,9 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   )}
-                </Link>
+                </button>
+                {/* Global chat overlay */}
+                {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} />}
 
                 {/* Direkter Dashboard / Trips Button */}
                 <Link

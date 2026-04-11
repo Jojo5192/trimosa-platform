@@ -27,14 +27,20 @@ async function syncSmoobuMessages(
         .maybeSingle()
       if (existing) continue
 
-      // Detect host-sent messages. Smoobu uses various conventions:
-      // type: "host_message", "outgoing", "host"; sender: "Host", "Gastgeber"
-      // We treat "outgoing" as host (sent from the host's account outward to guest).
+      // Smoobu isHost detection — covers all known formats:
+      // String: "host", "host_message", "host_to_guest", "outgoing", "sent"
+      // Numeric: type=1 (often guest) OR type=2 (often host) — both conventions seen in the wild
+      // Sender: "Host", "Gastgeber", or the actual host name
+      // Guest indicators: "guest", "guest_message", "incoming", type=1
       const typeStr = (sm.type ?? '').toLowerCase()
       const senderStr = (sm.sender ?? '').toLowerCase()
-      const isHost = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
+      const isGuestType = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === '1'
+      const isHostType = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '2'
         || senderStr.includes('host') || senderStr.includes('gastgeber')
-      console.log('[Chat] syncMsg id:', sm.id, 'type:', sm.type, 'sender:', sm.sender, '→ isHost:', isHost)
+      // If we can positively identify it as guest → guest. If host indicator → host.
+      // If unknown type → fall back to host (most automated Smoobu messages are from host).
+      const isHost = !isGuestType && (isHostType || typeStr === '')
+      console.log('[Chat] syncMsg id:', sm.id, 'type:', sm.type, 'sender:', sm.sender, '→ isHost:', isHost, '(guestType:', isGuestType, 'hostType:', isHostType, ')')
       const senderId = isHost ? hostId : guestId
 
       const { error } = await supabaseAdmin
