@@ -77,7 +77,10 @@ export async function POST(request: Request) {
         .maybeSingle()
       if (existing) continue
 
-      const isHost = msg.type?.toLowerCase().includes('host') || msg.sender?.toLowerCase().includes('host')
+      const typeStr = (msg.type ?? '').toLowerCase()
+      const senderStr = (msg.sender ?? '').toLowerCase()
+      const isHost = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
+        || senderStr.includes('host') || senderStr.includes('gastgeber')
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({

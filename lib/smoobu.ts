@@ -295,15 +295,20 @@ export async function getReservationMessages(
     msgs = []
   }
 
+  // Log first message to diagnose field format in production
+  if (msgs.length > 0) {
+    console.log('[Smoobu] First message sample:', JSON.stringify(msgs[0]))
+  }
+
   // Normalise field names (Smoobu may use 'body' or 'text' instead of 'message')
   return msgs.map((m) => {
     const obj = m as Record<string, unknown>
     return {
       id: (obj.id ?? obj.messageId) as number,
-      type: String(obj.type ?? obj.senderType ?? ''),
+      type: String(obj.type ?? obj.senderType ?? obj.direction ?? ''),
       message: String(obj.message ?? obj.body ?? obj.text ?? obj.messageBody ?? ''),
       date: String(obj.date ?? obj.created_at ?? obj.createdAt ?? ''),
-      sender: String(obj.sender ?? obj.senderName ?? ''),
+      sender: String(obj.sender ?? obj.senderName ?? obj.senderType ?? ''),
     }
   })
 }

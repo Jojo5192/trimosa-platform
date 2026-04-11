@@ -27,8 +27,14 @@ async function syncSmoobuMessages(
         .maybeSingle()
       if (existing) continue
 
-      // "host" type → sent by host; everything else (guest, system) → guest
-      const isHost = sm.type?.toLowerCase().includes('host') || sm.sender?.toLowerCase().includes('host')
+      // Detect host-sent messages. Smoobu uses various conventions:
+      // type: "host_message", "outgoing", "host"; sender: "Host", "Gastgeber"
+      // We treat "outgoing" as host (sent from the host's account outward to guest).
+      const typeStr = (sm.type ?? '').toLowerCase()
+      const senderStr = (sm.sender ?? '').toLowerCase()
+      const isHost = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
+        || senderStr.includes('host') || senderStr.includes('gastgeber')
+      console.log('[Chat] syncMsg id:', sm.id, 'type:', sm.type, 'sender:', sm.sender, '→ isHost:', isHost)
       const senderId = isHost ? hostId : guestId
 
       const { error } = await supabaseAdmin
