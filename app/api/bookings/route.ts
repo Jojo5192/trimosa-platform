@@ -3,52 +3,61 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, checkAvailability } from '@/lib/smoobu'
 
-/**
- * POST /api/bookings
- * Creates a booking in Supabase and syncs it to Smoobu.
- *
- * Body: { listingId, checkIn, checkOut, adults?, children?, message? }
- */
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: 'Bitte zuerst anmelden' }, { status: 401 })
-  }
+  if (!user) return NextResponse.json({ error: 'Bitte zuerst anmelden' }, { status: 401 })
 
   const body = await request.json()
-  const { listingId, checkIn, checkOut, adults = 1, children = 0, message = '' } = body
+  const {
+    listingId, checkIn, checkOut,
+    adults = 1, children = 0, message = '',
+    booking_type = 'request',
+    guest_price_suggestion,
+  } = body
 
-  if (!listingId || !checkIn || !checkOut) {
+  if (!listingId || !checkIn || !checkOut)
     return NextResponse.json({ error: 'listingId, checkIn und checkOut erforderlich' }, { status: 400 })
-  }
 
-  // Load listing
   const { data: listing } = await supabaseAdmin
     .from('listings')
     .select('id, title, smoobu_id, price_per_night, host_id')
     .eq('id', listingId)
     .single()
+  if (!listing) return NextResponse.json({ error: 'Unterkunft nicht gefunden' }, { status: 404 })
 
-  if (!listing) {
-    return NextResponse.json({ error: 'Unterkunft nicht gefunden' }, { status: 404 })
+  // Check host booking settings
+  const { data: hostProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('allow_instant_booking, allow_requests, min_request_nights')
+    .eq('id', listing.host_id)
+    .single()
+
+  if (booking_type === 'instant' && hostProfile?.allow_instant_booking === false)
+    return NextResponse.json({ error: 'Sofortbuchung ist für diese Unterkunft nicht verfügbar.' }, { status: 403 })
+  if (booking_type === 'request' && hostProfile?.allow_requests === false)
+    return NextResponse.json({ error: 'Anfragen sind für diese Unterkunft deaktiviert.' }, { status: 403 })
+
+  const nights = Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
+  if (booking_type === 'request') {
+    const minNights = hostProfile?.min_request_nights ?? 1
+    if (nights < minNights)
+      return NextResponse.json({ error: `Anfragen erst ab ${minNights} Nächten möglich.` }, { status: 400 })
   }
 
   // Check availability + get price
   let totalPrice = 0
   if (listing.smoobu_id) {
     const avail = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
-    if (!avail.available) {
+    if (!avail.available)
       return NextResponse.json({ error: 'Diese Daten sind leider nicht verfügbar.' }, { status: 409 })
-    }
     totalPrice = avail.totalPrice
   } else {
-    const nights = Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
     totalPrice = (listing.price_per_night ?? 0) * nights
   }
 
-  // Create booking in Supabase
+  const initialStatus = booking_type === 'instant' ? 'confirmed' : 'pending'
+
   const { data: newBooking, error: bookingError } = await supabaseAdmin
     .from('bookings')
     .insert({
@@ -59,20 +68,22 @@ export async function POST(request: Request) {
       total_price: totalPrice,
       adults,
       children,
-      status: 'pending',
+      status: initialStatus,
       message,
+      booking_type,
+      guest_price_suggestion: guest_price_suggestion ?? null,
     })
     .select('id')
     .single()
 
   if (bookingError || !newBooking) {
-    console.error('[Bookings] Supabase insert error:', bookingError)
+    console.error('[Bookings] insert error:', bookingError)
     return NextResponse.json({ error: 'Buchung konnte nicht gespeichert werden.' }, { status: 500 })
   }
 
-  // Push to Smoobu (best-effort — don't fail the booking if Smoobu is unavailable)
+  // Instant bookings: push to Smoobu to block calendar
   let smoobuReservationId: number | null = null
-  if (listing.smoobu_id) {
+  if (booking_type === 'instant' && listing.smoobu_id) {
     try {
       const name = (user.user_metadata?.name ?? user.email ?? 'Gast').split(' ')
       smoobuReservationId = await createReservation({
@@ -85,32 +96,21 @@ export async function POST(request: Request) {
         adults,
         children,
         price: totalPrice,
-        notice: message || 'Direkte Buchung über TRIMOSA',
+        notice: message || 'Sofortbuchung über TRIMOSA',
       })
-
-      // Store Smoobu reservation ID
       if (smoobuReservationId) {
-        await supabaseAdmin
-          .from('bookings')
-          .update({ smoobu_reservation_id: smoobuReservationId })
-          .eq('id', newBooking.id)
+        await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuReservationId }).eq('id', newBooking.id)
       }
     } catch (err) {
       console.error('[Bookings] Smoobu sync failed (non-fatal):', err)
     }
   }
 
-  // Send confirmation email (fire-and-forget)
   fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/send-booking-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ bookingId: newBooking.id }),
   }).catch(() => {})
 
-  return NextResponse.json({
-    ok: true,
-    bookingId: newBooking.id,
-    totalPrice,
-    smoobuReservationId,
-  })
+  return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type, smoobuReservationId })
 }

@@ -8,6 +8,11 @@ import type { SmoobuRateMap } from '@/lib/smoobu'
 interface BookingBoxProps {
   listingId: string
   pricePerNight: number
+  hostId: string
+  allowInstant?: boolean
+  allowRequests?: boolean
+  minRequestNights?: number
+  cancellationPolicy?: string
 }
 
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
@@ -21,6 +26,12 @@ function addMonths(d: Date, n: number): Date {
 }
 function today(): string { return isoDate(new Date()) }
 
+const POLICY_LABELS: Record<string, string> = {
+  flexibel: 'Kostenlose Stornierung bis 24h vor Check-in',
+  moderat:  'Kostenlose Stornierung bis 5 Tage vor Check-in',
+  strikt:   'Kostenlose Stornierung innerhalb 48h nach Buchung (mind. 14 Tage vor Check-in)',
+}
+
 /* ── Mini calendar ─────────────────────────────────────────── */
 function CalendarMonth({
   year, month, rates, checkIn, checkOut, selecting,
@@ -32,8 +43,8 @@ function CalendarMonth({
   onSelectDate: (iso: string) => void
   minDate: string
 }) {
-  const firstDow = new Date(year, month, 1).getDay() // 0=Sun
-  const leadBlanks = firstDow === 0 ? 6 : firstDow - 1 // convert to Mon-based
+  const firstDow = new Date(year, month, 1).getDay()
+  const leadBlanks = firstDow === 0 ? 6 : firstDow - 1
   const daysInMonth = new Date(year, month + 1, 0).getDate()
 
   function cellState(day: number) {
@@ -78,11 +89,7 @@ function CalendarMonth({
                 fontSize: '12px',
                 fontWeight: isSelected ? 700 : 400,
                 transition: 'all 0.1s',
-                backgroundColor: isSelected
-                  ? '#111'
-                  : inRange
-                  ? 'rgba(17,17,17,0.08)'
-                  : 'transparent',
+                backgroundColor: isSelected ? '#111' : inRange ? 'rgba(17,17,17,0.08)' : 'transparent',
                 color: isSelected ? '#fff' : isPast || isUnavailable ? '#CCC' : '#111',
                 textDecoration: isUnavailable && !isPast ? 'line-through' : 'none',
               }}
@@ -97,8 +104,19 @@ function CalendarMonth({
 }
 
 /* ── Main BookingBox ────────────────────────────────────────── */
-export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps) {
+export default function BookingBox({
+  listingId,
+  pricePerNight,
+  allowInstant = true,
+  allowRequests = true,
+  minRequestNights = 1,
+  cancellationPolicy = 'moderat',
+}: BookingBoxProps) {
   const router = useRouter()
+
+  // Mode: 'instant' | 'request'
+  const [mode, setMode] = useState<'instant' | 'request'>(allowInstant ? 'instant' : 'request')
+
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
   const [selecting, setSelecting] = useState<'in' | 'out'>('in')
@@ -108,6 +126,7 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
   const [adults, setAdults] = useState(2)
   const [children, setChildren] = useState(0)
   const [message, setMessage] = useState('')
+  const [priceSuggestion, setPriceSuggestion] = useState('')
 
   const [rates, setRates] = useState<SmoobuRateMap>({})
   const [loadingRates, setLoadingRates] = useState(true)
@@ -117,7 +136,6 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'not-logged-in' | 'unavailable'>('idle')
 
-  // Load 6 months of rates on mount
   useEffect(() => {
     const from = today()
     const to = isoDate(new Date(Date.now() + 180 * 86400000))
@@ -128,7 +146,6 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
       .finally(() => setLoadingRates(false))
   }, [listingId])
 
-  // Check availability when both dates are set
   useEffect(() => {
     if (!checkIn || !checkOut) { setTotalPrice(null); setAvailability(null); return }
     fetch('/api/smoobu/availability', {
@@ -146,18 +163,12 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
 
   const handleSelectDate = useCallback((iso: string) => {
     if (selecting === 'in') {
-      setCheckIn(iso)
-      setCheckOut('')
-      setSelecting('out')
+      setCheckIn(iso); setCheckOut(''); setSelecting('out')
     } else {
       if (iso <= checkIn) {
-        setCheckIn(iso)
-        setCheckOut('')
-        setSelecting('out')
+        setCheckIn(iso); setCheckOut(''); setSelecting('out')
       } else {
-        setCheckOut(iso)
-        setSelecting('in')
-        setCalendarOpen(false)
+        setCheckOut(iso); setSelecting('in'); setCalendarOpen(false)
       }
     }
   }, [selecting, checkIn])
@@ -176,6 +187,10 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
 
   const nights = calcNights()
   const displayPrice = totalPrice !== null ? totalPrice : (pricePerNight * nights || null)
+  const hasBothDates = !!(checkIn && checkOut)
+
+  const requestNightsOk = mode === 'request' ? nights >= minRequestNights : true
+  const canSubmit = hasBothDates && nights > 0 && (!availability || availability.available) && requestNightsOk
 
   async function handleSubmit() {
     if (!checkIn || !checkOut || nights <= 0) return
@@ -199,31 +214,34 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
         adults,
         children,
         message,
+        booking_type: mode,
+        guest_price_suggestion: mode === 'request' && priceSuggestion ? parseFloat(priceSuggestion) : undefined,
       }),
     })
 
     const data = await res.json()
 
-    if (res.status === 409) {
-      setStatus('unavailable')
-    } else if (!res.ok) {
-      setStatus('error')
-    } else {
+    if (res.status === 409) setStatus('unavailable')
+    else if (!res.ok) setStatus('error')
+    else {
       setStatus('success')
-      setTimeout(() => router.push(`/booking/${data.bookingId}`), 1200)
+      setTimeout(() => router.push(`/booking/${data.bookingId}`), 1400)
     }
     setSubmitting(false)
   }
 
   const minDate = today()
-  const hasBothDates = !!(checkIn && checkOut)
-  const canSubmit = hasBothDates && nights > 0 && (!availability || availability.available)
+  const inputStyle: React.CSSProperties = {
+    width: '100%', borderRadius: '12px', border: '1.5px solid #E0DDD6',
+    padding: '10px 14px', fontSize: '13px', color: '#111',
+    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', backgroundColor: '#fff',
+  }
 
   return (
     <div style={{ background: '#fff', borderRadius: '24px', padding: '24px', boxShadow: '0 8px 40px rgba(0,0,0,0.10)', border: '1px solid #EAEAEA' }}>
 
       {/* Price header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '16px' }}>
         {loadingRates ? (
           <div style={{ height: '28px', width: '100px', borderRadius: '6px', background: '#F5F5F7' }} />
         ) : (
@@ -234,16 +252,46 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
         )}
       </div>
 
+      {/* Mode Toggle */}
+      {allowInstant && allowRequests && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', padding: '4px', background: '#F5F3EF', borderRadius: '12px' }}>
+          {([['instant', '⚡ Sofort buchen'], ['request', '✉ Anfrage stellen']] as const).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: '9px', border: 'none',
+                fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                background: mode === m ? '#fff' : 'transparent',
+                color: mode === m ? '#111' : '#888',
+                boxShadow: mode === m ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.15s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Only instant label if no requests */}
+      {allowInstant && !allowRequests && (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '14px', fontSize: '12px', fontWeight: 600, color: '#16A34A', background: '#F0FDF4', padding: '4px 10px', borderRadius: '99px' }}>
+          ⚡ Sofortbuchung verfügbar
+        </div>
+      )}
+
+      {/* Only requests label */}
+      {!allowInstant && allowRequests && (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '14px', fontSize: '12px', fontWeight: 600, color: '#92400E', background: '#FFF7ED', padding: '4px 10px', borderRadius: '99px' }}>
+          ✉ Nur Anfragen möglich
+        </div>
+      )}
+
       {/* Date picker trigger */}
       <div
-        style={{
-          borderRadius: '14px',
-          border: `1.5px solid ${calendarOpen ? '#111' : '#E0DDD6'}`,
-          overflow: 'hidden',
-          marginBottom: '12px',
-          cursor: 'pointer',
-          transition: 'border-color 0.15s',
-        }}
+        style={{ borderRadius: '14px', border: `1.5px solid ${calendarOpen ? '#111' : '#E0DDD6'}`, overflow: 'hidden', marginBottom: '12px', cursor: 'pointer', transition: 'border-color 0.15s' }}
         onClick={() => setCalendarOpen(o => !o)}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: calendarOpen ? '1px solid #F0EEE8' : 'none' }}>
@@ -265,50 +313,27 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
       {/* Calendar */}
       {calendarOpen && (
         <div style={{ marginBottom: '12px', padding: '16px', background: '#FAFAFA', borderRadius: '14px', border: '1px solid #F0EEE8' }}>
-          {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <button
-              type="button"
-              onClick={() => setCalMonth(m => addMonths(m, -1))}
-              style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}
-            >
-              ‹
-            </button>
-            <span style={{ fontSize: '12px', color: '#888' }}>
-              {selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCalMonth(m => addMonths(m, 1))}
-              style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}
-            >
-              ›
-            </button>
+            <button type="button" onClick={() => setCalMonth(m => addMonths(m, -1))}
+              style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}>‹</button>
+            <span style={{ fontSize: '12px', color: '#888' }}>{selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}</span>
+            <button type="button" onClick={() => setCalMonth(m => addMonths(m, 1))}
+              style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}>›</button>
           </div>
-
-          {/* Two-month view */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            <CalendarMonth
-              year={calMonth.getFullYear()} month={calMonth.getMonth()}
+            <CalendarMonth year={calMonth.getFullYear()} month={calMonth.getMonth()}
               rates={rates} checkIn={checkIn} checkOut={checkOut}
-              selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate}
-            />
-            <CalendarMonth
-              year={addMonths(calMonth, 1).getFullYear()} month={addMonths(calMonth, 1).getMonth()}
+              selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate} />
+            <CalendarMonth year={addMonths(calMonth,1).getFullYear()} month={addMonths(calMonth,1).getMonth()}
               rates={rates} checkIn={checkIn} checkOut={checkOut}
-              selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate}
-            />
+              selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate} />
           </div>
-
-          {/* Legend */}
           <div style={{ display: 'flex', gap: '16px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #F0EEE8' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', color: '#999' }}>
-              <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#111' }} />
-              Ausgewählt
+              <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#111' }} />Ausgewählt
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', color: '#999' }}>
-              <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#CCC', textDecoration: 'line-through', fontSize: '8px', lineHeight: '12px', textAlign: 'center', color: '#999' }}>–</span>
-              Belegt
+              <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#CCC' }} />Belegt
             </div>
           </div>
         </div>
@@ -327,12 +352,12 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
               <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>{sub}</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button type="button" onClick={() => set(v => Math.max(min, v - 1))} disabled={val <= min}
+              <button type="button" onClick={() => set(v => Math.max(min, v-1))} disabled={val <= min}
                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: val <= min ? 'not-allowed' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: val <= min ? '#DDD' : '#111' }}>
                 −
               </button>
               <span style={{ fontSize: '13px', fontWeight: 600, color: '#111', minWidth: '16px', textAlign: 'center' }}>{val}</span>
-              <button type="button" onClick={() => set(v => Math.min(max, v + 1))} disabled={val >= max}
+              <button type="button" onClick={() => set(v => Math.min(max, v+1))} disabled={val >= max}
                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: val >= max ? 'not-allowed' : 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: val >= max ? '#DDD' : '#111' }}>
                 +
               </button>
@@ -341,21 +366,48 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
         ))}
       </div>
 
-      {/* Optional message */}
+      {/* Request-specific: price suggestion */}
+      {mode === 'request' && (
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: '#888', letterSpacing: '0.05em', textTransform: 'uppercase', margin: '0 0 6px' }}>
+            Preisvorschlag (optional)
+          </p>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#888' }}>€</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={priceSuggestion}
+              onChange={e => setPriceSuggestion(e.target.value)}
+              placeholder={displayPrice ? String(Math.round(displayPrice)) : 'Gesamtpreis vorschlagen'}
+              style={{ ...inputStyle, paddingLeft: '26px' }}
+            />
+          </div>
+          <p style={{ fontSize: '11px', color: '#AAA', margin: '4px 0 0' }}>
+            Aktueller Listenpreis: € {displayPrice ?? '—'} gesamt
+          </p>
+        </div>
+      )}
+
+      {/* Message */}
       <textarea
         value={message}
         onChange={e => setMessage(e.target.value)}
-        placeholder="Nachricht an den Gastgeber (optional)"
+        placeholder={mode === 'instant' ? 'Nachricht an den Gastgeber (optional)' : 'Deine Anfrage / Nachricht an den Gastgeber'}
         rows={2}
-        style={{ width: '100%', borderRadius: '14px', border: '1.5px solid #E0DDD6', padding: '10px 14px', fontSize: '13px', color: '#111', resize: 'none', outline: 'none', boxSizing: 'border-box', marginBottom: '12px', fontFamily: 'inherit' }}
+        style={{ ...inputStyle, resize: 'none', marginBottom: '12px' }}
       />
 
       {/* Price breakdown */}
       {hasBothDates && nights > 0 && (
         <div style={{ padding: '12px 0', borderTop: '1px solid #F0EEE8', borderBottom: '1px solid #F0EEE8', marginBottom: '12px' }}>
           {availability?.minStayViolation && (
+            <p style={{ fontSize: '11px', color: '#E67E22', marginBottom: '6px' }}>⚠ Mindestaufenthalt nicht erfüllt.</p>
+          )}
+          {mode === 'request' && nights < minRequestNights && (
             <p style={{ fontSize: '11px', color: '#E67E22', marginBottom: '6px' }}>
-              ⚠ Mindestaufenthalt nicht erfüllt.
+              ⚠ Anfragen erst ab {minRequestNights} Nächten möglich.
             </p>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#555', marginBottom: '4px' }}>
@@ -369,10 +421,21 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
         </div>
       )}
 
+      {/* Request disclaimer */}
+      {mode === 'request' && (
+        <div style={{ marginBottom: '12px', padding: '10px 14px', background: '#FFF7ED', borderRadius: '10px', border: '1px solid #FED7AA' }}>
+          <p style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.5 }}>
+            ⚠️ <strong>Wichtig:</strong> Der Zeitraum wird erst nach Bestätigung durch den Gastgeber blockiert. Bis dahin können andere Gäste den selben Zeitraum buchen.
+          </p>
+        </div>
+      )}
+
       {/* Status messages */}
       {status === 'success' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: '12px' }}>
-          <p style={{ fontSize: '13px', fontWeight: 600, color: '#16A34A', margin: 0 }}>✓ Buchungsanfrage gesendet!</p>
+          <p style={{ fontSize: '13px', fontWeight: 600, color: '#16A34A', margin: 0 }}>
+            {mode === 'instant' ? '✓ Buchung erfolgreich!' : '✓ Anfrage gesendet!'}
+          </p>
           <p style={{ fontSize: '11px', color: '#22C55E', margin: '2px 0 0' }}>Du wirst weitergeleitet…</p>
         </div>
       )}
@@ -388,7 +451,7 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
       {status === 'not-logged-in' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
           <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
-            Bitte <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>anmelden</a> um eine Anfrage zu senden.
+            Bitte <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>anmelden</a> um zu buchen.
           </p>
         </div>
       )}
@@ -407,12 +470,31 @@ export default function BookingBox({ listingId, pricePerNight }: BookingBoxProps
           transition: 'all 0.15s',
         }}
       >
-        {submitting ? 'Wird gesendet…' : !checkIn ? 'Anreisedatum wählen' : !checkOut ? 'Abreisedatum wählen' : 'Anfrage senden'}
+        {submitting
+          ? 'Wird verarbeitet…'
+          : !checkIn ? 'Anreisedatum wählen'
+          : !checkOut ? 'Abreisedatum wählen'
+          : mode === 'instant' ? '⚡ Jetzt buchen'
+          : '✉ Anfrage senden'}
       </button>
 
-      <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', marginTop: '8px' }}>
-        Noch keine Zahlung — erst Anfrage
-      </p>
+      {/* Footer info */}
+      <div style={{ marginTop: '12px' }}>
+        {mode === 'instant' ? (
+          <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
+            Sofortige Bestätigung · Keine versteckten Gebühren
+          </p>
+        ) : (
+          <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
+            Noch keine Zahlung · Der Gastgeber antwortet in der Regel binnen 24h
+          </p>
+        )}
+        {cancellationPolicy && POLICY_LABELS[cancellationPolicy] && (
+          <p style={{ textAlign: 'center', fontSize: '11px', color: '#AAA', margin: 0 }}>
+            🛡 {POLICY_LABELS[cancellationPolicy]}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

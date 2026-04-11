@@ -5,6 +5,7 @@ import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
 import BookingActions from './BookingActions'
 import SmoobuConnect from './SmoobuConnect'
+import BookingSettings from './BookingSettings'
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient()
@@ -20,6 +21,12 @@ export default async function DashboardPage() {
     .from('platform_settings')
     .select('platform_markup_pct')
     .eq('id', 1)
+    .maybeSingle()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('allow_instant_booking, allow_requests, min_request_nights')
+    .eq('id', user.id)
     .maybeSingle()
 
   const { data: listings } = await supabase
@@ -144,6 +151,16 @@ export default async function DashboardPage() {
             </div>
           </section>
         )}
+
+        {/* Booking Settings */}
+        <section className="mb-8">
+          <h2 className="text-base font-bold tracking-tight mb-3" style={{ color: '#1D1D1F' }}>Buchungseinstellungen</h2>
+          <BookingSettings
+            allowInstant={profile?.allow_instant_booking ?? true}
+            allowRequests={profile?.allow_requests ?? true}
+            minRequestNights={profile?.min_request_nights ?? 1}
+          />
+        </section>
 
         {/* Smoobu */}
         <section className="mb-8">

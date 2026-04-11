@@ -63,10 +63,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  // Fetch host profile
+  // Fetch host profile (including booking settings)
   const { data: hostProfile } = await supabaseAdmin
     .from('profiles')
-    .select('*')
+    .select('*,allow_instant_booking,allow_requests,min_request_nights')
     .eq('id', listing.host_id)
     .maybeSingle()
 
@@ -244,7 +244,15 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
           {/* RIGHT COLUMN — Booking Box */}
           <div style={{ position: 'sticky', top: 'calc(var(--navbar-h, 88px) + 16px)' }}>
-            <BookingBox listingId={listing.id} pricePerNight={listing.price_per_night} />
+            <BookingBox
+              listingId={listing.id}
+              pricePerNight={listing.price_per_night}
+              hostId={listing.host_id}
+              allowInstant={hostProfile?.allow_instant_booking ?? true}
+              allowRequests={hostProfile?.allow_requests ?? true}
+              minRequestNights={hostProfile?.min_request_nights ?? 1}
+              cancellationPolicy={listing.cancellation_policy ?? 'moderat'}
+            />
           </div>
         </div>
       </div>
