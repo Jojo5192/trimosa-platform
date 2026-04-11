@@ -18,21 +18,30 @@ function smoobuHeaders(apiKey?: string) {
 }
 
 /**
- * Discovers the first available channel ID for a given Smoobu API key
- * by reading the most recent reservation. Falls back to GLOBAL_CHANNEL_ID.
+ * Reads recent reservations to collect all distinct channel instances for this account.
+ * Smoobu channel IDs are account-specific (e.g. the host's own Airbnb connection ID),
+ * NOT the global type IDs (Airbnb=74, Booking.com=14 etc.).
  */
-export async function discoverChannelId(apiKey: string): Promise<number | null> {
+export async function discoverAvailableChannels(
+  apiKey: string,
+): Promise<{ id: number; name: string }[]> {
   try {
-    const res = await fetch(`${SMOOBU_BASE}/reservations?pageSize=1&page=1`, {
+    const res = await fetch(`${SMOOBU_BASE}/reservations?pageSize=25&page=1`, {
       headers: smoobuHeaders(apiKey),
     })
-    if (!res.ok) return null
+    if (!res.ok) return []
     const data = await res.json()
-    const booking = data.bookings?.[0]
-    // Return the account-specific channel id from the first booking
-    return booking?.channel?.id ?? null
+    const bookings: { channel?: { id: number; name: string } }[] = data.bookings ?? []
+    // Deduplicate channels by id
+    const seen = new Map<number, string>()
+    for (const b of bookings) {
+      if (b.channel?.id && !seen.has(b.channel.id)) {
+        seen.set(b.channel.id, b.channel.name)
+      }
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
   } catch {
-    return null
+    return []
   }
 }
 

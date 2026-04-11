@@ -17,18 +17,22 @@ export default function SmoobuConnect({
   const [markup, setMarkup] = useState(String(currentMarkup))
   const [loading, setLoading] = useState(false)
   const [savingMarkup, setSavingMarkup] = useState(false)
-  const [result, setResult] = useState<{ apartments?: { id: number; name: string }[]; channelId?: number | null; message?: string } | null>(null)
   const [error, setError] = useState('')
   const [savedMarkup, setSavedMarkup] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+  // Step 2: channel selection
+  const [pendingApiKey, setPendingApiKey] = useState('')
+  const [availableChannels, setAvailableChannels] = useState<{ id: number; name: string }[] | null>(null)
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null)
 
   const isConnected = !!currentApiKey
 
+  // Step 1: validate key + fetch available channels
   async function handleConnect() {
     if (!apiKey.trim()) return
     setLoading(true)
     setError('')
-    setResult(null)
     try {
       const res = await fetch('/api/smoobu/connect', {
         method: 'POST',
@@ -38,13 +42,42 @@ export default function SmoobuConnect({
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Verbindung fehlgeschlagen')
-      } else {
-        setResult(data)
+      } else if (data.channels?.length > 0) {
+        // Show channel picker (Step 2)
+        setPendingApiKey(apiKey.trim())
+        setAvailableChannels(data.channels)
+        setSelectedChannelId(data.channels[0].id)
         setApiKey('')
-        setTimeout(() => window.location.reload(), 2000)
+      } else {
+        setError('Keine Buchungskanäle in deinem Smoobu-Konto gefunden. Bitte erstelle zunächst eine manuelle Buchung in Smoobu, damit TRIMOSA die Channel-ID erkennen kann.')
       }
     } catch {
       setError('Netzwerkfehler. Bitte versuche es erneut.')
+    }
+    setLoading(false)
+  }
+
+  // Step 2: save key + chosen channel
+  async function handleSaveChannel() {
+    if (!pendingApiKey || !selectedChannelId) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/smoobu/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: pendingApiKey, channelId: selectedChannelId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Speichern fehlgeschlagen')
+      } else {
+        setAvailableChannels(null)
+        setPendingApiKey('')
+        setTimeout(() => window.location.reload(), 500)
+      }
+    } catch {
+      setError('Netzwerkfehler.')
     }
     setLoading(false)
   }
@@ -71,11 +104,12 @@ export default function SmoobuConnect({
   async function handleSync() {
     setLoading(true)
     setError('')
+    setSyncMsg('')
     try {
       const res = await fetch('/api/smoobu/sync', { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
-        setResult({ message: data.message })
+        setSyncMsg(data.message)
         if (data.imported > 0 || data.updated > 0) setTimeout(() => window.location.reload(), 2000)
       } else {
         setError(data.error ?? 'Sync fehlgeschlagen.')
@@ -119,6 +153,7 @@ export default function SmoobuConnect({
             )}
           </div>
 
+          {syncMsg && <div style={{ marginBottom: '10px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#15803D' }}>✓ {syncMsg}</div>}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
             <button
               onClick={handleSync}
@@ -139,50 +174,85 @@ export default function SmoobuConnect({
       ) : (
         /* ── Connect form ── */
         <div>
-          {/* Step-by-step instructions */}
-          <div style={{ background: '#F9F7F3', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#1D1D1F', marginBottom: '8px' }}>So verbindest du Smoobu in 3 Schritten:</div>
-            <ol style={{ margin: 0, padding: '0 0 0 16px', fontSize: '12px', color: '#444', lineHeight: '1.8' }}>
-              <li>Melde dich in <strong>Smoobu</strong> an (<a href="https://login.smoobu.com" target="_blank" rel="noreferrer" style={{ color: '#B0912B' }}>login.smoobu.com</a>)</li>
-              <li>Gehe zu <strong>Einstellungen → API</strong> (oben rechts, Zahnrad-Symbol)</li>
-              <li>Kopiere deinen <strong>API Key</strong> und füge ihn hier ein</li>
-            </ol>
-          </div>
+          {availableChannels ? (
+            /* Step 2: Pick which channel TRIMOSA bookings appear under */
+            <div>
+              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '12px', padding: '12px 16px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#15803D' }}>✓ API Key bestätigt!</div>
+                <div style={{ fontSize: '11px', color: '#6E6E73', marginTop: '2px' }}>Wähle nun unter welchem Kanal TRIMOSA-Buchungen in Smoobu erscheinen sollen:</div>
+              </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleConnect()}
-              placeholder="Smoobu API Key einfügen..."
-              style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1px solid #D2D2D7', fontSize: '13px', outline: 'none' }}
-            />
-            <button
-              onClick={handleConnect}
-              disabled={loading || !apiKey.trim()}
-              style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
-            >
-              {loading ? '...' : 'Verbinden'}
-            </button>
-          </div>
-          <p style={{ fontSize: '11px', color: '#999', marginTop: '6px' }}>
-            TRIMOSA prüft den Key automatisch und erkennt deine Apartments und Channel-ID.
-          </p>
-        </div>
-      )}
-
-      {/* Feedback */}
-      {result?.message && (
-        <div style={{ marginTop: '12px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '12px', padding: '12px 16px' }}>
-          <p style={{ fontSize: '13px', color: '#15803D', margin: 0 }}>✓ {result.message}</p>
-          {result.apartments && result.apartments.length > 0 && (
-            <p style={{ fontSize: '11px', color: '#6E6E73', margin: '4px 0 0' }}>
-              Apartments: {result.apartments.map(a => a.name).join(', ')}
-            </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+                {availableChannels.map(ch => (
+                  <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${selectedChannelId === ch.id ? '#B0912B' : '#E5E5EA'}`, background: selectedChannelId === ch.id ? '#FAF5E4' : '#fff', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="channel"
+                      value={ch.id}
+                      checked={selectedChannelId === ch.id}
+                      onChange={() => setSelectedChannelId(ch.id)}
+                      style={{ accentColor: '#B0912B' }}
+                    />
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#1D1D1F' }}>{ch.name}</span>
+                    <span style={{ fontSize: '11px', color: '#999', marginLeft: 'auto' }}>ID {ch.id}</span>
+                  </label>
+                ))}
+              </div>
+              <p style={{ fontSize: '11px', color: '#999', marginBottom: '12px' }}>
+                Empfehlung: Wähle den Kanal, der am besten zu direkten Website-Buchungen passt — z.B. FeWo-direkt oder den aktivsten Kanal.
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleSaveChannel}
+                  disabled={loading || !selectedChannelId}
+                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+                >
+                  {loading ? 'Speichere...' : 'Verbindung speichern'}
+                </button>
+                <button
+                  onClick={() => { setAvailableChannels(null); setPendingApiKey('') }}
+                  style={{ padding: '10px 14px', borderRadius: '12px', border: '1px solid #E5E5EA', background: '#fff', fontSize: '13px', cursor: 'pointer', color: '#666' }}
+                >
+                  Zurück
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Step 1: Enter API key */
+            <div>
+              <div style={{ background: '#F9F7F3', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#1D1D1F', marginBottom: '8px' }}>So verbindest du Smoobu in 3 Schritten:</div>
+                <ol style={{ margin: 0, padding: '0 0 0 16px', fontSize: '12px', color: '#444', lineHeight: '1.8' }}>
+                  <li>Melde dich in <strong>Smoobu</strong> an (<a href="https://login.smoobu.com" target="_blank" rel="noreferrer" style={{ color: '#B0912B' }}>login.smoobu.com</a>)</li>
+                  <li>Gehe zu <strong>Einstellungen → API</strong> (oben rechts, Zahnrad-Symbol)</li>
+                  <li>Kopiere deinen <strong>API Key</strong> und füge ihn hier ein</li>
+                </ol>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleConnect()}
+                  placeholder="Smoobu API Key einfügen..."
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1px solid #D2D2D7', fontSize: '13px', outline: 'none' }}
+                />
+                <button
+                  onClick={handleConnect}
+                  disabled={loading || !apiKey.trim()}
+                  style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
+                >
+                  {loading ? '...' : 'Weiter'}
+                </button>
+              </div>
+              <p style={{ fontSize: '11px', color: '#999', marginTop: '6px' }}>
+                TRIMOSA prüft den Key und zeigt dir deine verfügbaren Buchungskanäle zur Auswahl.
+              </p>
+            </div>
           )}
         </div>
       )}
+
 
       {error && (
         <div style={{ marginTop: '12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', padding: '12px 16px' }}>
