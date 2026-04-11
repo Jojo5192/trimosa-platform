@@ -18,24 +18,30 @@ async function syncSmoobuMessages(
     for (const sm of smoobuMsgs) {
       if (!sm.message?.trim()) continue
       const msgId = String(sm.id)
+
+      // Skip if already synced (avoids needing a unique DB constraint)
+      const { data: existing } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('smoobu_message_id', msgId)
+        .maybeSingle()
+      if (existing) continue
+
       // "host" type → sent by host; everything else (guest, system) → guest
       const isHost = sm.type?.toLowerCase().includes('host') || sm.sender?.toLowerCase().includes('host')
       const senderId = isHost ? hostId : guestId
 
       const { error } = await supabaseAdmin
         .from('messages')
-        .upsert(
-          {
-            conversation_id: conversationId,
-            sender_id: senderId,
-            content: sm.message.trim(),
-            smoobu_message_id: msgId,
-            created_at: sm.date ?? new Date().toISOString(),
-          },
-          { onConflict: 'smoobu_message_id', ignoreDuplicates: true },
-        )
-      if (error && error.code !== '23505') {
-        console.error('[Chat] Smoobu sync error:', error.message, 'id:', msgId)
+        .insert({
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content: sm.message.trim(),
+          smoobu_message_id: msgId,
+          created_at: sm.date || new Date().toISOString(),
+        })
+      if (error) {
+        console.error('[Chat] Smoobu sync insert error:', error.message, 'id:', msgId)
       }
     }
   } catch (err) {

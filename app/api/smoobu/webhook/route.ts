@@ -62,26 +62,33 @@ export async function POST(request: Request) {
       .maybeSingle()
     const hostApiKey = (hostProfile as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
 
-    // Fetch all messages and upsert (deduplication via smoobu_message_id)
+    // Fetch all messages and insert new ones (deduplication via smoobu_message_id check)
     const smoobuMsgs = await getReservationMessages(smoobuBookingId, hostApiKey)
     let synced = 0
     for (const msg of smoobuMsgs) {
       if (!msg.message?.trim()) continue
+      const msgId = String(msg.id)
+
+      // Skip if already synced
+      const { data: existing } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('smoobu_message_id', msgId)
+        .maybeSingle()
+      if (existing) continue
+
       const isHost = msg.type?.toLowerCase().includes('host') || msg.sender?.toLowerCase().includes('host')
       const { error } = await supabaseAdmin
         .from('messages')
-        .upsert(
-          {
-            conversation_id: conv.id,
-            sender_id: isHost ? conv.host_id : conv.guest_id,
-            content: msg.message.trim(),
-            smoobu_message_id: String(msg.id),
-            created_at: msg.date || new Date().toISOString(),
-          },
-          { onConflict: 'smoobu_message_id', ignoreDuplicates: true },
-        )
-      if (error && error.code !== '23505') {
-        console.error('[Smoobu Webhook] message upsert error:', error.message)
+        .insert({
+          conversation_id: conv.id,
+          sender_id: isHost ? conv.host_id : conv.guest_id,
+          content: msg.message.trim(),
+          smoobu_message_id: msgId,
+          created_at: msg.date || new Date().toISOString(),
+        })
+      if (error) {
+        console.error('[Smoobu Webhook] message insert error:', error.message)
       } else {
         synced++
       }
