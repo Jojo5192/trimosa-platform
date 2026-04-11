@@ -28,23 +28,38 @@ export async function acceptBooking(bookingId: string) {
   // Push to Smoobu to block the calendar (for requests that weren't previously pushed)
   if (listing?.smoobu_id && !booking.smoobu_reservation_id) {
     try {
-      const guestInfo = await supabaseAdmin.from('profiles')
-        .select('guest_first_name, guest_last_name, display_name')
-        .eq('id', booking.guest_id)
-        .maybeSingle()
-      const g = guestInfo.data
-      const fullName = (g?.display_name ?? 'Gast').split(' ')
+      const [guestInfo, guestAuth, hostProfile] = await Promise.all([
+        supabaseAdmin.from('profiles')
+          .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_city, guest_zip, guest_country')
+          .eq('id', booking.guest_id)
+          .maybeSingle(),
+        supabaseAdmin.auth.admin.getUserById(booking.guest_id),
+        supabaseAdmin.from('profiles')
+          .select('smoobu_api_key, smoobu_channel_id')
+          .eq('id', listing.host_id)
+          .maybeSingle(),
+      ])
+      const g = guestInfo.data as Record<string, unknown> | null
+      const hp = hostProfile.data as Record<string, unknown> | null
+      const fullName = ((g?.display_name as string) ?? 'Gast').split(' ')
       const smoobuId = await createReservation({
         smoobuApartmentId: parseInt(listing.smoobu_id),
         arrivalDate: booking.check_in,
         departureDate: booking.check_out,
-        firstName: g?.guest_first_name ?? fullName[0] ?? 'Gast',
-        lastName: (g?.guest_last_name ?? fullName.slice(1).join(' ')) || '-',
-        email: (await supabaseAdmin.auth.admin.getUserById(booking.guest_id)).data.user?.email ?? '',
+        firstName: (g?.guest_first_name as string) || fullName[0] || 'Gast',
+        lastName: ((g?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-',
+        email: guestAuth.data.user?.email ?? '',
+        phone: (g?.phone as string) || '',
+        street: (g?.guest_street as string) || '',
+        postalCode: (g?.guest_zip as string) || '',
+        city: (g?.guest_city as string) || '',
+        country: (g?.guest_country as string) || 'DE',
         adults: booking.adults ?? 1,
         children: booking.children ?? 0,
         price: booking.total_price,
         notice: `Anfrage bestätigt über TRIMOSA`,
+        apiKey: (hp?.smoobu_api_key as string) || undefined,
+        channelId: (hp?.smoobu_channel_id as number) || undefined,
       })
       await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuId }).eq('id', bookingId)
     } catch (err) {

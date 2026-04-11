@@ -109,6 +109,11 @@ async function syncSmoobuMessages(
   }
 }
 
+// Module-level sync cache: avoid hitting Smoobu API on every 5s poll
+// Key = conversationId, Value = last sync timestamp (ms)
+const syncCache = new Map<string, number>()
+const SYNC_COOLDOWN_MS = 30_000
+
 // GET /api/chat?conversationId=... — get messages for a conversation
 // GET /api/chat — get all conversations for current user
 export async function GET(req: NextRequest) {
@@ -126,16 +131,22 @@ export async function GET(req: NextRequest) {
       .eq('id', conversationId)
       .maybeSingle()
 
-    // Pull in new Smoobu messages using the host's own API key
+    // Pull in new Smoobu messages — throttled to once per 30s per conversation
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
     if (conv && smoobuId) {
-      const { data: hostProfile } = await supabaseAdmin
-        .from('profiles')
-        .select('smoobu_api_key')
-        .eq('id', conv.host_id)
-        .maybeSingle()
-      const hostApiKey = (hostProfile as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
-      await syncSmoobuMessages(conversationId, smoobuId, conv.host_id, conv.guest_id, hostApiKey)
+      const lastSync = syncCache.get(conversationId) ?? 0
+      if (Date.now() - lastSync >= SYNC_COOLDOWN_MS) {
+        syncCache.set(conversationId, Date.now())
+        const { data: hostProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('smoobu_api_key')
+          .eq('id', conv.host_id)
+          .maybeSingle()
+        const hostApiKey = (hostProfile as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+        // Run sync without blocking the response
+        syncSmoobuMessages(conversationId, smoobuId, conv.host_id, conv.guest_id, hostApiKey)
+          .catch(e => console.error('[Chat] background sync error:', e))
+      }
     }
 
     // Mark messages as read
@@ -158,27 +169,53 @@ export async function GET(req: NextRequest) {
   // All conversations for this user (as host or guest)
   const { data: conversations } = await supabaseAdmin
     .from('conversations')
-    .select('*')
+    .select('*, bookings(check_in, check_out)')
     .or(`host_id.eq.${user.id},guest_id.eq.${user.id}`)
     .order('last_message_at', { ascending: false })
 
-  // Get unread counts
+  // Get unread counts + avatar_urls for all involved users (parallel)
   const ids = (conversations ?? []).map(c => c.id)
-  const { data: unreadRows } = ids.length > 0
-    ? await supabaseAdmin
-        .from('messages')
-        .select('conversation_id')
-        .in('conversation_id', ids)
-        .neq('sender_id', user.id)
-        .is('read_at', null)
-    : { data: [] }
+  const allUserIds = [...new Set((conversations ?? []).flatMap(c => [c.guest_id, c.host_id].filter(Boolean)))]
+
+  const [unreadResult, avatarResult] = await Promise.all([
+    ids.length > 0
+      ? supabaseAdmin
+          .from('messages')
+          .select('conversation_id')
+          .in('conversation_id', ids)
+          .neq('sender_id', user.id)
+          .is('read_at', null)
+      : Promise.resolve({ data: [] }),
+    allUserIds.length > 0
+      ? supabaseAdmin
+          .from('profiles')
+          .select('id, avatar_url')
+          .in('id', allUserIds)
+      : Promise.resolve({ data: [] }),
+  ])
 
   const unreadMap: Record<string, number> = {}
-  for (const row of unreadRows ?? []) {
+  for (const row of (unreadResult as { data: { conversation_id: string }[] | null }).data ?? []) {
     unreadMap[row.conversation_id] = (unreadMap[row.conversation_id] ?? 0) + 1
   }
 
-  const result = (conversations ?? []).map(c => ({ ...c, unread: unreadMap[c.id] ?? 0 }))
+  const avatarMap: Record<string, string | null> = {}
+  for (const p of (avatarResult as { data: { id: string; avatar_url: string | null }[] | null }).data ?? []) {
+    avatarMap[p.id] = p.avatar_url ?? null
+  }
+
+  const result = (conversations ?? []).map(c => {
+    const booking = (c as Record<string, unknown>).bookings as { check_in?: string; check_out?: string } | null
+    return {
+      ...c,
+      bookings: undefined, // strip nested object, move fields to top level
+      check_in: booking?.check_in ?? null,
+      check_out: booking?.check_out ?? null,
+      guest_avatar_url: avatarMap[c.guest_id] ?? null,
+      host_avatar_url: avatarMap[c.host_id] ?? null,
+      unread: unreadMap[c.id] ?? 0,
+    }
+  })
   return NextResponse.json(result)
 }
 

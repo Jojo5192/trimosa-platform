@@ -379,17 +379,44 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     if (data?.avatar_url) setAvatarUrl(data.avatar_url)
   }
 
-  // Poll for unread chat messages + refresh when overlay closes
+  // Poll for unread chat messages + browser notifications when new message arrives
   useEffect(() => {
     if (!user) return
+    let prevCount = -1 // -1 = first run, skip notification on initial load
+
     async function checkUnread() {
       const res = await fetch('/api/chat')
       if (!res.ok) return
-      const convs: Array<{ unread: number }> = await res.json()
-      setUnreadCount(convs.reduce((sum, c) => sum + (c.unread ?? 0), 0))
+      const convs: Array<{ unread: number; guest_name?: string; host_name?: string }> = await res.json()
+      const count = convs.reduce((sum, c) => sum + (c.unread ?? 0), 0)
+      setUnreadCount(count)
+
+      // Browser notification when new message arrives and chat overlay is closed
+      if (prevCount >= 0 && count > prevCount && !chatOpen) {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            const newConv = convs.find(c => c.unread > 0)
+            new Notification('Neue Nachricht – Trimosa', {
+              body: newConv
+                ? `${newConv.guest_name || newConv.host_name || 'Jemand'} hat dir geschrieben`
+                : `${count} ungelesene Nachricht${count > 1 ? 'en' : ''}`,
+              icon: '/favicon.ico',
+            })
+          } else if (Notification.permission === 'default') {
+            Notification.requestPermission()
+          }
+        }
+      }
+      prevCount = count
     }
+
     checkUnread()
-    const id = setInterval(checkUnread, 30000)
+    // Poll every 10s when tab visible, skip when hidden to save resources
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+        checkUnread()
+      }
+    }, 10000)
     return () => clearInterval(id)
   }, [user, chatOpen])
 

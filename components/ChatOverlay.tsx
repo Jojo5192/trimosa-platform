@@ -6,6 +6,8 @@ interface Conversation {
   id: string; guest_id: string; host_id: string
   guest_name: string | null; host_name: string | null
   listing_title: string | null; last_message_at: string; unread: number
+  guest_avatar_url: string | null; host_avatar_url: string | null
+  check_in: string | null; check_out: string | null
 }
 interface Message {
   id: string; conversation_id: string; sender_id: string
@@ -38,8 +40,22 @@ function fmtMsgT(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtDateRange(checkIn: string | null, checkOut: string | null) {
+  if (!checkIn || !checkOut) return null
+  const fmt = (s: string) => new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  return `${fmt(checkIn)} – ${fmt(checkOut)}`
+}
+
 /* ── Avatar ── */
-function Av({ name, size = 36 }: { name: string; size?: number }) {
+function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
+  if (src) {
+    return (
+      <img src={src} alt={name} style={{
+        width: size, height: size, borderRadius: '50%', flexShrink: 0,
+        objectFit: 'cover', border: '2px solid #EDE9E0',
+      }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+    )
+  }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -64,11 +80,16 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
   const taRef     = useRef<HTMLTextAreaElement>(null)
   const timer     = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const me = (c: Conversation) => c.guest_id === userId ? (c.host_name||'Gastgeber') : (c.guest_name||'Gast')
+  const isHost = (c: Conversation) => c.host_id === userId
+  const me = (c: Conversation) => isHost(c) ? (c.guest_name||'Gast') : (c.host_name||'Gastgeber')
+  const meAvatar = (c: Conversation) => isHost(c) ? c.guest_avatar_url : c.host_avatar_url
 
   const getConvs = useCallback(async () => {
     const r = await fetch('/api/chat')
-    if (r.ok) setConvs(await r.json())
+    if (!r.ok) return null
+    const data: Conversation[] = await r.json()
+    setConvs(data)
+    return data
   }, [])
 
   const getMsgs = useCallback(async (id: string) => {
@@ -78,8 +99,12 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
 
   useEffect(() => {
     if (!open) return
-    setLoading(true); getConvs().finally(() => setLoading(false))
-  }, [open, getConvs])
+    setLoading(true)
+    getConvs().then(data => {
+      // Auto-select most recent conversation when overlay opens (if none selected yet)
+      if (data && data.length > 0 && !active) setActive(data[0])
+    }).finally(() => setLoading(false))
+  }, [open, getConvs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (timer.current) clearInterval(timer.current)
@@ -175,9 +200,16 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
           </span>
           {active && (
             <div style={{ display:'flex', alignItems:'center', gap:8, marginRight:8 }}>
-              <Av name={me(active)} size={24}/>
-              <span style={{ fontSize:13, fontWeight:600, color:'#3D3A32' }}>{me(active)}</span>
-              <span style={{ fontSize:11, color:'#999', marginLeft:2 }}>{active.listing_title}</span>
+              <Av name={me(active)} src={meAvatar(active)} size={28}/>
+              <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                <span style={{ fontSize:13, fontWeight:600, color:'#3D3A32', lineHeight:1.2 }}>{me(active)}</span>
+                <span style={{ fontSize:10.5, color:'#999', lineHeight:1.2 }}>
+                  {active.listing_title}
+                  {fmtDateRange(active.check_in, active.check_out) && (
+                    <> · <strong style={{ color:'#A08B3A' }}>{fmtDateRange(active.check_in, active.check_out)}</strong></>
+                  )}
+                </span>
+              </div>
             </div>
           )}
           <button onClick={onClose} style={{
@@ -229,7 +261,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                   display:'flex', alignItems:'center', gap:10,
                   transition:'background .12s',
                 }}>
-                  <Av name={me(c)} size={40}/>
+                  <Av name={me(c)} src={meAvatar(c)} size={40}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                       <span style={{ fontSize:13, fontWeight: c.unread ? 700 : 500, color:'#2C2A25', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:130 }}>
@@ -298,7 +330,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                           }}>
                             {/* avatar placeholder */}
                             <div style={{ width:28, flexShrink:0 }}>
-                              {!isMe && isLast && <Av name={me(active)} size={28}/>}
+                              {!isMe && isLast && <Av name={me(active)} src={meAvatar(active)} size={28}/>}
                             </div>
 
                             <div style={{ maxWidth:'68%', display:'flex', flexDirection:'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap:3 }}>
