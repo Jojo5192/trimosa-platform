@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { stripe, refundAmount } from '@/lib/stripe'
+import { cancelReservation, sendMessageToGuest } from '@/lib/smoobu'
 
 /**
  * POST /api/payments/refund
  * Body: { bookingId }
  * Can be called by the guest (cancelling own booking) or the host.
  * Automatically calculates refund amount based on cancellation policy.
+ * Also cancels the Smoobu reservation to free the calendar block.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient()
@@ -31,34 +33,33 @@ export async function POST(req: NextRequest) {
   const isHost = listing?.host_id === user.id
   if (!isGuest && !isHost) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
 
-  if (booking.payment_status !== 'paid') {
-    // No Stripe payment to refund — just cancel the booking
-    await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId)
-    return NextResponse.json({ ok: true, refunded: 0 })
-  }
-
-  if (!booking.stripe_payment_intent_id) {
-    return NextResponse.json({ error: 'Keine Zahlungsinformationen gespeichert' }, { status: 400 })
-  }
-
   const policy = listing?.cancellation_policy ?? 'moderat'
-  const refund = refundAmount(booking.total_price, policy, booking.check_in)
-
+  let refund = 0
   let stripeRefundId: string | null = null
-  if (refund > 0) {
-    try {
-      const stripeRefund = await stripe.refunds.create({
-        payment_intent: booking.stripe_payment_intent_id,
-        amount: Math.round(refund * 100),
-        reason: 'requested_by_customer',
-      })
-      stripeRefundId = stripeRefund.id
-    } catch (err) {
-      console.error('[Refund] Stripe error:', err)
-      return NextResponse.json({ error: 'Rückerstattung fehlgeschlagen' }, { status: 500 })
+
+  if (booking.payment_status === 'paid') {
+    if (!booking.stripe_payment_intent_id) {
+      return NextResponse.json({ error: 'Keine Zahlungsinformationen gespeichert' }, { status: 400 })
+    }
+
+    refund = refundAmount(booking.total_price, policy, booking.check_in)
+
+    if (refund > 0) {
+      try {
+        const stripeRefund = await stripe.refunds.create({
+          payment_intent: booking.stripe_payment_intent_id,
+          amount: Math.round(refund * 100),
+          reason: 'requested_by_customer',
+        })
+        stripeRefundId = stripeRefund.id
+      } catch (err) {
+        console.error('[Refund] Stripe error:', err)
+        return NextResponse.json({ error: 'Rückerstattung fehlgeschlagen' }, { status: 500 })
+      }
     }
   }
 
+  // Update booking in Supabase
   await supabaseAdmin
     .from('bookings')
     .update({
@@ -68,7 +69,21 @@ export async function POST(req: NextRequest) {
     })
     .eq('id', bookingId)
 
-  // Notify via chat
+  // ─── Cancel in Smoobu to free the calendar block ──────────────
+  if (booking.smoobu_reservation_id) {
+    try {
+      await cancelReservation(booking.smoobu_reservation_id)
+    } catch (err) {
+      // Log but don't fail the whole cancellation — Supabase is already updated
+      console.error('[Refund] Smoobu cancelReservation failed:', err)
+    }
+  }
+
+  // ─── Notify via chat ──────────────────────────────────────────
+  const cancelMsg = refund > 0
+    ? `❌ Buchung storniert. Rückerstattung von €${refund.toFixed(2)} wurde veranlasst und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode.`
+    : `❌ Buchung storniert. Gemäß der Stornierungsbedingungen (${policy}) ist keine Rückerstattung möglich.`
+
   try {
     const { data: conv } = await supabaseAdmin
       .from('conversations')
@@ -76,18 +91,24 @@ export async function POST(req: NextRequest) {
       .eq('booking_id', bookingId)
       .maybeSingle()
     if (conv) {
-      const msg = refund > 0
-        ? `Buchung storniert. Rückerstattung von €${refund.toFixed(2)} wurde veranlasst und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode.`
-        : `Buchung storniert. Gemäß der Stornierungsbedingungen (${policy}) ist keine Rückerstattung möglich.`
       await supabaseAdmin.from('messages').insert({
         conversation_id: conv.id,
         sender_id: listing?.host_id ?? user.id,
-        content: msg,
+        content: cancelMsg,
       })
       await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
     }
   } catch (err) {
     console.error('[Refund] chat notify failed:', err)
+  }
+
+  // ─── Also send cancellation notice via Smoobu messages ───────
+  if (booking.smoobu_reservation_id) {
+    try {
+      await sendMessageToGuest(booking.smoobu_reservation_id, cancelMsg)
+    } catch (err) {
+      console.error('[Refund] Smoobu message failed:', err)
+    }
   }
 
   return NextResponse.json({ ok: true, refunded: refund, stripeRefundId })

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 interface Conversation {
   id: string
@@ -23,10 +22,7 @@ interface Message {
   created_at: string
 }
 
-export default function ChatClient({ userId }: { userId: string }) {
-  const searchParams = useSearchParams()
-  const initialConvId = searchParams.get('conv')
-
+export default function ChatClient({ userId, initialConvId }: { userId: string; initialConvId?: string | null }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])

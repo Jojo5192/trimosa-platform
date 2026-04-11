@@ -160,6 +160,24 @@ export async function createReservation(input: CreateReservationInput): Promise<
   return data.id as number
 }
 
+/**
+ * Cancels / deletes a reservation in Smoobu.
+ * Smoobu uses DELETE /reservations/{id} to remove a reservation
+ * and free up the calendar block.
+ */
+export async function cancelReservation(smoobuReservationId: number): Promise<boolean> {
+  const res = await fetch(`${SMOOBU_BASE}/reservations/${smoobuReservationId}`, {
+    method: 'DELETE',
+    headers: smoobuHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('[Smoobu] cancelReservation failed', res.status, err)
+    return false
+  }
+  return true
+}
+
 /* ── Messages ───────────────────────────────────────────────── */
 
 export interface SmoobuMessage {
