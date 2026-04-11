@@ -45,12 +45,32 @@ export default function BookingDetail({ bookingId }: { bookingId: string }) {
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
             </div>
 
+            {/* Guest info */}
+            {(detail.guest_name as string | undefined) && (
+              <div style={{ background: '#F9F7F2', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gast</p>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>{detail.guest_name as string}</p>
+                {(detail.guest_street as string | undefined) && (
+                  <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>
+                    {detail.guest_street as string}, {detail.guest_zip as string} {detail.guest_city as string}, {detail.guest_country as string}
+                  </p>
+                )}
+              </div>
+            )}
+
             {([
               ['Buchungs-ID', (detail.id as string)?.slice(0, 8) + '…'],
               ['Status', detail.status as string],
               ['Check-in', detail.check_in as string],
               ['Check-out', detail.check_out as string],
-              ['Gäste', detail.guests as string],
+              ['Gäste', (() => {
+                const adults = detail.adults as number | undefined
+                const children = detail.children as number | undefined
+                const parts = []
+                if (adults) parts.push(`${adults} Erw.`)
+                if (children) parts.push(`${children} Kind${children !== 1 ? 'er' : ''}`)
+                return parts.join(', ') || '–'
+              })()],
               ['Gesamtpreis', `€ ${(detail.total_price as number)?.toFixed(2)}`],
               ['Provision (10%)', `€ ${((detail.total_price as number) * 0.1)?.toFixed(2)}`],
               ['Auszahlung', `€ ${((detail.total_price as number) * 0.9)?.toFixed(2)}`],
@@ -61,10 +81,10 @@ export default function BookingDetail({ bookingId }: { bookingId: string }) {
               </div>
             ))}
 
-            {(detail.notes as string | undefined) && (
+            {(detail.message as string | undefined) && (
               <div style={{ marginTop: '14px', padding: '12px', background: '#F9F7F2', borderRadius: '10px' }}>
-                <p style={{ fontSize: '12px', color: '#888', margin: '0 0 4px', fontWeight: 600 }}>Notiz vom Gast</p>
-                <p style={{ fontSize: '13px', color: '#444', margin: 0 }}>{detail.notes as string}</p>
+                <p style={{ fontSize: '12px', color: '#888', margin: '0 0 4px', fontWeight: 600 }}>Nachricht vom Gast</p>
+                <p style={{ fontSize: '13px', color: '#444', margin: 0 }}>{detail.message as string}</p>
               </div>
             )}
           </div>

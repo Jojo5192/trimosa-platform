@@ -96,22 +96,52 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               let city = ''
               let country = 'DE'
 
+              const countryNameToCode: Record<string, string> = {
+                'deutschland': 'DE', 'germany': 'DE',
+                'österreich': 'AT', 'austria': 'AT',
+                'schweiz': 'CH', 'switzerland': 'CH',
+                'frankreich': 'FR', 'france': 'FR',
+                'niederlande': 'NL', 'netherlands': 'NL',
+                'belgien': 'BE', 'belgium': 'BE',
+                'luxemburg': 'LU', 'luxembourg': 'LU',
+                'italien': 'IT', 'italy': 'IT',
+                'spanien': 'ES', 'spain': 'ES',
+                'vereinigtes königreich': 'GB', 'united kingdom': 'GB', 'uk': 'GB',
+                'usa': 'US', 'united states': 'US',
+                'polen': 'PL', 'poland': 'PL',
+                'tschechien': 'CZ', 'czech republic': 'CZ',
+                'ungarn': 'HU', 'hungary': 'HU',
+                'kroatien': 'HR', 'croatia': 'HR',
+              }
+
+              function resolveCountryCode(val: string): string {
+                if (!val) return 'DE'
+                if (val.length === 2) return val.toUpperCase()
+                return countryNameToCode[val.toLowerCase()] ?? val
+              }
+
               if (user) {
                 const { data: guestProfile } = await supabaseAdmin
                   .from('profiles')
-                  .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
                   .eq('id', user.id)
                   .maybeSingle()
                 const gp = guestProfile as Record<string, unknown> | null
-                const fullName = ((gp?.display_name as string) || 'Gast').split(' ')
-                firstName = (gp?.guest_first_name as string) || fullName[0] || 'Gast'
-                lastName = ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-'
+                const isBusiness = gp?.account_type === 'business'
+                if (isBusiness) {
+                  firstName = (gp?.company_name as string) || (gp?.display_name as string) || 'Gast'
+                  lastName = '-'
+                } else {
+                  const fullName = ((gp?.display_name as string) || '').split(' ')
+                  firstName = (gp?.guest_first_name as string) || fullName[0] || 'Gast'
+                  lastName = ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-'
+                }
                 email = user.email ?? ''
                 phone = (gp?.phone as string) || ''
                 street = (gp?.guest_street as string) || ''
                 postalCode = (gp?.guest_zip as string) || ''
                 city = (gp?.guest_city as string) || ''
-                country = (gp?.guest_country as string) || 'DE'
+                country = resolveCountryCode((gp?.guest_country as string) || 'DE')
               }
 
               const smoobuPayload = {
