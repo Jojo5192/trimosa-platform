@@ -309,7 +309,7 @@ export async function getReservationMessages(
 }
 
 /**
- * Sends a message to a guest via Smoobu.
+ * Sends a message to a guest via Smoobu (host → guest direction).
  * Pass apiKey to use the host's own Smoobu account credentials.
  */
 export async function sendMessageToGuest(
@@ -329,6 +329,35 @@ export async function sendMessageToGuest(
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     console.error('[Smoobu] sendMessageToGuest failed', res.status, errText)
+  }
+  return res.ok
+}
+
+/**
+ * Forwards a guest message to Smoobu (guest → host direction).
+ * This makes the guest's Trimosa message visible in Smoobu's message thread.
+ * Pass apiKey to use the host's own Smoobu account credentials.
+ */
+export async function sendMessageToHost(
+  smoobuReservationId: number,
+  message: string,
+  guestName: string,
+  apiKey?: string,
+): Promise<boolean> {
+  const res = await fetch(
+    `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-host`,
+    {
+      method: 'POST',
+      headers: smoobuHeaders(apiKey),
+      body: JSON.stringify({
+        subject: `Nachricht von Gast (${guestName}) via Trimosa`,
+        messageBody: message,
+      }),
+    },
+  )
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    console.error('[Smoobu] sendMessageToHost failed', res.status, errText)
   }
   return res.ok
 }

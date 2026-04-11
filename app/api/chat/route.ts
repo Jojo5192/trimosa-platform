@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, sendMessageToGuest } from '@/lib/smoobu'
+import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
 
 // ── Smoobu sync helper ───────────────────────────────────────
 async function syncSmoobuMessages(
@@ -191,13 +191,35 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
-    console.log('[Chat] POST forward check — smoobuId:', smoobuId, 'host_id:', conv?.host_id, 'sender:', user.id, 'isHost:', conv?.host_id === user.id)
-    if (smoobuId && conv?.host_id === user.id) {
-      const { data: hp } = await supabaseAdmin.from('profiles').select('smoobu_api_key').eq('id', user.id).maybeSingle()
+    const isHost = conv?.host_id === user.id
+
+    if (smoobuId) {
+      // Load host's API key (needed for both directions)
+      const { data: hp } = await supabaseAdmin
+        .from('profiles')
+        .select('smoobu_api_key')
+        .eq('id', conv?.host_id ?? '')
+        .maybeSingle()
       const hKey = (hp as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
-      console.log('[Chat] Forwarding to Smoobu reservation:', smoobuId, 'hasApiKey:', !!hKey)
-      const ok = await sendMessageToGuest(smoobuId, content.trim(), hKey)
-      console.log('[Chat] sendMessageToGuest result:', ok)
+
+      if (isHost) {
+        // Host → Guest: forward host's message to Smoobu
+        console.log('[Chat] Host→Smoobu: forwarding to reservation', smoobuId)
+        await sendMessageToGuest(smoobuId, content.trim(), hKey)
+      } else {
+        // Guest → Host: forward guest's message to Smoobu so host sees it there too
+        const { data: guestProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('display_name, guest_first_name, guest_last_name')
+          .eq('id', user.id)
+          .maybeSingle()
+        const gp = guestProfile as Record<string, unknown> | null
+        const guestName = (gp?.guest_first_name && gp?.guest_last_name)
+          ? `${gp.guest_first_name} ${gp.guest_last_name}`
+          : (gp?.display_name as string) || 'Gast'
+        console.log('[Chat] Guest→Smoobu: forwarding from', guestName, 'to reservation', smoobuId)
+        await sendMessageToHost(smoobuId, content.trim(), guestName, hKey)
+      }
     }
   } catch (err) {
     console.error('[Chat] Smoobu forward failed', err)
