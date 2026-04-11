@@ -210,7 +210,7 @@ export async function createReservation(input: CreateReservationInput): Promise<
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      phone: input.phone || '+4900000000',
+      phone: input.phone || '',
       // Smoobu requires address as an object with street field
       address: {
         street: input.street || 'Nicht angegeben',
@@ -304,11 +304,25 @@ export async function getReservationMessages(
   // Normalise field names
   return msgs.map((m) => {
     const obj = m as Record<string, unknown>
-    // Helper: parse Smoobu date (may be UTC string without Z, CEST with offset, or ISO)
-    // Always emit a proper ISO UTC string so Supabase stores it correctly.
+    // Helper: parse Smoobu date → correct UTC ISO string.
+    // Smoobu sends timestamps in German local time (CET/CEST) WITHOUT timezone suffix.
+    // Without correction Node.js treats them as UTC → stored 1-2 h too late.
+    // Fix: if no timezone indicator found, append the correct German offset.
     function parseSmoobuDate(raw: unknown): string {
       if (!raw) return ''
-      const d = new Date(String(raw))
+      let s = String(raw).trim()
+      // Already has timezone info (Z, +HH:MM, -HH:MM) → parse as-is
+      if (/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+        const d = new Date(s)
+        return isNaN(d.getTime()) ? '' : d.toISOString()
+      }
+      // No timezone → Smoobu local time. Determine CET (+01:00) vs CEST (+02:00) by month.
+      s = s.replace(' ', 'T') // normalise "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SS"
+      const monthMatch = s.match(/^(\d{4})-(\d{2})/)
+      const month = monthMatch ? parseInt(monthMatch[2]) : 6
+      // CEST: end of March → end of October (months 4–10 inclusive is a safe approximation)
+      const offset = (month >= 4 && month <= 10) ? '+02:00' : '+01:00'
+      const d = new Date(s + offset)
       return isNaN(d.getTime()) ? '' : d.toISOString()
     }
     // Log everything so we can see the exact format in Vercel logs

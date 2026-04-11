@@ -69,28 +69,64 @@ export async function POST(req: NextRequest) {
         const hostApiKey = (hostSmoobu as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
         const hostChannelId = (hostSmoobu as Record<string, unknown> | null)?.smoobu_channel_id as number | undefined
 
+        const countryNameToCode: Record<string, string> = {
+          'deutschland': 'DE', 'germany': 'DE',
+          'österreich': 'AT', 'austria': 'AT',
+          'schweiz': 'CH', 'switzerland': 'CH',
+          'frankreich': 'FR', 'france': 'FR',
+          'niederlande': 'NL', 'netherlands': 'NL',
+          'belgien': 'BE', 'belgium': 'BE',
+          'luxemburg': 'LU', 'luxembourg': 'LU',
+          'italien': 'IT', 'italy': 'IT',
+          'spanien': 'ES', 'spain': 'ES',
+          'vereinigtes königreich': 'GB', 'united kingdom': 'GB',
+          'usa': 'US', 'united states': 'US',
+          'polen': 'PL', 'tschechien': 'CZ', 'ungarn': 'HU', 'kroatien': 'HR',
+        }
+        function resolveCountryCode(val: string): string {
+          if (!val) return 'DE'
+          if (val.length === 2) return val.toUpperCase()
+          return countryNameToCode[val.toLowerCase()] ?? 'DE'
+        }
+
         const guestData = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
         const guestEmail = guestData.data.user?.email ?? ''
         const { data: guestProfile } = await supabaseAdmin
           .from('profiles')
-          .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+          .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
           .eq('id', booking.guest_id)
           .maybeSingle()
         const gp = guestProfile as Record<string, unknown> | null
-        const fullName = ((gp?.display_name as string) || 'Gast').split(' ')
-        console.log('[Webhook] Creating Smoobu reservation for booking:', bookingId, 'apartment:', listing.smoobu_id)
+
+        const isBusiness = gp?.account_type === 'business'
+        let smoobuFirstName: string
+        let smoobuLastName: string
+        if (isBusiness) {
+          smoobuFirstName = (gp?.company_name as string) || (gp?.display_name as string) || 'Gast'
+          smoobuLastName = '-'
+        } else {
+          const fullName = ((gp?.display_name as string) || '').split(' ')
+          smoobuFirstName = (gp?.guest_first_name as string) || fullName[0] || 'Gast'
+          smoobuLastName  = ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-'
+        }
+
+        console.log('[Webhook] Creating Smoobu reservation for booking:', bookingId,
+          'apartment:', listing.smoobu_id,
+          'guest:', smoobuFirstName, smoobuLastName,
+          'address:', gp?.guest_street, gp?.guest_zip, gp?.guest_city)
+
         const smoobuId = await createReservation({
           smoobuApartmentId: parseInt(listing.smoobu_id),
           arrivalDate: booking.check_in,
           departureDate: booking.check_out,
-          firstName: (gp?.guest_first_name as string) || fullName[0] || 'Gast',
-          lastName: ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-',
+          firstName: smoobuFirstName,
+          lastName: smoobuLastName,
           email: guestEmail,
           phone: (gp?.phone as string) || '',
           street: (gp?.guest_street as string) || '',
           postalCode: (gp?.guest_zip as string) || '',
           city: (gp?.guest_city as string) || '',
-          country: (gp?.guest_country as string) || 'DE',
+          country: resolveCountryCode((gp?.guest_country as string) || 'DE'),
           adults: booking.adults ?? 1,
           children: booking.children ?? 0,
           price: booking.total_price,
