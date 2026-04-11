@@ -9,8 +9,9 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
   const sessionId = params.session_id
 
   let booking: Record<string, unknown> | null = null
-  let listing: { title: string; location: string; smoobu_id: string | null } | null = null
+  let listing: { title: string; location: string; smoobu_id: string | null; host_id: string; cancellation_policy: string | null } | null = null
   let conversationId: string | null = null
+  let smoobuError: string | null = null
 
   if (sessionId) {
     try {
@@ -18,8 +19,15 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
       const session = await stripe.checkout.sessions.retrieve(sessionId)
       const bookingId = session.metadata?.bookingId
       const bookingType = session.metadata?.bookingType ?? 'request'
-      // Stripe session.payment_status: 'paid' | 'unpaid' | 'no_payment_required'
       const stripePaid = (session as unknown as { payment_status: string }).payment_status === 'paid'
+
+      console.log('[SuccessPage] Stripe session:', {
+        id: sessionId,
+        bookingId,
+        bookingType,
+        stripePaid,
+        paymentStatus: (session as unknown as { payment_status: string }).payment_status,
+      })
 
       if (bookingId && stripePaid) {
         // Load booking + listing
@@ -31,7 +39,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
 
         if (data) {
           booking = data
-          const l = data.listings as { title: string; location: string; smoobu_id: string | null; host_id: string } | null
+          const l = data.listings as { title: string; location: string; smoobu_id: string | null; host_id: string; cancellation_policy: string | null } | null
           listing = l
 
           // ─── Ensure DB is up to date (webhook might not have fired) ──
@@ -40,6 +48,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
             (bookingType === 'instant' && data.status !== 'confirmed')
 
           if (needsDbUpdate) {
+            console.log('[SuccessPage] Updating DB: payment_status=paid', bookingType === 'instant' ? ', status=confirmed' : '')
             await supabaseAdmin
               .from('bookings')
               .update({
@@ -54,70 +63,97 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
           }
 
           // ─── Push to Smoobu for instant bookings ─────────────────────
-          if (bookingType === 'instant' && l?.smoobu_id && !data.smoobu_reservation_id) {
+          const shouldPushToSmoobu = bookingType === 'instant' && l?.smoobu_id && !data.smoobu_reservation_id
+          console.log('[SuccessPage] Smoobu push check:', {
+            bookingType,
+            smoobuId: l?.smoobu_id ?? null,
+            existingReservationId: data.smoobu_reservation_id ?? null,
+            shouldPush: shouldPushToSmoobu,
+          })
+
+          if (shouldPushToSmoobu && l?.smoobu_id) {
             try {
               const supabase = await createSupabaseServerClient()
               const { data: { user } } = await supabase.auth.getUser()
+
+              // Get guest profile data
+              let firstName = 'Gast'
+              let lastName = '-'
+              let email = ''
+              let phone = ''
+
               if (user) {
                 const { data: guestProfile } = await supabaseAdmin
                   .from('profiles')
-                  .select('guest_first_name, guest_last_name, display_name')
+                  .select('guest_first_name, guest_last_name, display_name, phone')
                   .eq('id', user.id)
                   .maybeSingle()
                 const fullName = (guestProfile?.display_name || 'Gast').split(' ')
-                const smoobuId = await createReservation({
-                  smoobuApartmentId: parseInt(l.smoobu_id),
-                  arrivalDate: data.check_in as string,
-                  departureDate: data.check_out as string,
-                  firstName: guestProfile?.guest_first_name || fullName[0] || 'Gast',
-                  lastName: (guestProfile?.guest_last_name || fullName.slice(1).join(' ')) || '-',
-                  email: user.email ?? '',
-                  adults: (data.adults as number) ?? 1,
-                  children: (data.children as number) ?? 0,
-                  price: data.total_price as number,
-                  notice: 'Sofortbuchung über TRIMOSA',
-                })
-                await supabaseAdmin
-                  .from('bookings')
-                  .update({ smoobu_reservation_id: smoobuId })
-                  .eq('id', bookingId)
-                console.log('[SuccessPage] Smoobu reservation created:', smoobuId)
+                firstName = guestProfile?.guest_first_name || fullName[0] || 'Gast'
+                lastName = (guestProfile?.guest_last_name || fullName.slice(1).join(' ')) || '-'
+                email = user.email ?? ''
+                phone = (guestProfile as Record<string, unknown>)?.phone as string ?? ''
+              }
 
-                // ─── Send confirmation chat message if not already sent ─
-                const { data: conv } = await supabaseAdmin
-                  .from('conversations')
-                  .select('id')
-                  .eq('booking_id', bookingId)
-                  .maybeSingle()
-                if (conv && l) {
-                  const msgCount = await supabaseAdmin
-                    .from('messages')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('conversation_id', conv.id)
-                    .ilike('content', '✅ Zahlung%')
-                  if ((msgCount.count ?? 0) === 0) {
-                    await supabaseAdmin.from('messages').insert({
-                      conversation_id: conv.id,
-                      sender_id: l.host_id,
-                      content: `✅ Zahlung erhalten! Deine Buchung (${data.check_in} – ${data.check_out}) ist bestätigt.`,
-                    })
-                    await supabaseAdmin
-                      .from('conversations')
-                      .update({ last_message_at: new Date().toISOString() })
-                      .eq('id', conv.id)
-                    // Also notify via Smoobu
-                    try {
-                      await sendMessageToGuest(smoobuId, `Deine Buchung über TRIMOSA für ${data.check_in} – ${data.check_out} ist bestätigt. Wir freuen uns auf deinen Aufenthalt!`)
-                    } catch { /* non-fatal */ }
-                  }
-                  conversationId = conv.id
+              const smoobuPayload = {
+                smoobuApartmentId: parseInt(l.smoobu_id),
+                arrivalDate: data.check_in as string,
+                departureDate: data.check_out as string,
+                firstName,
+                lastName,
+                email,
+                phone,
+                adults: (data.adults as number) ?? 1,
+                children: (data.children as number) ?? 0,
+                price: data.total_price as number,
+                notice: `Buchung über TRIMOSA – Bestätigt & Bezahlt`,
+              }
+              console.log('[SuccessPage] Creating Smoobu reservation with:', JSON.stringify(smoobuPayload))
+
+              const smoobuId = await createReservation(smoobuPayload)
+              console.log('[SuccessPage] Smoobu reservation created successfully! ID:', smoobuId)
+
+              await supabaseAdmin
+                .from('bookings')
+                .update({ smoobu_reservation_id: smoobuId })
+                .eq('id', bookingId)
+
+              // ─── Send confirmation chat message if not already sent ─
+              const { data: conv } = await supabaseAdmin
+                .from('conversations')
+                .select('id')
+                .eq('booking_id', bookingId)
+                .maybeSingle()
+              if (conv && l) {
+                const msgCount = await supabaseAdmin
+                  .from('messages')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('conversation_id', conv.id)
+                  .ilike('content', '%Zahlung erhalten%')
+                if ((msgCount.count ?? 0) === 0) {
+                  await supabaseAdmin.from('messages').insert({
+                    conversation_id: conv.id,
+                    sender_id: l.host_id,
+                    content: `✅ Zahlung erhalten! Deine Buchung (${data.check_in} – ${data.check_out}) ist bestätigt.`,
+                  })
+                  await supabaseAdmin
+                    .from('conversations')
+                    .update({ last_message_at: new Date().toISOString() })
+                    .eq('id', conv.id)
+                  // Also notify via Smoobu messaging
+                  try {
+                    await sendMessageToGuest(smoobuId, `Buchung über TRIMOSA für ${data.check_in} – ${data.check_out} ist bestätigt. Wir freuen uns auf deinen Aufenthalt!`)
+                  } catch { /* non-fatal */ }
                 }
+                conversationId = conv.id
               }
             } catch (err) {
-              console.error('[SuccessPage] Smoobu push failed:', err)
+              const errMsg = err instanceof Error ? err.message : String(err)
+              console.error('[SuccessPage] ❌ Smoobu push FAILED:', errMsg)
+              smoobuError = errMsg
             }
           } else {
-            // Smoobu already synced — just find the conversation
+            // Smoobu already synced or not needed — just find the conversation
             const { data: conv } = await supabaseAdmin
               .from('conversations')
               .select('id')
@@ -125,7 +161,11 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               .maybeSingle()
             if (conv) conversationId = conv.id
           }
+        } else {
+          console.error('[SuccessPage] Booking not found in DB for id:', bookingId)
         }
+      } else {
+        console.warn('[SuccessPage] Stripe not paid or no bookingId:', { bookingId, stripePaid })
       }
     } catch (err) {
       console.error('[SuccessPage] error:', err)
@@ -155,6 +195,14 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
             <p style={{ fontSize: '12px', color: '#888', margin: '0 0 8px' }}>📍 {listing.location}</p>
             <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>
               {booking.check_in as string} – {booking.check_out as string} · €{booking.total_price as number}
+            </p>
+          </div>
+        )}
+
+        {smoobuError && (
+          <div style={{ background: '#FEF2F2', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', textAlign: 'left' }}>
+            <p style={{ fontSize: '11px', color: '#DC2626', margin: 0 }}>
+              ⚠️ Smoobu-Synchronisation fehlgeschlagen. Der Gastgeber wurde benachrichtigt.
             </p>
           </div>
         )}

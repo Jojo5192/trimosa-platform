@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getApartmentRates, checkAvailability } from '@/lib/smoobu'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getMarkupMultiplier } from '@/lib/pricing'
 
 /**
  * GET /api/smoobu/availability?listingId=<uuid>&from=2025-06-01&to=2025-09-30
@@ -75,17 +76,6 @@ export async function POST(request: Request) {
   const result = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
   const totalPrice = Math.round(result.totalPrice * markup)
   return NextResponse.json({ ...result, totalPrice, source: 'smoobu', markupPct: (markup - 1) * 100 })
-}
-
-/** Reads markup from platform_settings table (row id=1) */
-async function getMarkupMultiplier(): Promise<number> {
-  const { data } = await supabaseAdmin
-    .from('platform_settings')
-    .select('platform_markup_pct')
-    .eq('id', 1)
-    .single()
-  const pct = parseFloat(data?.platform_markup_pct ?? process.env.TRIMOSA_MARKUP_PCT ?? '0')
-  return isNaN(pct) ? 1 : 1 + pct / 100
 }
 
 function addDays(date: Date, days: number): string {

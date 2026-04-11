@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createReservation, checkAvailability } from '@/lib/smoobu'
+import { checkAvailability } from '@/lib/smoobu'
+import { getMarkupMultiplier } from '@/lib/pricing'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -45,15 +46,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Anfragen erst ab ${minNights} Nächten möglich.` }, { status: 400 })
   }
 
-  // Check availability + get price
+  // ── Check availability + get price (with platform markup) ────────────
   let totalPrice = 0
+  const markup = await getMarkupMultiplier()
+  console.log('[Bookings] markup multiplier:', markup)
+
   if (listing.smoobu_id) {
     const avail = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
     if (!avail.available)
       return NextResponse.json({ error: 'Diese Daten sind leider nicht verfügbar.' }, { status: 409 })
-    totalPrice = avail.totalPrice
+    // Apply platform markup to the raw Smoobu price
+    totalPrice = Math.round(avail.totalPrice * markup)
+    console.log('[Bookings] raw Smoobu price:', avail.totalPrice, '→ with markup:', totalPrice)
   } else {
-    totalPrice = (listing.price_per_night ?? 0) * nights
+    totalPrice = Math.round((listing.price_per_night ?? 0) * nights * markup)
   }
 
   const initialStatus = booking_type === 'instant' ? 'confirmed' : 'pending'
@@ -81,41 +87,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Buchung konnte nicht gespeichert werden.' }, { status: 500 })
   }
 
-  // Instant bookings: push to Smoobu to block calendar
-  let smoobuReservationId: number | null = null
-  if (booking_type === 'instant' && listing.smoobu_id) {
-    try {
-      const name = (user.user_metadata?.name ?? user.email ?? 'Gast').split(' ')
-      smoobuReservationId = await createReservation({
-        smoobuApartmentId: parseInt(listing.smoobu_id),
-        arrivalDate: checkIn,
-        departureDate: checkOut,
-        firstName: name[0] ?? 'Gast',
-        lastName: name.slice(1).join(' ') || '-',
-        email: user.email ?? '',
-        adults,
-        children,
-        price: totalPrice,
-        notice: message || 'Sofortbuchung über TRIMOSA',
-      })
-      if (smoobuReservationId) {
-        await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuReservationId }).eq('id', newBooking.id)
-      }
-    } catch (err) {
-      console.error('[Bookings] Smoobu sync failed (non-fatal):', err)
-    }
-  }
+  // ── NOTE: Smoobu reservation is created AFTER payment on the success page ──
+  // We do NOT push to Smoobu here because payment hasn't happened yet.
+  // The success page (app/booking/success/page.tsx) handles Smoobu creation
+  // once Stripe confirms payment.
 
   // Auto-create a linked conversation so host & guest can chat immediately
   try {
     const guestName = user.user_metadata?.name ?? user.email ?? 'Gast'
-    // Load host display name for the conversation
-    const { data: hostProfile } = await supabaseAdmin
+    const { data: hostProfileForName } = await supabaseAdmin
       .from('profiles')
       .select('display_name')
       .eq('id', listing.host_id)
       .maybeSingle()
-    const hostName = hostProfile?.display_name ?? 'Gastgeber'
+    const hostName = hostProfileForName?.display_name ?? 'Gastgeber'
 
     const { data: existing } = await supabaseAdmin
       .from('conversations')
@@ -151,7 +136,7 @@ export async function POST(request: Request) {
     // Send an auto-message
     if (convId) {
       const autoMsg = booking_type === 'instant'
-        ? `Deine Buchung für ${listing.title} (${checkIn} – ${checkOut}) wurde bestätigt! Wir freuen uns auf deinen Aufenthalt.`
+        ? `Deine Buchung für ${listing.title} (${checkIn} – ${checkOut}) wurde angelegt. Zahlung wird verarbeitet…`
         : `Deine Anfrage für ${listing.title} (${checkIn} – ${checkOut}) wurde gesendet. Der Gastgeber wird sie in Kürze bearbeiten.`
       await supabaseAdmin
         .from('messages')
@@ -175,5 +160,5 @@ export async function POST(request: Request) {
     body: JSON.stringify({ bookingId: newBooking.id }),
   }).catch(() => {})
 
-  return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type, smoobuReservationId })
+  return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type })
 }

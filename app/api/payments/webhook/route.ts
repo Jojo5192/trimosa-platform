@@ -67,18 +67,19 @@ export async function POST(req: NextRequest) {
           .select('guest_first_name, guest_last_name, display_name')
           .eq('id', booking.guest_id)
           .maybeSingle()
-        const fullName = (guestProfile?.display_name ?? 'Gast').split(' ')
+        const fullName = (guestProfile?.display_name || 'Gast').split(' ')
+        console.log('[Webhook] Creating Smoobu reservation for booking:', bookingId, 'apartment:', listing.smoobu_id)
         const smoobuId = await createReservation({
           smoobuApartmentId: parseInt(listing.smoobu_id),
           arrivalDate: booking.check_in,
           departureDate: booking.check_out,
-          firstName: guestProfile?.guest_first_name ?? fullName[0] ?? 'Gast',
-          lastName: (guestProfile?.guest_last_name ?? fullName.slice(1).join(' ')) || '-',
+          firstName: guestProfile?.guest_first_name || fullName[0] || 'Gast',
+          lastName: (guestProfile?.guest_last_name || fullName.slice(1).join(' ')) || '-',
           email: guestEmail,
           adults: booking.adults ?? 1,
           children: booking.children ?? 0,
           price: booking.total_price,
-          notice: 'Sofortbuchung über TRIMOSA',
+          notice: 'Buchung über TRIMOSA – Bestätigt & Bezahlt',
         })
         await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuId }).eq('id', bookingId)
       } catch (err) {
