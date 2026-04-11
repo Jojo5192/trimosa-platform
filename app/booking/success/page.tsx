@@ -113,14 +113,14 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               {
                 const { data: gp1, error: gpErr1 } = await supabaseAdmin
                   .from('profiles')
-                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, guest_street, guest_zip, guest_city, guest_country')
                   .eq('id', guestId)
                   .maybeSingle()
                 if (gpErr1) {
                   console.error('[SuccessPage] Full profile select failed:', gpErr1.message, '– retrying minimal')
                   const { data: gp2, error: gpErr2 } = await supabaseAdmin
                     .from('profiles')
-                    .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                    .select('guest_first_name, guest_last_name, display_name, guest_street, guest_zip, guest_city, guest_country')
                     .eq('id', guestId)
                     .maybeSingle()
                   if (gpErr2) console.error('[SuccessPage] Minimal profile select failed:', gpErr2.message)
@@ -148,7 +148,8 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               const postalCode = (guestProfile?.guest_zip     as string) || ''
               const city       = (guestProfile?.guest_city    as string) || ''
               const country    = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
-              const phone      = (guestProfile?.phone as string) || ''
+              // phone column doesn't exist in profiles yet
+              const phone = ''
 
               if (!firstName) firstName = 'Gast'
               if (!lastName)  lastName  = '-'

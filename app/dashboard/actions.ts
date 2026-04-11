@@ -30,7 +30,7 @@ export async function acceptBooking(bookingId: string) {
     try {
       const [guestInfo, guestAuth, hostProfile] = await Promise.all([
         supabaseAdmin.from('profiles')
-          .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_city, guest_zip, guest_country')
+          .select('guest_first_name, guest_last_name, display_name, guest_street, guest_city, guest_zip, guest_country')
           .eq('id', booking.guest_id)
           .maybeSingle(),
         supabaseAdmin.auth.admin.getUserById(booking.guest_id),
@@ -49,7 +49,7 @@ export async function acceptBooking(bookingId: string) {
         firstName: (g?.guest_first_name as string) || fullName[0] || 'Gast',
         lastName: ((g?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-',
         email: guestAuth.data.user?.email ?? '',
-        phone: (g?.phone as string) || '',
+        phone: '', // phone column doesn't exist yet
         street: (g?.guest_street as string) || '',
         postalCode: (g?.guest_zip as string) || '',
         city: (g?.guest_city as string) || '',

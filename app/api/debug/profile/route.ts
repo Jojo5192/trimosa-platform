@@ -18,14 +18,14 @@ export async function GET() {
   // ── 1. Try full select (same as webhook does) ─────────────────
   const { data: fullData, error: fullError } = await supabaseAdmin
     .from('profiles')
-    .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+    .select('guest_first_name, guest_last_name, company_name, account_type, display_name, guest_street, guest_zip, guest_city, guest_country')
     .eq('id', user.id)
     .maybeSingle()
 
   // ── 2. Try minimal select (fallback) ──────────────────────────
   const { data: minData, error: minError } = await supabaseAdmin
     .from('profiles')
-    .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+    .select('guest_first_name, guest_last_name, display_name, guest_street, guest_zip, guest_city, guest_country')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -67,7 +67,7 @@ export async function GET() {
       guestZipValue: (fullData ?? minData)?.guest_zip ?? '❌ NULL',
       guestCityValue: (fullData ?? minData)?.guest_city ?? '❌ NULL',
       guestCountryValue: (fullData ?? minData)?.guest_country ?? '❌ NULL',
-      phoneValue: (fullData ?? minData)?.phone ?? '❌ NULL',
+      phoneColumnExists: columnNames.includes('phone'),
     },
   }, { status: 200 })
 }

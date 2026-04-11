@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         {
           const { data: gp1, error: gpErr1 } = await supabaseAdmin
             .from('profiles')
-            .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+            .select('guest_first_name, guest_last_name, company_name, account_type, display_name, guest_street, guest_zip, guest_city, guest_country')
             .eq('id', booking.guest_id)
             .maybeSingle()
 
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
             console.error('[Webhook] Full profile select failed:', gpErr1.message, '– retrying minimal select')
             const { data: gp2, error: gpErr2 } = await supabaseAdmin
               .from('profiles')
-              .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+              .select('guest_first_name, guest_last_name, display_name, guest_street, guest_zip, guest_city, guest_country')
               .eq('id', booking.guest_id)
               .maybeSingle()
             if (gpErr2) {
@@ -123,21 +123,28 @@ export async function POST(req: NextRequest) {
 
         console.log('[Webhook] Guest profile data:', JSON.stringify(guestProfile))
 
-        // Derive Smoobu fields from profile
+        // Ultimate fallback: auth user_metadata (always has at least "name")
+        const guestMeta = guestData.data.user?.user_metadata ?? {}
+        const metaName = (guestMeta.name as string) || ''
+        const metaNameParts = metaName.split(' ')
+
+        // Derive Smoobu fields from profile, with auth metadata as fallback
         const isBiz = guestProfile?.account_type === 'business'
-        const nameParts = ((guestProfile?.display_name as string) || '').split(' ')
+        const displayName = (guestProfile?.display_name as string) || metaName || ''
+        const nameParts = displayName.split(' ')
 
         let smoobuFirstName = isBiz
-          ? ((guestProfile?.company_name as string) || (guestProfile?.display_name as string) || '')
-          : ((guestProfile?.guest_first_name as string) || nameParts[0] || '')
+          ? ((guestProfile?.company_name as string) || displayName || '')
+          : ((guestProfile?.guest_first_name as string) || nameParts[0] || metaNameParts[0] || '')
         let smoobuLastName = isBiz
           ? '-'
-          : ((guestProfile?.guest_last_name as string) || nameParts.slice(1).join(' ') || '')
+          : ((guestProfile?.guest_last_name as string) || nameParts.slice(1).join(' ') || metaNameParts.slice(1).join(' ') || '')
         const smoobuStreet  = (guestProfile?.guest_street as string)  || ''
         const smoobuZip     = (guestProfile?.guest_zip    as string)  || ''
         const smoobuCity    = (guestProfile?.guest_city   as string)  || ''
         const smoobuCountry = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
-        const smoobuPhone   = (guestProfile?.phone as string) || ''
+        // phone column doesn't exist in profiles yet
+        const smoobuPhone = ''
 
         // Final fallbacks
         if (!smoobuFirstName) smoobuFirstName = 'Gast'
