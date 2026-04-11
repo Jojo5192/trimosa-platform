@@ -5,15 +5,31 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 interface SmoobuConnectProps {
   currentApiKey?: string
+  currentMarkup?: number
 }
 
-export default function SmoobuConnect({ currentApiKey }: SmoobuConnectProps) {
+export default function SmoobuConnect({ currentApiKey, currentMarkup = 0 }: SmoobuConnectProps) {
   const [apiKey, setApiKey] = useState(currentApiKey ?? '')
+  const [markup, setMarkup] = useState(String(currentMarkup))
   const [saving, setSaving] = useState(false)
+  const [savingMarkup, setSavingMarkup] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [savedMarkup, setSavedMarkup] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const [error, setError] = useState('')
+
+  async function handleSaveMarkup() {
+    setSavingMarkup(true)
+    const pct = parseFloat(markup) || 0
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform_markup_pct: pct }),
+    })
+    if (res.ok) { setSavedMarkup(true); setTimeout(() => setSavedMarkup(false), 3000) }
+    setSavingMarkup(false)
+  }
 
   async function handleSaveKey() {
     if (!apiKey.trim()) return
@@ -136,6 +152,42 @@ export default function SmoobuConnect({ currentApiKey }: SmoobuConnectProps) {
           <p className="text-sm" style={{ color: '#DC2626' }}>{error}</p>
         </div>
       )}
+
+      {/* ── Preisaufschlag ── */}
+      <div className="mt-5 pt-5" style={{ borderTop: '1px solid #F0EDE6' }}>
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#1D1D1F' }}>Preisaufschlag für TRIMOSA</h4>
+        <p className="text-xs mb-3" style={{ color: '#6E6E73' }}>
+          Smoobu-Basispreise werden auf der Plattform um diesen Prozentsatz erhöht. 0 = keine Anpassung.
+        </p>
+        <div className="flex items-center gap-2">
+          <div className="relative flex items-center">
+            <input
+              type="number"
+              min="0"
+              max="50"
+              step="0.5"
+              value={markup}
+              onChange={e => setMarkup(e.target.value)}
+              className="rounded-xl px-4 py-2.5 text-sm pr-8"
+              style={{ border: '1px solid #D2D2D7', color: '#1D1D1F', outline: 'none', width: '100px' }}
+            />
+            <span className="absolute right-3 text-sm" style={{ color: '#999' }}>%</span>
+          </div>
+          <button
+            onClick={handleSaveMarkup}
+            disabled={savingMarkup}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #B0912B, #8A7020)' }}
+          >
+            {savingMarkup ? '...' : savedMarkup ? '✓ Gespeichert' : 'Speichern'}
+          </button>
+          {parseFloat(markup) > 0 && (
+            <span className="text-xs" style={{ color: '#6E6E73' }}>
+              z.B. €100 → €{Math.round(100 * (1 + parseFloat(markup) / 100))}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

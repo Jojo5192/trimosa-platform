@@ -14,6 +14,13 @@ export default async function DashboardPage() {
   const isHost = user.user_metadata?.role === 'host'
   const smoobuApiKey = user.user_metadata?.smoobu_api_key as string | undefined
 
+  // Load platform settings (markup)
+  const { data: platformSettings } = await supabase
+    .from('platform_settings')
+    .select('platform_markup_pct')
+    .eq('id', 1)
+    .maybeSingle()
+
   const { data: listings } = await supabase
     .from('listings')
     .select('*')
@@ -121,7 +128,7 @@ export default async function DashboardPage() {
         {/* Smoobu */}
         <section className="mb-8">
           <h2 className="text-base font-bold tracking-tight mb-3" style={{ color: '#1D1D1F' }}>Smoobu Integration</h2>
-          <SmoobuConnect currentApiKey={smoobuApiKey} />
+          <SmoobuConnect currentApiKey={smoobuApiKey} currentMarkup={platformSettings?.platform_markup_pct ?? 0} />
         </section>
 
         {/* Meine Inserate */}

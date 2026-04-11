@@ -29,8 +29,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Keine Smoobu-ID für diese Unterkunft' }, { status: 404 })
   }
 
-  const rates = await getApartmentRates(listing.smoobu_id, from, to)
-  return NextResponse.json({ rates, smoobuId: listing.smoobu_id })
+  const markup = await getMarkupMultiplier()
+  const rawRates = await getApartmentRates(listing.smoobu_id, from, to)
+
+  // Apply platform markup to all prices
+  const rates = markup === 1 ? rawRates : Object.fromEntries(
+    Object.entries(rawRates).map(([date, day]) => [date, { ...day, price: Math.round(day.price * markup) }])
+  )
+
+  return NextResponse.json({ rates, smoobuId: listing.smoobu_id, markupPct: (markup - 1) * 100 })
 }
 
 /**
@@ -64,8 +71,21 @@ export async function POST(request: Request) {
     })
   }
 
+  const markup = await getMarkupMultiplier()
   const result = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
-  return NextResponse.json({ ...result, source: 'smoobu' })
+  const totalPrice = Math.round(result.totalPrice * markup)
+  return NextResponse.json({ ...result, totalPrice, source: 'smoobu', markupPct: (markup - 1) * 100 })
+}
+
+/** Reads markup from platform_settings table (row id=1) */
+async function getMarkupMultiplier(): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('platform_settings')
+    .select('platform_markup_pct')
+    .eq('id', 1)
+    .single()
+  const pct = parseFloat(data?.platform_markup_pct ?? process.env.TRIMOSA_MARKUP_PCT ?? '0')
+  return isNaN(pct) || pct <= 0 ? 1 : 1 + pct / 100
 }
 
 function addDays(date: Date, days: number): string {

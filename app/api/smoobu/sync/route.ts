@@ -68,23 +68,35 @@ export async function POST() {
 
   for (const apt of apartments) {
     try {
-      // Prüfen ob Listing mit dieser smoobu_id schon existiert
-      const { data: existing } = await supabase
-        .from('listings')
-        .select('id')
-        .eq('smoobu_id', String(apt.id))
-        .eq('host_id', user.id)
-        .maybeSingle()
-
       const smoobuTitle = apt.name || apt.name_detail || `Smoobu #${apt.id}`
       const smoobuGuests = apt.maxGuests ?? apt.max_guests ?? 2
       const smoobuBedrooms = apt.rooms?.bedrooms ?? apt.bedrooms ?? 1
 
+      // 1. Prüfen ob Listing mit dieser smoobu_id schon existiert
+      let { data: existing } = await supabase
+        .from('listings')
+        .select('id, smoobu_id')
+        .eq('smoobu_id', String(apt.id))
+        .eq('host_id', user.id)
+        .maybeSingle()
+
+      // 2. Falls nicht gefunden: auch nach Titel suchen (für Listings die vor der smoobu_id-Migration importiert wurden)
+      if (!existing) {
+        const { data: byTitle } = await supabase
+          .from('listings')
+          .select('id, smoobu_id')
+          .eq('title', smoobuTitle)
+          .eq('host_id', user.id)
+          .is('smoobu_id', null)
+          .maybeSingle()
+        if (byTitle) existing = byTitle
+      }
+
       if (existing) {
-        // Existing listing: only update smoobu-controlled fields (name, guest count, bedrooms).
-        // Never overwrite description, images, location, price — those are managed by the host on TRIMOSA.
+        // Existing listing: update smoobu-controlled fields + smoobu_id verknüpfen falls noch nicht gesetzt
         await supabase.from('listings')
           .update({
+            smoobu_id: String(apt.id),   // kritisch: smoobu_id setzen falls noch null
             title: smoobuTitle,
             max_guests: smoobuGuests,
             bedrooms: smoobuBedrooms,
