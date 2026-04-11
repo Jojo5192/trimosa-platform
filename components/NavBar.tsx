@@ -918,6 +918,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
         <OnboardingModal
           userId={user.id}
           userName={user.user_metadata?.name || user.user_metadata?.full_name || ''}
+          initialAccountType={user.user_metadata?.account_type === 'business' ? 'business' : 'person'}
           onComplete={() => setShowOnboarding(false)}
         />
       )}

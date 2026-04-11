@@ -3,9 +3,12 @@
 import { useState } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
+type AccountType = 'person' | 'business'
+
 interface Props {
   userId: string
   userName?: string
+  initialAccountType?: AccountType
   onComplete: () => void
 }
 
@@ -14,7 +17,7 @@ interface Props {
  * Collects: first name, last name, street, zip, city, country, optional display name.
  * Saves to the profiles table.
  */
-export default function OnboardingModal({ userId, userName = '', onComplete }: Props) {
+export default function OnboardingModal({ userId, userName = '', initialAccountType = 'person', onComplete }: Props) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [street, setStreet] = useState('')
@@ -22,6 +25,8 @@ export default function OnboardingModal({ userId, userName = '', onComplete }: P
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('Deutschland')
   const [displayName, setDisplayName] = useState(userName)
+  const [accountType, setAccountType] = useState<AccountType>(initialAccountType)
+  const [companyName, setCompanyName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -34,13 +39,15 @@ export default function OnboardingModal({ userId, userName = '', onComplete }: P
 
     const { error: err } = await supabase.from('profiles').upsert({
       id: userId,
-      display_name: displayName.trim() || `${firstName.trim()} ${lastName.trim()}`,
+      display_name: displayName.trim() || (accountType === 'business' && companyName.trim()) || `${firstName.trim()} ${lastName.trim()}`,
       guest_first_name: firstName.trim(),
       guest_last_name: lastName.trim(),
       guest_street: street.trim(),
       guest_zip: zip.trim(),
       guest_city: city.trim(),
       guest_country: country.trim() || 'Deutschland',
+      account_type: accountType,
+      company_name: accountType === 'business' ? companyName.trim() : null,
     })
 
     if (err) {
@@ -82,6 +89,34 @@ export default function OnboardingModal({ userId, userName = '', onComplete }: P
           <p style={{ fontSize: '14px', color: '#666', margin: 0, lineHeight: 1.5 }}>
             Damit Buchungen reibungslos klappen, brauchen wir noch ein paar persönliche Angaben. Diese werden nur für Buchungen verwendet, nicht öffentlich angezeigt.
           </p>
+        </div>
+
+        {/* Person / Unternehmen */}
+        <div style={{ marginBottom: '20px' }}>
+          <p style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px' }}>Kontotyp</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {([
+              { value: 'person' as AccountType, emoji: '👤', label: 'Privatperson' },
+              { value: 'business' as AccountType, emoji: '🏢', label: 'Unternehmen' },
+            ]).map(opt => (
+              <button key={opt.value} type="button" onClick={() => setAccountType(opt.value)}
+                style={{
+                  padding: '10px 14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
+                  border: accountType === opt.value ? '2px solid #C4A235' : '1.5px solid #E0DDD6',
+                  backgroundColor: accountType === opt.value ? '#FAF5E4' : '#fff',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}>
+                <span style={{ fontSize: '18px' }}>{opt.emoji}</span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#111' }}>{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          {accountType === 'business' && (
+            <div style={{ marginTop: '10px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Firmenname</label>
+              <input style={inp} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Musterfirma GmbH" />
+            </div>
+          )}
         </div>
 
         {/* Name */}

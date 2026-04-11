@@ -26,10 +26,13 @@ function AppleIcon() {
 }
 
 type Role = 'guest' | 'host'
+type AccountType = 'person' | 'business'
 
 export default function RegisterPage() {
   const router = useRouter()
   const [role, setRole] = useState<Role>('guest')
+  const [accountType, setAccountType] = useState<AccountType>('person')
+  const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -38,8 +41,7 @@ export default function RegisterPage() {
   const [showEmail, setShowEmail] = useState(false)
 
   function getRedirectTo() {
-    // Pass role as query param so the callback/onboarding knows what role the user chose
-    return `${window.location.origin}/auth/callback?role=${role}`
+    return `${window.location.origin}/auth/callback?role=${role}&accountType=${accountType}`
   }
 
   async function handleGoogle() {
@@ -71,7 +73,7 @@ export default function RegisterPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name, role } },
+      options: { data: { name, role, account_type: accountType, company_name: companyName.trim() || null } },
     })
     if (error) {
       setError(error.message)
@@ -129,6 +131,41 @@ export default function RegisterPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Person / Unternehmen */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2" style={{ color: '#1D1D1F' }}>Kontotyp</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'person' as AccountType, emoji: '👤', title: 'Privatperson', sub: 'Privatkonto' },
+                { value: 'business' as AccountType, emoji: '🏢', title: 'Unternehmen', sub: 'Firmenkonto' },
+              ]).map((opt) => (
+                <button key={opt.value} type="button" onClick={() => setAccountType(opt.value)}
+                  className="p-3.5 rounded-xl text-left transition-all"
+                  style={{
+                    border: accountType === opt.value ? '2px solid #B0912B' : '1px solid #D2D2D7',
+                    backgroundColor: accountType === opt.value ? '#FAF5E4' : '#fff',
+                  }}>
+                  <span className="text-xl">{opt.emoji}</span>
+                  <p className="font-semibold text-sm mt-1" style={{ color: '#1D1D1F' }}>{opt.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6E6E73' }}>{opt.sub}</p>
+                </button>
+              ))}
+            </div>
+            {accountType === 'business' && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#1D1D1F' }}>Firmenname</label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Musterfirma GmbH"
+                  className="w-full rounded-xl px-4 py-3 text-sm"
+                  style={{ border: '1px solid #D2D2D7', color: '#1D1D1F', backgroundColor: '#fff' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* OAuth Buttons */}

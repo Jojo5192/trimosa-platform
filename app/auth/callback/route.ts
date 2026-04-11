@@ -11,8 +11,9 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
-  // Role passed from register page via redirectTo query param
-  const role = searchParams.get('role') // 'guest' | 'host' | null
+  // Params passed from register page via redirectTo query param
+  const role = searchParams.get('role')               // 'guest' | 'host' | null
+  const accountType = searchParams.get('accountType') // 'person' | 'business' | null
 
   if (code) {
     const supabase = await createSupabaseServerClient()
@@ -22,12 +23,13 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/login?error=oauth`)
     }
 
-    // If role was passed (from register page), update user metadata
-    if (role && data.user) {
-      const existingRole = data.user.user_metadata?.role
-      // Only set role if not already set (don't overwrite existing role on re-login)
-      if (!existingRole) {
-        await supabase.auth.updateUser({ data: { role } })
+    // Only set metadata if not already set (don't overwrite on re-login)
+    if (data.user && !data.user.user_metadata?.role) {
+      const update: Record<string, string> = {}
+      if (role) update.role = role
+      if (accountType) update.account_type = accountType
+      if (Object.keys(update).length > 0) {
+        await supabase.auth.updateUser({ data: update })
       }
     }
   }
