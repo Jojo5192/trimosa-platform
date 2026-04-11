@@ -325,21 +325,24 @@ export async function sendMessageToGuest(
   smoobuReservationId: number,
   message: string,
   apiKey?: string,
-): Promise<boolean> {
+): Promise<number | null> {
   const res = await fetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-guest`,
     {
       method: 'POST',
       headers: smoobuHeaders(apiKey),
-      // Smoobu API requires 'messageBody' (not 'message') + optional 'subject'
       body: JSON.stringify({ subject: 'Nachricht von Trimosa', messageBody: message }),
     },
   )
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     console.error('[Smoobu] sendMessageToGuest failed', res.status, errText)
+    return null
   }
-  return res.ok
+  const data = await res.json().catch(() => null)
+  const smoobuMsgId = (data?.id ?? data?.messageId ?? null) as number | null
+  console.log('[Smoobu] sendMessageToGuest ok, smoobuMsgId:', smoobuMsgId)
+  return smoobuMsgId
 }
 
 /**
@@ -352,7 +355,7 @@ export async function sendMessageToHost(
   message: string,
   guestName: string,
   apiKey?: string,
-): Promise<boolean> {
+): Promise<number | null> {
   const res = await fetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-host`,
     {
@@ -367,8 +370,12 @@ export async function sendMessageToHost(
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     console.error('[Smoobu] sendMessageToHost failed', res.status, errText)
+    return null
   }
-  return res.ok
+  const data = await res.json().catch(() => null)
+  const smoobuMsgId = (data?.id ?? data?.messageId ?? null) as number | null
+  console.log('[Smoobu] sendMessageToHost ok, smoobuMsgId:', smoobuMsgId)
+  return smoobuMsgId
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */

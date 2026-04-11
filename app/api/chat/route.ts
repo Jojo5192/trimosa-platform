@@ -19,42 +19,13 @@ async function syncSmoobuMessages(
       if (!sm.message?.trim()) continue
       const msgId = String(sm.id)
 
-      // Skip if already synced by smoobu_message_id
+      // Skip if already synced (smoobu_message_id saved either by sync or by POST handler)
       const { data: existing } = await supabaseAdmin
         .from('messages')
         .select('id')
         .eq('smoobu_message_id', msgId)
         .maybeSingle()
       if (existing) continue
-
-      // Check by content match: messages sent via Trimosa have no smoobu_message_id yet
-      // but already exist in DB with correct sender_id. Link them instead of duplicating.
-      const msgContent = sm.message.trim()
-      if (msgContent) {
-        const msgTs = sm.date ? new Date(sm.date) : null
-        if (msgTs && !isNaN(msgTs.getTime())) {
-          const windowStart = new Date(msgTs.getTime() - 4 * 3600 * 1000).toISOString()
-          const windowEnd   = new Date(msgTs.getTime() + 4 * 3600 * 1000).toISOString()
-          const { data: contentMatch } = await supabaseAdmin
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', conversationId)
-            .eq('content', msgContent)
-            .gte('created_at', windowStart)
-            .lte('created_at', windowEnd)
-            .is('smoobu_message_id', null)
-            .maybeSingle()
-          if (contentMatch) {
-            // Attach smoobu_message_id to the original message (preserves correct sender_id)
-            await supabaseAdmin
-              .from('messages')
-              .update({ smoobu_message_id: msgId })
-              .eq('id', contentMatch.id)
-            console.log('[Chat] syncMsg: linked existing message', contentMatch.id, '↔ smoobu', msgId)
-            continue
-          }
-        }
-      }
 
       // Smoobu isHost detection — covers all known formats:
       // String: "host", "host_message", "host_to_guest", "outgoing", "sent"
@@ -243,23 +214,30 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       const hKey = (hp as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
 
+      let smoobuMsgId: number | null = null
       if (isHost) {
-        // Host → Guest: forward host's message to Smoobu
         console.log('[Chat] Host→Smoobu: forwarding to reservation', smoobuId)
-        await sendMessageToGuest(smoobuId, content.trim(), hKey)
+        smoobuMsgId = await sendMessageToGuest(smoobuId, content.trim(), hKey)
       } else {
-        // Guest → Host: forward guest's message to Smoobu so host sees it there too
         const { data: guestProfile } = await supabaseAdmin
           .from('profiles')
           .select('display_name, guest_first_name, guest_last_name')
           .eq('id', user.id)
           .maybeSingle()
         const gp = guestProfile as Record<string, unknown> | null
-        const guestName = (gp?.guest_first_name && gp?.guest_last_name)
+        const resolvedGuestName = (gp?.guest_first_name && gp?.guest_last_name)
           ? `${gp.guest_first_name} ${gp.guest_last_name}`
           : (gp?.display_name as string) || 'Gast'
-        console.log('[Chat] Guest→Smoobu: forwarding from', guestName, 'to reservation', smoobuId)
-        await sendMessageToHost(smoobuId, content.trim(), guestName, hKey)
+        console.log('[Chat] Guest→Smoobu: forwarding from', resolvedGuestName, 'to reservation', smoobuId)
+        smoobuMsgId = await sendMessageToHost(smoobuId, content.trim(), resolvedGuestName, hKey)
+      }
+      // Save smoobu_message_id so the sync skips this message (prevents duplicate + wrong sender_id)
+      if (smoobuMsgId && message?.id) {
+        await supabaseAdmin
+          .from('messages')
+          .update({ smoobu_message_id: String(smoobuMsgId) })
+          .eq('id', message.id)
+        console.log('[Chat] Saved smoobu_message_id', smoobuMsgId, 'on message', message.id)
       }
     }
   } catch (err) {

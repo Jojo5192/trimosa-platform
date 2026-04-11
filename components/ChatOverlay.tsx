@@ -22,227 +22,134 @@ interface Message {
   created_at: string
 }
 
+/* ─── Helpers ──────────────────────────────────────────────── */
+
 function initials(name: string) {
-  return name.split(' ').map(w => w[0] ?? '').slice(0, 2).join('').toUpperCase()
+  return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-function Avatar({ name, size = 36 }: { name: string; size?: number }) {
+function fmtListTime(iso: string) {
+  const d = new Date(iso), now = new Date()
+  const days = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (days === 0) return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  if (days === 1) return 'Gestern'
+  if (days < 7) return d.toLocaleDateString('de-DE', { weekday: 'short' })
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+}
+
+function fmtMsgTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtDayLabel(iso: string) {
+  const d = new Date(iso), now = new Date()
+  const days = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (days === 0) return 'Heute'
+  if (days === 1) return 'Gestern'
+  return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+/* ─── Avatar ─────────────────────────────────────────────── */
+function Ava({ name, size = 38 }: { name: string; size?: number }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg, #C4A235, #7A5410)',
+      background: 'linear-gradient(140deg,#D4AE3A,#7A5410)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.38, fontWeight: 700, color: '#fff', userSelect: 'none',
+      fontSize: size * 0.37, fontWeight: 700, color: '#fff', userSelect: 'none',
+      letterSpacing: '0.5px',
     }}>
       {initials(name)}
     </div>
   )
 }
 
-function timeLabel(iso: string) {
-  const d = new Date(iso), now = new Date()
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-  if (diff === 1) return 'Gestern'
-  if (diff < 7) return d.toLocaleDateString('de-DE', { weekday: 'short' })
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
-}
-
-function dateLabel(iso: string) {
-  const d = new Date(iso), now = new Date()
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return 'Heute'
-  if (diff === 1) return 'Gestern'
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: 'long' })
-}
-
-function msgTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-}
-
-// ── Message bubbles renderer ──────────────────────────────────
-function MessageList({ messages, userId, otherN }: { messages: Message[]; userId: string; otherN: string }) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  if (messages.length === 0) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, padding: 24 }}>
-        <span style={{ fontSize: 36 }}>💬</span>
-        <p style={{ fontSize: 13, color: '#AAA', margin: 0 }}>Noch keine Nachrichten</p>
-      </div>
-    )
-  }
-
-  const nodes: React.ReactNode[] = []
-  let lastDay = ''
-
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    const day = dateLabel(msg.created_at)
-    const isMe = msg.sender_id === userId
-
-    if (day !== lastDay) {
-      lastDay = day
-      nodes.push(
-        <div key={`sep-${msg.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0 4px' }}>
-          <div style={{ flex: 1, height: 1, background: '#E5E1D8' }} />
-          <span style={{ fontSize: 10, color: '#AAA', fontWeight: 600, background: '#EDE9E2', padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap' }}>
-            {day}
-          </span>
-          <div style={{ flex: 1, height: 1, background: '#E5E1D8' }} />
-        </div>
-      )
-    }
-
-    const prev = messages[i - 1]
-    const next = messages[i + 1]
-    const samePrev = prev && prev.sender_id === msg.sender_id
-    const sameNext = next && next.sender_id === msg.sender_id && dateLabel(next.created_at) === day
-    const isLast = !sameNext
-
-    nodes.push(
-      <div
-        key={msg.id}
-        style={{
-          display: 'flex',
-          flexDirection: isMe ? 'row-reverse' : 'row',
-          alignItems: 'flex-end',
-          gap: 6,
-          marginBottom: isLast ? 10 : 2,
-          marginTop: !samePrev ? 6 : 0,
-        }}
-      >
-        {/* Avatar slot */}
-        <div style={{ width: 28, flexShrink: 0, paddingBottom: 2 }}>
-          {!isMe && isLast && <Avatar name={otherN} size={28} />}
-        </div>
-
-        {/* Bubble + meta */}
-        <div style={{ maxWidth: '75%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 2 }}>
-          <div style={{
-            padding: '9px 13px',
-            borderRadius: isMe ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
-            background: isMe
-              ? 'linear-gradient(135deg, #D4AE3A 0%, #8A6818 100%)'
-              : '#FFFFFF',
-            color: isMe ? '#fff' : '#1A1A1A',
-            fontSize: 13.5,
-            lineHeight: 1.45,
-            wordBreak: 'break-word',
-            boxShadow: isMe
-              ? '0 1px 4px rgba(140,100,20,0.25)'
-              : '0 1px 3px rgba(0,0,0,0.1)',
-          }}>
-            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</p>
-          </div>
-          {isLast && (
-            <span style={{ fontSize: 10, color: '#B0ACA5', paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
-              {msgTime(msg.created_at)}
-              {isMe && msg.read_at && <span style={{ color: '#C4A235', fontWeight: 700 }}> ✓✓</span>}
-            </span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 4px', background: '#F5F3EF', display: 'flex', flexDirection: 'column' }}>
-      {nodes}
-      <div ref={bottomRef} style={{ height: 4 }} />
-    </div>
-  )
-}
-
-// ── Main overlay ──────────────────────────────────────────────
+/* ─── Props ──────────────────────────────────────────────── */
 interface Props { open: boolean; onClose: () => void; userId: string }
 
+/* ─── Component ──────────────────────────────────────────── */
 export default function ChatOverlay({ open, onClose, userId }: Props) {
-  const [convs, setConvs] = useState<Conversation[]>([])
+  const [screen, setScreen] = useState<'list' | 'msgs'>('list')
+  const [convs, setConvs]   = useState<Conversation[]>([])
   const [active, setActive] = useState<Conversation | null>(null)
-  const [msgs, setMsgs] = useState<Message[]>([])
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
+  const [msgs, setMsgs]     = useState<Message[]>([])
+  const [draft, setDraft]   = useState('')
+  const [busy, setBusy]     = useState(false)
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<'list' | 'chat'>('list')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const taRef = useRef<HTMLTextAreaElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const taRef     = useRef<HTMLTextAreaElement>(null)
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  function otherName(c: Conversation) {
-    return c.guest_id === userId ? (c.host_name || 'Gastgeber') : (c.guest_name || 'Gast')
-  }
+  const otherName = (c: Conversation) =>
+    c.guest_id === userId ? (c.host_name || 'Gastgeber') : (c.guest_name || 'Gast')
 
+  /* fetch convs */
   const fetchConvs = useCallback(async () => {
     const r = await fetch('/api/chat')
     if (r.ok) setConvs(await r.json())
   }, [])
 
+  /* fetch messages */
   const fetchMsgs = useCallback(async (id: string) => {
     const r = await fetch(`/api/chat?conversationId=${id}`)
     if (r.ok) {
-      setMsgs(await r.json())
+      const data: Message[] = await r.json()
+      setMsgs(data)
       setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
     }
   }, [])
 
-  // Load convs on open
+  /* open → load convs */
   useEffect(() => {
-    if (!open) return
+    if (!open) { if (timerRef.current) clearInterval(timerRef.current); return }
     setLoading(true)
     fetchConvs().finally(() => setLoading(false))
   }, [open, fetchConvs])
 
-  // Poll messages when in chat view
+  /* active conv → poll messages */
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current)
+    if (timerRef.current) clearInterval(timerRef.current)
     if (!open || !active) return
     fetchMsgs(active.id)
-    pollRef.current = setInterval(() => fetchMsgs(active.id), 5000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+    timerRef.current = setInterval(() => fetchMsgs(active.id), 5000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [open, active, fetchMsgs])
 
-  // Cleanup on close
+  /* scroll to bottom when messages change */
   useEffect(() => {
-    if (open) return
-    if (pollRef.current) clearInterval(pollRef.current)
-  }, [open])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs])
 
-  // Auto-resize textarea
+  /* textarea auto-height */
   useEffect(() => {
-    const ta = taRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 96) + 'px'
+    if (!taRef.current) return
+    taRef.current.style.height = 'auto'
+    taRef.current.style.height = Math.min(taRef.current.scrollHeight, 96) + 'px'
   }, [draft])
 
-  // Escape key
+  /* Escape */
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', fn)
-    return () => document.removeEventListener('keydown', fn)
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
   }, [onClose])
 
   function openConv(c: Conversation) {
-    if (pollRef.current) clearInterval(pollRef.current)
     setActive(c)
     setMsgs([])
-    setView('chat')
+    setScreen('msgs')
   }
 
   function goBack() {
-    if (pollRef.current) clearInterval(pollRef.current)
+    if (timerRef.current) clearInterval(timerRef.current)
     setActive(null)
-    setView('list')
+    setScreen('list')
     fetchConvs()
   }
 
   async function send() {
-    if (!draft.trim() || !active || sending) return
-    setSending(true)
+    if (!draft.trim() || !active || busy) return
+    setBusy(true)
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,81 +160,68 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
       await fetchMsgs(active.id)
       fetchConvs()
     }
-    setSending(false)
+    setBusy(false)
   }
 
   if (!open) return null
 
-  const totalUnread = convs.reduce((s, c) => s + c.unread, 0)
+  const unread = convs.reduce((s, c) => s + c.unread, 0)
+
+  /* ─── group messages by day for separators ── */
+  type Grouped = { day: string; items: Message[] }[]
+  const grouped: Grouped = []
+  for (const m of msgs) {
+    const day = fmtDayLabel(m.created_at)
+    if (!grouped.length || grouped[grouped.length - 1].day !== day) {
+      grouped.push({ day, items: [m] })
+    } else {
+      grouped[grouped.length - 1].items.push(m)
+    }
+  }
+
+  /* ─── Shared styles ── */
+  const panel: React.CSSProperties = {
+    position: 'fixed', top: 0, right: 0, bottom: 0,
+    width: 420,
+    zIndex: 9001,
+    display: 'flex', flexDirection: 'column',
+    background: '#fff',
+    boxShadow: '-2px 0 24px rgba(0,0,0,0.14)',
+    animation: 'chatSlide 0.26s cubic-bezier(0.25,0.8,0.25,1)',
+  }
 
   return (
     <>
       <style>{`
-        @keyframes overlayFade { from { opacity:0 } to { opacity:1 } }
-        @keyframes panelSlide  { from { transform:translateX(100%) } to { transform:translateX(0) } }
+        @keyframes chatSlide { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        @keyframes chatFade  { from{opacity:0} to{opacity:1} }
       `}</style>
 
-      {/* Backdrop */}
+      {/* backdrop */}
       <div
         onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 9000,
-          background: 'rgba(0,0,0,0.35)',
-          backdropFilter: 'blur(3px)',
-          animation: 'overlayFade 0.2s ease',
-        }}
+        style={{ position:'fixed', inset:0, zIndex:9000, background:'rgba(0,0,0,0.4)', backdropFilter:'blur(2px)', animation:'chatFade 0.2s ease' }}
       />
 
-      {/* Panel */}
-      <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0,
-        width: 'clamp(320px, 42vw, 460px)',
-        zIndex: 9001,
-        display: 'flex', flexDirection: 'column',
-        background: '#FAFAF8',
-        boxShadow: '-4px 0 32px rgba(0,0,0,0.18)',
-        animation: 'panelSlide 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
-        overflow: 'hidden',
-      }}>
-
-        {/* ── Top bar ── */}
-        <div style={{
-          height: 58,
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '0 14px',
-          background: '#fff',
-          borderBottom: '1px solid #EDE9E0',
-          flexShrink: 0,
-        }}>
-          {view === 'chat' && active ? (
+      <div style={panel}>
+        {/* ── Header ── */}
+        <div style={{ height:56, borderBottom:'1px solid #E9E5DC', background:'#fff', display:'flex', alignItems:'center', gap:10, padding:'0 14px', flexShrink:0 }}>
+          {screen === 'msgs' && active ? (
             <>
-              <button onClick={goBack} style={{ background: 'none', border: 'none', padding: '6px 4px', cursor: 'pointer', color: '#888', display: 'flex', borderRadius: 8 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
+              <button onClick={goBack} style={{ background:'none',border:'none',padding:'6px 2px',cursor:'pointer',color:'#888',display:'flex',borderRadius:6 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
-              <Avatar name={otherName(active)} size={34} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {otherName(active)}
-                </p>
-                <p style={{ margin: 0, fontSize: 11, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {active.listing_title ?? '—'}
-                </p>
+              <Ava name={otherName(active)} size={32} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{otherName(active)}</div>
+                <div style={{ fontSize:11, color:'#999', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{active.listing_title ?? ''}</div>
               </div>
             </>
           ) : (
             <>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C4A235" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span style={{ flex: 1, fontSize: 15, fontWeight: 700, color: '#111' }}>
-                Nachrichten
-                {totalUnread > 0 && (
-                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: '#EF4444', color: '#fff', padding: '1px 7px', borderRadius: 99 }}>
-                    {totalUnread}
-                  </span>
-                )}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C4A235" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span style={{ flex:1, fontSize:15, fontWeight:700, color:'#111' }}>
+                Nachrichten {unread > 0 && <span style={{ marginLeft:6, fontSize:11, fontWeight:800, background:'#EF4444', color:'#fff', padding:'1px 7px', borderRadius:99 }}>{unread}</span>}
               </span>
             </>
           )}
@@ -335,90 +229,133 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
           <button
             onClick={onClose}
             title="Schließen (Esc)"
-            style={{
-              width: 30, height: 30, borderRadius: '50%',
-              border: 'none', background: '#EEEBE4',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#666', flexShrink: 0,
-            }}
+            style={{ width:30, height:30, borderRadius:'50%', border:'none', background:'#F0EDE6', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#666', flexShrink:0 }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
         {/* ── Conversation list ── */}
-        {view === 'list' && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {loading ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#CCC', fontSize: 13 }}>Lädt…</div>
-            ) : convs.length === 0 ? (
-              <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-                <p style={{ fontSize: 38, margin: '0 0 12px' }}>💬</p>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#555', margin: '0 0 6px' }}>Noch keine Nachrichten</p>
-                <p style={{ fontSize: 12, color: '#AAA', margin: 0 }}>Gäste können über die Inseratsseite Kontakt aufnehmen.</p>
+        {screen === 'list' && (
+          <div style={{ flex:1, overflowY:'auto', background:'#FAFAF8' }}>
+            {loading && (
+              <div style={{ padding:40, textAlign:'center', color:'#CCC', fontSize:13 }}>Lädt…</div>
+            )}
+            {!loading && convs.length === 0 && (
+              <div style={{ padding:'64px 24px', textAlign:'center' }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>💬</div>
+                <div style={{ fontSize:14, fontWeight:600, color:'#555' }}>Keine Nachrichten</div>
+                <div style={{ fontSize:12, color:'#AAA', marginTop:6 }}>Gäste können über die Inseratsseite schreiben.</div>
               </div>
-            ) : convs.map(c => {
-              const name = otherName(c)
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => openConv(c)}
-                  style={{
-                    width: '100%', textAlign: 'left',
-                    padding: '13px 16px',
-                    border: 'none', borderBottom: '1px solid #EEEBE3',
-                    background: 'transparent', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    transition: 'background 0.12s',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#FDF7EC' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-                >
-                  <Avatar name={name} size={42} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: c.unread > 0 ? 700 : 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                        {name}
-                      </span>
-                      <span style={{ fontSize: 10.5, flexShrink: 0, color: '#BBB' }}>
-                        {timeLabel(c.last_message_at)}
-                      </span>
-                    </div>
-                    <p style={{ margin: '3px 0 0', fontSize: 12, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.listing_title ?? '—'}
-                    </p>
+            )}
+            {convs.map(c => (
+              <button
+                key={c.id}
+                onClick={() => openConv(c)}
+                style={{ width:'100%', textAlign:'left', padding:'13px 16px', border:'none', borderBottom:'1px solid #EEEAE2', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background='#FDF8EE' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background='transparent' }}
+              >
+                <Ava name={otherName(c)} size={44} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:13.5, fontWeight: c.unread > 0 ? 700 : 600, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:200 }}>{otherName(c)}</span>
+                    <span style={{ fontSize:11, color:'#BBB', flexShrink:0 }}>{fmtListTime(c.last_message_at)}</span>
                   </div>
-                  {c.unread > 0 && (
-                    <span style={{
-                      minWidth: 20, height: 20, padding: '0 6px',
-                      borderRadius: 99, background: '#C4A235',
-                      fontSize: 11, fontWeight: 800, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      {c.unread}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+                  <div style={{ fontSize:12, color:'#999', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.listing_title ?? '—'}</div>
+                </div>
+                {c.unread > 0 && (
+                  <span style={{ minWidth:20, height:20, padding:'0 6px', borderRadius:99, background:'#C4A235', fontSize:11, fontWeight:800, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.unread}</span>
+                )}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* ── Chat view ── */}
-        {view === 'chat' && active && (
+        {/* ── Messages ── */}
+        {screen === 'msgs' && active && (
           <>
-            <MessageList messages={msgs} userId={userId} otherN={otherName(active)} />
+            {/* message area */}
+            <div style={{ flex:1, overflowY:'auto', padding:'16px 14px 8px', background:'#F4F1EB', display:'flex', flexDirection:'column', gap:0 }}>
+              {msgs.length === 0 && (
+                <div style={{ margin:'auto', textAlign:'center' }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>👋</div>
+                  <div style={{ fontSize:13, color:'#AAA' }}>Noch keine Nachrichten</div>
+                </div>
+              )}
+
+              {grouped.map(({ day, items }) => (
+                <div key={day}>
+                  {/* Day separator */}
+                  <div style={{ display:'flex', alignItems:'center', gap:8, margin:'12px 0 8px' }}>
+                    <div style={{ flex:1, height:1, background:'#DDD8CE' }} />
+                    <span style={{ fontSize:11, color:'#999', fontWeight:600, background:'#E8E4DC', padding:'2px 10px', borderRadius:99, whiteSpace:'nowrap' }}>{day}</span>
+                    <div style={{ flex:1, height:1, background:'#DDD8CE' }} />
+                  </div>
+
+                  {items.map((msg, i) => {
+                    const isMe = msg.sender_id === userId
+                    const prevSame = i > 0 && items[i - 1].sender_id === msg.sender_id
+                    const nextSame = i < items.length - 1 && items[i + 1].sender_id === msg.sender_id
+                    const isLast = !nextSame
+
+                    return (
+                      <div
+                        key={msg.id}
+                        style={{
+                          display:'flex',
+                          flexDirection: isMe ? 'row-reverse' : 'row',
+                          alignItems:'flex-end',
+                          gap:6,
+                          marginBottom: isLast ? 10 : 2,
+                          marginTop: prevSame ? 0 : 4,
+                        }}
+                      >
+                        {/* Avatar slot — always 28px wide for alignment */}
+                        <div style={{ width:28, flexShrink:0 }}>
+                          {!isMe && isLast && <Ava name={otherName(active)} size={28} />}
+                        </div>
+
+                        <div style={{ maxWidth:'72%', display:'flex', flexDirection:'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap:2 }}>
+                          {/* Bubble */}
+                          <div style={{
+                            padding:'8px 13px',
+                            borderRadius: isMe
+                              ? (prevSame ? '16px 4px 4px 16px' : '16px 16px 4px 16px')
+                              : (prevSame ? '4px 16px 16px 4px' : '4px 16px 16px 16px'),
+                            background: isMe
+                              ? 'linear-gradient(135deg,#D4AE3A,#8A6818)'
+                              : '#fff',
+                            color: isMe ? '#fff' : '#1a1a1a',
+                            fontSize:13.5,
+                            lineHeight:1.45,
+                            boxShadow: isMe
+                              ? '0 1px 4px rgba(140,100,20,0.22)'
+                              : '0 1px 3px rgba(0,0,0,0.08)',
+                            wordBreak:'break-word',
+                          }}>
+                            <span style={{ whiteSpace:'pre-wrap' }}>{msg.content}</span>
+                          </div>
+
+                          {/* Time + read receipt */}
+                          {isLast && (
+                            <span style={{ fontSize:10.5, color:'#AAA', paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
+                              {fmtMsgTime(msg.created_at)}
+                              {isMe && msg.read_at && <span style={{ color:'#C4A235', marginLeft:3, fontWeight:700 }}>✓✓</span>}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+
+              <div ref={bottomRef} />
+            </div>
 
             {/* Input bar */}
-            <div style={{
-              padding: '10px 12px',
-              borderTop: '1px solid #EDE9E0',
-              background: '#fff',
-              display: 'flex', gap: 8, alignItems: 'flex-end',
-              flexShrink: 0,
-            }}>
+            <div style={{ borderTop:'1px solid #E9E5DC', background:'#fff', padding:'10px 12px', display:'flex', gap:8, alignItems:'flex-end', flexShrink:0 }}>
               <textarea
                 ref={taRef}
                 value={draft}
@@ -426,39 +363,24 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                 placeholder="Nachricht schreiben…"
                 rows={1}
-                style={{
-                  flex: 1, borderRadius: 22,
-                  border: '1.5px solid #DDD8CE',
-                  padding: '9px 14px',
-                  fontSize: 13.5, lineHeight: 1.45,
-                  resize: 'none', outline: 'none',
-                  fontFamily: 'inherit',
-                  maxHeight: 96, overflowY: 'auto',
-                  background: '#F9F7F4', color: '#111',
-                  transition: 'border-color 0.15s',
-                }}
-                onFocus={e => { (e.target as HTMLTextAreaElement).style.borderColor = '#C4A235' }}
-                onBlur={e => { (e.target as HTMLTextAreaElement).style.borderColor = '#DDD8CE' }}
+                style={{ flex:1, resize:'none', outline:'none', border:'1.5px solid #DDD9D0', borderRadius:20, padding:'9px 14px', fontSize:13.5, lineHeight:1.45, fontFamily:'inherit', background:'#FAFAF8', color:'#111', maxHeight:96, overflowY:'auto', transition:'border-color 0.15s' }}
+                onFocus={e => { e.target.style.borderColor='#C4A235' }}
+                onBlur={e => { e.target.style.borderColor='#DDD9D0' }}
               />
               <button
                 onClick={send}
-                disabled={sending || !draft.trim()}
+                disabled={busy || !draft.trim()}
                 style={{
-                  width: 40, height: 40, borderRadius: '50%',
-                  border: 'none', flexShrink: 0,
-                  background: draft.trim() && !sending
-                    ? 'linear-gradient(135deg, #D4AE3A, #8A6818)'
-                    : '#E5E1D8',
-                  color: '#fff',
-                  cursor: draft.trim() && !sending ? 'pointer' : 'default',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: draft.trim() && !sending ? '0 2px 8px rgba(196,162,53,0.35)' : 'none',
-                  transition: 'all 0.15s',
+                  width:40, height:40, borderRadius:'50%', border:'none', flexShrink:0,
+                  background: draft.trim() && !busy ? 'linear-gradient(135deg,#D4AE3A,#8A6818)' : '#E5E1D8',
+                  color:'#fff', cursor: draft.trim() && !busy ? 'pointer' : 'default',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  boxShadow: draft.trim() && !busy ? '0 2px 8px rgba(196,162,53,0.35)' : 'none',
+                  transition:'all 0.15s',
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
                 </svg>
               </button>
             </div>
