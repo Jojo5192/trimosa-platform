@@ -138,10 +138,12 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
 
       {/* modal */}
       <div style={{
-        position:'fixed', top:'50%', left:'50%',
+        position:'fixed',
+        top:'calc(50% + 44px)',   /* +44px = halbe Navbar-Höhe (88px) */
+        left:'50%',
         transform:'translate(-50%,-50%)',
         zIndex:9001,
-        width:'min(880px,93vw)', height:'min(640px,87vh)',
+        width:'min(880px,93vw)', height:'min(620px,calc(90vh - 88px))',
         display:'flex', flexDirection:'column',
         background:'#1C1A17',
         borderRadius:18,
@@ -197,13 +199,13 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
             overflowY:'auto', display:'flex', flexDirection:'column',
           }}>
             {loading && (
-              <div style={{ padding:32, textAlign:'center', color:'#555', fontSize:12 }}>Lädt…</div>
+              <div style={{ padding:32, textAlign:'center', color:'#888', fontSize:12 }}>Lädt…</div>
             )}
             {!loading && convs.length === 0 && (
               <div style={{ padding:'48px 20px', textAlign:'center' }}>
                 <div style={{ fontSize:32, marginBottom:10 }}>💬</div>
-                <div style={{ fontSize:13, fontWeight:600, color:'#666' }}>Keine Nachrichten</div>
-                <div style={{ fontSize:11, color:'#444', marginTop:6 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'#AAA' }}>Keine Nachrichten</div>
+                <div style={{ fontSize:11, color:'#666', marginTop:6 }}>
                   Gäste können über die Inseratsseite schreiben.
                 </div>
               </div>
