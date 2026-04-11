@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import ChatClient from '@/app/dashboard/chat/ChatClient'
 
 export default async function GuestChatPage() {
@@ -8,12 +9,8 @@ export default async function GuestChatPage() {
   if (!user) redirect('/login')
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '24px 20px 40px' }}>
-      <div style={{ marginBottom: '20px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>Nachrichten</p>
-        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', margin: 0 }}>Chat</h1>
-      </div>
+    <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: '#AAA' }}>Lädt…</div>}>
       <ChatClient userId={user.id} />
-    </div>
+    </Suspense>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 interface Conversation {
   id: string
@@ -23,29 +24,43 @@ interface Message {
 }
 
 export default function ChatClient({ userId }: { userId: string }) {
+  const searchParams = useSearchParams()
+  const initialConvId = searchParams.get('conv')
+
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMsg, setNewMsg] = useState('')
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const didAutoSelect = useRef(false)
 
   // Returns the name of the OTHER party we're chatting with
   function otherName(conv: Conversation): string {
     if (conv.guest_id === userId) return conv.host_name ?? 'Gastgeber'
     return conv.guest_name ?? 'Gast'
   }
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadConversations = useCallback(async () => {
     const res = await fetch('/api/chat')
     if (res.ok) {
-      const data = await res.json()
+      const data: Conversation[] = await res.json()
       setConversations(data)
+      // Auto-open conversation from URL param (only once)
+      if (initialConvId && !didAutoSelect.current && data.length > 0) {
+        const target = data.find(c => c.id === initialConvId)
+        if (target) {
+          didAutoSelect.current = true
+          setActiveConv(target)
+          setMessages([])
+        }
+      }
     }
     setLoading(false)
-  }, [])
+  }, [initialConvId])
 
   const loadMessages = useCallback(async (convId: string) => {
     const res = await fetch(`/api/chat?conversationId=${convId}`)

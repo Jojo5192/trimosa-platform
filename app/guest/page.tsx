@@ -45,7 +45,7 @@ export default async function GuestPage() {
     const badge = statusBadge(booking.status as string)
     const firstImage = listing?.images?.[0]
     return (
-      <div style={{ background: '#fff', borderRadius: '20px', overflow: 'hidden', border: '1px solid #E5E5EA', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', display: 'flex', gap: 0 }}>
+      <Link href={`/guest/booking/${booking.id as string}`} style={{ textDecoration: 'none', background: '#fff', borderRadius: '20px', overflow: 'hidden', border: '1px solid #E5E5EA', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', display: 'flex', gap: 0, transition: 'box-shadow 0.15s' }}>
         {firstImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={firstImage} alt="" style={{ width: '120px', objectFit: 'cover', flexShrink: 0 }} />
@@ -65,18 +65,11 @@ export default async function GuestPage() {
           <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>
             {formatDate(booking.check_in as string)} – {formatDate(booking.check_out as string)}
           </p>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <Link href={`/listing/${booking.listing_id}`}
-              style={{ fontSize: '11px', fontWeight: 600, color: '#A8882A', textDecoration: 'none', border: '1px solid #E8E0D0', borderRadius: '999px', padding: '4px 12px', backgroundColor: '#FDF8F0' }}>
-              Inserat ansehen ↗
-            </Link>
-            <Link href={`/guest/chat`}
-              style={{ fontSize: '11px', fontWeight: 600, color: '#555', textDecoration: 'none', border: '1px solid #E5E5EA', borderRadius: '999px', padding: '4px 12px', backgroundColor: '#F9F9F9' }}>
-              💬 Nachricht
-            </Link>
-          </div>
+          <p style={{ fontSize: '11px', color: '#A8882A', fontWeight: 600, margin: '10px 0 0' }}>
+            Details &amp; Stornierung →
+          </p>
         </div>
-      </div>
+      </Link>
     )
   }
 
