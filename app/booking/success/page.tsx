@@ -85,14 +85,15 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               if (user) {
                 const { data: guestProfile } = await supabaseAdmin
                   .from('profiles')
-                  .select('guest_first_name, guest_last_name, display_name, phone')
+                  .select('guest_first_name, guest_last_name, display_name, phone, address, country')
                   .eq('id', user.id)
                   .maybeSingle()
-                const fullName = (guestProfile?.display_name || 'Gast').split(' ')
-                firstName = guestProfile?.guest_first_name || fullName[0] || 'Gast'
-                lastName = (guestProfile?.guest_last_name || fullName.slice(1).join(' ')) || '-'
+                const gp = guestProfile as Record<string, unknown> | null
+                const fullName = ((gp?.display_name as string) || 'Gast').split(' ')
+                firstName = (gp?.guest_first_name as string) || fullName[0] || 'Gast'
+                lastName = ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-'
                 email = user.email ?? ''
-                phone = (guestProfile as Record<string, unknown>)?.phone as string ?? ''
+                phone = (gp?.phone as string) || ''
               }
 
               const smoobuPayload = {

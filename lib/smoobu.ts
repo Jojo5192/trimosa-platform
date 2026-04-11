@@ -123,6 +123,8 @@ export interface CreateReservationInput {
   lastName: string
   email: string
   phone?: string
+  address?: string
+  country?: string
   adults?: number
   children?: number
   price?: number
@@ -147,7 +149,9 @@ export async function createReservation(input: CreateReservationInput): Promise<
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      phone: input.phone ?? '',
+      phone: input.phone || 'Nicht angegeben',
+      address: input.address || 'Über TRIMOSA',
+      country: input.country || 'DE',
       adults: input.adults ?? 1,
       children: input.children ?? 0,
       price: input.price,
