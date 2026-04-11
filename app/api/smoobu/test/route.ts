@@ -3,22 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 /**
  * GET /api/smoobu/test
- * Tests creating a Smoobu reservation with the correct channelId.
- * Remove this in production!
+ * Tests Smoobu reservation creation with different address field formats.
  */
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const dryRun = searchParams.get('create') !== 'true'
+export async function GET() {
   const apiKey = process.env.SMOOBU_API_KEY
   const channelId = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '23')
+  const results: Record<string, unknown> = { channelId }
 
-  const results: Record<string, unknown> = {
-    channelId,
-    dryRun,
-    hint: dryRun ? 'Add ?create=true to actually create a test reservation' : 'Creating test reservation...',
-  }
-
-  // Get first listing with smoobu_id
   const { data: listings } = await supabaseAdmin
     .from('listings')
     .select('id, title, smoobu_id')
@@ -26,50 +17,64 @@ export async function GET(request: Request) {
     .limit(1)
 
   if (!listings?.length) {
-    results.error = 'No listings with smoobu_id found'
-    return NextResponse.json(results)
+    return NextResponse.json({ error: 'No listings with smoobu_id' })
   }
+  const apartmentId = parseInt(listings[0].smoobu_id)
 
-  const listing = listings[0]
-  results.listing = { title: listing.title, smoobu_id: listing.smoobu_id }
+  // Try 3 different address formats
+  const attempts = [
+    {
+      label: 'street (not address)',
+      extra: { street: 'Musterstr. 1', city: 'Berlin', postalCode: '10115', country: 'DE' },
+    },
+    {
+      label: 'address as object',
+      extra: { address: { street: 'Musterstr. 1', postalCode: '10115', location: 'Berlin', country: 'DE' } },
+    },
+    {
+      label: 'flat street + location',
+      extra: { street: 'Musterstr. 1', location: 'Berlin', zip: '10115', country: 'DE' },
+    },
+  ]
 
-  if (!dryRun) {
-    // Actually create a test reservation
+  for (const attempt of attempts) {
     const payload = {
       channelId,
-      apartmentId: parseInt(listing.smoobu_id),
+      apartmentId,
       arrivalDate: '2026-12-20',
       departureDate: '2026-12-22',
       firstName: 'Test',
       lastName: 'Trimosa',
       email: 'test@trimosa.de',
-      phone: 'Nicht angegeben',
-      address: 'TRIMOSA Vermittlung',
-      city: 'Berlin',
-      postalCode: '10115',
-      country: 'DE',
+      phone: '+4900000000',
       adults: 1,
       children: 0,
       price: 100,
-      notice: 'TEST-Buchung über TRIMOSA — bitte löschen',
+      notice: 'TEST — bitte loeschen',
+      ...attempt.extra,
     }
-    results.payload = payload
-
     try {
       const res = await fetch('https://login.smoobu.com/api/reservations', {
         method: 'POST',
-        headers: {
-          'Api-Key': apiKey ?? '',
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Api-Key': apiKey ?? '', 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       const data = await res.json().catch(() => ({}))
-      results.status = res.status
-      results.response = data
-      results.success = res.ok
+      results[attempt.label] = {
+        status: res.status,
+        success: res.ok,
+        response: data,
+        payload: attempt.extra,
+      }
+      // If one succeeds, mark it
+      if (res.ok) {
+        results.WINNER = attempt.label
+        results.winnerExtra = attempt.extra
+        results.createdId = data.id
+        break // Don't create more test bookings
+      }
     } catch (err) {
-      results.error = String(err)
+      results[attempt.label] = { error: String(err) }
     }
   }
 
