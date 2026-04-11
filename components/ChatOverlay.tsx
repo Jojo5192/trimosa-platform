@@ -125,7 +125,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
     <>
       <style>{`
         @keyframes cfade { from{opacity:0} to{opacity:1} }
-        @keyframes crise { from{opacity:0;transform:translate(-50%,-48%) scale(.97)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+        @keyframes crise { from{opacity:0;transform:translateX(-50%) scale(.97)} to{opacity:1;transform:translateX(-50%) scale(1)} }
         .cconv:hover { background: #F3EFE6 !important; }
       `}</style>
 
@@ -139,11 +139,11 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
       {/* modal */}
       <div style={{
         position:'fixed',
-        top:'calc(50% + 44px)',
+        top:'calc(var(--navbar-h, 88px) + 12px)',
         left:'50%',
-        transform:'translate(-50%,-50%)',
+        transform:'translateX(-50%)',
         zIndex:9001,
-        width:'min(880px,93vw)', height:'min(620px,calc(90vh - 88px))',
+        width:'min(880px,93vw)', height:'calc(100vh - var(--navbar-h, 88px) - 24px)',
         display:'flex', flexDirection:'column',
         background:'#FFFFFF',
         borderRadius:16,
