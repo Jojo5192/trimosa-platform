@@ -67,9 +67,10 @@ export async function POST(request: Request) {
     let synced = 0
     for (const msg of smoobuMsgs) {
       if (!msg.message?.trim()) continue
-      const msgId = String(msg.id)
+      const msgId   = String(msg.id)
+      const content = msg.message.trim()
 
-      // Skip if already synced
+      // Step 1: Skip if already synced by smoobu_message_id
       const { data: existing } = await supabaseAdmin
         .from('messages')
         .select('id')
@@ -77,21 +78,51 @@ export async function POST(request: Request) {
         .maybeSingle()
       if (existing) continue
 
+      // Step 2: Content-based linking — prevents duplicates when smoobu_message_id
+      // wasn't saved after send (Smoobu may not return an ID, or race with webhook)
+      const { data: unlinked } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conv.id)
+        .eq('content', content)
+        .is('smoobu_message_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (unlinked) {
+        await supabaseAdmin
+          .from('messages')
+          .update({ smoobu_message_id: msgId })
+          .eq('id', unlinked.id)
+        console.log('[Smoobu Webhook] Linked smoobu_message_id', msgId, '→ existing msg', unlinked.id)
+        continue
+      }
+
+      // Step 3: New Smoobu-originated message — detect sender and insert
       const typeStr    = (msg.type ?? '').toLowerCase()
       const senderStr  = (msg.sender ?? '').toLowerCase()
       const subjectStr = (msg.subject ?? '').toLowerCase()
       const subjectIsGuest = subjectStr.includes('nachricht von gast') || subjectStr.includes('via trimosa')
       const subjectIsHost  = subjectStr.includes('nachricht von trimosa')
-      const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host' || typeStr === '2'
-      const typeIsHost  = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '1'
+      // NOTE: Smoobu uses type=1 as message category, not sender. senderType/direction already
+      // normalised into msg.type by smoobu.ts (senderType > direction > type).
+      const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
+      const typeIsHost  = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
+                        || typeStr === 'owner' || typeStr === 'automated' || typeStr === 'host_to_guest'
                         || senderStr.includes('host') || senderStr.includes('gastgeber')
       const isHost = subjectIsHost ? true : subjectIsGuest ? false : typeIsGuest ? false : (typeIsHost || !typeIsGuest)
+
+      console.log('[Smoobu Webhook] syncMsg id:', msg.id,
+        '| type:', JSON.stringify(msg.type), '| sender:', JSON.stringify(msg.sender),
+        '| subject:', msg.subject?.slice(0, 50), '| → isHost:', isHost)
+
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({
           conversation_id: conv.id,
-          sender_id: isHost ? conv.host_id : conv.guest_id,
-          content: msg.message.trim(),
+          sender_id: isHost ? conv.host_id : (conv.guest_id ?? conv.host_id),
+          content,
           smoobu_message_id: msgId,
           created_at: msg.date || new Date().toISOString(),
         })

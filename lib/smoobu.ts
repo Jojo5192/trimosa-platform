@@ -307,12 +307,19 @@ export async function getReservationMessages(
     // Log everything so we can see the exact format in Vercel logs
     console.log('[Smoobu] msg raw — id:', obj.id,
       '| type(', typeof obj.type, '):', JSON.stringify(obj.type),
-      '| sender:', JSON.stringify(obj.sender),
       '| senderType:', JSON.stringify(obj.senderType),
+      '| direction:', JSON.stringify(obj.direction),
+      '| sender:', JSON.stringify(obj.sender),
+      '| senderName:', JSON.stringify(obj.senderName),
       '| subject:', String(obj.subject ?? '').slice(0, 60))
 
-    // type: null → treat as '' (not as "null" string which breaks comparisons)
-    const rawType = (obj.type != null && obj.type !== '') ? String(obj.type) : String(obj.senderType ?? obj.direction ?? '')
+    // Smoobu uses `type` as a message-category code (1 = text, 2 = ???), NOT as sender type.
+    // The actual sender is in `senderType` ("owner"/"guest") or `direction` ("outgoing"/"incoming").
+    // Prefer senderType > direction > type as fallback only.
+    const rawType = String(
+      obj.senderType ?? obj.direction ??
+      (obj.type != null && obj.type !== '' ? String(obj.type) : '')
+    )
     return {
       id: (obj.id ?? obj.messageId) as number,
       type: rawType,

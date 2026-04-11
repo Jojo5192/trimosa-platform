@@ -17,9 +17,10 @@ async function syncSmoobuMessages(
 
     for (const sm of smoobuMsgs) {
       if (!sm.message?.trim()) continue
-      const msgId = String(sm.id)
+      const msgId  = String(sm.id)
+      const content = sm.message.trim()
 
-      // Skip if already synced (smoobu_message_id saved either by sync or by POST handler)
+      // ── Step 1: Skip if already synced by smoobu_message_id ──────────────────
       const { data: existing } = await supabaseAdmin
         .from('messages')
         .select('id')
@@ -27,56 +28,75 @@ async function syncSmoobuMessages(
         .maybeSingle()
       if (existing) continue
 
-      // ── Smoobu sender detection ───────────────────────────────────────────────
-      // Smoobu may use various type/sender conventions. We check every known pattern:
+      // ── Step 2: Content-based linking ────────────────────────────────────────
+      // If Trimosa sent this message but the smoobu_message_id wasn't saved back
+      // (Smoobu may not return an ID, or there was a race with the webhook), the
+      // original DB record has correct sender_id but null smoobu_message_id.
+      // Instead of inserting a duplicate with wrong sender, just link the ID.
+      const { data: unlinked } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .eq('content', content)
+        .is('smoobu_message_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (unlinked) {
+        await supabaseAdmin
+          .from('messages')
+          .update({ smoobu_message_id: msgId })
+          .eq('id', unlinked.id)
+        console.log('[Chat] Linked smoobu_message_id', msgId, '→ existing msg', unlinked.id)
+        continue
+      }
+
+      // ── Step 3: New Smoobu-originated message — detect sender and insert ─────
+      // Smoobu may use various type/sender conventions. Check every known pattern.
       //
-      // typeStr conventions (after null-safe normalisation):
-      //   Strings: "host", "host_message", "host_to_guest", "outgoing", "sent" → HOST
-      //            "guest", "guest_message", "incoming", "guest_to_host"        → GUEST
-      //   Numbers: Smoobu often uses  1 = host/system,  2 = guest
-      //            (NOT 1=guest as you'd expect — test shows 1=host is correct)
+      // typeStr: "host","host_message","host_to_guest","outgoing","sent","owner","1" → HOST
+      //          "guest","guest_message","incoming","guest_to_host","2"              → GUEST
       //
-      // subject fallback: our own forwarded messages have known subjects
-      //   "Nachricht von Gast" in subject → GUEST sent via Trimosa
-      //   (no subject match) → use type/sender
+      // subject fallback (most reliable for Trimosa-forwarded messages):
+      //   subject contains "nachricht von gast" / "via trimosa" → GUEST
+      //   subject contains "nachricht von trimosa"              → HOST
       //
-      // If nothing matches → default HOST (automated welcome messages are from host)
-      const typeStr   = (sm.type   ?? '').toLowerCase()
-      const senderStr = (sm.sender ?? '').toLowerCase()
+      // Unknown type → HOST (automated booking messages typically come from host)
+      const typeStr    = (sm.type   ?? '').toLowerCase()
+      const senderStr  = (sm.sender ?? '').toLowerCase()
       const subjectStr = (sm.subject ?? '').toLowerCase()
 
-      // Subject-based detection (reliable for Trimosa-forwarded messages)
       const subjectIsGuest = subjectStr.includes('nachricht von gast') || subjectStr.includes('via trimosa')
       const subjectIsHost  = subjectStr.includes('nachricht von trimosa')
 
-      // Type-string detection
+      // NOTE: Smoobu uses type=1 as a generic "text message" category, NOT as sender type.
+      // The actual sender comes from senderType ("owner"/"guest") or direction ("outgoing"/"incoming").
+      // Those fields are already normalised into sm.type by smoobu.ts (senderType > direction > type).
       const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
-                        || typeStr === '2'   // Smoobu: type=2 → guest message
       const typeIsHost  = typeStr.includes('host')  || typeStr === 'outgoing' || typeStr === 'sent'
                         || typeStr === 'host_to_guest' || typeStr === 'automated' || typeStr === 'owner'
-                        || typeStr === '1'   // Smoobu: type=1 → host/automated message
                         || senderStr.includes('host') || senderStr.includes('gastgeber')
 
-      const isHost = subjectIsHost
-                   ? true
-                   : subjectIsGuest
-                   ? false
-                   : typeIsGuest
-                   ? false
-                   : typeIsHost || !typeIsGuest  // unknown type → host
+      // Unknown type → HOST (booking confirmations and system messages come from host)
+      const isHost = subjectIsHost ? true
+                   : subjectIsGuest ? false
+                   : typeIsGuest ? false
+                   : typeIsHost || !typeIsGuest
 
       console.log('[Chat] syncMsg id:', sm.id,
         '| type:', JSON.stringify(sm.type), '| sender:', JSON.stringify(sm.sender),
-        '| subject:', sm.subject?.slice(0, 40),
+        '| subject:', sm.subject?.slice(0, 50),
         '| → isHost:', isHost)
-      const senderId = isHost ? hostId : guestId
+
+      const senderId = isHost ? hostId : (guestId ?? hostId)  // fallback to hostId if guestId is null
 
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({
           conversation_id: conversationId,
           sender_id: senderId,
-          content: sm.message.trim(),
+          content,
           smoobu_message_id: msgId,
           created_at: sm.date || new Date().toISOString(),
         })
