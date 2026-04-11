@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
 import ChatOverlay from '@/components/ChatOverlay'
+import OnboardingModal from '@/components/OnboardingModal'
 
 interface NavBarProps {
   initialQ?: string
@@ -330,6 +331,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   const [q, setQ] = useState(initialQ)
   const [checkin, setCheckin] = useState(initialCheckin)
@@ -356,13 +358,13 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user ?? null
       setUser(u)
-      if (u) loadProfile(u.id)
+      if (u) loadProfile(u.id, u.user_metadata)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_ev, s) => {
       const u = s?.user ?? null
       setUser(u)
-      if (u) loadProfile(u.id)
-      else { setAvatarUrl(null); setUnreadCount(0) }
+      if (u) loadProfile(u.id, u.user_metadata)
+      else { setAvatarUrl(null); setUnreadCount(0); setShowOnboarding(false) }
     })
     const onScroll = () => {
       const c = window.scrollY > 60
@@ -374,9 +376,16 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     return () => { listener.subscription.unsubscribe(); window.removeEventListener('scroll', onScroll) }
   }, [])
 
-  async function loadProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle()
+  async function loadProfile(userId: string, userMeta?: Record<string, unknown>) {
+    const { data } = await supabase.from('profiles').select('avatar_url, guest_first_name').eq('id', userId).maybeSingle()
     if (data?.avatar_url) setAvatarUrl(data.avatar_url)
+
+    // Show onboarding modal if guest hasn't filled in personal data
+    const role = userMeta?.role as string | undefined
+    const isGuest = !role || role === 'guest'
+    if (isGuest && !data?.guest_first_name) {
+      setShowOnboarding(true)
+    }
   }
 
   // Poll for unread chat messages + browser notifications when new message arrives
@@ -901,6 +910,15 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
         <div
           className="fixed inset-0 z-40"
           onClick={() => { setMenuOpen(false); setActiveField(null) }}
+        />
+      )}
+
+      {/* Onboarding modal for guests who haven't filled in their personal data */}
+      {showOnboarding && user && (
+        <OnboardingModal
+          userId={user.id}
+          userName={user.user_metadata?.name || user.user_metadata?.full_name || ''}
+          onComplete={() => setShowOnboarding(false)}
         />
       )}
     </>

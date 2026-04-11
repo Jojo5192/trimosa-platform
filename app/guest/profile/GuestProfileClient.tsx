@@ -35,6 +35,9 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   function toggleLanguage(lang: string) {
     setLanguages(prev => prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang])
@@ -68,6 +71,23 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       setTimeout(() => setSaved(false), 3000)
     }
     setSaving(false)
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const res = await fetch('/api/account', { method: 'DELETE' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Fehler beim Löschen')
+      }
+      // Account deleted — redirect to home
+      window.location.href = '/'
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : 'Unbekannter Fehler')
+      setDeleting(false)
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -182,6 +202,52 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
         {saving ? 'Wird gespeichert…' : saved ? '✓ Gespeichert' : 'Profil speichern'}
       </button>
+
+      {/* Delete account section */}
+      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #F5D0D0', marginTop: '8px' }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>Konto löschen</h2>
+        <p style={{ fontSize: '13px', color: '#888', margin: '0 0 16px', lineHeight: 1.5 }}>
+          Dein Konto und alle zugehörigen Daten werden unwiderruflich gelöscht. Aktive Buchungen können dadurch beeinträchtigt werden.
+        </p>
+
+        {!deleteConfirm ? (
+          <button
+            type="button"
+            onClick={() => setDeleteConfirm(true)}
+            style={{ padding: '10px 20px', borderRadius: '10px', border: '1.5px solid #DC2626', background: 'transparent', color: '#DC2626', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Konto löschen
+          </button>
+        ) : (
+          <div>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#DC2626', margin: '0 0 12px' }}>
+              Bist du sicher? Diese Aktion kann nicht rückgängig gemacht werden.
+            </p>
+            {deleteError && (
+              <div style={{ borderRadius: '10px', padding: '10px 14px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '12px' }}>
+                <p style={{ fontSize: '13px', color: '#DC2626', margin: 0 }}>{deleteError}</p>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => { setDeleteConfirm(false); setDeleteError('') }}
+                style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1.5px solid #D2D2D7', background: '#fff', color: '#555', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: '#DC2626', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}
+              >
+                {deleting ? 'Wird gelöscht…' : 'Ja, löschen'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
