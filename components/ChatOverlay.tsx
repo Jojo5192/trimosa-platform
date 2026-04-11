@@ -26,9 +26,12 @@ function fmtTime(iso: string) {
 }
 function fmtDay(iso: string) {
   const d = new Date(iso), now = new Date()
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return 'Heute'
-  if (diff === 1) return 'Gestern'
+  // Compare calendar days in local timezone, not rolling 24h windows
+  const dDay   = d.toLocaleDateString('de-DE')
+  const today  = now.toLocaleDateString('de-DE')
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toLocaleDateString('de-DE')
+  if (dDay === today)     return 'Heute'
+  if (dDay === yesterday) return 'Gestern'
   return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 function fmtMsgT(iso: string) {

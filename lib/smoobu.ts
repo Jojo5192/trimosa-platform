@@ -304,6 +304,13 @@ export async function getReservationMessages(
   // Normalise field names
   return msgs.map((m) => {
     const obj = m as Record<string, unknown>
+    // Helper: parse Smoobu date (may be UTC string without Z, CEST with offset, or ISO)
+    // Always emit a proper ISO UTC string so Supabase stores it correctly.
+    function parseSmoobuDate(raw: unknown): string {
+      if (!raw) return ''
+      const d = new Date(String(raw))
+      return isNaN(d.getTime()) ? '' : d.toISOString()
+    }
     // Log everything so we can see the exact format in Vercel logs
     console.log('[Smoobu] msg raw — id:', obj.id,
       '| type(', typeof obj.type, '):', JSON.stringify(obj.type),
@@ -324,7 +331,7 @@ export async function getReservationMessages(
       id: (obj.id ?? obj.messageId) as number,
       type: rawType,
       message: String(obj.message ?? obj.body ?? obj.text ?? obj.messageBody ?? ''),
-      date: String(obj.date ?? obj.created_at ?? obj.createdAt ?? ''),
+      date: parseSmoobuDate(obj.date ?? obj.created_at ?? obj.createdAt),
       sender: String(obj.sender ?? obj.senderName ?? ''),
       subject: String(obj.subject ?? ''),
     }
