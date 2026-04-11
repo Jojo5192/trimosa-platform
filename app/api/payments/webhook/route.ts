@@ -64,18 +64,24 @@ export async function POST(req: NextRequest) {
         const guestEmail = guestData.data.user?.email ?? ''
         const { data: guestProfile } = await supabaseAdmin
           .from('profiles')
-          .select('guest_first_name, guest_last_name, display_name')
+          .select('guest_first_name, guest_last_name, display_name, phone, street, postal_code, city, country')
           .eq('id', booking.guest_id)
           .maybeSingle()
-        const fullName = (guestProfile?.display_name || 'Gast').split(' ')
+        const gp = guestProfile as Record<string, unknown> | null
+        const fullName = ((gp?.display_name as string) || 'Gast').split(' ')
         console.log('[Webhook] Creating Smoobu reservation for booking:', bookingId, 'apartment:', listing.smoobu_id)
         const smoobuId = await createReservation({
           smoobuApartmentId: parseInt(listing.smoobu_id),
           arrivalDate: booking.check_in,
           departureDate: booking.check_out,
-          firstName: guestProfile?.guest_first_name || fullName[0] || 'Gast',
-          lastName: (guestProfile?.guest_last_name || fullName.slice(1).join(' ')) || '-',
+          firstName: (gp?.guest_first_name as string) || fullName[0] || 'Gast',
+          lastName: ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-',
           email: guestEmail,
+          phone: (gp?.phone as string) || '',
+          street: (gp?.street as string) || '',
+          postalCode: (gp?.postal_code as string) || '',
+          city: (gp?.city as string) || '',
+          country: (gp?.country as string) || 'DE',
           adults: booking.adults ?? 1,
           children: booking.children ?? 0,
           price: booking.total_price,

@@ -4,8 +4,10 @@
 
 const SMOOBU_BASE = 'https://login.smoobu.com/api'
 const API_KEY = process.env.SMOOBU_API_KEY!
-// Channel ID for TRIMOSA direct bookings — set via env or default to FeWo-direkt (23)
-const CHANNEL_ID = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '23')
+// Account-specific channel ID for TRIMOSA bookings.
+// Default: 1602674 (FeWo-direkt channel on this Smoobu account).
+// Override via SMOOBU_CHANNEL_ID env var once a dedicated TRIMOSA channel is set up in Smoobu.
+const CHANNEL_ID = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '1602674')
 
 function smoobuHeaders() {
   return {
@@ -123,7 +125,9 @@ export interface CreateReservationInput {
   lastName: string
   email: string
   phone?: string
-  address?: string
+  street?: string       // Guest street address
+  postalCode?: string
+  city?: string
   country?: string
   adults?: number
   children?: number
@@ -149,10 +153,13 @@ export async function createReservation(input: CreateReservationInput): Promise<
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      phone: input.phone || 'Nicht angegeben',
-      address: input.address || 'TRIMOSA Vermittlung',
-      city: 'Berlin',
-      postalCode: '10115',
+      phone: input.phone || '+4900000000',
+      // Smoobu requires address as an object with street field
+      address: {
+        street: input.street || 'Nicht angegeben',
+        postalCode: input.postalCode || '00000',
+        city: input.city || 'Unbekannt',
+      },
       country: input.country || 'DE',
       adults: input.adults ?? 1,
       children: input.children ?? 0,
