@@ -77,12 +77,15 @@ export async function POST(request: Request) {
         .maybeSingle()
       if (existing) continue
 
-      const typeStr = (msg.type ?? '').toLowerCase()
-      const senderStr = (msg.sender ?? '').toLowerCase()
-      const isGuestType = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === '1'
-      const isHostType = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '2'
-        || senderStr.includes('host') || senderStr.includes('gastgeber')
-      const isHost = !isGuestType && (isHostType || typeStr === '')
+      const typeStr    = (msg.type ?? '').toLowerCase()
+      const senderStr  = (msg.sender ?? '').toLowerCase()
+      const subjectStr = (msg.subject ?? '').toLowerCase()
+      const subjectIsGuest = subjectStr.includes('nachricht von gast') || subjectStr.includes('via trimosa')
+      const subjectIsHost  = subjectStr.includes('nachricht von trimosa')
+      const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host' || typeStr === '2'
+      const typeIsHost  = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '1'
+                        || senderStr.includes('host') || senderStr.includes('gastgeber')
+      const isHost = subjectIsHost ? true : subjectIsGuest ? false : typeIsGuest ? false : (typeIsHost || !typeIsGuest)
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({

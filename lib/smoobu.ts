@@ -260,6 +260,7 @@ export interface SmoobuMessage {
   message: string
   date: string   // ISO timestamp
   sender: string
+  subject: string
 }
 
 /**
@@ -300,19 +301,25 @@ export async function getReservationMessages(
     console.log('[Smoobu] First message sample:', JSON.stringify(msgs[0]))
   }
 
-  // Normalise field names (Smoobu may use 'body' or 'text' instead of 'message')
+  // Normalise field names
   return msgs.map((m) => {
     const obj = m as Record<string, unknown>
-    // Log raw type for debugging (numeric vs string — crucial for isHost detection)
-    console.log('[Smoobu] msg raw — id:', obj.id, 'type(', typeof obj.type, '):', obj.type,
-      'sender:', obj.sender, 'senderType:', obj.senderType)
+    // Log everything so we can see the exact format in Vercel logs
+    console.log('[Smoobu] msg raw — id:', obj.id,
+      '| type(', typeof obj.type, '):', JSON.stringify(obj.type),
+      '| sender:', JSON.stringify(obj.sender),
+      '| senderType:', JSON.stringify(obj.senderType),
+      '| subject:', String(obj.subject ?? '').slice(0, 60))
+
+    // type: null → treat as '' (not as "null" string which breaks comparisons)
+    const rawType = (obj.type != null && obj.type !== '') ? String(obj.type) : String(obj.senderType ?? obj.direction ?? '')
     return {
       id: (obj.id ?? obj.messageId) as number,
-      // Preserve the raw type value as string — numeric types like 1/2 are kept as "1"/"2"
-      type: obj.type !== undefined ? String(obj.type) : String(obj.senderType ?? obj.direction ?? ''),
+      type: rawType,
       message: String(obj.message ?? obj.body ?? obj.text ?? obj.messageBody ?? ''),
       date: String(obj.date ?? obj.created_at ?? obj.createdAt ?? ''),
-      sender: String(obj.sender ?? obj.senderName ?? obj.senderType ?? ''),
+      sender: String(obj.sender ?? obj.senderName ?? ''),
+      subject: String(obj.subject ?? ''),
     }
   })
 }

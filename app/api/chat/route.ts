@@ -27,20 +27,48 @@ async function syncSmoobuMessages(
         .maybeSingle()
       if (existing) continue
 
-      // Smoobu isHost detection — covers all known formats:
-      // String: "host", "host_message", "host_to_guest", "outgoing", "sent"
-      // Numeric: type=1 (often guest) OR type=2 (often host) — both conventions seen in the wild
-      // Sender: "Host", "Gastgeber", or the actual host name
-      // Guest indicators: "guest", "guest_message", "incoming", type=1
-      const typeStr = (sm.type ?? '').toLowerCase()
+      // ── Smoobu sender detection ───────────────────────────────────────────────
+      // Smoobu may use various type/sender conventions. We check every known pattern:
+      //
+      // typeStr conventions (after null-safe normalisation):
+      //   Strings: "host", "host_message", "host_to_guest", "outgoing", "sent" → HOST
+      //            "guest", "guest_message", "incoming", "guest_to_host"        → GUEST
+      //   Numbers: Smoobu often uses  1 = host/system,  2 = guest
+      //            (NOT 1=guest as you'd expect — test shows 1=host is correct)
+      //
+      // subject fallback: our own forwarded messages have known subjects
+      //   "Nachricht von Gast" in subject → GUEST sent via Trimosa
+      //   (no subject match) → use type/sender
+      //
+      // If nothing matches → default HOST (automated welcome messages are from host)
+      const typeStr   = (sm.type   ?? '').toLowerCase()
       const senderStr = (sm.sender ?? '').toLowerCase()
-      const isGuestType = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === '1'
-      const isHostType = typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent' || typeStr === '2'
-        || senderStr.includes('host') || senderStr.includes('gastgeber')
-      // If we can positively identify it as guest → guest. If host indicator → host.
-      // If unknown type → fall back to host (most automated Smoobu messages are from host).
-      const isHost = !isGuestType && (isHostType || typeStr === '')
-      console.log('[Chat] syncMsg id:', sm.id, 'type:', sm.type, 'sender:', sm.sender, '→ isHost:', isHost, '(guestType:', isGuestType, 'hostType:', isHostType, ')')
+      const subjectStr = (sm.subject ?? '').toLowerCase()
+
+      // Subject-based detection (reliable for Trimosa-forwarded messages)
+      const subjectIsGuest = subjectStr.includes('nachricht von gast') || subjectStr.includes('via trimosa')
+      const subjectIsHost  = subjectStr.includes('nachricht von trimosa')
+
+      // Type-string detection
+      const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
+                        || typeStr === '2'   // Smoobu: type=2 → guest message
+      const typeIsHost  = typeStr.includes('host')  || typeStr === 'outgoing' || typeStr === 'sent'
+                        || typeStr === 'host_to_guest' || typeStr === 'automated' || typeStr === 'owner'
+                        || typeStr === '1'   // Smoobu: type=1 → host/automated message
+                        || senderStr.includes('host') || senderStr.includes('gastgeber')
+
+      const isHost = subjectIsHost
+                   ? true
+                   : subjectIsGuest
+                   ? false
+                   : typeIsGuest
+                   ? false
+                   : typeIsHost || !typeIsGuest  // unknown type → host
+
+      console.log('[Chat] syncMsg id:', sm.id,
+        '| type:', JSON.stringify(sm.type), '| sender:', JSON.stringify(sm.sender),
+        '| subject:', sm.subject?.slice(0, 40),
+        '| → isHost:', isHost)
       const senderId = isHost ? hostId : guestId
 
       const { error } = await supabaseAdmin
