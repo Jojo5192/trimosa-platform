@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-/**
- * GET /api/smoobu/test
- * Tests Smoobu reservation creation with different address field formats.
- */
 export async function GET() {
   const apiKey = process.env.SMOOBU_API_KEY
   const channelId = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '23')
@@ -16,41 +12,23 @@ export async function GET() {
     .not('smoobu_id', 'is', null)
     .limit(1)
 
-  if (!listings?.length) {
-    return NextResponse.json({ error: 'No listings with smoobu_id' })
-  }
+  if (!listings?.length) return NextResponse.json({ error: 'No listings' })
   const apartmentId = parseInt(listings[0].smoobu_id)
 
-  // Try 3 different address formats
   const attempts = [
-    {
-      label: 'street (not address)',
-      extra: { street: 'Musterstr. 1', city: 'Berlin', postalCode: '10115', country: 'DE' },
-    },
-    {
-      label: 'address as object',
-      extra: { address: { street: 'Musterstr. 1', postalCode: '10115', location: 'Berlin', country: 'DE' } },
-    },
-    {
-      label: 'flat street + location',
-      extra: { street: 'Musterstr. 1', location: 'Berlin', zip: '10115', country: 'DE' },
-    },
+    { label: 'real-address-string', extra: { address: 'Musterstr. 1, 10115 Berlin', country: 'DE', phone: '+4900000000' } },
+    { label: 'address-with-street-number', extra: { address: 'Hauptstrasse 10', city: 'Berlin', postalCode: '10115', country: 'DE', phone: '+4900000000' } },
+    { label: 'address-json-nested', extra: { 'guest-address': 'Musterstr. 1', 'guest-city': 'Berlin', 'guest-postal-code': '10115', 'guest-country': 'DE', phone: '+4900000000' } },
   ]
 
   for (const attempt of attempts) {
     const payload = {
-      channelId,
-      apartmentId,
-      arrivalDate: '2026-12-20',
-      departureDate: '2026-12-22',
-      firstName: 'Test',
-      lastName: 'Trimosa',
+      channelId, apartmentId,
+      arrivalDate: '2026-12-20', departureDate: '2026-12-22',
+      firstName: 'Test', lastName: 'Trimosa',
       email: 'test@trimosa.de',
-      phone: '+4900000000',
-      adults: 1,
-      children: 0,
-      price: 100,
-      notice: 'TEST — bitte loeschen',
+      adults: 1, children: 0, price: 100,
+      notice: 'TEST bitte loeschen',
       ...attempt.extra,
     }
     try {
@@ -60,23 +38,16 @@ export async function GET() {
         body: JSON.stringify(payload),
       })
       const data = await res.json().catch(() => ({}))
-      results[attempt.label] = {
-        status: res.status,
-        success: res.ok,
-        response: data,
-        payload: attempt.extra,
-      }
-      // If one succeeds, mark it
+      results[attempt.label] = { status: res.status, success: res.ok, response: data }
       if (res.ok) {
         results.WINNER = attempt.label
-        results.winnerExtra = attempt.extra
         results.createdId = data.id
-        break // Don't create more test bookings
+        break
       }
     } catch (err) {
       results[attempt.label] = { error: String(err) }
     }
   }
 
-  return NextResponse.json(results, { status: 200 })
+  return NextResponse.json(results)
 }
