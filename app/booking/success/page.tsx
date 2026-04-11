@@ -121,12 +121,27 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               }
 
               if (user) {
-                const { data: guestProfile } = await supabaseAdmin
-                  .from('profiles')
-                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
-                  .eq('id', user.id)
-                  .maybeSingle()
-                const gp = guestProfile as Record<string, unknown> | null
+                let guestProfile: Record<string, unknown> | null = null
+                {
+                  const { data, error } = await supabaseAdmin
+                    .from('profiles')
+                    .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                    .eq('id', user.id)
+                    .maybeSingle()
+                  if (error) {
+                    console.warn('[SuccessPage] Full profile select failed:', error.message, '— retrying minimal')
+                    const { data: d2 } = await supabaseAdmin
+                      .from('profiles')
+                      .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                      .eq('id', user.id)
+                      .maybeSingle()
+                    guestProfile = d2 as Record<string, unknown> | null
+                  } else {
+                    guestProfile = data as Record<string, unknown> | null
+                  }
+                }
+                console.log('[SuccessPage] Guest profile data:', JSON.stringify(guestProfile))
+                const gp = guestProfile
                 const isBusiness = gp?.account_type === 'business'
                 if (isBusiness) {
                   firstName = (gp?.company_name as string) || (gp?.display_name as string) || 'Gast'
