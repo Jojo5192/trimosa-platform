@@ -14,7 +14,6 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   const isHost = user.user_metadata?.role === 'host'
-  const smoobuApiKey = user.user_metadata?.smoobu_api_key as string | undefined
 
   // Load platform settings (markup)
   const { data: platformSettings } = await supabase
@@ -25,9 +24,12 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('allow_instant_booking, allow_requests, min_request_nights')
+    .select('allow_instant_booking, allow_requests, min_request_nights, smoobu_api_key, smoobu_channel_id')
     .eq('id', user.id)
     .maybeSingle()
+
+  const smoobuApiKey = (profile as Record<string, unknown> | null)?.smoobu_api_key as string | null
+  const smoobuChannelId = (profile as Record<string, unknown> | null)?.smoobu_channel_id as number | null
 
   const { data: listings } = await supabase
     .from('listings')
@@ -165,7 +167,11 @@ export default async function DashboardPage() {
         {/* Smoobu */}
         <section className="mb-8">
           <h2 className="text-base font-bold tracking-tight mb-3" style={{ color: '#1D1D1F' }}>Smoobu Integration</h2>
-          <SmoobuConnect currentApiKey={smoobuApiKey} currentMarkup={platformSettings?.platform_markup_pct ?? 0} />
+          <SmoobuConnect
+            currentApiKey={smoobuApiKey}
+            currentChannelId={smoobuChannelId}
+            currentMarkup={platformSettings?.platform_markup_pct ?? 0}
+          />
         </section>
 
         {/* Meine Inserate */}

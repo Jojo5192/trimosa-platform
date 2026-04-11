@@ -3,17 +3,60 @@
  */
 
 const SMOOBU_BASE = 'https://login.smoobu.com/api'
-const API_KEY = process.env.SMOOBU_API_KEY!
-// Account-specific channel ID for TRIMOSA bookings.
-// Default: 1602674 (FeWo-direkt channel on this Smoobu account).
-// Override via SMOOBU_CHANNEL_ID env var once a dedicated TRIMOSA channel is set up in Smoobu.
-const CHANNEL_ID = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '1602674')
 
-function smoobuHeaders() {
+// Global fallback API key (used if host has no own key stored)
+const GLOBAL_API_KEY = process.env.SMOOBU_API_KEY ?? ''
+// Global fallback channel ID
+const GLOBAL_CHANNEL_ID = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '1602674')
+
+function smoobuHeaders(apiKey?: string) {
   return {
-    'Api-Key': API_KEY,
+    'Api-Key': apiKey || GLOBAL_API_KEY,
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
+  }
+}
+
+/**
+ * Discovers the first available channel ID for a given Smoobu API key
+ * by reading the most recent reservation. Falls back to GLOBAL_CHANNEL_ID.
+ */
+export async function discoverChannelId(apiKey: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${SMOOBU_BASE}/reservations?pageSize=1&page=1`, {
+      headers: smoobuHeaders(apiKey),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const booking = data.bookings?.[0]
+    // Return the account-specific channel id from the first booking
+    return booking?.channel?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Validates a Smoobu API key by fetching apartments.
+ * Returns { valid, apartments } so hosts can confirm which properties are linked.
+ */
+export async function validateSmoobuApiKey(apiKey: string): Promise<{
+  valid: boolean
+  apartments: { id: number; name: string }[]
+}> {
+  try {
+    const res = await fetch(`${SMOOBU_BASE}/apartments`, {
+      headers: smoobuHeaders(apiKey),
+    })
+    if (!res.ok) return { valid: false, apartments: [] }
+    const data = await res.json()
+    const apartments = (data.apartments ?? []).map((a: { id: number; name: string }) => ({
+      id: a.id,
+      name: a.name,
+    }))
+    return { valid: true, apartments }
+  } catch {
+    return { valid: false, apartments: [] }
   }
 }
 
@@ -125,7 +168,7 @@ export interface CreateReservationInput {
   lastName: string
   email: string
   phone?: string
-  street?: string       // Guest street address
+  street?: string
   postalCode?: string
   city?: string
   country?: string
@@ -133,6 +176,9 @@ export interface CreateReservationInput {
   children?: number
   price?: number
   notice?: string
+  // Per-host credentials (override global env vars)
+  apiKey?: string
+  channelId?: number
 }
 
 /**
@@ -141,12 +187,14 @@ export interface CreateReservationInput {
  * Returns the Smoobu reservation ID on success.
  */
 export async function createReservation(input: CreateReservationInput): Promise<number> {
-  console.log('[Smoobu] createReservation called with channelId:', CHANNEL_ID, 'apartmentId:', input.smoobuApartmentId)
+  const usedChannelId = input.channelId ?? GLOBAL_CHANNEL_ID
+  const usedApiKey = input.apiKey || GLOBAL_API_KEY
+  console.log('[Smoobu] createReservation channelId:', usedChannelId, 'apartmentId:', input.smoobuApartmentId)
   const res = await fetch(`${SMOOBU_BASE}/reservations`, {
     method: 'POST',
-    headers: smoobuHeaders(),
+    headers: smoobuHeaders(usedApiKey),
     body: JSON.stringify({
-      channelId: CHANNEL_ID,
+      channelId: usedChannelId,
       apartmentId: input.smoobuApartmentId,
       arrivalDate: input.arrivalDate,
       departureDate: input.departureDate,

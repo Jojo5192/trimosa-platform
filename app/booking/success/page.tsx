@@ -73,6 +73,15 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
 
           if (shouldPushToSmoobu && l?.smoobu_id) {
             try {
+              // Load host's Smoobu credentials (per-host support)
+              const { data: hostSmoobu } = await supabaseAdmin
+                .from('profiles')
+                .select('smoobu_api_key, smoobu_channel_id')
+                .eq('id', l.host_id)
+                .maybeSingle()
+              const hostApiKey = (hostSmoobu as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+              const hostChannelId = (hostSmoobu as Record<string, unknown> | null)?.smoobu_channel_id as number | undefined
+
               const supabase = await createSupabaseServerClient()
               const { data: { user } } = await supabase.auth.getUser()
 
@@ -121,6 +130,9 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                 children: (data.children as number) ?? 0,
                 price: data.total_price as number,
                 notice: `Buchung über TRIMOSA – Bestätigt & Bezahlt`,
+                // Use host's own Smoobu credentials if available
+                apiKey: hostApiKey,
+                channelId: hostChannelId,
               }
               console.log('[SuccessPage] Creating Smoobu reservation with:', JSON.stringify(smoobuPayload))
 

@@ -60,6 +60,15 @@ export async function POST(req: NextRequest) {
     // For instant bookings: push to Smoobu immediately
     if (bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id) {
       try {
+        // Load host's own Smoobu credentials (per-host support)
+        const { data: hostSmoobu } = await supabaseAdmin
+          .from('profiles')
+          .select('smoobu_api_key, smoobu_channel_id')
+          .eq('id', listing.host_id)
+          .maybeSingle()
+        const hostApiKey = (hostSmoobu as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
+        const hostChannelId = (hostSmoobu as Record<string, unknown> | null)?.smoobu_channel_id as number | undefined
+
         const guestData = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
         const guestEmail = guestData.data.user?.email ?? ''
         const { data: guestProfile } = await supabaseAdmin
@@ -86,6 +95,8 @@ export async function POST(req: NextRequest) {
           children: booking.children ?? 0,
           price: booking.total_price,
           notice: 'Buchung über TRIMOSA – Bestätigt & Bezahlt',
+          apiKey: hostApiKey,
+          channelId: hostChannelId,
         })
         await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuId }).eq('id', bookingId)
       } catch (err) {

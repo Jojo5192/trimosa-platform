@@ -88,3 +88,14 @@ CREATE POLICY "hosts_insert_listing_booking_messages"
     )
     AND sender_type = 'host'
   );
+
+-- ══════════════════════════════════════════════════════════════
+-- Multi-Host Smoobu Support
+-- Run this in Supabase → SQL Editor
+-- ══════════════════════════════════════════════════════════════
+
+-- Each host stores their own Smoobu credentials
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS smoobu_api_key    TEXT,
+  ADD COLUMN IF NOT EXISTS smoobu_channel_id BIGINT;
+-- Note: smoobu_api_key is sensitive — ensure RLS only lets the owner read their own row
