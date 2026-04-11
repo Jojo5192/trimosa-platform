@@ -113,7 +113,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               {
                 const { data: gp1, error: gpErr1 } = await supabaseAdmin
                   .from('profiles')
-                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, guest_street, guest_zip, guest_city, guest_country')
+                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
                   .eq('id', guestId)
                   .maybeSingle()
                 if (gpErr1) {
@@ -148,8 +148,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               const postalCode = (guestProfile?.guest_zip     as string) || ''
               const city       = (guestProfile?.guest_city    as string) || ''
               const country    = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
-              // phone column doesn't exist in profiles yet
-              const phone = ''
+              const phone = (guestProfile?.phone as string) || ''
 
               if (!firstName) firstName = 'Gast'
               if (!lastName)  lastName  = '-'

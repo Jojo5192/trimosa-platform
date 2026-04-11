@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     zip,
     city,
     country,
+    phone,
   } = body
 
   // Pflichtfelder prüfen
@@ -38,6 +39,9 @@ export async function POST(request: Request) {
   }
   if (!street?.trim() || !zip?.trim() || !city?.trim()) {
     return NextResponse.json({ error: 'Adresse (Straße, PLZ, Stadt) ist ein Pflichtfeld.' }, { status: 400 })
+  }
+  if (!phone?.trim()) {
+    return NextResponse.json({ error: 'Telefonnummer ist ein Pflichtfeld.' }, { status: 400 })
   }
 
   // Anzeigename ableiten wenn nicht angegeben
@@ -82,6 +86,7 @@ export async function POST(request: Request) {
     guest_zip:     zip?.trim(),
     guest_city:    city?.trim(),
     guest_country: country?.trim() || 'Deutschland',
+    phone: phone?.trim() || null,
   })
 
   if (profileError) {

@@ -50,6 +50,7 @@ export default function RegisterPage() {
   const [zip, setZip]                 = useState('')
   const [city, setCity]               = useState('')
   const [country, setCountry]         = useState('Deutschland')
+  const [phone, setPhone]             = useState('')
   const [role, setRole]               = useState<Role>('guest')
   const [email, setEmail]             = useState('')
   const [password, setPassword]       = useState('')
@@ -78,6 +79,9 @@ export default function RegisterPage() {
     if (!street.trim() || !zip.trim() || !city.trim()) {
       setError('Bitte vollständige Adresse angeben.'); setLoading(false); return
     }
+    if (!phone.trim()) {
+      setError('Bitte Telefonnummer angeben.'); setLoading(false); return
+    }
     if (!email.trim() || !password) {
       setError('Bitte E-Mail und Passwort eingeben.'); setLoading(false); return
     }
@@ -103,6 +107,7 @@ export default function RegisterPage() {
         zip:    zip.trim(),
         city:   city.trim(),
         country: country.trim() || 'Deutschland',
+        phone:  phone.trim(),
       }),
     })
 
@@ -256,6 +261,14 @@ export default function RegisterPage() {
                   <input style={inp} value={country} onChange={e => setCountry(e.target.value)} placeholder="Deutschland" autoComplete="country-name" />
                 </Field>
               </div>
+            </div>
+
+            {/* ── 4b. Telefon ── */}
+            <div>
+              <SectionLabel>Kontakt</SectionLabel>
+              <Field label="Telefonnummer *" hint="Wird für Buchungen benötigt und an den Gastgeber weitergegeben.">
+                <input type="tel" style={inp} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49 170 1234567" autoComplete="tel" />
+              </Field>
             </div>
 
             {/* ── 5. Rolle ── */}

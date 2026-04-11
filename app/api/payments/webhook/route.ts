@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         {
           const { data: gp1, error: gpErr1 } = await supabaseAdmin
             .from('profiles')
-            .select('guest_first_name, guest_last_name, company_name, account_type, display_name, guest_street, guest_zip, guest_city, guest_country')
+            .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
             .eq('id', booking.guest_id)
             .maybeSingle()
 
@@ -143,8 +143,7 @@ export async function POST(req: NextRequest) {
         const smoobuZip     = (guestProfile?.guest_zip    as string)  || ''
         const smoobuCity    = (guestProfile?.guest_city   as string)  || ''
         const smoobuCountry = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
-        // phone column doesn't exist in profiles yet
-        const smoobuPhone = ''
+        const smoobuPhone = (guestProfile?.phone as string) || ''
 
         // Final fallbacks
         if (!smoobuFirstName) smoobuFirstName = 'Gast'

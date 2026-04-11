@@ -14,12 +14,12 @@ export default async function GuestProfilePage() {
   // Try full select (including optional columns that might not exist yet)
   const { data: d1, error: e1 } = await supabaseAdmin
     .from('profiles')
-    .select('display_name, avatar_url, bio, location, languages, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip, guest_country, account_type, company_name, vat_id')
+    .select('display_name, avatar_url, bio, location, languages, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip, guest_country, account_type, company_name, vat_id, phone')
     .eq('id', user.id)
     .maybeSingle()
 
   if (e1) {
-    // Optional columns (account_type / company_name / vat_id) probably don't exist yet
+    // Optional columns probably don't exist yet
     console.warn('[ProfilePage] Full select failed, retrying minimal:', e1.message)
     const { data: d2, error: e2 } = await supabaseAdmin
       .from('profiles')
@@ -62,6 +62,7 @@ export default async function GuestProfilePage() {
         initialCity={(profile?.guest_city as string) ?? user.user_metadata?.city ?? ''}
         initialZip={(profile?.guest_zip as string) ?? user.user_metadata?.zip ?? ''}
         initialCountry={(profile?.guest_country as string) ?? user.user_metadata?.country ?? 'Deutschland'}
+        initialPhone={(profile?.phone as string) ?? ''}
       />
     </div>
   )

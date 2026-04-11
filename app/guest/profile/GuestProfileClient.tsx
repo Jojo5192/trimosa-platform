@@ -20,9 +20,10 @@ interface Props {
   initialCity?: string
   initialZip?: string
   initialCountry?: string
+  initialPhone?: string
 }
 
-export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland' }: Props) {
+export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland', initialPhone = '' }: Props) {
   const [displayName, setDisplayName] = useState(initialName)
   const [bio, setBio] = useState(initialBio)
   const [location, setLocation] = useState(initialLocation)
@@ -36,6 +37,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
   const [city, setCity] = useState(initialCity)
   const [zip, setZip] = useState(initialZip)
   const [country, setCountry] = useState(initialCountry)
+  const [phone, setPhone] = useState(initialPhone)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -76,6 +78,8 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
           guest_city:   city,
           guest_zip:    zip,
           guest_country: country,
+          // Phone
+          phone: phone || null,
         }),
       })
       const json = await res.json()
@@ -178,6 +182,12 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         <div>
           <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Land</label>
           <input style={inputStyle} value={country} onChange={e => setCountry(e.target.value)} placeholder="Deutschland" />
+        </div>
+
+        <div style={{ marginTop: '14px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Telefonnummer *</label>
+          <input type="tel" style={inputStyle} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49 170 1234567" autoComplete="tel" />
+          <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1.4 }}>Wird für Buchungen benötigt und an den Gastgeber weitergegeben.</p>
         </div>
       </div>
 
