@@ -167,7 +167,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0)
 
   // Build message list with date separators
-  interface MsgItem {
+  type MsgItem = {
     type: 'date'
     label: string
     key: string
