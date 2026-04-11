@@ -79,9 +79,12 @@ export async function POST(req: NextRequest) {
           'luxemburg': 'LU', 'luxembourg': 'LU',
           'italien': 'IT', 'italy': 'IT',
           'spanien': 'ES', 'spain': 'ES',
-          'vereinigtes königreich': 'GB', 'united kingdom': 'GB',
+          'vereinigtes königreich': 'GB', 'united kingdom': 'GB', 'uk': 'GB',
           'usa': 'US', 'united states': 'US',
-          'polen': 'PL', 'tschechien': 'CZ', 'ungarn': 'HU', 'kroatien': 'HR',
+          'polen': 'PL', 'poland': 'PL',
+          'tschechien': 'CZ', 'czech republic': 'CZ',
+          'ungarn': 'HU', 'hungary': 'HU',
+          'kroatien': 'HR', 'croatia': 'HR',
         }
         function resolveCountryCode(val: string): string {
           if (!val) return 'DE'
@@ -92,48 +95,49 @@ export async function POST(req: NextRequest) {
         const guestData = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
         const guestEmail = guestData.data.user?.email ?? ''
 
-        // ── Primary source: Stripe session metadata (set at checkout time) ──────
-        // These are guaranteed to be the user's data at the moment they paid.
-        const meta = session.metadata ?? {}
-        let smoobuFirstName = (meta.guestFirstName as string) || ''
-        let smoobuLastName  = (meta.guestLastName  as string) || ''
-        let smoobuStreet    = (meta.guestStreet    as string) || ''
-        let smoobuZip       = (meta.guestZip       as string) || ''
-        let smoobuCity      = (meta.guestCity      as string) || ''
-        let smoobuCountry   = (meta.guestCountry   as string) || 'DE'
-        let smoobuPhone     = (meta.guestPhone     as string) || ''
-
-        // ── Fallback: DB profile query (for bookings made before metadata was added) ─
-        if (!smoobuFirstName) {
-          console.log('[Webhook] No guest data in Stripe metadata — falling back to profile query')
-          let gp: Record<string, unknown> | null = null
-          const { data, error } = await supabaseAdmin
+        // ── Always fetch guest profile from DB — most up-to-date source ──────────
+        let guestProfile: Record<string, unknown> | null = null
+        {
+          const { data: gp1, error: gpErr1 } = await supabaseAdmin
             .from('profiles')
             .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
             .eq('id', booking.guest_id)
             .maybeSingle()
-          if (error) {
-            const { data: d2 } = await supabaseAdmin
+
+          if (gpErr1) {
+            console.error('[Webhook] Full profile select failed:', gpErr1.message, '– retrying minimal select')
+            const { data: gp2, error: gpErr2 } = await supabaseAdmin
               .from('profiles')
               .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
               .eq('id', booking.guest_id)
               .maybeSingle()
-            gp = d2 as Record<string, unknown> | null
+            if (gpErr2) {
+              console.error('[Webhook] Minimal profile select also failed:', gpErr2.message)
+            } else {
+              guestProfile = gp2 as Record<string, unknown> | null
+            }
           } else {
-            gp = data as Record<string, unknown> | null
-          }
-          if (gp) {
-            const isBiz = gp.account_type === 'business'
-            const nameParts = ((gp.display_name as string) || '').split(' ')
-            smoobuFirstName = isBiz ? ((gp.company_name as string) || (gp.display_name as string) || 'Gast') : ((gp.guest_first_name as string) || nameParts[0] || 'Gast')
-            smoobuLastName  = isBiz ? '-' : ((gp.guest_last_name as string) || nameParts.slice(1).join(' ') || '-')
-            smoobuStreet    = (gp.guest_street  as string) || ''
-            smoobuZip       = (gp.guest_zip     as string) || ''
-            smoobuCity      = (gp.guest_city    as string) || ''
-            smoobuCountry   = resolveCountryCode((gp.guest_country as string) || 'DE')
-            smoobuPhone     = (gp.phone as string) || ''
+            guestProfile = gp1 as Record<string, unknown> | null
           }
         }
+
+        console.log('[Webhook] Guest profile data:', JSON.stringify(guestProfile))
+
+        // Derive Smoobu fields from profile
+        const isBiz = guestProfile?.account_type === 'business'
+        const nameParts = ((guestProfile?.display_name as string) || '').split(' ')
+
+        let smoobuFirstName = isBiz
+          ? ((guestProfile?.company_name as string) || (guestProfile?.display_name as string) || '')
+          : ((guestProfile?.guest_first_name as string) || nameParts[0] || '')
+        let smoobuLastName = isBiz
+          ? '-'
+          : ((guestProfile?.guest_last_name as string) || nameParts.slice(1).join(' ') || '')
+        const smoobuStreet  = (guestProfile?.guest_street as string)  || ''
+        const smoobuZip     = (guestProfile?.guest_zip    as string)  || ''
+        const smoobuCity    = (guestProfile?.guest_city   as string)  || ''
+        const smoobuCountry = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
+        const smoobuPhone   = (guestProfile?.phone as string) || ''
 
         // Final fallbacks
         if (!smoobuFirstName) smoobuFirstName = 'Gast'
@@ -142,7 +146,9 @@ export async function POST(req: NextRequest) {
         console.log('[Webhook] Creating Smoobu reservation — booking:', bookingId,
           '| apartment:', listing.smoobu_id,
           '| guest:', smoobuFirstName, smoobuLastName,
-          '| address:', smoobuStreet, smoobuZip, smoobuCity, smoobuCountry)
+          '| email:', guestEmail,
+          '| address:', smoobuStreet || '(empty)', smoobuZip || '(empty)', smoobuCity || '(empty)', smoobuCountry,
+          '| phone:', smoobuPhone ? 'set' : 'not set')
 
         const smoobuId = await createReservation({
           smoobuApartmentId: parseInt(listing.smoobu_id),

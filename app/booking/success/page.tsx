@@ -26,7 +26,6 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
         bookingId,
         bookingType,
         stripePaid,
-        paymentStatus: (session as unknown as { payment_status: string }).payment_status,
       })
 
       if (bookingId && stripePaid) {
@@ -62,7 +61,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               .eq('id', bookingId)
           }
 
-          // ─── Push to Smoobu for instant bookings ─────────────────────
+          // ─── Push to Smoobu for instant bookings (if webhook hasn't done it yet) ───
           const shouldPushToSmoobu = bookingType === 'instant' && l?.smoobu_id && !data.smoobu_reservation_id
           console.log('[SuccessPage] Smoobu push check:', {
             bookingType,
@@ -84,17 +83,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
 
               const supabase = await createSupabaseServerClient()
               const { data: { user } } = await supabase.auth.getUser()
-
-              // Get guest profile data
-              let firstName = 'Gast'
-              let lastName = '-'
-              let email = ''
-              let phone = ''
-
-              let street = ''
-              let postalCode = ''
-              let city = ''
-              let country = 'DE'
+              const guestId = user?.id ?? data.guest_id as string
 
               const countryNameToCode: Record<string, string> = {
                 'deutschland': 'DE', 'germany': 'DE',
@@ -113,51 +102,56 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                 'ungarn': 'HU', 'hungary': 'HU',
                 'kroatien': 'HR', 'croatia': 'HR',
               }
-
               function resolveCountryCode(val: string): string {
                 if (!val) return 'DE'
                 if (val.length === 2) return val.toUpperCase()
-                return countryNameToCode[val.toLowerCase()] ?? val
+                return countryNameToCode[val.toLowerCase()] ?? 'DE'
               }
 
-              if (user) {
-                let guestProfile: Record<string, unknown> | null = null
-                {
-                  const { data, error } = await supabaseAdmin
+              // Always fetch fresh guest profile from DB
+              let guestProfile: Record<string, unknown> | null = null
+              {
+                const { data: gp1, error: gpErr1 } = await supabaseAdmin
+                  .from('profiles')
+                  .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                  .eq('id', guestId)
+                  .maybeSingle()
+                if (gpErr1) {
+                  console.error('[SuccessPage] Full profile select failed:', gpErr1.message, '– retrying minimal')
+                  const { data: gp2, error: gpErr2 } = await supabaseAdmin
                     .from('profiles')
-                    .select('guest_first_name, guest_last_name, company_name, account_type, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
-                    .eq('id', user.id)
+                    .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
+                    .eq('id', guestId)
                     .maybeSingle()
-                  if (error) {
-                    console.warn('[SuccessPage] Full profile select failed:', error.message, '— retrying minimal')
-                    const { data: d2 } = await supabaseAdmin
-                      .from('profiles')
-                      .select('guest_first_name, guest_last_name, display_name, phone, guest_street, guest_zip, guest_city, guest_country')
-                      .eq('id', user.id)
-                      .maybeSingle()
-                    guestProfile = d2 as Record<string, unknown> | null
-                  } else {
-                    guestProfile = data as Record<string, unknown> | null
-                  }
-                }
-                console.log('[SuccessPage] Guest profile data:', JSON.stringify(guestProfile))
-                const gp = guestProfile
-                const isBusiness = gp?.account_type === 'business'
-                if (isBusiness) {
-                  firstName = (gp?.company_name as string) || (gp?.display_name as string) || 'Gast'
-                  lastName = '-'
+                  if (gpErr2) console.error('[SuccessPage] Minimal profile select failed:', gpErr2.message)
+                  else guestProfile = gp2 as Record<string, unknown> | null
                 } else {
-                  const fullName = ((gp?.display_name as string) || '').split(' ')
-                  firstName = (gp?.guest_first_name as string) || fullName[0] || 'Gast'
-                  lastName = ((gp?.guest_last_name as string) || fullName.slice(1).join(' ')) || '-'
+                  guestProfile = gp1 as Record<string, unknown> | null
                 }
-                email = user.email ?? ''
-                phone = (gp?.phone as string) || ''
-                street = (gp?.guest_street as string) || ''
-                postalCode = (gp?.guest_zip as string) || ''
-                city = (gp?.guest_city as string) || ''
-                country = resolveCountryCode((gp?.guest_country as string) || 'DE')
               }
+              console.log('[SuccessPage] Guest profile:', JSON.stringify(guestProfile))
+
+              // Guest email
+              const guestAuthData = await supabaseAdmin.auth.admin.getUserById(guestId)
+              const email = guestAuthData.data.user?.email ?? user?.email ?? ''
+
+              const isBiz = guestProfile?.account_type === 'business'
+              const nameParts = ((guestProfile?.display_name as string) || '').split(' ')
+
+              let firstName = isBiz
+                ? ((guestProfile?.company_name as string) || (guestProfile?.display_name as string) || '')
+                : ((guestProfile?.guest_first_name as string) || nameParts[0] || '')
+              let lastName = isBiz
+                ? '-'
+                : ((guestProfile?.guest_last_name as string) || nameParts.slice(1).join(' ') || '')
+              const street     = (guestProfile?.guest_street  as string) || ''
+              const postalCode = (guestProfile?.guest_zip     as string) || ''
+              const city       = (guestProfile?.guest_city    as string) || ''
+              const country    = resolveCountryCode((guestProfile?.guest_country as string) || 'DE')
+              const phone      = (guestProfile?.phone as string) || ''
+
+              if (!firstName) firstName = 'Gast'
+              if (!lastName)  lastName  = '-'
 
               const smoobuPayload = {
                 smoobuApartmentId: parseInt(l.smoobu_id),
@@ -166,7 +160,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                 firstName,
                 lastName,
                 email,
-                phone,
+                phone: phone || '+4900000000',
                 street,
                 postalCode,
                 city,
@@ -174,15 +168,14 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                 adults: (data.adults as number) ?? 1,
                 children: (data.children as number) ?? 0,
                 price: data.total_price as number,
-                notice: `Buchung über TRIMOSA – Bestätigt & Bezahlt`,
-                // Use host's own Smoobu credentials if available
+                notice: 'Buchung über TRIMOSA – Bestätigt & Bezahlt',
                 apiKey: hostApiKey,
                 channelId: hostChannelId,
               }
-              console.log('[SuccessPage] Creating Smoobu reservation with:', JSON.stringify(smoobuPayload))
+              console.log('[SuccessPage] Creating Smoobu reservation:', JSON.stringify({ ...smoobuPayload, apiKey: hostApiKey ? 'set' : 'not set' }))
 
               const smoobuId = await createReservation(smoobuPayload)
-              console.log('[SuccessPage] Smoobu reservation created successfully! ID:', smoobuId)
+              console.log('[SuccessPage] Smoobu reservation created! ID:', smoobuId)
 
               await supabaseAdmin
                 .from('bookings')
@@ -211,7 +204,6 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                     .from('conversations')
                     .update({ last_message_at: new Date().toISOString() })
                     .eq('id', conv.id)
-                  // Also notify via Smoobu messaging
                   try {
                     await sendMessageToGuest(smoobuId, `Buchung über TRIMOSA für ${data.check_in} – ${data.check_out} ist bestätigt. Wir freuen uns auf deinen Aufenthalt!`)
                   } catch { /* non-fatal */ }
