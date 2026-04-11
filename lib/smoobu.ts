@@ -4,6 +4,8 @@
 
 const SMOOBU_BASE = 'https://login.smoobu.com/api'
 const API_KEY = process.env.SMOOBU_API_KEY!
+// Channel ID for TRIMOSA direct bookings — set via env or default to FeWo-direkt (23)
+const CHANNEL_ID = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '23')
 
 function smoobuHeaders() {
   return {
@@ -128,15 +130,17 @@ export interface CreateReservationInput {
 }
 
 /**
- * Creates a reservation in Smoobu (direct booking, channelId = -1).
+ * Creates a reservation in Smoobu.
+ * Uses SMOOBU_CHANNEL_ID env var (defaults to 23 = FeWo-direkt).
  * Returns the Smoobu reservation ID on success.
  */
 export async function createReservation(input: CreateReservationInput): Promise<number> {
+  console.log('[Smoobu] createReservation called with channelId:', CHANNEL_ID, 'apartmentId:', input.smoobuApartmentId)
   const res = await fetch(`${SMOOBU_BASE}/reservations`, {
     method: 'POST',
     headers: smoobuHeaders(),
     body: JSON.stringify({
-      channelId: -1, // -1 = direct booking
+      channelId: CHANNEL_ID,
       apartmentId: input.smoobuApartmentId,
       arrivalDate: input.arrivalDate,
       departureDate: input.departureDate,

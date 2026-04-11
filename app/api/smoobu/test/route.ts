@@ -3,65 +3,71 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 
 /**
  * GET /api/smoobu/test
- * Diagnostic endpoint — finds the correct channelId for Smoobu reservations.
+ * Tests creating a Smoobu reservation with the correct channelId.
  * Remove this in production!
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const dryRun = searchParams.get('create') !== 'true'
   const apiKey = process.env.SMOOBU_API_KEY
+  const channelId = parseInt(process.env.SMOOBU_CHANNEL_ID ?? '23')
+
   const results: Record<string, unknown> = {
-    apiKeySet: !!apiKey,
+    channelId,
+    dryRun,
+    hint: dryRun ? 'Add ?create=true to actually create a test reservation' : 'Creating test reservation...',
   }
 
-  // 1. Fetch existing reservations to find valid channel IDs
-  try {
-    const res = await fetch('https://login.smoobu.com/api/reservations?pageSize=5&page=1', {
-      headers: {
-        'Api-Key': apiKey ?? '',
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-      },
-    })
-    const data = await res.json().catch(() => ({}))
-    results.reservationsStatus = res.status
-    if (res.ok && data.bookings) {
-      results.existingBookings = data.bookings.map((b: Record<string, unknown>) => ({
-        id: b.id,
-        channel: b.channel,
-        type: b.type,
-        arrival: b['arrival-date'],
-        departure: b['departure-date'],
-        guestName: b['guest-name'],
-      }))
-    } else {
-      results.reservationsRaw = data
-    }
-  } catch (err) {
-    results.reservationsError = String(err)
-  }
-
-  // 2. Try different channel endpoints
-  for (const endpoint of ['/api/channels', '/api/booking-channels', '/api/settings/channels']) {
-    try {
-      const res = await fetch(`https://login.smoobu.com${endpoint}`, {
-        headers: { 'Api-Key': apiKey ?? '', 'Content-Type': 'application/json' },
-      })
-      const data = await res.json().catch(() => ({}))
-      results[`endpoint_${endpoint.replace(/\//g, '_')}`] = { status: res.status, data }
-    } catch (err) {
-      results[`endpoint_${endpoint.replace(/\//g, '_')}`] = { error: String(err) }
-    }
-  }
-
-  // 3. Get our listings with smoobu_id
+  // Get first listing with smoobu_id
   const { data: listings } = await supabaseAdmin
     .from('listings')
     .select('id, title, smoobu_id')
     .not('smoobu_id', 'is', null)
-    .limit(3)
-  results.listings = listings?.map(l => ({
-    title: l.title,
-    smoobu_id: l.smoobu_id,
-  }))
+    .limit(1)
+
+  if (!listings?.length) {
+    results.error = 'No listings with smoobu_id found'
+    return NextResponse.json(results)
+  }
+
+  const listing = listings[0]
+  results.listing = { title: listing.title, smoobu_id: listing.smoobu_id }
+
+  if (!dryRun) {
+    // Actually create a test reservation
+    const payload = {
+      channelId,
+      apartmentId: parseInt(listing.smoobu_id),
+      arrivalDate: '2026-12-20',
+      departureDate: '2026-12-22',
+      firstName: 'Test',
+      lastName: 'Trimosa',
+      email: 'test@trimosa.de',
+      phone: '',
+      adults: 1,
+      children: 0,
+      price: 100,
+      notice: 'TEST-Buchung über TRIMOSA — bitte löschen',
+    }
+    results.payload = payload
+
+    try {
+      const res = await fetch('https://login.smoobu.com/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Api-Key': apiKey ?? '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      results.status = res.status
+      results.response = data
+      results.success = res.ok
+    } catch (err) {
+      results.error = String(err)
+    }
+  }
 
   return NextResponse.json(results, { status: 200 })
 }
