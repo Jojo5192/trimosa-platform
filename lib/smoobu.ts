@@ -279,8 +279,30 @@ export async function getReservationMessages(
     return []
   }
   const data = await res.json()
-  // Smoobu returns either { messages: [...] } or a direct array
-  return (data?.messages ?? data ?? []) as SmoobuMessage[]
+  // Log raw structure to help diagnose response format issues
+  console.log('[Smoobu] getReservationMessages raw keys:', JSON.stringify(Object.keys(data ?? {})))
+
+  // Smoobu may return { messages: [...] }, { data: [...] }, or a direct array
+  let msgs: SmoobuMessage[]
+  if (Array.isArray(data)) {
+    msgs = data
+  } else if (Array.isArray(data?.messages)) {
+    msgs = data.messages
+  } else if (Array.isArray(data?.data)) {
+    msgs = data.data
+  } else {
+    console.warn('[Smoobu] getReservationMessages: unexpected response shape', JSON.stringify(data).slice(0, 200))
+    msgs = []
+  }
+
+  // Normalise field names (Smoobu may use 'body' or 'text' instead of 'message')
+  return msgs.map((m: Record<string, unknown>) => ({
+    id: (m.id ?? m.messageId) as number,
+    type: (m.type ?? m.senderType ?? '') as string,
+    message: (m.message ?? m.body ?? m.text ?? m.messageBody ?? '') as string,
+    date: (m.date ?? m.created_at ?? m.createdAt ?? '') as string,
+    sender: (m.sender ?? m.senderName ?? '') as string,
+  }))
 }
 
 /**
@@ -297,10 +319,14 @@ export async function sendMessageToGuest(
     {
       method: 'POST',
       headers: smoobuHeaders(apiKey),
-      body: JSON.stringify({ message }),
+      // Smoobu API requires 'messageBody' (not 'message') + optional 'subject'
+      body: JSON.stringify({ subject: 'Nachricht von Trimosa', messageBody: message }),
     },
   )
-  if (!res.ok) console.error('[Smoobu] sendMessageToGuest failed', res.status)
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    console.error('[Smoobu] sendMessageToGuest failed', res.status, errText)
+  }
   return res.ok
 }
 
