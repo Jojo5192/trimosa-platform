@@ -191,10 +191,13 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
+    console.log('[Chat] POST forward check — smoobuId:', smoobuId, 'host_id:', conv?.host_id, 'sender:', user.id, 'isHost:', conv?.host_id === user.id)
     if (smoobuId && conv?.host_id === user.id) {
       const { data: hp } = await supabaseAdmin.from('profiles').select('smoobu_api_key').eq('id', user.id).maybeSingle()
       const hKey = (hp as Record<string, unknown> | null)?.smoobu_api_key as string | undefined
-      await sendMessageToGuest(smoobuId, content.trim(), hKey)
+      console.log('[Chat] Forwarding to Smoobu reservation:', smoobuId, 'hasApiKey:', !!hKey)
+      const ok = await sendMessageToGuest(smoobuId, content.trim(), hKey)
+      console.log('[Chat] sendMessageToGuest result:', ok)
     }
   } catch (err) {
     console.error('[Chat] Smoobu forward failed', err)
