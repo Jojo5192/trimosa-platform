@@ -210,7 +210,7 @@ export async function createReservation(input: CreateReservationInput): Promise<
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      phone: input.phone || '',
+      phone: input.phone || '+4900000000',
       // Smoobu requires address as an object with street field
       address: {
         street: input.street || 'Nicht angegeben',
