@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import AvatarCropper from '@/components/AvatarCropper'
 
 const LANGUAGE_OPTIONS = ['Deutsch', 'Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch', 'Polnisch', 'Russisch']
@@ -51,38 +50,43 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
   async function handleSave() {
     setSaving(true)
     setError('')
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
 
     const resolvedDisplay = displayName ||
       (accountType === 'business' ? companyName : `${firstName} ${lastName}`.trim())
 
-    const { error: err } = await supabase.from('profiles').upsert({
-      id: user.id,
-      display_name: resolvedDisplay,
-      bio,
-      location,
-      languages,
-      avatar_url: avatarUrl,
-      account_type: accountType,
-      // Person
-      guest_first_name: accountType === 'person' ? firstName : null,
-      guest_last_name:  accountType === 'person' ? lastName  : null,
-      // Business
-      company_name: accountType === 'business' ? companyName : null,
-      vat_id:       accountType === 'business' ? (vatId || null) : null,
-      // Address (shared)
-      guest_street: street,
-      guest_city: city,
-      guest_zip: zip,
-      guest_country: country,
-    })
-
-    if (err) {
-      setError('Speichern fehlgeschlagen: ' + err.message)
-    } else {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: resolvedDisplay,
+          bio,
+          location,
+          languages,
+          avatar_url: avatarUrl,
+          account_type: accountType,
+          // Person
+          guest_first_name: accountType === 'person' ? firstName : null,
+          guest_last_name:  accountType === 'person' ? lastName  : null,
+          // Business
+          company_name: accountType === 'business' ? companyName : null,
+          vat_id:       accountType === 'business' ? (vatId || null) : null,
+          // Address (shared)
+          guest_street: street,
+          guest_city:   city,
+          guest_zip:    zip,
+          guest_country: country,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setError('Speichern fehlgeschlagen: ' + (json.error ?? res.statusText))
+      } else {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 3000)
+      }
+    } catch (err: unknown) {
+      setError('Netzwerkfehler: ' + (err instanceof Error ? err.message : String(err)))
     }
     setSaving(false)
   }
