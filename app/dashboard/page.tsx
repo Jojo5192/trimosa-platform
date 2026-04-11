@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
+import DashboardNav from '@/components/DashboardNav'
 import BookingActions from './BookingActions'
 import SmoobuConnect from './SmoobuConnect'
 
@@ -42,6 +43,7 @@ export default async function DashboardPage() {
   return (
     <main className="min-h-screen" style={{ backgroundColor: '#F5F5F7' }}>
       <NavBar />
+      <DashboardNav />
 
       <div className="max-w-5xl mx-auto px-6 py-10">
 

@@ -10,8 +10,15 @@ const STEPS = [
   { id: 2, title: 'Smoobu verbinden',          icon: '🔗' },
   { id: 3, title: 'Inserate einrichten',        icon: '🏠' },
   { id: 4, title: 'Preisgestaltung',            icon: '💶' },
-  { id: 5, title: 'Zahlungsdaten',              icon: '🏦' },
-  { id: 6, title: 'Fertig!',                    icon: '✅' },
+  { id: 5, title: 'Stornierungsbedingungen',    icon: '📄' },
+  { id: 6, title: 'Zahlungsdaten',              icon: '🏦' },
+  { id: 7, title: 'Fertig!',                    icon: '✅' },
+]
+
+const CANCEL_POLICIES = [
+  { id: 'flexibel', label: 'Flexibel', desc: 'Kostenlose Stornierung bis 24 Std. vor Check-in. Danach 1 Nacht Gebühr.' },
+  { id: 'moderat',  label: 'Moderat',  desc: 'Kostenlose Stornierung bis 5 Tage vor Check-in. Danach 50% des Buchungsbetrags.' },
+  { id: 'strikt',   label: 'Strikt',   desc: 'Kostenlose Stornierung innerhalb von 48h nach Buchung (mind. 14 Tage vor Check-in). Danach keine Rückerstattung.' },
 ]
 
 export default function SetupPage() {
@@ -27,6 +34,9 @@ export default function SetupPage() {
     billing_name: '', billing_address: '', billing_city: '', billing_zip: '',
     billing_country: 'Deutschland', billing_tax_id: '', iban: '', bic: '', account_holder: '',
   })
+  const [cancelPolicy, setCancelPolicy] = useState('moderat')
+  const [savingCancel, setSavingCancel] = useState(false)
+  const [cancelSaved, setCancelSaved] = useState(false)
   const [savingBilling, setSavingBilling] = useState(false)
   const [billingSaved, setBillingSaved] = useState(false)
   const [savingMarkup, setSavingMarkup] = useState(false)
@@ -76,7 +86,7 @@ export default function SetupPage() {
     await fetch('/api/host/billing', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...billing, onboarding_step: 6 }),
+      body: JSON.stringify({ ...billing, onboarding_step: 7 }),
     })
     setSavingBilling(false)
     setBillingSaved(true)
@@ -309,8 +319,63 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* ── Step 5: Zahlungsdaten ── */}
+        {/* ── Step 5: Stornierungsbedingungen ── */}
         {step === 5 && (
+          <div>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111', marginBottom: '8px', letterSpacing: '-0.5px' }}>
+              Stornierungsbedingungen
+            </h1>
+            <p style={{ fontSize: '15px', color: '#555', lineHeight: 1.7, marginBottom: '24px' }}>
+              Wähle deine Standard-Stornierungsrichtlinie. Diese gilt für alle Buchungen über TRIMOSA und wird Gästen vor der Buchung angezeigt. Du kannst sie später pro Inserat individuell anpassen.
+            </p>
+
+            <div style={{ marginBottom: '24px', background: '#FFF9EC', borderRadius: '14px', padding: '14px 18px', border: '1px solid #F6C840' }}>
+              <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
+                ⚠️ <strong>Wichtig:</strong> Stornierungen werden ausschließlich über TRIMOSA abgewickelt – nicht über Smoobu. Smoobu dient nur als Kalender- und Preismanager.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
+              {CANCEL_POLICIES.map(p => (
+                <label key={p.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '14px',
+                  padding: '16px 20px', borderRadius: '14px', cursor: 'pointer',
+                  border: cancelPolicy === p.id ? `2px solid ${GOLD}` : '1.5px solid #E0DDD6',
+                  background: cancelPolicy === p.id ? '#FBF6EC' : '#fff',
+                }}>
+                  <input type="radio" name="cancel" value={p.id} checked={cancelPolicy === p.id}
+                    onChange={() => setCancelPolicy(p.id)}
+                    style={{ marginTop: '3px', accentColor: GOLD }} />
+                  <div>
+                    <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 4px' }}>{p.label}</p>
+                    <p style={{ fontSize: '13px', color: '#666', margin: 0, lineHeight: 1.5 }}>{p.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <button
+              onClick={async () => {
+                setSavingCancel(true)
+                await fetch('/api/host/billing', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ onboarding_step: 5 }),
+                })
+                setSavingCancel(false)
+                setCancelSaved(true)
+                goToStep(6)
+              }}
+              style={btnStyle}
+              disabled={savingCancel}
+            >
+              {savingCancel ? 'Wird gespeichert…' : 'Weiter →'}
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 6: Zahlungsdaten ── */}
+        {step === 6 && (
           <div>
             <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111', marginBottom: '8px', letterSpacing: '-0.5px' }}>
               Zahlungsdaten hinterlegen
@@ -376,7 +441,7 @@ export default function SetupPage() {
                   {savingBilling ? 'Speichern...' : billingSaved ? '✓ Gespeichert' : 'Daten speichern & weiter →'}
                 </button>
                 {billingSaved && (
-                  <button onClick={() => goToStep(6)} style={{ ...btnStyle, backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                  <button onClick={() => goToStep(7)} style={{ ...btnStyle, backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
                     Zur Zusammenfassung →
                   </button>
                 )}
@@ -385,8 +450,8 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* ── Step 6: Fertig ── */}
-        {step === 6 && (
+        {/* ── Step 7: Fertig ── */}
+        {step === 7 && (
           <div>
             <div style={{ textAlign: 'center', padding: '20px 0 32px' }}>
               <div style={{ fontSize: '56px', marginBottom: '16px' }}>🎉</div>
@@ -402,7 +467,7 @@ export default function SetupPage() {
               {[
                 { icon: '🏠', title: 'Inserate aktivieren', desc: 'Gehe zum Dashboard und aktiviere deine Inserate damit sie öffentlich sichtbar sind.', href: '/dashboard' },
                 { icon: '💶', title: 'Preisanpassung prüfen', desc: 'Stelle sicher dass dein Auf-/Abschlag korrekt eingestellt ist.', href: '/dashboard' },
-                { icon: '📋', title: 'Zahlungsdaten aktualisieren', desc: 'Halte deine Bankverbindung aktuell für reibungslose Auszahlungen.', action: () => goToStep(5) },
+                { icon: '📋', title: 'Zahlungsdaten aktualisieren', desc: 'Halte deine Bankverbindung aktuell für reibungslose Auszahlungen.', action: () => goToStep(6) },
               ].map(item => (
                 <div key={item.title} style={{ display: 'flex', gap: '14px', padding: '16px', backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #EEEBE4' }}>
                   <span style={{ fontSize: '24px' }}>{item.icon}</span>

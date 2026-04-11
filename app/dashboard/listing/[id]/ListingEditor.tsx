@@ -46,7 +46,26 @@ interface Listing {
   check_out_time?: string
   is_active: boolean
   smoobu_id?: string
+  cancellation_policy?: string
 }
+
+const CANCELLATION_POLICIES = [
+  {
+    id: 'flexibel',
+    label: 'Flexibel',
+    desc: 'Kostenlose Stornierung bis 24 Std. vor Check-in. Danach 1 Nacht Gebühr.',
+  },
+  {
+    id: 'moderat',
+    label: 'Moderat',
+    desc: 'Kostenlose Stornierung bis 5 Tage vor Check-in. Danach 50 % des Buchungsbetrags.',
+  },
+  {
+    id: 'strikt',
+    label: 'Strikt',
+    desc: 'Kostenlose Stornierung innerhalb von 48 Std. nach Buchung (mind. 14 Tage vor Check-in). Danach keine Rückerstattung.',
+  },
+]
 
 /* ── Section wrapper — must be defined outside ListingEditor to avoid focus loss on re-render ── */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -88,6 +107,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [checkInTime, setCheckInTime] = useState(listing.check_in_time ?? '15:00')
   const [checkOutTime, setCheckOutTime] = useState(listing.check_out_time ?? '11:00')
   const [isActive, setIsActive] = useState(listing.is_active)
+  const [cancelPolicy, setCancelPolicy] = useState(listing.cancellation_policy ?? 'moderat')
+  const [onboardingError, setOnboardingError] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -157,6 +180,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           amenities,
           cover_image: coverImage,
           rooms,
+          cancellation_policy: cancelPolicy,
           house_rules: houseRules,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
@@ -165,8 +189,14 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError('Speichern fehlgeschlagen: ' + (data.error ?? res.statusText))
+        if (data.error === 'onboarding_incomplete') {
+          setOnboardingError(true)
+          setIsActive(false)
+        } else {
+          setError('Speichern fehlgeschlagen: ' + (data.error ?? res.statusText))
+        }
       } else {
+        setOnboardingError(false)
         setSaved(true)
         setTimeout(() => setSaved(false), 3000)
         router.refresh()
@@ -175,6 +205,21 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       setError('Netzwerkfehler: ' + String(e))
     }
     setSaving(false)
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setDeleting(true)
+    const res = await fetch(`/api/listings/${listing.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      router.push('/dashboard')
+      router.refresh()
+    } else {
+      const d = await res.json()
+      setError('Löschen fehlgeschlagen: ' + (d.error ?? res.statusText))
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -382,6 +427,51 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
         </Field>
       </Section>
 
+      {/* ── Stornierungsbedingungen ── */}
+      <Section title="Stornierungsbedingungen">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px' }}>
+          Diese Bedingungen gelten für Buchungen über TRIMOSA und werden Gästen vor der Buchung angezeigt.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {CANCELLATION_POLICIES.map(p => (
+            <label key={p.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '12px',
+              padding: '12px 16px', borderRadius: '12px', cursor: 'pointer',
+              border: cancelPolicy === p.id ? '2px solid #A8882A' : '1.5px solid #E0DDD6',
+              background: cancelPolicy === p.id ? '#FBF6EC' : '#fff',
+            }}>
+              <input
+                type="radio"
+                name="cancellation"
+                value={p.id}
+                checked={cancelPolicy === p.id}
+                onChange={() => setCancelPolicy(p.id)}
+                style={{ marginTop: '2px', accentColor: '#A8882A' }}
+              />
+              <div>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 2px' }}>{p.label}</p>
+                <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>{p.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </Section>
+
+      {/* ── Onboarding Gate ── */}
+      {onboardingError && (
+        <div style={{ borderRadius: '12px', padding: '14px 16px', background: '#FFF7E6', border: '1px solid #F6C840', marginBottom: '12px' }}>
+          <p style={{ fontSize: '13px', fontWeight: 600, color: '#92400E', margin: '0 0 6px' }}>
+            ⚠️ Einrichtung nicht abgeschlossen
+          </p>
+          <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 10px' }}>
+            Um ein Inserat zu aktivieren, musst du den Einrichtungsassistenten abschließen und deine Zahlungsdaten (IBAN) hinterlegen.
+          </p>
+          <a href="/dashboard/setup" style={{ fontSize: '12px', fontWeight: 700, color: '#A8882A' }}>
+            Zur Einrichtung →
+          </a>
+        </div>
+      )}
+
       {/* ── Fehler / Speichern ── */}
       {error && (
         <div style={{ borderRadius: '12px', padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '12px' }}>
@@ -404,6 +494,21 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           }}
         >
           {saving ? 'Wird gespeichert…' : saved ? '✓ Gespeichert' : 'Änderungen speichern'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{
+            padding: '14px 18px', borderRadius: '14px',
+            border: confirmDelete ? '2px solid #DC2626' : '1.5px solid #E0DDD6',
+            background: confirmDelete ? '#FEF2F2' : '#fff',
+            color: confirmDelete ? '#DC2626' : '#999',
+            fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          {deleting ? '…' : confirmDelete ? '⚠ Sicher?' : '🗑'}
         </button>
       </div>
 
