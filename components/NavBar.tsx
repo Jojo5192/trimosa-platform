@@ -326,6 +326,8 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [user, setUser] = useState<User | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [compact, setCompact] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const [q, setQ] = useState(initialQ)
   const [checkin, setCheckin] = useState(initialCheckin)
@@ -349,8 +351,17 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const guestLabel = totalGuests === 1 ? '1 Gast' : `${totalGuests} Gäste`
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
-    const { data: listener } = supabase.auth.onAuthStateChange((_ev, s) => setUser(s?.user ?? null))
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user ?? null
+      setUser(u)
+      if (u) loadProfile(u.id)
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_ev, s) => {
+      const u = s?.user ?? null
+      setUser(u)
+      if (u) loadProfile(u.id)
+      else { setAvatarUrl(null); setUnreadCount(0) }
+    })
     const onScroll = () => {
       const c = window.scrollY > 60
       setCompact(c)
@@ -360,6 +371,25 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => { listener.subscription.unsubscribe(); window.removeEventListener('scroll', onScroll) }
   }, [])
+
+  async function loadProfile(userId: string) {
+    const { data } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle()
+    if (data?.avatar_url) setAvatarUrl(data.avatar_url)
+  }
+
+  // Poll for unread chat messages
+  useEffect(() => {
+    if (!user) return
+    async function checkUnread() {
+      const res = await fetch('/api/chat')
+      if (!res.ok) return
+      const convs: Array<{ unread: number }> = await res.json()
+      setUnreadCount(convs.reduce((sum, c) => sum + (c.unread ?? 0), 0))
+    }
+    checkUnread()
+    const id = setInterval(checkUnread, 30000)
+    return () => clearInterval(id)
+  }, [user])
 
   // Close popover on outside click
   useEffect(() => {
@@ -385,6 +415,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
   const isHost = user?.user_metadata?.role === 'host'
   const initials = (user?.user_metadata?.name || user?.email || 'U')[0].toUpperCase()
+  const chatHref = isHost ? '/dashboard/chat' : '/guest/chat'
   const headerH = compact ? 64 : 88
   const barH = compact ? 46 : 60
   const logoH = compact ? '24px' : '32px'
@@ -666,9 +697,25 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {user ? (
               <>
-                {/* Direkter Dashboard-Button */}
+                {/* Chat icon with unread badge */}
                 <Link
-                  href="/dashboard"
+                  href={chatHref}
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, textDecoration: 'none', color: '#555' }}
+                  title="Nachrichten"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', borderRadius: '50%', background: '#EF4444', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+
+                {/* Direkter Dashboard / Trips Button */}
+                <Link
+                  href={isHost ? '/dashboard' : '/guest'}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     fontSize: '13px', fontWeight: 600, color: '#111',
@@ -684,10 +731,16 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)'; e.currentTarget.style.borderColor = '#CCC' }}
                   onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#E0DDD6' }}
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-                  </svg>
-                  {!compact && 'Dashboard'}
+                  {isHost ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                  )}
+                  {!compact && (isHost ? 'Dashboard' : 'Meine Reisen')}
                 </Link>
 
                 {/* Avatar + Dropdown */}
@@ -707,9 +760,14 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={2} strokeLinecap="round">
                       <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
-                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
-                      {initials}
-                    </div>
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt="" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
+                        {initials}
+                      </div>
+                    )}
                   </button>
 
                   {menuOpen && (
@@ -744,17 +802,33 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                         </>
                       )}
 
-                      {/* Guest / common links */}
+                      {/* Guest links */}
                       {!isHost && (
-                        <MenuItem href="/dashboard/bookings" onClick={() => setMenuOpen(false)}>
-                          <span style={{ marginRight: '8px' }}>📅</span>
-                          Meine Buchungen
+                        <>
+                          <div style={{ padding: '8px 18px 4px' }}>
+                            <p style={{ fontSize: '10px', fontWeight: 700, color: '#BBB', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Mein Bereich</p>
+                          </div>
+                          {[
+                            { href: '/guest',               icon: '🏡', label: 'Meine Reisen' },
+                            { href: '/guest/chat',          icon: '💬', label: 'Nachrichten' },
+                            { href: '/guest/profile',       icon: '👤', label: 'Profil bearbeiten' },
+                            { href: '/guest/notifications', icon: '🔔', label: 'Benachrichtigungen' },
+                          ].map(({ href, icon, label }) => (
+                            <MenuItem key={href} href={href} onClick={() => setMenuOpen(false)}>
+                              <span style={{ marginRight: '8px', fontSize: '13px' }}>{icon}</span>
+                              {label}
+                            </MenuItem>
+                          ))}
+                          <div style={{ borderTop: '1px solid #F2F0EC', margin: '4px 0' }} />
+                        </>
+                      )}
+                      {/* Host: profile link */}
+                      {isHost && (
+                        <MenuItem href="/dashboard/profile" onClick={() => setMenuOpen(false)}>
+                          <span style={{ marginRight: '8px' }}>👤</span>
+                          Profil bearbeiten
                         </MenuItem>
                       )}
-                      <MenuItem href="/dashboard/profile" onClick={() => setMenuOpen(false)}>
-                        <span style={{ marginRight: '8px' }}>👤</span>
-                        Profil bearbeiten
-                      </MenuItem>
 
                       <div style={{ borderTop: '1px solid #F2F0EC', marginTop: '4px', paddingTop: '4px' }}>
                         <button

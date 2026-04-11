@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import AvatarCropper from '@/components/AvatarCropper'
 
 const LANGUAGE_OPTIONS = ['Deutsch', 'Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch', 'Polnisch', 'Russisch']
 
@@ -11,13 +12,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [location, setLocation] = useState('')
-  const [responseTime, setResponseTime] = useState('')
   const [languages, setLanguages] = useState<string[]>([])
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
@@ -38,11 +36,9 @@ export default function ProfilePage() {
         setDisplayName(profile.display_name ?? '')
         setBio(profile.bio ?? '')
         setLocation(profile.location ?? '')
-        setResponseTime(profile.response_time ?? '')
         setLanguages(profile.languages ?? [])
         setAvatarUrl(profile.avatar_url ?? null)
       } else {
-        // Pre-fill from auth metadata
         setDisplayName(user.user_metadata?.name ?? '')
       }
       setLoading(false)
@@ -52,29 +48,6 @@ export default function ProfilePage() {
 
   function toggleLanguage(lang: string) {
     setLanguages(prev => prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang])
-  }
-
-  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || !userId) return
-    setUploading(true)
-    setError('')
-
-    const ext = file.name.split('.').pop()
-    const path = `avatars/${userId}.${ext}`
-
-    const { error: upErr } = await supabase.storage
-      .from('listing-images')
-      .upload(path, file, { upsert: true })
-
-    if (upErr) {
-      setError('Foto-Upload fehlgeschlagen: ' + upErr.message)
-    } else {
-      const { data } = supabase.storage.from('listing-images').getPublicUrl(path)
-      setAvatarUrl(data.publicUrl)
-    }
-    setUploading(false)
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function handleSave() {
@@ -90,7 +63,6 @@ export default function ProfilePage() {
         display_name: displayName,
         bio,
         location,
-        response_time: responseTime,
         languages,
         avatar_url: avatarUrl,
       })
@@ -119,9 +91,9 @@ export default function ProfilePage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
-      {/* Mini-Nav */}
       <nav style={{ backgroundColor: '#fff', borderBottom: '1px solid #E5E5EA', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="TRIMOSA" style={{ height: '28px', width: 'auto' }} />
         </Link>
         <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: '#A8882A', textDecoration: 'none' }}>
@@ -137,28 +109,13 @@ export default function ProfilePage() {
         </div>
 
         {/* Avatar */}
-        <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #F0EDE6' }} />
-            ) : (
-              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 700, color: '#fff' }}>
-                {displayName ? displayName[0].toUpperCase() : '?'}
-              </div>
-            )}
-          </div>
-          <div>
-            <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>{displayName || 'Kein Name'}</p>
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarUpload} />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              style={{ fontSize: '12px', fontWeight: 600, color: '#A8882A', background: 'none', border: '1px solid #E0DDD6', borderRadius: '999px', padding: '5px 14px', cursor: 'pointer' }}
-            >
-              {uploading ? 'Wird hochgeladen…' : 'Foto ändern'}
-            </button>
-          </div>
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>Profilfoto</h2>
+          <AvatarCropper
+            currentUrl={avatarUrl}
+            displayName={displayName}
+            onUpload={(url) => setAvatarUrl(url)}
+          />
         </div>
 
         {/* Infos */}
@@ -181,25 +138,9 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Wohnort</label>
-              <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. Trier, Rheinland-Pfalz" />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Antwortzeit</label>
-              <select
-                style={{ ...inputStyle, cursor: 'pointer' }}
-                value={responseTime}
-                onChange={e => setResponseTime(e.target.value)}
-              >
-                <option value="">Keine Angabe</option>
-                <option value="Innerhalb einer Stunde">Innerhalb einer Stunde</option>
-                <option value="Innerhalb weniger Stunden">Innerhalb weniger Stunden</option>
-                <option value="Innerhalb eines Tages">Innerhalb eines Tages</option>
-                <option value="Innerhalb weniger Tage">Innerhalb weniger Tage</option>
-              </select>
-            </div>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Wohnort</label>
+            <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. Trier, Rheinland-Pfalz" />
           </div>
         </div>
 

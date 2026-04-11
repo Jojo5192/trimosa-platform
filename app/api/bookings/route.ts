@@ -106,6 +106,61 @@ export async function POST(request: Request) {
     }
   }
 
+  // Auto-create a linked conversation so host & guest can chat immediately
+  try {
+    const guestName = user.user_metadata?.name ?? user.email ?? 'Gast'
+    const { data: existing } = await supabaseAdmin
+      .from('conversations')
+      .select('id')
+      .eq('listing_id', listingId)
+      .eq('guest_id', user.id)
+      .maybeSingle()
+
+    let convId = existing?.id
+    if (!convId) {
+      const { data: newConv } = await supabaseAdmin
+        .from('conversations')
+        .insert({
+          listing_id: listingId,
+          host_id: listing.host_id,
+          guest_id: user.id,
+          guest_name: guestName,
+          listing_title: listing.title ?? '',
+          booking_id: newBooking.id,
+          last_message_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+      convId = newConv?.id
+    } else {
+      // Link existing conversation to this booking
+      await supabaseAdmin
+        .from('conversations')
+        .update({ booking_id: newBooking.id })
+        .eq('id', convId)
+    }
+
+    // Send an auto-message
+    if (convId) {
+      const autoMsg = booking_type === 'instant'
+        ? `Deine Buchung für ${listing.title} (${checkIn} – ${checkOut}) wurde bestätigt! Wir freuen uns auf deinen Aufenthalt.`
+        : `Deine Anfrage für ${listing.title} (${checkIn} – ${checkOut}) wurde gesendet. Der Gastgeber wird sie in Kürze bearbeiten.`
+      await supabaseAdmin
+        .from('messages')
+        .insert({
+          conversation_id: convId,
+          sender_id: listing.host_id,
+          content: autoMsg,
+        })
+      await supabaseAdmin
+        .from('conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', convId)
+    }
+  } catch (err) {
+    console.error('[Bookings] auto-conversation failed (non-fatal):', err)
+  }
+
   fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/send-booking-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

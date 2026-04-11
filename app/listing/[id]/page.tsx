@@ -233,10 +233,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                     </div>
                   </div>
                   {hostProfile.bio && <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#6E6E73', margin: '0 0 12px' }}>{hostProfile.bio}</p>}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '12px', color: '#6E6E73' }}>
-                    {hostProfile.response_time && <span>⚡ Antwortet {hostProfile.response_time.toLowerCase()}</span>}
-                    {hostProfile.languages?.length > 0 && <span>🌍 Spricht {hostProfile.languages.join(', ')}</span>}
-                  </div>
+                  {hostProfile.languages?.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#6E6E73' }}>🌍 Spricht {hostProfile.languages.join(', ')}</div>
+                  )}
                 </div>
               </div>
             )}

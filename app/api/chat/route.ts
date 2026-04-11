@@ -1,6 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getReservationMessages, sendMessageToGuest } from '@/lib/smoobu'
+
+// ── Smoobu sync helper ───────────────────────────────────────
+async function syncSmoobuMessages(
+  conversationId: string,
+  smoobuReservationId: number,
+  hostId: string,
+  guestId: string,
+) {
+  try {
+    const smoobuMsgs = await getReservationMessages(smoobuReservationId)
+    for (const sm of smoobuMsgs) {
+      const isGuestMsg = sm.type?.toLowerCase().includes('guest') || sm.sender?.toLowerCase().includes('guest')
+      const senderId = isGuestMsg ? guestId : hostId
+
+      const { error } = await supabaseAdmin
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content: sm.message ?? '',
+          smoobu_message_id: String(sm.id),
+          created_at: sm.date ?? new Date().toISOString(),
+        })
+      if (error && !error.message?.includes('unique') && error.code !== '23505') {
+        console.error('[Chat] syncSmoobuMessages insert error', error)
+      }
+    }
+  } catch (err) {
+    console.error('[Chat] syncSmoobuMessages failed', err)
+  }
+}
 
 // GET /api/chat?conversationId=... — get messages for a conversation
 // GET /api/chat — get all conversations for current user
@@ -12,6 +44,19 @@ export async function GET(req: NextRequest) {
   const conversationId = req.nextUrl.searchParams.get('conversationId')
 
   if (conversationId) {
+    // Load conversation metadata to know booking / Smoobu link
+    const { data: conv } = await supabaseAdmin
+      .from('conversations')
+      .select('host_id, guest_id, booking_id, bookings(smoobu_reservation_id)')
+      .eq('id', conversationId)
+      .maybeSingle()
+
+    // Pull in new Smoobu messages if the booking is linked
+    const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
+    if (conv && smoobuId) {
+      await syncSmoobuMessages(conversationId, smoobuId, conv.host_id, conv.guest_id)
+    }
+
     // Mark messages as read
     await supabaseAdmin
       .from('messages')
@@ -73,7 +118,6 @@ export async function POST(req: NextRequest) {
   if (!convId) {
     if (!listingId || !hostId) return NextResponse.json({ error: 'listingId und hostId erforderlich' }, { status: 400 })
 
-    // Check for existing conversation between this guest and listing
     const { data: existing } = await supabaseAdmin
       .from('conversations')
       .select('id')
@@ -116,6 +160,22 @@ export async function POST(req: NextRequest) {
     .from('conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', convId)
+
+  // Forward to Smoobu if host is sending and booking has smoobu_reservation_id
+  try {
+    const { data: conv } = await supabaseAdmin
+      .from('conversations')
+      .select('host_id, bookings(smoobu_reservation_id)')
+      .eq('id', convId)
+      .maybeSingle()
+
+    const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
+    if (smoobuId && conv?.host_id === user.id) {
+      await sendMessageToGuest(smoobuId, content.trim())
+    }
+  } catch (err) {
+    console.error('[Chat] Smoobu forward failed', err)
+  }
 
   return NextResponse.json({ message, conversationId: convId })
 }
