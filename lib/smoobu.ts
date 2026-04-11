@@ -55,13 +55,20 @@ export async function getApartmentRates(
   from: string,   // YYYY-MM-DD
   to: string,     // YYYY-MM-DD
 ): Promise<SmoobuRateMap> {
-  const url = `${SMOOBU_BASE}/rates?apartments[]=${smoobuApartmentId}&startDate=${from}&endDate=${to}`
+  // Smoobu expects URL-encoded brackets: apartments%5B%5D=123
+  const params = new URLSearchParams()
+  params.append('apartments[]', String(smoobuApartmentId))
+  params.append('startDate', from)
+  params.append('endDate', to)
+  const url = `${SMOOBU_BASE}/rates?${params.toString()}`
+
   const res = await fetch(url, {
     headers: smoobuHeaders(),
     next: { revalidate: 300 }, // 5-min cache
   })
   if (!res.ok) {
-    console.error('[Smoobu] getApartmentRates failed', res.status, await res.text())
+    const errText = await res.text()
+    console.error('[Smoobu] getApartmentRates failed', res.status, errText)
     return {}
   }
   const data = await res.json()

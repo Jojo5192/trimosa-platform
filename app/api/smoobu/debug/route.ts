@@ -28,10 +28,14 @@ export async function GET(request: Request) {
     })
   }
 
-  // Smoobu Rates direkt abrufen
+  // Smoobu Rates direkt abrufen (URL-encoded brackets)
   const from = new Date().toISOString().split('T')[0]
   const to = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
-  const url = `https://login.smoobu.com/api/rates?apartments[]=${listing.smoobu_id}&startDate=${from}&endDate=${to}`
+  const params = new URLSearchParams()
+  params.append('apartments[]', listing.smoobu_id)
+  params.append('startDate', from)
+  params.append('endDate', to)
+  const url = `https://login.smoobu.com/api/rates?${params.toString()}`
 
   let smoobuRaw: unknown = null
   let smoobuError: string | null = null
