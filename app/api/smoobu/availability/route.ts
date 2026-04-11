@@ -85,7 +85,7 @@ async function getMarkupMultiplier(): Promise<number> {
     .eq('id', 1)
     .single()
   const pct = parseFloat(data?.platform_markup_pct ?? process.env.TRIMOSA_MARKUP_PCT ?? '0')
-  return isNaN(pct) || pct <= 0 ? 1 : 1 + pct / 100
+  return isNaN(pct) ? 1 : 1 + pct / 100
 }
 
 function addDays(date: Date, days: number): string {

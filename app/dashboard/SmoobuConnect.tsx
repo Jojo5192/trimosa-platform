@@ -155,15 +155,15 @@ export default function SmoobuConnect({ currentApiKey, currentMarkup = 0 }: Smoo
 
       {/* ── Preisaufschlag ── */}
       <div className="mt-5 pt-5" style={{ borderTop: '1px solid #F0EDE6' }}>
-        <h4 className="text-sm font-semibold mb-1" style={{ color: '#1D1D1F' }}>Preisaufschlag für TRIMOSA</h4>
+        <h4 className="text-sm font-semibold mb-1" style={{ color: '#1D1D1F' }}>Preisanpassung für TRIMOSA</h4>
         <p className="text-xs mb-3" style={{ color: '#6E6E73' }}>
-          Smoobu-Basispreise werden auf der Plattform um diesen Prozentsatz erhöht. 0 = keine Anpassung.
+          Smoobu-Basispreise werden auf der Plattform angepasst. Positiv = Aufschlag, negativ = Abschlag. 0 = keine Anpassung.
         </p>
         <div className="flex items-center gap-2">
           <div className="relative flex items-center">
             <input
               type="number"
-              min="0"
+              min="-50"
               max="50"
               step="0.5"
               value={markup}
@@ -181,8 +181,8 @@ export default function SmoobuConnect({ currentApiKey, currentMarkup = 0 }: Smoo
           >
             {savingMarkup ? '...' : savedMarkup ? '✓ Gespeichert' : 'Speichern'}
           </button>
-          {parseFloat(markup) > 0 && (
-            <span className="text-xs" style={{ color: '#6E6E73' }}>
+          {parseFloat(markup) !== 0 && !isNaN(parseFloat(markup)) && (
+            <span className="text-xs" style={{ color: parseFloat(markup) > 0 ? '#6E6E73' : '#E07000' }}>
               z.B. €100 → €{Math.round(100 * (1 + parseFloat(markup) / 100))}
             </span>
           )}
