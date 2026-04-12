@@ -378,16 +378,42 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     grid-row: 1 !important;
   }
 
-  /* Quick stats: reduce gap, smaller cards */
+  /* Quick stats: reduce gap, smaller cards, prevent overflow */
   .detail-stats {
-    gap: 8px !important;
+    gap: 6px !important;
     padding-bottom: 20px !important;
     margin-bottom: 20px !important;
+    overflow: hidden !important;
   }
   .detail-stats > div {
-    padding: 10px 12px !important;
+    padding: 8px 8px !important;
     min-width: 0 !important;
-    flex: 1 1 80px !important;
+    flex: 1 1 0 !important;
+    overflow: hidden !important;
+  }
+  .detail-stats > div > div:last-child {
+    overflow: hidden !important;
+  }
+  .detail-stats > div > div:last-child > div:first-child {
+    font-size: 13px !important;
+  }
+  .detail-stats > div > div:last-child > div:last-child {
+    font-size: 10px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  /* Smaller icon boxes in stats */
+  .detail-stats > div > div:first-child {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    font-size: 14px !important;
+  }
+
+  /* Hide floating chat FAB on pages that have the mobile booking bar */
+  body:has(.mobile-booking-bar) .mobile-fab {
+    display: none !important;
   }
 
   /* Description section */

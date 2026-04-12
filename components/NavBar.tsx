@@ -331,6 +331,12 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
+  /* Listen for open-chat events from MobileBookingBar */
+  useEffect(() => {
+    function handleOpenChat() { setChatOpen(true) }
+    window.addEventListener('open-chat', handleOpenChat)
+    return () => window.removeEventListener('open-chat', handleOpenChat)
+  }, [])
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mobileDateOpen, setMobileDateOpen] = useState(false)
