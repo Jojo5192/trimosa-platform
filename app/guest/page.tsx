@@ -65,9 +65,22 @@ export default async function GuestPage() {
           <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>
             {formatDate(booking.check_in as string)} – {formatDate(booking.check_out as string)}
           </p>
-          <p style={{ fontSize: '11px', color: '#A8882A', fontWeight: 600, margin: '10px 0 0' }}>
-            Details &amp; Stornierung →
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+            <span style={{ fontSize: '11px', color: '#A8882A', fontWeight: 600 }}>
+              Details &amp; Stornierung →
+            </span>
+            {tripStatus(booking.check_in as string, booking.check_out as string) === 'past' && (booking.status === 'confirmed' || booking.status === 'completed') && (
+              <span
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.location.href = `/listing/${booking.listing_id as string}?review=true#reviews-section`
+                }}
+                style={{ fontSize: '11px', color: '#16A34A', fontWeight: 600, cursor: 'pointer' }}
+              >
+                ⭐ Bewerten
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     )

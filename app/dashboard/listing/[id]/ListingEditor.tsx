@@ -196,6 +196,10 @@ interface Listing {
   cancel_free_percent?: number | null
   cancel_partial_days?: number | null
   cancel_partial_percent?: number | null
+  airbnb_url?: string
+  booking_url?: string
+  vrbo_url?: string
+  google_place_id?: string
 }
 
 const CANCELLATION_TEMPLATES = [
@@ -287,6 +291,17 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [cancelFreePercent, setCancelFreePercent] = useState<number>(listing.cancel_free_percent ?? (CANCELLATION_TEMPLATES.find(t => t.id === (listing.cancellation_policy ?? 'moderat'))?.freePercent ?? 100))
   const [cancelPartialDays, setCancelPartialDays] = useState<number | null>(listing.cancel_partial_days ?? null)
   const [cancelPartialPercent, setCancelPartialPercent] = useState<number | null>(listing.cancel_partial_percent ?? null)
+  const [airbnbUrl, setAirbnbUrl] = useState(listing.airbnb_url ?? '')
+  const [bookingUrl, setBookingUrl] = useState(listing.booking_url ?? '')
+  const [vrboUrl, setVrboUrl] = useState(listing.vrbo_url ?? '')
+  const [googlePlaceId, setGooglePlaceId] = useState(listing.google_place_id ?? '')
+
+  // Reviews management
+  const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [showAddReview, setShowAddReview] = useState(false)
+  const [newReview, setNewReview] = useState({ source: 'airbnb', authorName: '', rating: '5', reviewText: '', reviewDate: new Date().toISOString().split('T')[0] })
+
   const [onboardingError, setOnboardingError] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -421,6 +436,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           rule_additional_rules: ruleAdditionalRules,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
+          airbnb_url: airbnbUrl,
+          booking_url: bookingUrl,
+          vrbo_url: vrboUrl,
+          google_place_id: googlePlaceId,
           is_active: isActive,
         }),
       })
@@ -842,6 +861,136 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             rows={4}
           />
         </Field>
+      </Section>
+
+      {/* ── Plattform-Links & Bewertungen ── */}
+      <Section title="Bewertungen & Plattformen">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px' }}>
+          Verlinke deine Inserate auf anderen Plattformen und verwalte Bewertungen.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+          <Field label="Airbnb URL">
+            <input value={airbnbUrl} onChange={e => setAirbnbUrl(e.target.value)} placeholder="https://airbnb.com/rooms/..." style={inputStyle} />
+          </Field>
+          <Field label="Booking.com URL">
+            <input value={bookingUrl} onChange={e => setBookingUrl(e.target.value)} placeholder="https://booking.com/hotel/..." style={inputStyle} />
+          </Field>
+          <Field label="VRBO URL">
+            <input value={vrboUrl} onChange={e => setVrboUrl(e.target.value)} placeholder="https://vrbo.com/..." style={inputStyle} />
+          </Field>
+          <Field label="Google Place ID">
+            <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
+          </Field>
+        </div>
+
+        {/* Reviews list */}
+        <div style={{ borderTop: '1px solid #F0EEE8', paddingTop: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#111' }}>Importierte Bewertungen</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="button" onClick={() => {
+                setReviewsLoading(true)
+                fetch(`/api/reviews?listingId=${listing.id}&limit=50`)
+                  .then(r => r.json())
+                  .then(d => setReviews(d.reviews ?? []))
+                  .catch(() => {})
+                  .finally(() => setReviewsLoading(false))
+              }} style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#666' }}>
+                {reviewsLoading ? 'Laden…' : '↻ Laden'}
+              </button>
+              <button type="button" onClick={() => setShowAddReview(!showAddReview)} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#8A7020' }}>
+                + Bewertung hinzufügen
+              </button>
+            </div>
+          </div>
+
+          {/* Add review form */}
+          {showAddReview && (
+            <div style={{ padding: '16px', borderRadius: '12px', background: '#FAFAF8', border: '1px solid #F0EEE8', marginBottom: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Plattform</label>
+                  <select value={newReview.source} onChange={e => setNewReview(r => ({ ...r, source: e.target.value }))} style={{ ...inputStyle, padding: '8px 10px' }}>
+                    <option value="airbnb">Airbnb</option>
+                    <option value="booking">Booking.com</option>
+                    <option value="google">Google</option>
+                    <option value="vrbo">VRBO</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Bewertung</label>
+                  <select value={newReview.rating} onChange={e => setNewReview(r => ({ ...r, rating: e.target.value }))} style={{ ...inputStyle, padding: '8px 10px' }}>
+                    {['5', '4.5', '4', '3.5', '3', '2.5', '2', '1.5', '1'].map(v => (
+                      <option key={v} value={v}>{'★'.repeat(Math.floor(Number(v)))} {v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Name des Gastes</label>
+                  <input value={newReview.authorName} onChange={e => setNewReview(r => ({ ...r, authorName: e.target.value }))} placeholder="Vorname" style={{ ...inputStyle, padding: '8px 10px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Datum</label>
+                  <input type="date" value={newReview.reviewDate} onChange={e => setNewReview(r => ({ ...r, reviewDate: e.target.value }))} style={{ ...inputStyle, padding: '8px 10px' }} />
+                </div>
+              </div>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Bewertungstext</label>
+                <textarea value={newReview.reviewText} onChange={e => setNewReview(r => ({ ...r, reviewText: e.target.value }))} placeholder="Text der Bewertung…" rows={3} style={{ ...inputStyle, resize: 'none' }} />
+              </div>
+              <button type="button" onClick={async () => {
+                if (!newReview.authorName || !newReview.reviewDate) return
+                const res = await fetch('/api/reviews', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    listingId: listing.id,
+                    source: newReview.source,
+                    authorName: newReview.authorName,
+                    rating: parseFloat(newReview.rating),
+                    reviewText: newReview.reviewText,
+                    reviewDate: newReview.reviewDate,
+                  }),
+                })
+                if (res.ok) {
+                  setShowAddReview(false)
+                  setNewReview({ source: 'airbnb', authorName: '', rating: '5', reviewText: '', reviewDate: new Date().toISOString().split('T')[0] })
+                  // Refresh reviews
+                  fetch(`/api/reviews?listingId=${listing.id}&limit=50`)
+                    .then(r => r.json())
+                    .then(d => setReviews(d.reviews ?? []))
+                }
+              }} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                Speichern
+              </button>
+            </div>
+          )}
+
+          {/* Reviews list */}
+          {reviews.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {reviews.map(r => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: '#fff', border: '1px solid #F0EEE8' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#111' }}>{r.author_name}</span>
+                      <span style={{ fontSize: '10px', color: '#999' }}>{'★'.repeat(Math.round(r.rating))}</span>
+                      <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: r.source === 'airbnb' ? '#FF5A5F' : r.source === 'booking' ? '#003580' : r.source === 'google' ? '#4285F4' : '#6C3BAA', color: '#fff', fontWeight: 600, textTransform: 'capitalize' }}>{r.source}</span>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{r.review_text ? (r.review_text.length > 100 ? r.review_text.slice(0, 100) + '…' : r.review_text) : '—'}</p>
+                  </div>
+                  <button type="button" onClick={async () => {
+                    await fetch(`/api/reviews?id=${r.id}`, { method: 'DELETE' })
+                    setReviews(prev => prev.filter(rv => rv.id !== r.id))
+                  }} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #FECACA', background: '#FEF2F2', cursor: 'pointer', fontSize: '10px', color: '#DC2626', flexShrink: 0 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: '12px', color: '#AAA', margin: '8px 0 0' }}>Noch keine Bewertungen importiert. Klicke &quot;Laden&quot; um vorhandene abzurufen.</p>
+          )}
+        </div>
       </Section>
 
       {/* ── Stornierungsbedingungen ── */}

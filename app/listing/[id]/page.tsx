@@ -8,7 +8,7 @@ import {
   AmenitiesSection,
   FloorPlanSection,
   OccupancyCalendar,
-  ReviewsPlaceholder,
+  ReviewsSection,
   HouseRulesDisplay,
 } from './DetailSections'
 import MobileBookingBar from './MobileBookingBar'
@@ -34,9 +34,9 @@ const fallbackColors = [
   'linear-gradient(135deg, #DDD6FE, #A78BFA)',
 ]
 
-export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string }> }) {
+export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string; review?: string }> }) {
   const { id } = await params
-  const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests } = await searchParams
+  const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm } = await searchParams
   const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', id).single()
 
   if (!listing) {
@@ -254,8 +254,8 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             </div>
           )}
 
-          {/* Reviews placeholder */}
-          <ReviewsPlaceholder />
+          {/* Reviews */}
+          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} />
 
         </div>
       </div>
