@@ -163,6 +163,7 @@ interface Listing {
   description: string
   location: string
   address?: string
+  city?: string
   price_per_night: number
   max_guests: number
   bedrooms: number
@@ -171,6 +172,10 @@ interface Listing {
   images?: string[]
   rooms?: Room[]
   house_rules?: string
+  house_rules_details?: string
+  checkin_instructions?: string
+  important_notes?: string
+  floor_plan_url?: string
   check_in_time?: string
   check_out_time?: string
   is_active: boolean
@@ -238,14 +243,20 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [description, setDescription] = useState(listing.description ?? '')
   const [location, setLocation] = useState(listing.location ?? '')
   const [address, setAddress] = useState(listing.address ?? '')
+  const [city, setCity] = useState(listing.city ?? '')
   const [maxGuests, setMaxGuests] = useState(listing.max_guests ?? 2)
   const [bedrooms, setBedrooms] = useState(listing.bedrooms ?? 1)
   const [bathrooms, setBathrooms] = useState(listing.bathrooms ?? 1)
   const [amenities, setAmenities] = useState<string[]>(listing.amenities ?? [])
   const [coverImage, setCoverImage] = useState<string>(listing.images?.[0] ?? '')
   const [coverUploading, setCoverUploading] = useState(false)
+  const [floorPlanUrl, setFloorPlanUrl] = useState<string>(listing.floor_plan_url ?? '')
+  const [floorPlanUploading, setFloorPlanUploading] = useState(false)
   const [rooms, setRooms] = useState<Room[]>(listing.rooms ?? [])
   const [houseRules, setHouseRules] = useState(listing.house_rules ?? '')
+  const [houseRulesDetails, setHouseRulesDetails] = useState(listing.house_rules_details ?? '')
+  const [checkinInstructions, setCheckinInstructions] = useState(listing.checkin_instructions ?? '')
+  const [importantNotes, setImportantNotes] = useState(listing.important_notes ?? '')
   const [checkInTime, setCheckInTime] = useState(listing.check_in_time ?? '15:00')
   const [checkOutTime, setCheckOutTime] = useState(listing.check_out_time ?? '11:00')
   const [isActive, setIsActive] = useState(listing.is_active)
@@ -262,6 +273,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const coverInputRef = useRef<HTMLInputElement>(null)
+  const floorPlanInputRef = useRef<HTMLInputElement>(null)
 
   function toggleAmenity(label: string) {
     setAmenities(prev =>
@@ -306,6 +318,43 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
     if (coverInputRef.current) coverInputRef.current.value = ''
   }
 
+  async function handleFloorPlanUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFloorPlanUploading(true)
+    setError('')
+
+    // 1. Upload to storage
+    const form = new FormData()
+    form.append('file', file)
+    const upRes = await fetch(`/api/listings/${listing.id}/upload`, { method: 'POST', body: form })
+    const upData = await upRes.json()
+
+    if (!upRes.ok) {
+      setError(`Upload fehlgeschlagen: ${upData.error ?? upRes.statusText}`)
+      setFloorPlanUploading(false)
+      if (floorPlanInputRef.current) floorPlanInputRef.current.value = ''
+      return
+    }
+
+    const url: string = upData.url
+    setFloorPlanUrl(url)
+
+    // 2. Immediately save to DB
+    const saveRes = await fetch(`/api/listings/${listing.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ floor_plan_url: url }),
+    })
+    if (!saveRes.ok) {
+      const saveData = await saveRes.json()
+      setError(`Bild gespeichert, aber Grundriss konnte nicht gesetzt werden: ${saveData.error ?? saveRes.statusText}`)
+    }
+
+    setFloorPlanUploading(false)
+    if (floorPlanInputRef.current) floorPlanInputRef.current.value = ''
+  }
+
   async function handleSave() {
     setSaving(true)
     setError('')
@@ -320,11 +369,13 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           description,
           location,
           address,
+          city,
           max_guests: maxGuests,
           bedrooms,
           bathrooms,
           amenities,
           cover_image: coverImage,
+          floor_plan_url: floorPlanUrl,
           rooms,
           cancellation_policy: cancelPolicy === 'custom' ? 'custom' : cancelPolicy,
           cancel_free_days: cancelFreeDays,
@@ -332,6 +383,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           cancel_partial_days: cancelPartialDays,
           cancel_partial_percent: cancelPartialPercent,
           house_rules: houseRules,
+          house_rules_details: houseRulesDetails,
+          checkin_instructions: checkinInstructions,
+          important_notes: importantNotes,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
           is_active: isActive,
@@ -487,6 +541,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <input style={inputStyle} value={address} onChange={e => setAddress(e.target.value)} placeholder="Musterstraße 1, 83727 Schliersee" />
           </Field>
         </div>
+        <Field label="Ort (wird auf Detailseite angezeigt)">
+          <input style={inputStyle} value={city} onChange={e => setCity(e.target.value)} placeholder="z.B. Schliersee" />
+        </Field>
       </Section>
 
       {/* ── Kapazität ── */}
@@ -570,6 +627,67 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
         />
       </Section>
 
+      {/* ── Grundriss ── */}
+      <Section title="Grundriss">
+        <Field label="Grundriss">
+          {floorPlanUrl ? (
+            <div style={{ borderRadius: '14px', overflow: 'hidden', background: '#f9f7f3', border: '1px solid #E8E6E0' }}>
+              <img
+                src={floorPlanUrl}
+                alt="Grundriss"
+                style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '300px', objectFit: 'cover' }}
+              />
+              <div style={{ padding: '12px', display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => floorPlanInputRef.current?.click()}
+                  disabled={floorPlanUploading}
+                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#111' }}
+                >
+                  {floorPlanUploading ? 'Wird hochgeladen…' : '↺ Ersetzen'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFloorPlanUrl('')}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#c00' }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => floorPlanInputRef.current?.click()}
+              disabled={floorPlanUploading}
+              style={{
+                width: '100%', padding: '40px', borderRadius: '14px', border: '2px dashed #D4C5B0',
+                background: '#fafaf8', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: '10px',
+              }}
+            >
+              {floorPlanUploading ? (
+                <>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Wird hochgeladen…</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Grundriss hochladen</span>
+                  <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
+                </>
+              )}
+            </button>
+          )}
+          <input
+            ref={floorPlanInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFloorPlanUpload}
+            style={{ display: 'none' }}
+          />
+        </Field>
+      </Section>
+
       {/* ── Hausregeln & Check-in ── */}
       <Section title="Hausregeln & Check-in">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -587,6 +705,33 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             onChange={e => setHouseRules(e.target.value)}
             placeholder="Bitte seid rücksichtsvoll zu den Nachbarn…"
             rows={3}
+          />
+        </Field>
+        <Field label="Detaillierte Hausregeln">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={houseRulesDetails}
+            onChange={e => setHouseRulesDetails(e.target.value)}
+            placeholder="z.B. Nachtruhe ab 22 Uhr, Rauchen nur auf dem Balkon…"
+            rows={4}
+          />
+        </Field>
+        <Field label="Check-In Anweisungen">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={checkinInstructions}
+            onChange={e => setCheckinInstructions(e.target.value)}
+            placeholder="z.B. Schlüsselkasten Code, Anfahrtsbeschreibung…"
+            rows={4}
+          />
+        </Field>
+        <Field label="Wichtige Hinweise für Gäste">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={importantNotes}
+            onChange={e => setImportantNotes(e.target.value)}
+            placeholder="z.B. Parkmöglichkeiten, WLAN-Passwort…"
+            rows={4}
           />
         </Field>
       </Section>

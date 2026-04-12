@@ -3,6 +3,13 @@ import NavBar from '@/components/NavBar'
 import BookingBox from './BookingBox'
 import PhotoGrid from './PhotoGrid'
 import Link from 'next/link'
+import {
+  HostBadge,
+  AmenitiesSection,
+  FloorPlanSection,
+  OccupancyCalendar,
+  ReviewsPlaceholder,
+} from './DetailSections'
 
 /* Fallback gradient when no photos uploaded yet */
 function getGradientStyle(location: string, title: string): React.CSSProperties {
@@ -25,29 +32,6 @@ const fallbackColors = [
   'linear-gradient(135deg, #DDD6FE, #A78BFA)',
 ]
 
-const AMENITY_ICONS: Record<string, string> = {
-  'WLAN': '📶',
-  'Küche': '🍳',
-  'Parkplatz': '🅿️',
-  'Bergpanorama': '🏔️',
-  'Kamin': '🪵',
-  'Waschmaschine': '🧺',
-  'Trockner': '👕',
-  'Klimaanlage': '❄️',
-  'Heizung': '🔥',
-  'Haustiere erlaubt': '🐾',
-  'Balkon / Terrasse': '🏡',
-  'Garten': '🌿',
-  'Pool': '🏊',
-  'Sauna': '🧖',
-  'Grill': '🍖',
-  'E-Auto Ladepunkt': '⚡',
-  'Seenähe': '🏞️',
-  'Skigebiet in der Nähe': '⛷️',
-  'Babyausstattung': '👶',
-  'TV': '📺',
-}
-
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', id).single()
@@ -63,7 +47,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  // Fetch host profile (including booking settings)
+  // Fetch host profile
   const { data: hostProfile } = await supabaseAdmin
     .from('profiles')
     .select('*,allow_instant_booking,allow_requests,min_request_nights')
@@ -74,44 +58,36 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   const rooms: { id: string; name: string; description?: string; features?: string[]; images: string[] }[] = listing.rooms ?? []
   const amenities: string[] = listing.amenities ?? []
   const mainGradient = getGradientStyle(listing.location ?? '', listing.title ?? '')
-
-  // Derive first image from rooms if not in flat images list
-  const firstImage = images[0] ?? rooms.find(r => r.images.length > 0)?.images[0]
-  // Collect all images for photo viewer fallback
   const allImagesFlat = images.length > 0 ? images : rooms.flatMap(r => r.images)
+
+  // Derive city: prefer explicit city field, then try to extract from address, fallback to location
+  const displayCity = listing.city || listing.address?.split(',').pop()?.trim() || listing.location
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <NavBar />
 
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
-        {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', marginBottom: '20px', color: '#6E6E73' }}>
-          <Link href="/" style={{ color: '#B0912B', textDecoration: 'none' }}>Übersicht</Link>
-          <span>›</span>
-          <span>{listing.location}</span>
-          <span>›</span>
-          <span style={{ color: '#1D1D1F', fontWeight: 500 }}>{listing.title}</span>
-        </div>
-
-        {/* Title row */}
+        {/* ── Title ── */}
         <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
           {listing.title}
         </h1>
+
+        {/* ── Rating + City ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020' }}>
+          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020', textDecoration: 'none', cursor: 'pointer' }}>
             ★★★★★ Neu
-          </span>
+          </a>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={2}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
-            {listing.location}
+            {displayCity}
           </span>
         </div>
 
-        {/* ── PHOTO GRID (client component — handles click → viewer) ── */}
+        {/* ── PHOTO GRID ── */}
         <PhotoGrid
           rooms={rooms}
           allImages={allImagesFlat}
@@ -122,18 +98,17 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         />
 
         {/* ── TWO-COLUMN LAYOUT ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '40px', alignItems: 'flex-start' }}>
+        <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '40px', alignItems: 'flex-start' }}>
 
           {/* LEFT COLUMN */}
           <div>
 
-            {/* Quick stats */}
+            {/* Quick stats with Host badge */}
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingBottom: '28px', borderBottom: '1px solid #E5E5EA', marginBottom: '28px' }}>
               {[
                 { icon: '👥', label: 'Gäste', val: `bis ${listing.max_guests}` },
                 { icon: '🛏️', label: 'Schlafzimmer', val: listing.bedrooms ?? 1 },
                 { icon: '🚿', label: 'Badezimmer', val: listing.bathrooms ?? 1 },
-                { icon: '💰', label: 'Provision', val: '0 %' },
               ].map((item) => (
                 <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #E5E5EA', flex: '1 1 130px', minWidth: '120px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#FAF5E4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0 }}>
@@ -145,6 +120,18 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   </div>
                 </div>
               ))}
+              {/* Host badge */}
+              {hostProfile && (
+                <HostBadge host={{
+                  id: hostProfile.id,
+                  display_name: hostProfile.display_name,
+                  avatar_url: hostProfile.avatar_url,
+                  bio: hostProfile.bio,
+                  location: hostProfile.location,
+                  member_since: hostProfile.member_since,
+                  languages: hostProfile.languages,
+                }} />
+              )}
             </div>
 
             {/* Description */}
@@ -155,15 +142,37 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               </p>
             </div>
 
-            {/* Amenities */}
-            {amenities.length > 0 && (
+            {/* Amenities (client component with overlay) */}
+            <AmenitiesSection amenities={amenities} />
+
+            {/* Floor plan */}
+            {listing.floor_plan_url && (
+              <FloorPlanSection url={listing.floor_plan_url} />
+            )}
+
+            {/* Rooms */}
+            {rooms.length > 0 && (
               <div style={{ marginBottom: '32px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Ausstattung</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  {amenities.map((a) => (
-                    <div key={a} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                      <span style={{ fontSize: '18px', lineHeight: 1, flexShrink: 0 }}>{AMENITY_ICONS[a] ?? '✓'}</span>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#1D1D1F' }}>{a}</span>
+                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Zimmer</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+                  {rooms.map((room) => (
+                    <div key={room.id} style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
+                      {room.images[0] && (
+                        <div style={{ aspectRatio: '16/10', overflow: 'hidden' }}>
+                          <img src={room.images[0]} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      )}
+                      <div style={{ padding: '14px 16px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px', color: '#1D1D1F', marginBottom: '4px' }}>{room.name}</div>
+                        {room.description && <p style={{ fontSize: '13px', color: '#6E6E73', margin: '0 0 8px', lineHeight: 1.5 }}>{room.description}</p>}
+                        {room.features && room.features.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {room.features.map(f => (
+                              <span key={f} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#F5F5F7', color: '#6E6E73' }}>{f}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -187,62 +196,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* House rules */}
-            {listing.house_rules && (
-              <div style={{ marginBottom: '32px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Hausregeln</h2>
-                <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                  <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-                    {listing.house_rules}
-                  </p>
-                </div>
-              </div>
-            )}
+            {/* Occupancy calendar */}
+            <OccupancyCalendar listingId={listing.id} />
 
-            {/* Location */}
-            <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Lage</h2>
-              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#FAF5E4', border: '1px solid #E8D9A0', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={1.8}>
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#8A7020' }}>{listing.location}</div>
-                  {listing.address && <div style={{ fontSize: '12px', color: '#6E6E73', marginTop: '2px' }}>{listing.address}</div>}
-                </div>
-              </div>
-            </div>
-
-            {/* Host profile */}
-            {hostProfile && (
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Dein Gastgeber</h2>
-                <div style={{ borderRadius: '16px', padding: '20px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: hostProfile.bio ? '14px' : '0' }}>
-                    {hostProfile.avatar_url ? (
-                      <img src={hostProfile.avatar_url} alt={hostProfile.display_name} style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #F0EDE6', flexShrink: 0 }} />
-                    ) : (
-                      <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                        {hostProfile.display_name?.[0]?.toUpperCase() ?? '?'}
-                      </div>
-                    )}
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '15px', color: '#1D1D1F' }}>{hostProfile.display_name || 'Gastgeber'}</div>
-                      {hostProfile.location && <div style={{ fontSize: '12px', color: '#6E6E73', marginTop: '2px' }}>📍 {hostProfile.location}</div>}
-                      {hostProfile.member_since && <div style={{ fontSize: '12px', color: '#6E6E73' }}>Mitglied seit {new Date(hostProfile.member_since).getFullYear()}</div>}
-                    </div>
-                  </div>
-                  {hostProfile.bio && <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#6E6E73', margin: '0 0 12px' }}>{hostProfile.bio}</p>}
-                  {hostProfile.languages?.length > 0 && (
-                    <div style={{ fontSize: '12px', color: '#6E6E73' }}>🌍 Spricht {hostProfile.languages.join(', ')}</div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* RIGHT COLUMN — Booking Box */}
-          <div style={{ position: 'sticky', top: 'calc(var(--navbar-h, 88px) + 16px)' }}>
+          <div className="detail-booking-col" style={{ position: 'sticky', top: 'calc(var(--navbar-h, 88px) + 16px)' }}>
             <BookingBox
               listingId={listing.id}
               pricePerNight={listing.price_per_night}
@@ -253,6 +213,80 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               cancellationPolicy={listing.cancellation_policy ?? 'moderat'}
             />
           </div>
+        </div>
+
+        {/* ── FULL-WIDTH SECTIONS (below two-column layout) ── */}
+        <div style={{ paddingBottom: '80px' }}>
+
+          {/* Full-width Map */}
+          <div style={{ marginTop: '40px', marginBottom: '32px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Lage</h2>
+            {listing.address ? (
+              <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', height: '360px' }}>
+                <iframe
+                  title="Karte"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(listing.address)}&output=embed`}
+                />
+              </div>
+            ) : (
+              <div style={{ borderRadius: '16px', padding: '24px', backgroundColor: '#FAF5E4', border: '1px solid #E8D9A0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={1.8}>
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#8A7020' }}>{displayCity}</div>
+                  {listing.location && listing.location !== displayCity && (
+                    <div style={{ fontSize: '12px', color: '#6E6E73', marginTop: '2px' }}>{listing.location}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* House Rules (detailed) */}
+          {(listing.house_rules || listing.house_rules_details) && (
+            <div style={{ marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Hausregeln</h2>
+              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
+                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+                  {listing.house_rules_details || listing.house_rules}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Check-in Instructions */}
+          {listing.checkin_instructions && (
+            <div style={{ marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Check-In Anweisungen</h2>
+              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
+                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+                  {listing.checkin_instructions}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Important Notes */}
+          {listing.important_notes && (
+            <div style={{ marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Wichtige Hinweise</h2>
+              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
+                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#92400E', whiteSpace: 'pre-line', margin: 0 }}>
+                  {listing.important_notes}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Reviews placeholder */}
+          <ReviewsPlaceholder />
+
         </div>
       </div>
     </div>

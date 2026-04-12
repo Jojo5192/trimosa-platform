@@ -335,6 +335,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 }
 
+/* ── Detail page mobile overrides ── */
+@media (max-width: 768px) {
+  .detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+  .detail-booking-col {
+    position: static !important;
+  }
+}
+
 /* Safe-area padding for bottom FAB */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .mobile-fab {

@@ -200,6 +200,7 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
     <Link
       href={`/listing/${card.id}`}
       className="listing-card"
+      target="_blank"
       style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}
     >
       <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
