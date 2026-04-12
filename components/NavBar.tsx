@@ -918,22 +918,36 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 </div>
               </>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <>
+                {/* Desktop: beide Buttons */}
+                <div className="hidden md:flex" style={{ alignItems: 'center', gap: '8px' }}>
+                  <Link
+                    href="/login"
+                    style={{ fontSize: '13px', fontWeight: 500, color: '#111', padding: '9px 16px', borderRadius: '999px', textDecoration: 'none', transition: 'background 0.15s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F2F0EC' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                  >
+                    Anmelden
+                  </Link>
+                  <Link
+                    href="/register"
+                    style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, #C4A235, #9A7820)', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
+                  >
+                    Registrieren
+                  </Link>
+                </div>
+                {/* Mobile: nur kompakter Anmelden-Button */}
                 <Link
                   href="/login"
-                  style={{ fontSize: '13px', fontWeight: 500, color: '#111', padding: '9px 16px', borderRadius: '999px', textDecoration: 'none', transition: 'background 0.15s' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F2F0EC' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                  className="flex md:hidden"
+                  style={{ alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', textDecoration: 'none', color: '#555', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0 }}
+                  title="Anmelden"
                 >
-                  Anmelden
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
                 </Link>
-                <Link
-                  href="/register"
-                  style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, #C4A235, #9A7820)', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
-                >
-                  Registrieren
-                </Link>
-              </div>
+              </>
             )}
           </div>
         </div>
