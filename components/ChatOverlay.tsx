@@ -77,9 +77,10 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const taRef     = useRef<HTMLTextAreaElement>(null)
-  const timer     = useRef<ReturnType<typeof setInterval> | null>(null)
+  const bottomRef     = useRef<HTMLDivElement>(null)
+  const taRef         = useRef<HTMLTextAreaElement>(null)
+  const timer         = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mobileShellRef = useRef<HTMLDivElement>(null)
 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
@@ -92,6 +93,27 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  /* ── iOS keyboard: adjust mobile overlay to visualViewport ── */
+  useEffect(() => {
+    if (!isMobile || !open) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const el = mobileShellRef.current
+      if (!el) return
+      el.style.height = `${vv.height}px`
+      el.style.top    = `${vv.offsetTop}px`
+      el.style.bottom = 'auto'
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [isMobile, open])
 
   /* ── data fetching ── */
   const getConvs = useCallback(async () => {
@@ -438,8 +460,9 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
 
       {/* ── MOBILE LAYOUT ── */}
       {isMobile ? (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9001,
+        <div ref={mobileShellRef} style={{
+          position: 'fixed', left: 0, right: 0, top: 0, bottom: 0,
+          zIndex: 9001,
           display: 'flex', flexDirection: 'column',
           background: '#FAFAF8',
           animation: 'cslideup .22s cubic-bezier(.34,1.1,.64,1)',
