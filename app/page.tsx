@@ -337,7 +337,7 @@ export default async function Home({
                           </div>
                         )}
                       </div>
-                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{(card.pricePerNight === 0 && card.totalPrice === 0) ? ' · Preis auf Anfrage' : ''}</p>
+                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer</p>
                     </div>
                   </Link>
                 )

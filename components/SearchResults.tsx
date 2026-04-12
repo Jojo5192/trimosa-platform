@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import ListingsMap, { type MapListing } from './ListingsMap'
 
@@ -251,7 +251,7 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
           )}
         </div>
         <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
-          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{(card.pricePerNight === 0 && card.totalPrice === 0) ? ' · Preis auf Anfrage' : ''}
+          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
         </p>
         {card.issues.length > 0 && (
           <div style={{ display: 'flex', gap: '4px', marginTop: '7px', flexWrap: 'wrap' }}>
@@ -274,6 +274,15 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   )
   const [filters, setFilters] = useState<FilterState>({ minBedrooms: null, minGuests: null, maxPrice: null })
   const [showFilter, setShowFilter] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileMapOpen, setMobileMapOpen] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const handleCenterChange = useCallback((lat: number, lon: number) => {
     setMapCenter({ lat, lon })
@@ -312,10 +321,145 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
 
+  /* ── Header bar (shared between mobile + desktop) ── */
+  const headerBar = (
+    <div style={{
+      padding: isMobile ? '12px 14px 10px' : '16px 20px 12px',
+      backgroundColor: '#ECEEF4',
+      position: 'sticky',
+      top: 'var(--navbar-h, 88px)',
+      zIndex: 10,
+      borderBottom: '1px solid #EAE7E0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '10px',
+    }}>
+      <h1 style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
+        {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: '#A8882A' }}>„{searchQuery}"</span></> : ''}
+        {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
+      </h1>
+      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+        <button
+          type="button"
+          onClick={() => setShowFilter(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '5px',
+            padding: '6px 12px', borderRadius: '999px',
+            border: `1.5px solid ${activeFilterCount > 0 ? '#111' : '#E0DDD6'}`,
+            background: activeFilterCount > 0 ? '#111' : '#fff',
+            color: activeFilterCount > 0 ? '#fff' : '#333',
+            fontSize: '12px', fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+            <line x1="12" y1="18" x2="12" y2="18" />
+          </svg>
+          Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+        </button>
+        <Link href="/" style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
+          ✕ Zurücksetzen
+        </Link>
+      </div>
+    </div>
+  )
+
+  /* ══════════════════════════════════════════
+     MOBILE LAYOUT
+  ══════════════════════════════════════════ */
+  if (isMobile) {
+    return (
+      <div style={{ backgroundColor: '#ECEEF4', minHeight: '60vh' }}>
+        {headerBar}
+
+        {/* Cards — full width, single column */}
+        <div style={{ padding: '12px 12px 100px' }}>
+          {sorted.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {sorted.map((card, i) => (
+                <ListingCard key={card.id} card={card} index={i} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '50px 20px', borderRadius: '16px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
+              <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
+              <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Keine Unterkünfte gefunden</p>
+              <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Versuche andere Filter oder einen anderen Ort.</p>
+              <button type="button" onClick={() => setFilters({ minBedrooms: null, minGuests: null, maxPrice: null })} style={{ fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                Filter zurücksetzen
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile map toggle FAB */}
+        <button
+          onClick={() => setMobileMapOpen(true)}
+          style={{
+            position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+            padding: '10px 20px', borderRadius: '999px',
+            background: '#1A1814', color: '#fff', border: 'none',
+            fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+            zIndex: 60, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+            <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
+          </svg>
+          Karte
+        </button>
+
+        {/* Mobile map fullscreen overlay */}
+        {mobileMapOpen && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#ECEEF4' }}>
+              <div style={{ position: 'absolute', inset: 0 }}>
+                <ListingsMap
+                  listings={mapListings}
+                  centerLat={centerLat}
+                  centerLon={centerLon}
+                  onCenterChange={handleCenterChange}
+                />
+              </div>
+              <button
+                onClick={() => setMobileMapOpen(false)}
+                style={{
+                  position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)',
+                  padding: '10px 20px', borderRadius: '999px',
+                  background: '#1A1814', color: '#fff', border: 'none',
+                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                  zIndex: 201, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+                Liste
+              </button>
+            </div>
+          </>
+        )}
+
+        {showFilter && <FilterModal filters={filters} onApply={setFilters} onClose={() => setShowFilter(false)} />}
+      </div>
+    )
+  }
+
+  /* ══════════════════════════════════════════
+     DESKTOP LAYOUT (unchanged)
+  ══════════════════════════════════════════ */
   return (
     <div style={{
       display: 'flex',
-      alignItems: 'flex-start',   /* required for position:sticky on right column */
+      alignItems: 'flex-start',
       backgroundColor: '#ECEEF4',
     }}>
       {/* ── Left: Listings panel (scrolls with page) ── */}
@@ -324,50 +468,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
         display: 'flex',
         flexDirection: 'column',
       }}>
-        {/* Panel header — sticks below navbar */}
-        <div style={{
-          padding: '16px 20px 12px',
-          backgroundColor: '#ECEEF4',
-          position: 'sticky',
-          top: 'var(--navbar-h, 88px)',
-          zIndex: 10,
-          borderBottom: '1px solid #EAE7E0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-        }}>
-          <h1 style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
-            {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: '#A8882A' }}>„{searchQuery}"</span></> : ''}
-            {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
-          </h1>
-          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => setShowFilter(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 14px', borderRadius: '999px',
-                border: `1.5px solid ${activeFilterCount > 0 ? '#111' : '#E0DDD6'}`,
-                background: activeFilterCount > 0 ? '#111' : '#fff',
-                color: activeFilterCount > 0 ? '#fff' : '#333',
-                fontSize: '12px', fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="8" y1="12" x2="16" y2="12" />
-                <line x1="12" y1="18" x2="12" y2="18" />
-              </svg>
-              Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-            </button>
-            <Link href="/" style={{ fontSize: '12px', padding: '7px 12px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
-              ✕ Zurücksetzen
-            </Link>
-          </div>
-        </div>
+        {headerBar}
 
         {/* Cards grid */}
         <div style={{ padding: '16px 20px 32px', flex: 1 }}>

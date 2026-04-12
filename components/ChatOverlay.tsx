@@ -264,7 +264,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
     )
 
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#F6F4EF' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#F6F4EF' }}>
         {/* Chat header (mobile only shows back button) */}
         {showBack && (
           <div style={{
