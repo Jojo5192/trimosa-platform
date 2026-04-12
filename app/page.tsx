@@ -2,6 +2,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
+import { checkAvailability } from '@/lib/smoobu'
+import { getMarkupMultiplier } from '@/lib/pricing'
 
 /* ── Refined, muted card gradients ── */
 const CARD_GRADIENTS = [
@@ -144,14 +146,45 @@ export default async function Home({
   const hasSearch = !!(q || guestsNum)
   const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] }))
 
+  // Check Smoobu availability for all listings when dates are selected
+  let availabilityMap: Record<string, { available: boolean; totalPrice: number }> = {}
+  if (nights > 0) {
+    const markup = await getMarkupMultiplier()
+    const checks = ranked.map(async ({ listing }) => {
+      const l = listing as Record<string, unknown>
+      const id = l.id as string
+      const smoobuId = l.smoobu_id as string | number | null
+      if (!smoobuId) {
+        // No Smoobu — use static price, assume available
+        const ppn = (l.price_per_night as number) || 0
+        return { id, available: true, totalPrice: ppn * nights }
+      }
+      try {
+        const result = await checkAvailability(smoobuId, checkin!, checkout!)
+        return { id, available: result.available, totalPrice: Math.round(result.totalPrice * markup) }
+      } catch {
+        // On error, fall back to static price, assume available
+        const ppn = (l.price_per_night as number) || 0
+        return { id, available: true, totalPrice: ppn * nights }
+      }
+    })
+    const results = await Promise.all(checks)
+    for (const r of results) {
+      availabilityMap[r.id] = { available: r.available, totalPrice: r.totalPrice }
+    }
+  }
+
   // Serialize all card data for the client component
-  const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues }, index) => {
+  const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues }) => {
     const l = listing as Record<string, unknown>
     const coords = getCoords(l.location as string)
     const ppn = (l.price_per_night as number) || 0
-    const tp = nights > 0 && ppn > 0 ? ppn * nights : 0
+    const id = l.id as string
+    const avail = availabilityMap[id]
+    const tp = avail ? avail.totalPrice : (nights > 0 && ppn > 0 ? ppn * nights : 0)
+    const unavailable = avail ? !avail.available : false
     return {
-      id: l.id as string,
+      id,
       title: l.title as string,
       location: l.location as string,
       maxGuests: (l.max_guests as number) || 0,
@@ -163,6 +196,7 @@ export default async function Home({
       issues,
       lat: coords[0],
       lon: coords[1],
+      unavailable,
       image: (() => {
         const flat = (l.images as string[] | null) ?? []
         if (flat[0]) return flat[0]
@@ -262,9 +296,16 @@ export default async function Home({
                     style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
                     <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
                       {card.image
-                        ? <img src={card.image} alt={card.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ? <img src={card.image} alt={card.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }} />
                         : <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 55%)' }} />
                       }
+                      {card.unavailable && (
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', backdropFilter: 'blur(4px)' }}>
+                            Nicht verfügbar
+                          </span>
+                        </div>
+                      )}
                       <div style={{ position: 'absolute', top: '10px', left: '10px' }}>
                         <span style={{ fontSize: '10px', fontWeight: 600, padding: '3px 8px', borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.92)', color: '#333' }}>{card.location}</span>
                       </div>

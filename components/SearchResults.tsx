@@ -30,6 +30,7 @@ export interface CardData {
   lat: number
   lon: number
   image?: string   // first photo if uploaded
+  unavailable?: boolean  // true if not available for selected dates
 }
 
 interface FilterState {
@@ -206,11 +207,18 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
           <img
             src={card.image}
             alt={card.title}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }}
           />
         )}
         {!card.image && (
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0,0,0,0.08) 0%, transparent 50%)' }} />
+        )}
+        {card.unavailable && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', backdropFilter: 'blur(4px)' }}>
+              Nicht verfügbar
+            </span>
+          </div>
         )}
         <div style={{ position: 'absolute', top: '10px', left: '10px' }}>
           <span style={{ fontSize: '10px', fontWeight: 600, padding: '3px 8px', borderRadius: '999px', backgroundColor: 'rgba(255,255,255,0.92)', color: '#333', backdropFilter: 'blur(8px)' }}>
