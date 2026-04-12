@@ -200,6 +200,7 @@ interface Listing {
   booking_url?: string
   vrbo_url?: string
   google_place_id?: string
+  google_api_key?: string
 }
 
 const CANCELLATION_TEMPLATES = [
@@ -295,6 +296,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [bookingUrl, setBookingUrl] = useState(listing.booking_url ?? '')
   const [vrboUrl, setVrboUrl] = useState(listing.vrbo_url ?? '')
   const [googlePlaceId, setGooglePlaceId] = useState(listing.google_place_id ?? '')
+  const [googleApiKey, setGoogleApiKey] = useState(listing.google_api_key ?? '')
 
   // Reviews management
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
@@ -442,6 +444,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           booking_url: bookingUrl,
           vrbo_url: vrboUrl,
           google_place_id: googlePlaceId,
+          google_api_key: googleApiKey,
           is_active: isActive,
         }),
       })
@@ -883,6 +886,12 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           </Field>
           <Field label="Google Place ID">
             <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
+          </Field>
+        </div>
+        <div style={{ marginBottom: '20px' }}>
+          <Field label="Google Places API Key">
+            <input value={googleApiKey} onChange={e => setGoogleApiKey(e.target.value)} placeholder="AIza..." type="password" style={inputStyle} />
+            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>Eigener API Key für Google Reviews. Erstelle einen unter <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style={{ color: '#8A7020' }}>Google Cloud Console</a> (Places API aktivieren).</p>
           </Field>
         </div>
 

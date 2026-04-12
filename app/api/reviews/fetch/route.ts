@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   // Verify ownership
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('host_id, airbnb_url, booking_url, google_place_id')
+    .select('host_id, airbnb_url, booking_url, google_place_id, google_api_key')
     .eq('id', listingId)
     .single()
 
@@ -26,14 +26,14 @@ export async function POST(req: NextRequest) {
   // ── 1. Google Places API ──
   if (listing.google_place_id) {
     try {
-      const googleResult = await fetchGoogleReviews(listingId, listing.google_place_id)
+      const googleResult = await fetchGoogleReviews(listingId, listing.google_place_id, listing.google_api_key)
       results.push(googleResult)
     } catch (e) {
       results.push({ source: 'google', fetched: 0, errors: String(e) })
     }
   }
 
-  // ── 2. Airbnb (page scraping via __NEXT_DATA__) ──
+  // ── 2. Airbnb ──
   if (listing.airbnb_url) {
     try {
       const airbnbResult = await fetchAirbnbReviews(listingId, listing.airbnb_url)
@@ -57,12 +57,11 @@ export async function POST(req: NextRequest) {
 }
 
 /* ── Google Places API ──────────────────────────────────────── */
-async function fetchGoogleReviews(listingId: string, placeId: string) {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY
-  if (!apiKey) return { source: 'google', fetched: 0, errors: 'GOOGLE_PLACES_API_KEY nicht konfiguriert. Bitte in den Umgebungsvariablen hinterlegen.' }
+async function fetchGoogleReviews(listingId: string, placeId: string, apiKey?: string) {
+  const key = apiKey || process.env.GOOGLE_PLACES_API_KEY
+  if (!key) return { source: 'google', fetched: 0, errors: 'Kein Google API Key hinterlegt. Bitte im Feld "Google Places API Key" eintragen.' }
 
-  // Try new Places API (v1) first, fallback to legacy
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=reviews&language=de&key=${apiKey}`
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=reviews&language=de&key=${key}`
   const res = await fetch(url)
   const data = await res.json()
 
@@ -90,65 +89,121 @@ async function fetchGoogleReviews(listingId: string, placeId: string) {
   return { source: 'google', fetched: inserted }
 }
 
-/* ── Airbnb (parse public listing page) ─────────────────────── */
+/* ── Airbnb (StaysPdpReviewsQuery GraphQL API) ─────────────── */
 async function fetchAirbnbReviews(listingId: string, airbnbUrl: string) {
-  // Extract listing ID from URL
   const match = airbnbUrl.match(/rooms\/(\d+)/)
   if (!match) return { source: 'airbnb', fetched: 0, errors: 'Ungültige Airbnb-URL. Erwartetes Format: https://airbnb.com/rooms/12345' }
 
   const airbnbId = match[1]
 
-  // Airbnb has a public API endpoint for reviews
-  const reviewsUrl = `https://www.airbnb.com/api/v3/PdpReviews/bdc7dba5de42ac9a8e40e498bb84e498537fba1b6a1dcb73cc478dd520cee657?operationName=PdpReviews&locale=de&currency=EUR&variables=%7B%22request%22%3A%7B%22fieldSelector%22%3A%22for_p3_translation_only%22%2C%22forPreview%22%3Afalse%2C%22limit%22%3A50%2C%22listingId%22%3A%22${airbnbId}%22%2C%22numberOfAdults%22%3A%221%22%2C%22numberOfChildren%22%3A%220%22%2C%22numberOfInfants%22%3A%220%22%7D%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22bdc7dba5de42ac9a8e40e498bb84e498537fba1b6a1dcb73cc478dd520cee657%22%7D%7D`
+  // Strategy 1: Airbnb's internal GraphQL reviews endpoint
+  // This is the same API the Airbnb frontend uses
+  const apiKey = 'd306zoyjsyarp7ifhu67rjxn52tv0t20' // Airbnb's public API key (embedded in their frontend)
 
-  // Try a simpler approach — fetch the listing page and look for review data
+  const variables = {
+    request: {
+      fieldSelector: 'for_p3_translation_only',
+      forPreview: false,
+      limit: 50,
+      listingId: airbnbId,
+      numberOfAdults: '1',
+      numberOfChildren: '0',
+      numberOfInfants: '0',
+    }
+  }
+
+  const extensions = {
+    persistedQuery: {
+      version: 1,
+      sha256Hash: 'bdc7dba5de42ac9a8e40e498bb84e498537fba1b6a1dcb73cc478dd520cee657',
+    }
+  }
+
   try {
-    const pageRes = await fetch(`https://www.airbnb.com/rooms/${airbnbId}`, {
+    const graphqlUrl = `https://www.airbnb.com/api/v3/StaysPdpReviewsQuery/dec1c8061483e6e05ff498246e7ca5701e589dc1138fa53a26a5f08f6e26a13e?operationName=StaysPdpReviewsQuery&locale=de&currency=EUR&variables=${encodeURIComponent(JSON.stringify(variables))}&extensions=${encodeURIComponent(JSON.stringify(extensions))}`
+
+    const apiRes = await fetch(graphqlUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'de-DE,de;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'X-Airbnb-Api-Key': apiKey,
+        'X-Airbnb-GraphQL-Platform': 'web',
+        'X-Airbnb-GraphQL-Platform-Client': 'minimalist-niobe',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+        'Referer': `https://www.airbnb.com/rooms/${airbnbId}`,
+        'Origin': 'https://www.airbnb.com',
       },
     })
 
-    if (!pageRes.ok) return { source: 'airbnb', fetched: 0, errors: `Airbnb-Seite nicht erreichbar (${pageRes.status})` }
+    if (apiRes.ok) {
+      const data = await apiRes.json()
+      const reviews = findReviewsInObject(data)
+      if (reviews && reviews.length > 0) {
+        return await insertAirbnbReviews(listingId, reviews)
+      }
+    }
+  } catch {
+    // Fall through to strategy 2
+  }
+
+  // Strategy 2: Fetch the listing page HTML and parse embedded data
+  try {
+    const pageRes = await fetch(`https://www.airbnb.de/rooms/${airbnbId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept-Language': 'de-DE,de;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cache-Control': 'no-cache',
+      },
+      redirect: 'follow',
+    })
+
+    if (!pageRes.ok) return { source: 'airbnb', fetched: 0, errors: `Airbnb nicht erreichbar (Status ${pageRes.status}). Airbnb blockiert möglicherweise automatische Abfragen.` }
 
     const html = await pageRes.text()
 
-    // Look for __NEXT_DATA__ or embedded JSON with reviews
-    const nextDataMatch = html.match(/<script id="data-deferred-state-0"[^>]*>([\s\S]*?)<\/script>/)
-      ?? html.match(/<script id="data-deferred-state"[^>]*>([\s\S]*?)<\/script>/)
-      ?? html.match(/<!--\s*(\{[\s\S]*?"reviews"[\s\S]*?})\s*-->/)
+    // Try multiple script tag patterns
+    const scriptPatterns = [
+      /<script id="data-deferred-state-0"[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/,
+      /<script id="data-deferred-state"[^>]*>([\s\S]*?)<\/script>/,
+      /<script data-hypernova-key="spaspabundlejs"[^>]*>([\s\S]*?)<\/script>/,
+      /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+    ]
 
-    if (!nextDataMatch) {
-      // Try alternative: look for review data in any script tag
-      const reviewJsonMatch = html.match(/"reviews"\s*:\s*(\[[\s\S]*?\])\s*[,}]/)
-      if (!reviewJsonMatch) {
-        return { source: 'airbnb', fetched: 0, errors: 'Konnte keine Bewertungen aus der Airbnb-Seite extrahieren. Die Seitenstruktur hat sich möglicherweise geändert.' }
-      }
-
-      try {
-        const reviews = JSON.parse(reviewJsonMatch[1])
-        return await insertAirbnbReviews(listingId, reviews)
-      } catch {
-        return { source: 'airbnb', fetched: 0, errors: 'Konnte Review-Daten nicht parsen.' }
+    for (const pattern of scriptPatterns) {
+      const match = html.match(pattern)
+      if (match) {
+        try {
+          const data = JSON.parse(match[1])
+          const reviews = findReviewsInObject(data)
+          if (reviews && reviews.length > 0) {
+            return await insertAirbnbReviews(listingId, reviews)
+          }
+        } catch { /* try next pattern */ }
       }
     }
 
-    try {
-      const jsonStr = nextDataMatch[1]
-      const pageData = JSON.parse(jsonStr)
+    // Strategy 3: Look for review data in any inline JSON
+    const reviewsJsonPatterns = [
+      /"reviews"\s*:\s*(\[[\s\S]{10,}?\])\s*[,}]/,
+      /"pdpReviews"\s*:\s*(\[[\s\S]{10,}?\])\s*[,}]/,
+      /"mergedReviews"\s*:\s*(\[[\s\S]{10,}?\])\s*[,}]/,
+    ]
 
-      // Navigate the data structure to find reviews
-      const reviews = findReviewsInObject(pageData)
-      if (!reviews || reviews.length === 0) {
-        return { source: 'airbnb', fetched: 0, errors: 'Keine Bewertungen auf der Airbnb-Seite gefunden.' }
+    for (const pat of reviewsJsonPatterns) {
+      const m = html.match(pat)
+      if (m) {
+        try {
+          const reviews = JSON.parse(m[1])
+          if (Array.isArray(reviews) && reviews.length > 0) {
+            return await insertAirbnbReviews(listingId, reviews)
+          }
+        } catch { /* try next */ }
       }
-
-      return await insertAirbnbReviews(listingId, reviews)
-    } catch {
-      return { source: 'airbnb', fetched: 0, errors: 'Konnte Airbnb-Daten nicht verarbeiten.' }
     }
+
+    return { source: 'airbnb', fetched: 0, errors: 'Airbnb blockiert die automatische Abfrage. Bewertungen können manuell über "Bewertung hinzufügen" eingetragen werden.' }
   } catch (e) {
     return { source: 'airbnb', fetched: 0, errors: `Fehler beim Abrufen: ${e}` }
   }
@@ -156,13 +211,19 @@ async function fetchAirbnbReviews(listingId: string, airbnbUrl: string) {
 
 /* Recursively find review arrays in nested objects */
 function findReviewsInObject(obj: unknown, depth = 0): Array<Record<string, unknown>> | null {
-  if (depth > 15 || !obj || typeof obj !== 'object') return null
+  if (depth > 20 || !obj || typeof obj !== 'object') return null
 
   if (Array.isArray(obj)) {
-    // Check if this looks like a reviews array
+    // Check if this array looks like reviews
     if (obj.length > 0 && obj[0] && typeof obj[0] === 'object') {
       const first = obj[0] as Record<string, unknown>
-      if ('rating' in first && ('comments' in first || 'reviewText' in first || 'comment' in first || 'review' in first)) {
+      // Different field name patterns from Airbnb's data
+      if (
+        ('rating' in first && ('comments' in first || 'reviewText' in first || 'comment' in first || 'review' in first)) ||
+        ('reviewRating' in first && 'reviewee' in first) ||
+        ('value' in first && 'reviewer' in first) ||
+        ('localizedReview' in first && 'reviewee' in first)
+      ) {
         return obj as Array<Record<string, unknown>>
       }
     }
@@ -175,15 +236,22 @@ function findReviewsInObject(obj: unknown, depth = 0): Array<Record<string, unkn
 
   const record = obj as Record<string, unknown>
 
-  // Direct key check
-  for (const key of ['reviews', 'mergedReviews', 'pdpReviews', 'reviewsList']) {
-    if (key in record && Array.isArray(record[key])) {
-      const arr = record[key] as Array<Record<string, unknown>>
-      if (arr.length > 0) return arr
+  // Direct key check — keys used in various Airbnb data formats
+  for (const key of ['reviews', 'mergedReviews', 'pdpReviews', 'reviewsList', 'visibleReviewGroups', 'allReviews']) {
+    if (key in record) {
+      const val = record[key]
+      if (Array.isArray(val) && val.length > 0) {
+        // Some Airbnb structures nest reviews inside group objects
+        if (typeof val[0] === 'object' && val[0] !== null && 'reviews' in (val[0] as Record<string, unknown>)) {
+          const nested = (val[0] as Record<string, unknown>).reviews
+          if (Array.isArray(nested) && nested.length > 0) return nested as Array<Record<string, unknown>>
+        }
+        return val as Array<Record<string, unknown>>
+      }
     }
   }
 
-  // Recurse into nested objects
+  // Recurse
   for (const val of Object.values(record)) {
     const found = findReviewsInObject(val, depth + 1)
     if (found) return found
@@ -195,27 +263,33 @@ async function insertAirbnbReviews(listingId: string, reviews: Array<Record<stri
   let inserted = 0
 
   for (const review of reviews) {
-    // Normalize different Airbnb data formats
-    const reviewer = (review.reviewer ?? {}) as Record<string, unknown>
-    const id = String(review.id ?? review.reviewId ?? review.localizedDate ?? Date.now() + inserted)
+    const reviewer = (review.reviewer ?? review.reviewee ?? {}) as Record<string, unknown>
+    const localizedReview = (review.localizedReview ?? review) as Record<string, unknown>
+
+    const id = String(review.id ?? review.reviewId ?? review.trackingKey ?? Date.now() + inserted)
     const author = String(
-      review.reviewerName ?? reviewer.firstName ?? reviewer.name ??
-      reviewer.smartName ?? 'Airbnb-Gast'
+      review.reviewerName ?? review.authorName ??
+      reviewer.firstName ?? reviewer.name ?? reviewer.smartName ??
+      localizedReview.reviewerName ?? 'Airbnb-Gast'
     )
     const avatar = String(
       review.reviewerAvatar ?? reviewer.pictureUrl ?? reviewer.avatar ??
-      reviewer.profilePictureUrl ?? ''
+      reviewer.profilePictureUrl ?? reviewer.thumbnailUrl ?? ''
     ) || null
-    const rating = Number(review.rating ?? review.reviewRating ?? 5)
-    const text = String(review.comments ?? review.reviewText ?? review.comment ?? review.review ?? '')
-    const dateStr = review.createdAt ?? review.localizedDate ?? review.date
 
+    // Rating: Airbnb uses different scales/field names
+    let rating = Number(review.rating ?? review.reviewRating ?? (review as Record<string, unknown>).value ?? 5)
+    if (rating > 5) rating = Math.round(rating / 2) // Some formats use 0-10
+
+    const text = String(
+      review.comments ?? review.reviewText ?? review.comment ?? review.review ??
+      localizedReview.comments ?? localizedReview.reviewText ?? ''
+    )
+
+    const dateStr = review.createdAt ?? review.localizedDate ?? review.date ?? review.createdAtLocal
     let reviewDate: string
     if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}/)) {
       reviewDate = dateStr.split('T')[0]
-    } else if (typeof dateStr === 'string') {
-      // Try to parse localized date like "März 2026"
-      reviewDate = new Date().toISOString().split('T')[0]
     } else {
       reviewDate = new Date().toISOString().split('T')[0]
     }
@@ -237,14 +311,25 @@ async function insertAirbnbReviews(listingId: string, reviews: Array<Record<stri
   return { source: 'airbnb', fetched: inserted }
 }
 
-/* ── Booking.com (parse public page) ────────────────────────── */
+/* ── Booking.com ───────────────────────────────────────────── */
 async function fetchBookingReviews(listingId: string, bookingUrl: string) {
+  // Extract the hotel slug/ID from the URL for the reviews page
+  const slugMatch = bookingUrl.match(/hotel\/[a-z]{2}\/([\w-]+)/)
+  const pageName = slugMatch ? slugMatch[1] : null
+
+  // Booking.com has a separate reviews page — try that too
+  const urlsToTry = [bookingUrl]
+  if (pageName) {
+    // The reviews tab URL pattern
+    urlsToTry.push(`${bookingUrl.split('?')[0]}#tab-reviews`)
+  }
+
   try {
     const pageRes = await fetch(bookingUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept-Language': 'de-DE,de;q=0.9',
-        'Accept': 'text/html',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     })
 
@@ -252,51 +337,78 @@ async function fetchBookingReviews(listingId: string, bookingUrl: string) {
 
     const html = await pageRes.text()
 
-    // Booking.com embeds review data in JSON-LD or script tags
-    const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)
+    // Strategy 1: JSON-LD structured data
+    const jsonLdBlocks = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)
     let reviews: Array<{ author: string; rating: number; text: string; date: string }> = []
 
-    if (jsonLdMatch) {
-      for (const block of jsonLdMatch) {
+    if (jsonLdBlocks) {
+      for (const block of jsonLdBlocks) {
         try {
           const json = JSON.parse(block.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''))
           if (json.review && Array.isArray(json.review)) {
             reviews = json.review.map((r: Record<string, unknown>) => ({
               author: String((r.author as Record<string, unknown>)?.name ?? 'Booking-Gast'),
-              rating: Number((r.reviewRating as Record<string, unknown>)?.ratingValue ?? 0) / 2, // Booking uses 0-10 scale
+              rating: Number((r.reviewRating as Record<string, unknown>)?.ratingValue ?? 0) / 2,
               text: String(r.reviewBody ?? r.description ?? ''),
               date: String(r.datePublished ?? new Date().toISOString().split('T')[0]),
             }))
             break
           }
+          // Also check for aggregateRating with nested reviews
+          if (json['@type'] === 'Hotel' || json['@type'] === 'LodgingBusiness' || json['@type'] === 'VacationRental') {
+            if (json.review) {
+              const revArr = Array.isArray(json.review) ? json.review : [json.review]
+              reviews = revArr.map((r: Record<string, unknown>) => ({
+                author: String((r.author as Record<string, unknown>)?.name ?? 'Booking-Gast'),
+                rating: Number((r.reviewRating as Record<string, unknown>)?.ratingValue ?? ((r.reviewRating as Record<string, unknown>)?.bestRating ? Number((r.reviewRating as Record<string, unknown>).ratingValue) / Number((r.reviewRating as Record<string, unknown>).bestRating) * 5 : 4)),
+                text: String(r.reviewBody ?? ''),
+                date: String(r.datePublished ?? new Date().toISOString().split('T')[0]),
+              }))
+              break
+            }
+          }
         } catch { /* skip */ }
       }
     }
 
-    // Alternative: parse review blocks from HTML
+    // Strategy 2: Parse review blocks from HTML
     if (reviews.length === 0) {
-      const reviewBlocks = html.match(/data-testid="review-card"[\s\S]*?(?=data-testid="review-card"|<\/div>\s*<\/div>\s*<\/div>)/g)
-      if (reviewBlocks) {
-        for (const block of reviewBlocks.slice(0, 20)) {
-          const nameMatch = block.match(/data-testid="review-avatar"[\s\S]*?>([\w\s]+)</)
-          const scoreMatch = block.match(/data-testid="review-score"[\s\S]*?>([\d.]+)</)
-          const textMatch = block.match(/data-testid="review-positive-text"[\s\S]*?>([\s\S]*?)</)
-          const dateMatch = block.match(/data-testid="review-date"[\s\S]*?>([\s\S]*?)</)
+      // Booking uses various test-id patterns for review cards
+      const reviewPatterns = [
+        /data-testid="review-card"([\s\S]*?)(?=data-testid="review-card"|$)/g,
+        /class="[^"]*review_item[^"]*"([\s\S]*?)(?=class="[^"]*review_item|$)/g,
+      ]
 
-          if (nameMatch) {
-            reviews.push({
-              author: nameMatch[1].trim(),
-              rating: scoreMatch ? Number(scoreMatch[1]) / 2 : 4,
-              text: textMatch ? textMatch[1].trim() : '',
-              date: dateMatch ? dateMatch[1].trim() : new Date().toISOString().split('T')[0],
-            })
+      for (const pattern of reviewPatterns) {
+        const blocks = [...html.matchAll(pattern)]
+        if (blocks.length > 0) {
+          for (const block of blocks.slice(0, 30)) {
+            const content = block[1] || block[0]
+            const nameMatch = content.match(/(?:data-testid="review-avatar"|class="[^"]*reviewer[^"]*")[\s\S]*?>([\w\sÄÖÜäöüß]+?)</)
+            const scoreMatch = content.match(/(?:data-testid="review-score"|class="[^"]*review-score[^"]*")[\s\S]*?>([\d.,]+)/)
+            const textMatch = content.match(/(?:data-testid="review-positive-text"|class="[^"]*review_pos[^"]*")[\s\S]*?>([\s\S]*?)</)
+            const negMatch = content.match(/(?:data-testid="review-negative-text"|class="[^"]*review_neg[^"]*")[\s\S]*?>([\s\S]*?)</)
+
+            if (nameMatch || textMatch) {
+              const posText = textMatch ? textMatch[1].trim().replace(/<[^>]+>/g, '') : ''
+              const negText = negMatch ? negMatch[1].trim().replace(/<[^>]+>/g, '') : ''
+              const combinedText = [posText, negText].filter(Boolean).join(' | ')
+
+              reviews.push({
+                author: nameMatch ? nameMatch[1].trim() : 'Booking-Gast',
+                rating: scoreMatch ? Math.min(5, Number(scoreMatch[1].replace(',', '.')) / 2) : 4,
+                text: combinedText,
+                date: new Date().toISOString().split('T')[0],
+              })
+            }
           }
+          if (reviews.length > 0) break
         }
       }
     }
 
     if (reviews.length === 0) {
-      return { source: 'booking', fetched: 0, errors: 'Konnte keine Bewertungen aus der Booking-Seite extrahieren.' }
+      return { source: 'booking', fetched: 0, errors: 'Booking.com blockiert die automatische Abfrage. Bewertungen können manuell über "Bewertung hinzufügen" eingetragen werden.' }
     }
 
     let inserted = 0
@@ -304,7 +416,7 @@ async function fetchBookingReviews(listingId: string, bookingUrl: string) {
       const { error } = await supabaseAdmin.from('reviews').upsert({
         listing_id: listingId,
         source: 'booking',
-        source_review_id: `booking_${review.author}_${review.date}`,
+        source_review_id: `booking_${review.author}_${review.date}_${inserted}`,
         author_name: review.author,
         rating: Math.min(5, Math.max(1, Math.round(review.rating * 10) / 10)),
         review_text: review.text || null,
