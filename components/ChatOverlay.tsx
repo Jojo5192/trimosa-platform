@@ -492,8 +492,8 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
           {/* Mobile body */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {mobileView === 'list'
-              ? <ConvList fullWidth />
-              : <MessagePanel showBack />
+              ? ConvList({ fullWidth: true })
+              : MessagePanel({ showBack: true })
             }
           </div>
         </div>
@@ -557,8 +557,8 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
 
           {/* Desktop body: sidebar + messages */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            <ConvList />
-            <MessagePanel />
+            {ConvList({ fullWidth: false })}
+            {MessagePanel({ showBack: false })}
           </div>
         </div>
       )}
