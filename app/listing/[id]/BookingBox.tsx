@@ -274,11 +274,18 @@ export default function BookingBox({
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '16px' }}>
         {loadingRates ? (
           <div style={{ height: '28px', width: '100px', borderRadius: '6px', background: '#F5F5F7' }} />
-        ) : (
+        ) : hasBothDates && displayPrice ? (
+          <>
+            <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {displayPrice}</span>
+            <span style={{ fontSize: '13px', color: '#999' }}>/ {nights} {nights === 1 ? 'Nacht' : 'Nächte'}</span>
+          </>
+        ) : pricePerNight > 0 ? (
           <>
             <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
             <span style={{ fontSize: '13px', color: '#999' }}>/ Nacht</span>
           </>
+        ) : (
+          <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>Zeitraum eingeben für Preisangabe</span>
         )}
       </div>
 

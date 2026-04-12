@@ -200,12 +200,20 @@ export default async function Home({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   {[
                     { label: 'Alle', q: '' },
-                    { label: 'Raum Trier', q: 'Trier' },
-                    { label: 'Bitburg', q: 'Bitburg' },
-                    { label: 'Südeifel', q: 'Ralingen' },
-                    { label: 'Schliersee', q: 'Schliersee' },
-                    { label: 'Tegernsee', q: 'Tegernsee' },
-                    { label: 'Garmisch', q: 'Garmisch' },
+                    ...(() => {
+                      // Build dynamic location filters from actual listings
+                      const locationCounts: Record<string, number> = {}
+                      for (const l of filtered) {
+                        const loc = (l.location as string) || ''
+                        if (loc) {
+                          locationCounts[loc] = (locationCounts[loc] || 0) + 1
+                        }
+                      }
+                      return Object.entries(locationCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 6)
+                        .map(([loc]) => ({ label: loc, q: loc }))
+                    })(),
                   ].map((f) => {
                     const isActive = f.q === '' ? !q : q === f.q
                     const href = f.q ? `/?q=${encodeURIComponent(f.q)}` : '/'
@@ -213,7 +221,7 @@ export default async function Home({
                       <Link key={f.label} href={href} style={{
                         padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
                         textDecoration: 'none', whiteSpace: 'nowrap',
-                        ...(isActive ? { backgroundColor: '#111', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
+                        ...(isActive ? { backgroundColor: '#A8882A', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
                       }}>{f.label}</Link>
                     )
                   })}
@@ -267,8 +275,12 @@ export default async function Home({
                         <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, flex: 1 }}>{card.title}</h3>
                         {card.pricePerNight > 0 && (
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>€{card.pricePerNight}</span>
-                            <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>/Nacht</span>
+                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
+                              €{card.totalPrice > 0 ? card.totalPrice : card.pricePerNight}
+                            </span>
+                            <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>
+                              {card.totalPrice > 0 ? `${card.nights} Nächte` : '/Nacht'}
+                            </span>
                           </div>
                         )}
                       </div>
