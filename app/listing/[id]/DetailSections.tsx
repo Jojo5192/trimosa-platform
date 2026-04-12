@@ -446,7 +446,7 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
   const month2 = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1)
 
   return (
-    <div style={{ marginBottom: '32px' }}>
+    <div id="occupancy-calendar" style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Belegungskalender</h2>
       <div>
         {/* Month navigation */}

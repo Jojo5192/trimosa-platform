@@ -345,9 +345,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     position: static !important;
   }
 
-  /* Container: tighter padding */
+  /* Container: tighter padding + prevent overflow */
   .detail-container {
     padding: 20px 16px 0 !important;
+    overflow-x: hidden !important;
   }
 
   /* Title: smaller on mobile */
@@ -395,6 +396,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
   .detail-description p {
     font-size: 14px !important;
+    text-align: left !important;
+    word-break: break-word !important;
   }
 
   /* Amenities: single column on mobile */
@@ -444,6 +447,34 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .detail-amenity-overlay-grid {
     grid-template-columns: 1fr !important;
   }
+
+  /* Mobile booking bar — fixed at bottom */
+  .mobile-booking-bar {
+    display: flex !important;
+  }
+
+  /* Extra bottom padding so content isn't hidden behind fixed bar */
+  .detail-container {
+    padding-bottom: 90px !important;
+  }
+}
+
+/* Mobile booking bar: hidden on desktop, shown on mobile via media query above */
+.mobile-booking-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  background: #fff;
+  border-top: 1px solid #E5E5EA;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
 }
 
 /* Safe-area padding for bottom FAB */

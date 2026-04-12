@@ -11,6 +11,7 @@ import {
   ReviewsPlaceholder,
   HouseRulesDisplay,
 } from './DetailSections'
+import MobileBookingBar from './MobileBookingBar'
 
 /* Fallback gradient when no photos uploaded yet */
 function getGradientStyle(location: string, title: string): React.CSSProperties {
@@ -254,6 +255,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
         </div>
       </div>
+
+      {/* Fixed mobile booking bar — only visible on mobile via CSS */}
+      <MobileBookingBar pricePerNight={listing.price_per_night} />
     </div>
   )
 }
