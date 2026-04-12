@@ -237,3 +237,55 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   box-shadow: 0 8px 24px -4px rgba(176, 145, 43, 0.35);
   transform: translateY(-1px);
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE RESPONSIVE
+   ═══════════════════════════════════════════ */
+
+/* Homepage card grid — 2 columns on mobile */
+.homepage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .homepage-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* Filter bar — horizontal scroll on mobile */
+.filter-scroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .filter-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    -ms-overflow-style: none;
+  }
+  .filter-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Card text — tighter on mobile */
+@media (max-width: 640px) {
+  .listing-card h3 {
+    font-size: 12px !important;
+  }
+}
+
+/* Safe-area padding for bottom FAB */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-fab {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}

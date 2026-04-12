@@ -242,8 +242,8 @@ export default async function Home({
               <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA6A0', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '10px' }}>
                 Beliebte Filter
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                <div className="filter-scroll">
                   {[
                     { label: 'Alle', q: '' },
                     ...(() => {
@@ -272,7 +272,7 @@ export default async function Home({
                     )
                   })}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="filter-scroll">
                   {[
                     { label: 'Alle', g: '' },
                     { label: '2 Pers.', g: '2' },
@@ -300,7 +300,7 @@ export default async function Home({
             <h1 style={{ fontSize: 'clamp(17px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 20px', lineHeight: 1.2 }}>
               Finde dein <span style={{ background: 'linear-gradient(135deg, #A8882A, #C4A235)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Premium-Apartment</span> für die perfekte Auszeit.
             </h1>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
+            <div className="homepage-grid">
               {cardData.map((card, index) => {
                 const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
                 return (
