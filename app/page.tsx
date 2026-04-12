@@ -314,7 +314,7 @@ export default async function Home({
                     <div style={{ padding: '11px 13px 13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
                         <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, flex: 1 }}>{card.title}</h3>
-                        {card.pricePerNight > 0 && (
+                        {(card.pricePerNight > 0 || card.totalPrice > 0) && (
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
                               €{card.totalPrice > 0 ? card.totalPrice : card.pricePerNight}
@@ -325,7 +325,7 @@ export default async function Home({
                           </div>
                         )}
                       </div>
-                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{card.pricePerNight === 0 ? ' · Preis auf Anfrage' : ''}</p>
+                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{(card.pricePerNight === 0 && card.totalPrice === 0) ? ' · Preis auf Anfrage' : ''}</p>
                     </div>
                   </Link>
                 )

@@ -239,7 +239,7 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
           <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
             {card.title}
           </h3>
-          {card.pricePerNight > 0 && (
+          {(card.pricePerNight > 0 || card.totalPrice > 0) && (
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
                 €{showTotal ? card.totalPrice : card.pricePerNight}
@@ -251,7 +251,7 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
           )}
         </div>
         <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
-          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{card.pricePerNight === 0 ? ' · Preis auf Anfrage' : ''}
+          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer{(card.pricePerNight === 0 && card.totalPrice === 0) ? ' · Preis auf Anfrage' : ''}
         </p>
         {card.issues.length > 0 && (
           <div style={{ display: 'flex', gap: '4px', marginTop: '7px', flexWrap: 'wrap' }}>
