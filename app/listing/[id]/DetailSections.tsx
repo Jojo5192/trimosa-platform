@@ -121,8 +121,8 @@ function Overlay({ onClose, children, title }: { onClose: () => void; children: 
     return () => { document.body.style.overflow = '' }
   }, [])
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '85vh', overflow: 'auto', position: 'relative' }}>
+    <div onClick={onClose} className="detail-overlay-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div onClick={e => e.stopPropagation()} className="detail-overlay-box" style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '85vh', overflow: 'auto', position: 'relative' }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 1, background: '#fff', borderRadius: '20px 20px 0 0', padding: '20px 24px 16px', borderBottom: '1px solid #F0EEE8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#1D1D1F' }}>{title}</h3>
           <button type="button" onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: '#F5F5F7', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', flexShrink: 0 }}>✕</button>
@@ -247,7 +247,7 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   return (
     <div style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Ausstattung</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
+      <div className="detail-amenities-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
         {visible.map(a => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #F0EEE8' }}>
             <span style={{ fontSize: '17px', lineHeight: 1, flexShrink: 0 }}>{a.emoji}</span>
@@ -266,7 +266,7 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
           {grouped.map(cat => (
             <div key={cat.name} style={{ marginBottom: '24px' }}>
               <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>{cat.icon} {cat.name}</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div className="detail-amenity-overlay-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 {cat.items.map(a => (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#F9F9FB', border: '1px solid #F0EEE8' }}>
                     <span style={{ fontSize: '16px', flexShrink: 0 }}>{a.emoji}</span>
@@ -291,7 +291,7 @@ export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>
         {urls.length === 1 ? 'Grundriss' : 'Grundrisse'}
       </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
+      <div className="detail-floorplan-grid" style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
         {urls.map((url, i) => (
           <div key={i} onClick={() => setOpenIdx(i)} style={{ cursor: 'pointer', position: 'relative' }}>
             <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', maxHeight: '300px', background: '#fff' }}>
@@ -461,7 +461,7 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>Laden…</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <div className="detail-calendar-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <CalendarMonthGrid
               year={viewDate.getFullYear()} month={viewDate.getMonth()}
               rates={rates} todayStr={todayStr}
@@ -478,7 +478,7 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
         )}
 
         {/* Legend + selection info */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
+        <div className="detail-calendar-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#999' }}>
             <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#F0FDF4', border: '1px solid #BBF7D0' }} />Frei
           </div>

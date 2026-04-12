@@ -68,15 +68,15 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <NavBar />
 
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
+      <div className="detail-container" style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
         {/* ── Title ── */}
-        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
+        <h1 className="detail-title" style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
           {listing.title}
         </h1>
 
         {/* ── Rating + City + Host badge (aligned bottom) ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div className="detail-meta-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
           <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020', textDecoration: 'none', cursor: 'pointer' }}>
             ★★★★★ Neu
           </a>
@@ -118,7 +118,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           <div>
 
             {/* Quick stats with Host badge */}
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingBottom: '28px', borderBottom: '1px solid #E5E5EA', marginBottom: '28px' }}>
+            <div className="detail-stats" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingBottom: '28px', borderBottom: '1px solid #E5E5EA', marginBottom: '28px' }}>
               {[
                 { icon: '👥', label: 'Gäste', val: `bis ${listing.max_guests}` },
                 { icon: '🛏️', label: 'Schlafzimmer', val: listing.bedrooms ?? 1 },
@@ -137,7 +137,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             </div>
 
             {/* Description */}
-            <div style={{ marginBottom: '32px' }}>
+            <div className="detail-description" style={{ marginBottom: '32px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Über diese Unterkunft</h2>
               <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0, textAlign: 'justify' }}>
                 {listing.description || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
@@ -185,7 +185,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           <div style={{ marginTop: '40px', marginBottom: '32px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Lage</h2>
             {listing.address ? (
-              <div style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', height: '360px' }}>
+              <div className="detail-map" style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', height: '360px' }}>
                 <iframe
                   title="Karte"
                   width="100%"

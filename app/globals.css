@@ -344,6 +344,106 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .detail-booking-col {
     position: static !important;
   }
+
+  /* Container: tighter padding */
+  .detail-container {
+    padding: 20px 16px 0 !important;
+  }
+
+  /* Title: smaller on mobile */
+  .detail-title {
+    font-size: 22px !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Meta row: stack rating + city, host badge below */
+  .detail-meta-row {
+    gap: 8px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Photo grid: single column, shorter */
+  .detail-photo-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 240px !important;
+    margin-bottom: 24px !important;
+    border-radius: 14px !important;
+  }
+  .detail-photo-grid > div:not(:first-child) {
+    display: none !important;
+  }
+  .detail-photo-grid > div:first-child {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  /* Quick stats: reduce gap, smaller cards */
+  .detail-stats {
+    gap: 8px !important;
+    padding-bottom: 20px !important;
+    margin-bottom: 20px !important;
+  }
+  .detail-stats > div {
+    padding: 10px 12px !important;
+    min-width: 0 !important;
+    flex: 1 1 80px !important;
+  }
+
+  /* Description section */
+  .detail-description h2 {
+    font-size: 16px !important;
+  }
+  .detail-description p {
+    font-size: 14px !important;
+  }
+
+  /* Amenities: single column on mobile */
+  .detail-amenities-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Floor plans: single column */
+  .detail-floorplan-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Calendar: stack months */
+  .detail-calendar-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+
+  /* Calendar legend: smaller gap */
+  .detail-calendar-legend {
+    gap: 10px !important;
+  }
+
+  /* Map: shorter */
+  .detail-map {
+    height: 240px !important;
+  }
+
+  /* BookingBox calendar: stack months */
+  .detail-bb-cal-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Overlays: full screen on mobile */
+  .detail-overlay-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  .detail-overlay-box {
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  /* Amenity overlay grid: single column */
+  .detail-amenity-overlay-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* Safe-area padding for bottom FAB */

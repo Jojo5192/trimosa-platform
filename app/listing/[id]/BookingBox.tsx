@@ -368,7 +368,7 @@ export default function BookingBox({
             <button type="button" onClick={() => setCalMonth(m => addMonths(m, 1))}
               style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}>›</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <div className="detail-bb-cal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <CalendarMonth year={calMonth.getFullYear()} month={calMonth.getMonth()}
               rates={rates} checkIn={checkIn} checkOut={checkOut}
               selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate} />

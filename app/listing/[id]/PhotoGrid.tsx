@@ -32,6 +32,7 @@ export default function PhotoGrid({
     <>
       {/* Clickable grid */}
       <div
+        className="detail-photo-grid"
         onClick={() => totalPhotos > 0 && setViewerOpen(true)}
         style={{
           display: 'grid',
