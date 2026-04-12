@@ -94,24 +94,27 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  /* ── iOS keyboard: adjust mobile overlay to visualViewport ── */
+  /* ── iOS: lock body scroll when chat overlay is open on mobile ── */
   useEffect(() => {
     if (!isMobile || !open) return
-    const vv = window.visualViewport
-    if (!vv) return
-    const update = () => {
-      const el = mobileShellRef.current
-      if (!el) return
-      el.style.height = `${vv.height}px`
-      el.style.top    = `${vv.offsetTop}px`
-      el.style.bottom = 'auto'
-    }
-    update()
-    vv.addEventListener('resize', update)
-    vv.addEventListener('scroll', update)
+    const scrollY = window.scrollY
+    const body = document.body
+    const html = document.documentElement
+    // Lock background
+    body.style.overflow = 'hidden'
+    body.style.position = 'fixed'
+    body.style.top = `-${scrollY}px`
+    body.style.left = '0'
+    body.style.right = '0'
+    html.style.overflow = 'hidden'
     return () => {
-      vv.removeEventListener('resize', update)
-      vv.removeEventListener('scroll', update)
+      body.style.overflow = ''
+      body.style.position = ''
+      body.style.top = ''
+      body.style.left = ''
+      body.style.right = ''
+      html.style.overflow = ''
+      window.scrollTo(0, scrollY)
     }
   }, [isMobile, open])
 
@@ -461,10 +464,12 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
       {/* ── MOBILE LAYOUT ── */}
       {isMobile ? (
         <div ref={mobileShellRef} style={{
-          position: 'fixed', left: 0, right: 0, top: 0, bottom: 0,
+          position: 'fixed', top: 0, left: 0,
+          width: '100%', height: '100%',
           zIndex: 9001,
           display: 'flex', flexDirection: 'column',
           background: '#FAFAF8',
+          overflowX: 'hidden',
           animation: 'cslideup .22s cubic-bezier(.34,1.1,.64,1)',
         }}>
           {/* Mobile header */}
