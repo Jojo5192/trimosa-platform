@@ -299,6 +299,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   // Reviews management
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [fetchingReviews, setFetchingReviews] = useState(false)
+  const [fetchResult, setFetchResult] = useState<{ results: { source: string; fetched: number; errors?: string }[] } | null>(null)
   const [showAddReview, setShowAddReview] = useState(false)
   const [newReview, setNewReview] = useState({ source: 'airbnb', authorName: '', rating: '5', reviewText: '', reviewDate: new Date().toISOString().split('T')[0] })
 
@@ -902,8 +904,47 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
               <button type="button" onClick={() => setShowAddReview(!showAddReview)} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#8A7020' }}>
                 + Bewertung hinzufügen
               </button>
+              <button type="button" disabled={fetchingReviews} onClick={async () => {
+                setFetchingReviews(true)
+                setFetchResult(null)
+                try {
+                  const res = await fetch('/api/reviews/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ listingId: listing.id }),
+                  })
+                  const data = await res.json()
+                  setFetchResult(data)
+                  // Reload reviews list after fetching
+                  const revRes = await fetch(`/api/reviews?listingId=${listing.id}&limit=50`)
+                  const revData = await revRes.json()
+                  setReviews(revData.reviews ?? [])
+                } catch (e) {
+                  setFetchResult({ results: [{ source: 'system', fetched: 0, errors: String(e) }] })
+                } finally {
+                  setFetchingReviews(false)
+                }
+              }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', cursor: fetchingReviews ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: fetchingReviews ? 0.6 : 1 }}>
+                {fetchingReviews ? '⏳ Wird abgerufen…' : '🔄 Bewertungen abrufen'}
+              </button>
             </div>
           </div>
+
+          {/* Fetch result display */}
+          {fetchResult && (
+            <div style={{ marginBottom: '12px', padding: '12px 16px', borderRadius: '12px', background: '#FAFAF5', border: '1px solid #E8D9A0' }}>
+              <p style={{ fontSize: '12px', fontWeight: 700, color: '#8A7020', margin: '0 0 8px' }}>Ergebnis der Abfrage:</p>
+              {fetchResult.results.map((r, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: r.errors ? '#DC2626' : '#16A34A' }}>
+                    {r.source}: {r.fetched > 0 ? `${r.fetched} Bewertungen importiert ✓` : r.errors ? `Fehler` : 'Keine neuen Bewertungen'}
+                  </span>
+                  {r.errors && <span style={{ fontSize: '11px', color: '#999' }}>— {r.errors}</span>}
+                </div>
+              ))}
+              <button type="button" onClick={() => setFetchResult(null)} style={{ marginTop: '6px', fontSize: '11px', color: '#999', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕ Schließen</button>
+            </div>
+          )}
 
           {/* Add review form */}
           {showAddReview && (
