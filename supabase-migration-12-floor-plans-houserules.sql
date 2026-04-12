@@ -3,6 +3,7 @@
 
 -- Convert single floor_plan_url to array for multiple floor plans
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS floor_plan_urls TEXT[] DEFAULT '{}';
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS floor_plan_labels TEXT[] DEFAULT '{}';
 -- Migrate existing data if any
 UPDATE listings SET floor_plan_urls = ARRAY[floor_plan_url] WHERE floor_plan_url IS NOT NULL AND floor_plan_url != '' AND (floor_plan_urls IS NULL OR floor_plan_urls = '{}');
 

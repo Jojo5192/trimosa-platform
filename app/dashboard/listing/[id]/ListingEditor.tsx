@@ -177,6 +177,7 @@ interface Listing {
   important_notes?: string
   floor_plan_url?: string
   floor_plan_urls?: string[]
+  floor_plan_labels?: string[]
   rule_pets_allowed?: boolean
   rule_events_allowed?: boolean
   rule_smoking_allowed?: boolean
@@ -263,6 +264,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [floorPlanUrls, setFloorPlanUrls] = useState<string[]>(
     listing.floor_plan_urls?.length ? listing.floor_plan_urls : (listing.floor_plan_url ? [listing.floor_plan_url] : [])
   )
+  const [floorPlanLabels, setFloorPlanLabels] = useState<string[]>(listing.floor_plan_labels ?? [])
   const [floorPlanUploading, setFloorPlanUploading] = useState(false)
   const [rooms, setRooms] = useState<Room[]>(listing.rooms ?? [])
   const [houseRules, setHouseRules] = useState(listing.house_rules ?? '')
@@ -398,6 +400,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           cover_image: coverImage,
           floor_plan_url: floorPlanUrls[0] ?? '',
           floor_plan_urls: floorPlanUrls,
+          floor_plan_labels: floorPlanLabels,
           rooms,
           cancellation_policy: cancelPolicy === 'custom' ? 'custom' : cancelPolicy,
           cancel_free_days: cancelFreeDays,
@@ -664,14 +667,28 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <div style={{ display: 'grid', gridTemplateColumns: floorPlanUrls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               {floorPlanUrls.map((url, i) => (
                 <div key={i} style={{ borderRadius: '14px', overflow: 'hidden', background: '#f9f7f3', border: '1px solid #E8E6E0' }}>
-                  <img src={url} alt={`Grundriss ${i + 1}`} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '200px', objectFit: 'cover' }} />
-                  <div style={{ padding: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <img src={url} alt={floorPlanLabels[i] || `Grundriss ${i + 1}`} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '200px', objectFit: 'cover' }} />
+                  <div style={{ padding: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={floorPlanLabels[i] ?? ''}
+                      onChange={e => {
+                        const next = [...floorPlanLabels]
+                        next[i] = e.target.value
+                        setFloorPlanLabels(next)
+                      }}
+                      placeholder="z.B. Erdgeschoss"
+                      style={{ ...inputStyle, flex: 1, fontSize: '12px', padding: '6px 10px' }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setFloorPlanUrls(prev => prev.filter((_, idx) => idx !== i))}
-                      style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#c00' }}
+                      onClick={() => {
+                        setFloorPlanUrls(prev => prev.filter((_, idx) => idx !== i))
+                        setFloorPlanLabels(prev => prev.filter((_, idx) => idx !== i))
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#c00', flexShrink: 0 }}
                     >
-                      ✕ Entfernen
+                      ✕
                     </button>
                   </div>
                 </div>

@@ -36,7 +36,7 @@ export async function PATCH(
     'is_active', 'cancellation_policy',
     'cancel_free_days', 'cancel_free_percent',
     'cancel_partial_days', 'cancel_partial_percent',
-    'floor_plan_url', 'floor_plan_urls',
+    'floor_plan_url', 'floor_plan_urls', 'floor_plan_labels',
     'rule_pets_allowed', 'rule_events_allowed', 'rule_smoking_allowed',
     'rule_quiet_hours', 'rule_quiet_start', 'rule_quiet_end',
     'rule_commercial_photo', 'rule_additional_rules',

@@ -70,11 +70,24 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
-        {/* ── Title row with host badge ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '12px' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: 0, letterSpacing: '-0.4px', flex: 1 }}>
-            {listing.title}
-          </h1>
+        {/* ── Title ── */}
+        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
+          {listing.title}
+        </h1>
+
+        {/* ── Rating + City + Host badge (aligned bottom) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020', textDecoration: 'none', cursor: 'pointer' }}>
+            ★★★★★ Neu
+          </a>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={2}>
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            {displayCity}
+          </span>
+          {/* Spacer pushes host badge right */}
+          <div style={{ flex: 1 }} />
           {hostProfile && (
             <HostBadge host={{
               id: hostProfile.id,
@@ -86,19 +99,6 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               languages: hostProfile.languages,
             }} />
           )}
-        </div>
-
-        {/* ── Rating + City ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020', textDecoration: 'none', cursor: 'pointer' }}>
-            ★★★★★ Neu
-          </a>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={2}>
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            {displayCity}
-          </span>
         </div>
 
         {/* ── PHOTO GRID ── */}
@@ -147,30 +147,16 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             {/* Amenities (client component with overlay) */}
             <AmenitiesSection amenities={amenities} />
 
-            {/* Floor plans (multiple) */}
+            {/* Floor plans (multiple with labels) */}
             {((listing.floor_plan_urls && listing.floor_plan_urls.length > 0) || listing.floor_plan_url) && (
-              <FloorPlanSection urls={
-                listing.floor_plan_urls && listing.floor_plan_urls.length > 0
-                  ? listing.floor_plan_urls
-                  : listing.floor_plan_url ? [listing.floor_plan_url] : []
-              } />
-            )}
-
-            {/* Check-in / Check-out */}
-            {(listing.check_in_time || listing.check_out_time) && (
-              <div style={{ marginBottom: '32px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>An- & Abreise</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div style={{ borderRadius: '14px', padding: '16px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#B0912B', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Check-in</div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#1D1D1F' }}>ab {listing.check_in_time ?? '15:00'} Uhr</div>
-                  </div>
-                  <div style={{ borderRadius: '14px', padding: '16px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#B0912B', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Check-out</div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#1D1D1F' }}>bis {listing.check_out_time ?? '11:00'} Uhr</div>
-                  </div>
-                </div>
-              </div>
+              <FloorPlanSection
+                urls={
+                  listing.floor_plan_urls && listing.floor_plan_urls.length > 0
+                    ? listing.floor_plan_urls
+                    : listing.floor_plan_url ? [listing.floor_plan_url] : []
+                }
+                labels={listing.floor_plan_labels ?? []}
+              />
             )}
 
             {/* Occupancy calendar — 2 months, clickable dates feed into BookingBox */}
@@ -246,24 +232,20 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
           {/* Check-in Instructions */}
           {listing.checkin_instructions && (
             <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Check-In Anweisungen</h2>
-              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-                  {listing.checkin_instructions}
-                </p>
-              </div>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>Check-In Anweisungen</h2>
+              <p style={{ fontSize: '13px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+                {listing.checkin_instructions}
+              </p>
             </div>
           )}
 
           {/* Important Notes */}
           {listing.important_notes && (
             <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Wichtige Hinweise</h2>
-              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#92400E', whiteSpace: 'pre-line', margin: 0 }}>
-                  {listing.important_notes}
-                </p>
-              </div>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>Wichtige Hinweise</h2>
+              <p style={{ fontSize: '13px', lineHeight: 1.7, color: '#92400E', whiteSpace: 'pre-line', margin: 0 }}>
+                {listing.important_notes}
+              </p>
             </div>
           )}
 

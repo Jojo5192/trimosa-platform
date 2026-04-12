@@ -219,13 +219,11 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   const [showAll, setShowAll] = useState(false)
   const MAX_SHOW = 8
 
-  /* Enrich with emoji + category, then sort: priority amenities first */
   const enriched = useMemo(() => {
     const all = amenities.map(a => {
       const info = AMENITY_MAP.get(a)
       return { id: a, emoji: info?.emoji ?? '✓', label: info?.label ?? a, category: info?.category ?? 'Sonstiges' }
     })
-    // Sort: priority items first (in PRIORITY_AMENITY_IDS order), then the rest
     const prioSet = new Set(PRIORITY_AMENITY_IDS)
     const prio = PRIORITY_AMENITY_IDS
       .filter(pid => all.some(a => a.id === pid))
@@ -237,15 +235,10 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   const visible = enriched.slice(0, MAX_SHOW)
   const remaining = enriched.length - MAX_SHOW
 
-  /* Group by category for overlay — keep AMENITY_CATEGORIES order */
   const grouped = useMemo(() => {
     const amenitySet = new Set(amenities)
     return AMENITY_CATEGORIES
-      .map(cat => ({
-        name: cat.name,
-        icon: cat.icon,
-        items: cat.items.filter(item => amenitySet.has(item.id)),
-      }))
+      .map(cat => ({ name: cat.name, icon: cat.icon, items: cat.items.filter(item => amenitySet.has(item.id)) }))
       .filter(cat => cat.items.length > 0)
   }, [amenities])
 
@@ -254,16 +247,16 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   return (
     <div style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Ausstattung</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px' }}>
         {visible.map(a => (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-            <span style={{ fontSize: '18px', lineHeight: 1, flexShrink: 0 }}>{a.emoji}</span>
-            <span style={{ fontSize: '13px', fontWeight: 500, color: '#1D1D1F' }}>{a.label}</span>
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #F0EEE8' }}>
+            <span style={{ fontSize: '17px', lineHeight: 1, flexShrink: 0 }}>{a.emoji}</span>
+            <span style={{ fontSize: '14px', color: '#1D1D1F' }}>{a.label}</span>
           </div>
         ))}
       </div>
       {remaining > 0 && (
-        <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: '12px', padding: '10px 20px', borderRadius: '12px', border: '1px solid #1D1D1F', background: '#fff', fontSize: '13px', fontWeight: 600, color: '#1D1D1F', cursor: 'pointer', width: '100%' }}>
+        <button type="button" onClick={() => setShowAll(true)} style={{ marginTop: '16px', padding: '10px 20px', borderRadius: '12px', border: '1px solid #1D1D1F', background: 'transparent', fontSize: '13px', fontWeight: 600, color: '#1D1D1F', cursor: 'pointer', width: '100%' }}>
           Alle {enriched.length} Ausstattungsmerkmale anzeigen
         </button>
       )}
@@ -289,8 +282,8 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   )
 }
 
-/* ── 3. Floor Plan Section (multiple) + Overlay ────────────── */
-export function FloorPlanSection({ urls }: { urls: string[] }) {
+/* ── 3. Floor Plan Section (multiple with labels) + Overlay ── */
+export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels?: string[] }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   if (urls.length === 0) return null
   return (
@@ -300,29 +293,30 @@ export function FloorPlanSection({ urls }: { urls: string[] }) {
       </h2>
       <div style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
         {urls.map((url, i) => (
-          <div
-            key={i}
-            onClick={() => setOpenIdx(i)}
-            style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', cursor: 'pointer', position: 'relative', maxHeight: '300px', background: '#fff' }}
-          >
-            <img src={url} alt={`Grundriss ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
-            <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
-              🔍 Vergrößern
+          <div key={i} onClick={() => setOpenIdx(i)} style={{ cursor: 'pointer', position: 'relative' }}>
+            <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', maxHeight: '300px', background: '#fff' }}>
+              <img src={url} alt={labels[i] || `Grundriss ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
+              <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
+                🔍 Vergrößern
+              </div>
             </div>
+            {labels[i] && (
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#6E6E73', marginTop: '6px', textAlign: 'center' }}>{labels[i]}</div>
+            )}
           </div>
         ))}
       </div>
 
       {openIdx !== null && (
-        <Overlay onClose={() => setOpenIdx(null)} title={urls.length === 1 ? 'Grundriss' : `Grundriss ${openIdx + 1}`}>
+        <Overlay onClose={() => setOpenIdx(null)} title={labels[openIdx] || (urls.length === 1 ? 'Grundriss' : `Grundriss ${openIdx + 1}`)}>
           <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
           {urls.length > 1 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
               {urls.map((_, i) => (
                 <button key={i} type="button" onClick={() => setOpenIdx(i)} style={{
-                  width: '32px', height: '32px', borderRadius: '8px', border: i === openIdx ? '2px solid #1D1D1F' : '1px solid #E5E5EA',
+                  padding: '6px 14px', borderRadius: '8px', border: i === openIdx ? '2px solid #1D1D1F' : '1px solid #E5E5EA',
                   background: i === openIdx ? '#F5F5F7' : '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#1D1D1F',
-                }}>{i + 1}</button>
+                }}>{labels[i] || `${i + 1}`}</button>
               ))}
             </div>
           )}
@@ -454,14 +448,14 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
   return (
     <div style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Belegungskalender</h2>
-      <div style={{ borderRadius: '16px', padding: '20px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
+      <div>
         {/* Month navigation */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <button type="button" onClick={prev} style={{ width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E5E5EA', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>‹</button>
-          <span style={{ fontSize: '13px', color: '#6E6E73' }}>
+          <button type="button" onClick={prev} style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73' }}>‹</button>
+          <span style={{ fontSize: '12px', color: '#999' }}>
             {selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}
           </span>
-          <button type="button" onClick={next} style={{ width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E5E5EA', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>›</button>
+          <button type="button" onClick={next} style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73' }}>›</button>
         </div>
 
         {loading ? (
@@ -484,15 +478,15 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
         )}
 
         {/* Legend + selection info */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6E6E73' }}>
-            <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#F0FDF4', border: '1px solid #BBF7D0' }} />Frei
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#999' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#F0FDF4', border: '1px solid #BBF7D0' }} />Frei
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6E6E73' }}>
-            <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#FEF2F2', border: '1px solid #FECACA' }} />Belegt
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#999' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#FEF2F2', border: '1px solid #FECACA' }} />Belegt
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6E6E73' }}>
-            <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#111', border: '1px solid #111' }} />Ausgewählt
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#999' }}>
+            <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', background: '#111', border: '1px solid #111' }} />Ausgewählt
           </div>
           {checkIn && (
             <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#1D1D1F', fontWeight: 600 }}>
@@ -538,38 +532,36 @@ export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText }: {
 
   return (
     <div style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Hausregeln</h2>
+      <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>Hausregeln</h2>
       {hasStructured ? (
-        <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
+        <div>
           {items.map((item, i) => (
             <div key={item.label} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0',
               borderBottom: i < items.length - 1 ? '1px solid #F0EEE8' : 'none',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '16px' }}>{item.emoji}</span>
-                <span style={{ fontSize: '14px', color: '#1D1D1F' }}>{item.label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px' }}>{item.emoji}</span>
+                <span style={{ fontSize: '13px', color: '#6E6E73' }}>{item.label}</span>
               </div>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: item.value.includes('Nicht') ? '#DC2626' : '#1D1D1F' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: item.value.includes('Nicht') ? '#DC2626' : '#1D1D1F' }}>
                 {item.value}
               </span>
             </div>
           ))}
           {rules.additional_rules && (
-            <div style={{ padding: '14px 18px', borderTop: '1px solid #F0EEE8' }}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#6E6E73', marginBottom: '6px' }}>Zusätzliche Regeln</div>
-              <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+            <div style={{ paddingTop: '10px', marginTop: '6px', borderTop: '1px solid #F0EEE8' }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: '#999', marginBottom: '4px' }}>Zusätzliche Regeln</div>
+              <p style={{ fontSize: '13px', lineHeight: 1.6, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
                 {rules.additional_rules}
               </p>
             </div>
           )}
         </div>
       ) : legacyText ? (
-        <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-          <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-            {legacyText}
-          </p>
-        </div>
+        <p style={{ fontSize: '13px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+          {legacyText}
+        </p>
       ) : null}
     </div>
   )
