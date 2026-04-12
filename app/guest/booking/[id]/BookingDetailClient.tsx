@@ -10,6 +10,10 @@ interface Listing {
   location: string
   images?: string[]
   cancellation_policy: string
+  cancel_free_days?: number | null
+  cancel_free_percent?: number | null
+  cancel_partial_days?: number | null
+  cancel_partial_percent?: number | null
 }
 
 interface Booking {
@@ -27,10 +31,30 @@ interface Booking {
   listings: Listing | null
 }
 
-const POLICY_LABELS: Record<string, string> = {
-  flexibel: 'Kostenlose Stornierung bis 24h vor Check-in. Danach keine Erstattung.',
-  moderat:  'Kostenlose Stornierung bis 5 Tage vor Check-in. Danach keine Erstattung.',
-  strikt:   'Kostenlose Stornierung innerhalb 48h nach Buchung (mind. 14 Tage vor Check-in). Bis 14 Tage vor Check-in 50 % Erstattung. Danach keine Erstattung.',
+const POLICY_TEMPLATES: Record<string, { freeDays: number; freePercent: number; partialDays: number | null; partialPercent: number | null }> = {
+  flexibel: { freeDays: 1, freePercent: 100, partialDays: null, partialPercent: null },
+  moderat:  { freeDays: 5, freePercent: 100, partialDays: null, partialPercent: null },
+  strikt:   { freeDays: 14, freePercent: 50, partialDays: null, partialPercent: null },
+}
+
+function buildPolicyText(listing: Listing | null): string {
+  if (!listing) return 'Stornierungsbedingungen des Gastgebers gelten.'
+  const template = POLICY_TEMPLATES[listing.cancellation_policy] ?? POLICY_TEMPLATES.moderat
+  const fd = listing.cancel_free_days ?? template.freeDays
+  const fp = listing.cancel_free_percent ?? template.freePercent
+  const pd = listing.cancel_partial_days ?? template.partialDays
+  const pp = listing.cancel_partial_percent ?? template.partialPercent
+  const parts: string[] = []
+  if (fp === 100) {
+    parts.push(`Kostenlose Stornierung bis ${fd} ${fd === 1 ? 'Tag' : 'Tage'} vor Check-in.`)
+  } else if (fp > 0) {
+    parts.push(`${fp} % Erstattung bis ${fd} ${fd === 1 ? 'Tag' : 'Tage'} vor Check-in.`)
+  }
+  if (pd != null && pp != null && pp > 0) {
+    parts.push(`${pp} % Erstattung bis ${pd} ${pd === 1 ? 'Tag' : 'Tage'} vor Check-in.`)
+  }
+  parts.push('Danach keine Erstattung.')
+  return parts.join(' ')
 }
 
 function formatDate(iso: string) {
@@ -155,7 +179,7 @@ export default function BookingDetailClient({
         <div style={{ background: '#FFF9EC', borderRadius: '16px', border: '1px solid #F0E5C0', padding: '14px 18px', marginBottom: '16px' }}>
           <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Stornierungsbedingungen</p>
           <p style={{ fontSize: '12px', color: '#7A5C1A', margin: 0, lineHeight: 1.6 }}>
-            🛡 {POLICY_LABELS[policy] ?? policy}
+            🛡 {buildPolicyText(listing)}
           </p>
         </div>
       )}
@@ -203,7 +227,7 @@ export default function BookingDetailClient({
               <div style={{ background: '#FEF2F2', borderRadius: '16px', border: '1.5px solid #FECACA', padding: '18px 20px' }}>
                 <p style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>Buchung wirklich stornieren?</p>
                 <p style={{ fontSize: '12px', color: '#EF4444', margin: '0 0 14px', lineHeight: 1.6 }}>
-                  {POLICY_LABELS[policy] ?? 'Stornierungsbedingungen des Gastgebers gelten.'}
+                  {buildPolicyText(listing)}
                 </p>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button

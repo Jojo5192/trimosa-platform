@@ -33,6 +33,8 @@ export async function PATCH(
     'amenities', 'rooms',
     'house_rules', 'check_in_time', 'check_out_time',
     'is_active', 'cancellation_policy',
+    'cancel_free_days', 'cancel_free_percent',
+    'cancel_partial_days', 'cancel_partial_percent',
   ]
   const patch: Record<string, unknown> = {}
   for (const key of allowed) {

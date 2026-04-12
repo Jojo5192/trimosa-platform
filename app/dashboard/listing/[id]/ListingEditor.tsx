@@ -176,23 +176,36 @@ interface Listing {
   is_active: boolean
   smoobu_id?: string
   cancellation_policy?: string
+  cancel_free_days?: number | null
+  cancel_free_percent?: number | null
+  cancel_partial_days?: number | null
+  cancel_partial_percent?: number | null
 }
 
-const CANCELLATION_POLICIES = [
+const CANCELLATION_TEMPLATES = [
   {
     id: 'flexibel',
     label: 'Flexibel',
-    desc: 'Kostenlose Stornierung bis 24 Std. vor Check-in. Danach 1 Nacht Gebühr.',
+    desc: 'Kostenlose Stornierung bis 1 Tag vor Check-in.',
+    freeDays: 1, freePercent: 100, partialDays: null as number | null, partialPercent: null as number | null,
   },
   {
     id: 'moderat',
     label: 'Moderat',
-    desc: 'Kostenlose Stornierung bis 5 Tage vor Check-in. Danach 50 % des Buchungsbetrags.',
+    desc: 'Kostenlose Stornierung bis 5 Tage vor Check-in.',
+    freeDays: 5, freePercent: 100, partialDays: null as number | null, partialPercent: null as number | null,
   },
   {
     id: 'strikt',
     label: 'Strikt',
-    desc: 'Kostenlose Stornierung innerhalb von 48 Std. nach Buchung (mind. 14 Tage vor Check-in). Danach keine Rückerstattung.',
+    desc: '50 % Erstattung bis 14 Tage vor Check-in. Danach keine Erstattung.',
+    freeDays: 14, freePercent: 50, partialDays: null as number | null, partialPercent: null as number | null,
+  },
+  {
+    id: 'custom',
+    label: 'Benutzerdefiniert',
+    desc: 'Eigene Fristen und Erstattungssätze festlegen.',
+    freeDays: 7, freePercent: 100, partialDays: 3, partialPercent: 50,
   },
 ]
 
@@ -237,6 +250,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [checkOutTime, setCheckOutTime] = useState(listing.check_out_time ?? '11:00')
   const [isActive, setIsActive] = useState(listing.is_active)
   const [cancelPolicy, setCancelPolicy] = useState(listing.cancellation_policy ?? 'moderat')
+  const [cancelFreeDays, setCancelFreeDays] = useState<number>(listing.cancel_free_days ?? (CANCELLATION_TEMPLATES.find(t => t.id === (listing.cancellation_policy ?? 'moderat'))?.freeDays ?? 5))
+  const [cancelFreePercent, setCancelFreePercent] = useState<number>(listing.cancel_free_percent ?? (CANCELLATION_TEMPLATES.find(t => t.id === (listing.cancellation_policy ?? 'moderat'))?.freePercent ?? 100))
+  const [cancelPartialDays, setCancelPartialDays] = useState<number | null>(listing.cancel_partial_days ?? null)
+  const [cancelPartialPercent, setCancelPartialPercent] = useState<number | null>(listing.cancel_partial_percent ?? null)
   const [onboardingError, setOnboardingError] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -309,7 +326,11 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           amenities,
           cover_image: coverImage,
           rooms,
-          cancellation_policy: cancelPolicy,
+          cancellation_policy: cancelPolicy === 'custom' ? 'custom' : cancelPolicy,
+          cancel_free_days: cancelFreeDays,
+          cancel_free_percent: cancelFreePercent,
+          cancel_partial_days: cancelPartialDays,
+          cancel_partial_percent: cancelPartialPercent,
           house_rules: houseRules,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
@@ -573,30 +594,132 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       {/* ── Stornierungsbedingungen ── */}
       <Section title="Stornierungsbedingungen">
         <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px' }}>
-          Diese Bedingungen gelten für Buchungen über TRIMOSA und werden Gästen vor der Buchung angezeigt.
+          Wähle eine Vorlage oder definiere eigene Fristen. Die Bedingungen werden Gästen vor der Buchung angezeigt.
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {CANCELLATION_POLICIES.map(p => (
-            <label key={p.id} style={{
+
+        {/* Template selector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+          {CANCELLATION_TEMPLATES.map(t => (
+            <label key={t.id} style={{
               display: 'flex', alignItems: 'flex-start', gap: '12px',
               padding: '12px 16px', borderRadius: '12px', cursor: 'pointer',
-              border: cancelPolicy === p.id ? '2px solid #A8882A' : '1.5px solid #E0DDD6',
-              background: cancelPolicy === p.id ? '#FBF6EC' : '#fff',
+              border: cancelPolicy === t.id ? '2px solid #A8882A' : '1.5px solid #E0DDD6',
+              background: cancelPolicy === t.id ? '#FBF6EC' : '#fff',
             }}>
               <input
                 type="radio"
                 name="cancellation"
-                value={p.id}
-                checked={cancelPolicy === p.id}
-                onChange={() => setCancelPolicy(p.id)}
+                value={t.id}
+                checked={cancelPolicy === t.id}
+                onChange={() => {
+                  setCancelPolicy(t.id)
+                  setCancelFreeDays(t.freeDays)
+                  setCancelFreePercent(t.freePercent)
+                  setCancelPartialDays(t.partialDays)
+                  setCancelPartialPercent(t.partialPercent)
+                }}
                 style={{ marginTop: '2px', accentColor: '#A8882A' }}
               />
               <div>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 2px' }}>{p.label}</p>
-                <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>{p.desc}</p>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 2px' }}>{t.label}</p>
+                <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>{t.desc}</p>
               </div>
             </label>
           ))}
+        </div>
+
+        {/* Custom fields — always visible, editable when any template is selected */}
+        <div style={{
+          background: '#F9F7F3', borderRadius: '14px', padding: '18px 20px',
+          border: '1px solid #E8E6E0',
+        }}>
+          <p style={{ fontSize: '12px', fontWeight: 700, color: '#555', margin: '0 0 14px' }}>
+            {cancelPolicy === 'custom' ? 'Benutzerdefinierte Werte' : 'Aktive Werte (zum Anpassen bearbeiten)'}
+          </p>
+
+          {/* Tier 1: free cancellation */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                Kostenloser Zeitraum (Tage vor Check-in)
+              </label>
+              <input type="number" min={0} max={90} value={cancelFreeDays}
+                onChange={e => { setCancelFreeDays(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                Erstattung in diesem Zeitraum (%)
+              </label>
+              <input type="number" min={0} max={100} value={cancelFreePercent}
+                onChange={e => { setCancelFreePercent(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+              />
+            </div>
+          </div>
+
+          {/* Tier 2: partial refund (optional) */}
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#555' }}>
+              <input type="checkbox"
+                checked={cancelPartialDays != null}
+                onChange={e => {
+                  if (e.target.checked) {
+                    setCancelPartialDays(Math.max(Math.floor(cancelFreeDays / 2), 1))
+                    setCancelPartialPercent(50)
+                  } else {
+                    setCancelPartialDays(null)
+                    setCancelPartialPercent(null)
+                  }
+                  setCancelPolicy('custom')
+                }}
+                style={{ accentColor: '#A8882A' }}
+              />
+              Zusätzliche Teilerstattungs-Stufe aktivieren
+            </label>
+          </div>
+
+          {cancelPartialDays != null && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                  Teilerstattung bis (Tage vor Check-in)
+                </label>
+                <input type="number" min={0} max={cancelFreeDays - 1} value={cancelPartialDays}
+                  onChange={e => { setCancelPartialDays(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                  style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                  Teilerstattung (%)
+                </label>
+                <input type="number" min={0} max={cancelFreePercent} value={cancelPartialPercent ?? 0}
+                  onChange={e => { setCancelPartialPercent(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                  style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Live preview */}
+          <div style={{ marginTop: '16px', padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #E8E6E0' }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vorschau für Gäste</p>
+            <p style={{ fontSize: '12px', color: '#555', margin: 0, lineHeight: 1.5 }}>
+              {cancelFreePercent === 100
+                ? `Kostenlose Stornierung bis ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                : cancelFreePercent > 0
+                  ? `${cancelFreePercent} % Erstattung bis ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                  : `Keine Erstattung ab ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+              }
+              {cancelPartialDays != null && cancelPartialPercent != null && cancelPartialPercent > 0
+                ? ` ${cancelPartialPercent} % Erstattung bis ${cancelPartialDays} ${cancelPartialDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                : ''
+              }
+              {' '}Danach keine Erstattung.
+            </p>
+          </div>
         </div>
       </Section>
 

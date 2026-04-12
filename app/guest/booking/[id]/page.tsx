@@ -11,7 +11,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
 
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('*, listings(id, title, location, images, cancellation_policy, smoobu_id)')
+    .select('*, listings(id, title, location, images, cancellation_policy, cancel_free_days, cancel_free_percent, cancel_partial_days, cancel_partial_percent, smoobu_id)')
     .eq('id', id)
     .eq('guest_id', user.id) // security: only own bookings
     .maybeSingle()

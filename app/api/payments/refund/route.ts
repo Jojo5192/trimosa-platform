@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { stripe, refundAmount } from '@/lib/stripe'
+import { stripe, refundAmount, resolvePolicy, policyDescription } from '@/lib/stripe'
 import { cancelReservation, sendMessageToGuest } from '@/lib/smoobu'
 
 /**
  * POST /api/payments/refund
  * Body: { bookingId }
  * Can be called by the guest (cancelling own booking) or the host.
- * Automatically calculates refund amount based on cancellation policy.
+ * Automatically calculates refund amount based on the listing's cancellation policy.
  * Also cancels the Smoobu reservation to free the calendar block.
  */
 export async function POST(req: NextRequest) {
@@ -20,20 +20,36 @@ export async function POST(req: NextRequest) {
 
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('*, listings(host_id, title, cancellation_policy)')
+    .select('*, listings(host_id, title, cancellation_policy, cancel_free_days, cancel_free_percent, cancel_partial_days, cancel_partial_percent)')
     .eq('id', bookingId)
     .single()
 
   if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden' }, { status: 404 })
 
-  const listing = booking.listings as unknown as { host_id: string; title: string; cancellation_policy: string } | null
+  const listing = booking.listings as unknown as {
+    host_id: string
+    title: string
+    cancellation_policy: string
+    cancel_free_days: number | null
+    cancel_free_percent: number | null
+    cancel_partial_days: number | null
+    cancel_partial_percent: number | null
+  } | null
 
   // Only the guest or the host can cancel
   const isGuest = booking.guest_id === user.id
   const isHost = listing?.host_id === user.id
   if (!isGuest && !isHost) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
 
-  const policy = listing?.cancellation_policy ?? 'moderat'
+  // Resolve effective policy (template + custom overrides)
+  const policy = resolvePolicy({
+    cancellation_policy: listing?.cancellation_policy,
+    cancel_free_days: listing?.cancel_free_days,
+    cancel_free_percent: listing?.cancel_free_percent,
+    cancel_partial_days: listing?.cancel_partial_days,
+    cancel_partial_percent: listing?.cancel_partial_percent,
+  })
+
   let refund = 0
   let stripeRefundId: string | null = null
 
@@ -74,15 +90,15 @@ export async function POST(req: NextRequest) {
     try {
       await cancelReservation(booking.smoobu_reservation_id)
     } catch (err) {
-      // Log but don't fail the whole cancellation — Supabase is already updated
       console.error('[Refund] Smoobu cancelReservation failed:', err)
     }
   }
 
   // ─── Notify via chat ──────────────────────────────────────────
+  const policyText = policyDescription(policy)
   const cancelMsg = refund > 0
-    ? `❌ Buchung storniert. Rückerstattung von €${refund.toFixed(2)} wurde veranlasst und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode.`
-    : `❌ Buchung storniert. Gemäß der Stornierungsbedingungen (${policy}) ist keine Rückerstattung möglich.`
+    ? `❌ Buchung storniert. Rückerstattung von €${refund.toFixed(2)} wurde veranlasst und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode.\n\nStornierungsbedingungen: ${policyText}`
+    : `❌ Buchung storniert. Gemäß der Stornierungsbedingungen ist keine Rückerstattung möglich.\n\nStornierungsbedingungen: ${policyText}`
 
   try {
     const { data: conv } = await supabaseAdmin
@@ -106,9 +122,7 @@ export async function POST(req: NextRequest) {
   if (booking.smoobu_reservation_id) {
     try {
       await sendMessageToGuest(booking.smoobu_reservation_id, cancelMsg)
-    } catch (err) {
-      console.error('[Refund] Smoobu message failed:', err)
-    }
+    } catch { /* non-fatal */ }
   }
 
   return NextResponse.json({ ok: true, refunded: refund, stripeRefundId })
