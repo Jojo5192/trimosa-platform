@@ -94,30 +94,6 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  /* ── iOS: lock body scroll when chat overlay is open on mobile ── */
-  useEffect(() => {
-    if (!isMobile || !open) return
-    const scrollY = window.scrollY
-    const body = document.body
-    const html = document.documentElement
-    // Lock background
-    body.style.overflow = 'hidden'
-    body.style.position = 'fixed'
-    body.style.top = `-${scrollY}px`
-    body.style.left = '0'
-    body.style.right = '0'
-    html.style.overflow = 'hidden'
-    return () => {
-      body.style.overflow = ''
-      body.style.position = ''
-      body.style.top = ''
-      body.style.left = ''
-      body.style.right = ''
-      html.style.overflow = ''
-      window.scrollTo(0, scrollY)
-    }
-  }, [isMobile, open])
-
   /* ── data fetching ── */
   const getConvs = useCallback(async () => {
     const r = await fetch('/api/chat')
@@ -414,7 +390,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
               flex: 1, resize: 'none', outline: 'none',
               border: '1.5px solid #E0DCD2',
               borderRadius: 22, padding: '10px 16px',
-              fontSize: 15, lineHeight: 1.45, fontFamily: 'inherit',
+              fontSize: 16, lineHeight: 1.45, fontFamily: 'inherit',
               background: '#FAF9F6', color: '#1A1814',
               maxHeight: 96, overflowY: 'auto', transition: 'border-color .15s',
             }}
@@ -464,12 +440,10 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
       {/* ── MOBILE LAYOUT ── */}
       {isMobile ? (
         <div ref={mobileShellRef} style={{
-          position: 'fixed', top: 0, left: 0,
-          width: '100%', height: '100%',
+          position: 'fixed', inset: 0,
           zIndex: 9001,
           display: 'flex', flexDirection: 'column',
           background: '#FAFAF8',
-          overflowX: 'hidden',
           animation: 'cslideup .22s cubic-bezier(.34,1.1,.64,1)',
         }}>
           {/* Mobile header */}
