@@ -299,12 +299,23 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     })
   }, [cards, filters])
 
-  // 2. Re-sort by distance to current map center
+  // 2. Re-sort: available nearby first, then unavailable nearby, then available far, then unavailable far
   const sorted = useMemo(() => {
     if (!mapCenter) return filtered
+    const NEARBY_KM = 75
     return [...filtered].sort((a, b) => {
       const da = haversineKm(mapCenter.lat, mapCenter.lon, a.lat, a.lon)
       const db = haversineKm(mapCenter.lat, mapCenter.lon, b.lat, b.lon)
+      const aNearby = da <= NEARBY_KM
+      const bNearby = db <= NEARBY_KM
+      const aAvail = !a.unavailable
+      const bAvail = !b.unavailable
+
+      // Assign sort bucket: 0=available+nearby, 1=unavailable+nearby, 2=available+far, 3=unavailable+far
+      const bucketA = aNearby ? (aAvail ? 0 : 1) : (aAvail ? 2 : 3)
+      const bucketB = bNearby ? (bAvail ? 0 : 1) : (bAvail ? 2 : 3)
+
+      if (bucketA !== bucketB) return bucketA - bucketB
       return da - db
     })
   }, [filtered, mapCenter])

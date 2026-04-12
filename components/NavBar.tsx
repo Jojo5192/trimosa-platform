@@ -340,6 +340,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mobileDateOpen, setMobileDateOpen] = useState(false)
+  const [mobileCalMonth, setMobileCalMonth] = useState(() => new Date())
 
   const [q, setQ] = useState(initialQ)
   const [checkin, setCheckin] = useState(initialCheckin)
@@ -1076,15 +1077,25 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
               {mobileDateOpen && (
                 <div style={{ padding: '16px', borderTop: '1px solid #F0EEE8', backgroundColor: '#FAFAFA' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <button type="button" onClick={() => setDateSelecting(dateSelecting === 'checkin' ? 'checkin' : 'checkin')} style={{ background: 'none', border: 'none', cursor: 'default', fontSize: '12px', color: '#999', padding: 0 }}>
+                    <button type="button" onClick={() => {
+                      const prev = new Date(mobileCalMonth.getFullYear(), mobileCalMonth.getMonth() - 1, 1)
+                      const now = new Date()
+                      if (prev.getFullYear() > now.getFullYear() || (prev.getFullYear() === now.getFullYear() && prev.getMonth() >= now.getMonth())) {
+                        setMobileCalMonth(prev)
+                      }
+                    }} style={{ width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                    <span style={{ fontSize: '12px', color: '#999' }}>
                       {dateSelecting === 'checkin' ? 'Anreise wählen' : 'Abreise wählen'}
-                    </button>
+                    </span>
+                    <button type="button" onClick={() => setMobileCalMonth(new Date(mobileCalMonth.getFullYear(), mobileCalMonth.getMonth() + 1, 1))} style={{ width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '8px' }}>
                     <button type="button" onClick={() => setMobileDateOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#A8882A', fontWeight: 600, padding: 0 }}>Fertig</button>
                   </div>
                   {(() => {
-                    const now = new Date()
-                    const y0 = now.getFullYear(), m0 = now.getMonth()
-                    const y1 = m0 === 11 ? y0 + 1 : y0, m1 = (m0 + 1) % 12
+                    const y0 = mobileCalMonth.getFullYear(), m0 = mobileCalMonth.getMonth()
+                    const nextM = new Date(y0, m0 + 1, 1)
+                    const y1 = nextM.getFullYear(), m1 = nextM.getMonth()
                     function handleMobileSelect(iso: string) {
                       if (!checkin || dateSelecting === 'checkin' || iso < checkin) {
                         setCheckin(iso); setDateSelecting('checkout')

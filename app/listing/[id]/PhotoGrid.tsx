@@ -100,7 +100,7 @@ export default function PhotoGrid({
 
         {/* "Alle Fotos" badge — bottom right */}
         {totalPhotos > 0 && (
-          <div style={{
+          <div className="detail-photo-badge" style={{
             position: 'absolute', bottom: '16px', right: '16px',
             display: 'flex', alignItems: 'center', gap: '6px',
             padding: '7px 14px', borderRadius: '10px',

@@ -370,8 +370,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     margin-bottom: 24px !important;
     border-radius: 14px !important;
   }
-  .detail-photo-grid > div:not(:first-child) {
+  .detail-photo-grid > div:not(:first-child):not(.detail-photo-badge) {
     display: none !important;
+  }
+  .detail-photo-badge {
+    display: flex !important;
   }
   .detail-photo-grid > div:first-child {
     grid-column: 1 !important;
