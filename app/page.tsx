@@ -207,6 +207,18 @@ export default async function Home({
     }
   })
 
+  // When dates are selected: sort available first, then by distance; unavailable go last
+  if (nights > 0) {
+    cardData.sort((a, b) => {
+      if (a.unavailable !== b.unavailable) return a.unavailable ? 1 : -1
+      // Within same group: sort by distance if available, else keep original order
+      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm
+      if (a.distanceKm !== null) return -1
+      if (b.distanceKm !== null) return 1
+      return 0
+    })
+  }
+
   const centerCoords = q ? getCoords(q) : null
 
   return (
