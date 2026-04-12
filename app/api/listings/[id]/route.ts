@@ -40,7 +40,7 @@ export async function PATCH(
     'rule_pets_allowed', 'rule_events_allowed', 'rule_smoking_allowed',
     'rule_quiet_hours', 'rule_quiet_start', 'rule_quiet_end',
     'rule_commercial_photo', 'rule_additional_rules',
-    'airbnb_url', 'booking_url', 'vrbo_url', 'google_place_id', 'google_api_key',
+    'airbnb_url', 'booking_url', 'vrbo_url', 'google_place_id',
   ]
   const patch: Record<string, unknown> = {}
   for (const key of allowed) {

@@ -200,7 +200,6 @@ interface Listing {
   booking_url?: string
   vrbo_url?: string
   google_place_id?: string
-  google_api_key?: string
 }
 
 const CANCELLATION_TEMPLATES = [
@@ -296,7 +295,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [bookingUrl, setBookingUrl] = useState(listing.booking_url ?? '')
   const [vrboUrl, setVrboUrl] = useState(listing.vrbo_url ?? '')
   const [googlePlaceId, setGooglePlaceId] = useState(listing.google_place_id ?? '')
-  const [googleApiKey, setGoogleApiKey] = useState(listing.google_api_key ?? '')
 
   // Reviews management
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
@@ -304,6 +302,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [fetchingReviews, setFetchingReviews] = useState(false)
   const [fetchResult, setFetchResult] = useState<{ results: { source: string; fetched: number; errors?: string }[] } | null>(null)
   const [showAddReview, setShowAddReview] = useState(false)
+  const [showPasteImport, setShowPasteImport] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteSource, setPasteSource] = useState('airbnb')
+  const [pasteImporting, setPasteImporting] = useState(false)
   const [newReview, setNewReview] = useState({ source: 'airbnb', authorName: '', rating: '5', reviewText: '', reviewDate: new Date().toISOString().split('T')[0] })
 
   const [onboardingError, setOnboardingError] = useState(false)
@@ -444,7 +446,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           booking_url: bookingUrl,
           vrbo_url: vrboUrl,
           google_place_id: googlePlaceId,
-          google_api_key: googleApiKey,
           is_active: isActive,
         }),
       })
@@ -888,13 +889,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
           </Field>
         </div>
-        <div style={{ marginBottom: '20px' }}>
-          <Field label="Google Places API Key">
-            <input value={googleApiKey} onChange={e => setGoogleApiKey(e.target.value)} placeholder="AIza..." type="password" style={inputStyle} />
-            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>Eigener API Key für Google Reviews. Erstelle einen unter <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style={{ color: '#8A7020' }}>Google Cloud Console</a> (Places API aktivieren).</p>
-          </Field>
-        </div>
-
         {/* Reviews list */}
         <div style={{ borderTop: '1px solid #F0EEE8', paddingTop: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -910,8 +904,11 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
               }} style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#666' }}>
                 {reviewsLoading ? 'Laden…' : '↻ Laden'}
               </button>
-              <button type="button" onClick={() => setShowAddReview(!showAddReview)} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#8A7020' }}>
-                + Bewertung hinzufügen
+              <button type="button" onClick={() => { setShowAddReview(!showAddReview); setShowPasteImport(false) }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#8A7020' }}>
+                + Einzeln
+              </button>
+              <button type="button" onClick={() => { setShowPasteImport(!showPasteImport); setShowAddReview(false) }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#E8F0E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#2D6A1E' }}>
+                📋 Einfügen
               </button>
               <button type="button" disabled={fetchingReviews} onClick={async () => {
                 setFetchingReviews(true)
@@ -952,6 +949,64 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                 </div>
               ))}
               <button type="button" onClick={() => setFetchResult(null)} style={{ marginTop: '6px', fontSize: '11px', color: '#999', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕ Schließen</button>
+            </div>
+          )}
+
+          {/* Paste import */}
+          {showPasteImport && (
+            <div style={{ padding: '16px', borderRadius: '12px', background: '#F0F7ED', border: '1px solid #C8DFC0', marginBottom: '12px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: '#2D6A1E', margin: '0 0 8px' }}>Bewertungen einfügen</p>
+              <p style={{ fontSize: '11px', color: '#666', margin: '0 0 12px' }}>
+                Gehe auf dein Inserat bei Airbnb/Booking/Google, markiere alle Bewertungen (Text, Namen, Sterne) und füge sie hier ein. Wir erkennen die Bewertungen automatisch.
+              </p>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '4px' }}>Plattform</label>
+                <select value={pasteSource} onChange={e => setPasteSource(e.target.value)} style={{ ...inputStyle, padding: '8px 10px', maxWidth: '200px' }}>
+                  <option value="airbnb">Airbnb</option>
+                  <option value="booking">Booking.com</option>
+                  <option value="google">Google</option>
+                  <option value="vrbo">VRBO</option>
+                </select>
+              </div>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder={'Hier den kopierten Text einfügen...\n\nBeispiel:\nMax M.\n★★★★★\nMärz 2025\nTolle Wohnung, super Lage! Alles war sauber und der Gastgeber war sehr freundlich.\n\nAnna S.\n★★★★\nFebruar 2025\nSchöne Unterkunft, nur das WLAN war etwas schwach.'}
+                style={{ ...inputStyle, minHeight: '180px', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical' }}
+              />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                <button type="button" disabled={pasteImporting || !pasteText.trim()} onClick={async () => {
+                  setPasteImporting(true)
+                  try {
+                    const res = await fetch('/api/reviews/parse-paste', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ listingId: listing.id, source: pasteSource, text: pasteText }),
+                    })
+                    const data = await res.json()
+                    if (data.error) {
+                      setFetchResult({ results: [{ source: pasteSource, fetched: 0, errors: data.error }] })
+                    } else {
+                      setFetchResult({ results: [{ source: pasteSource, fetched: data.imported ?? 0 }] })
+                      setPasteText('')
+                      setShowPasteImport(false)
+                      // Reload
+                      const revRes = await fetch(`/api/reviews?listingId=${listing.id}&limit=50`)
+                      const revData = await revRes.json()
+                      setReviews(revData.reviews ?? [])
+                    }
+                  } catch (e) {
+                    setFetchResult({ results: [{ source: pasteSource, fetched: 0, errors: String(e) }] })
+                  } finally {
+                    setPasteImporting(false)
+                  }
+                }} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#2D6A1E', cursor: pasteImporting ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: (pasteImporting || !pasteText.trim()) ? 0.5 : 1 }}>
+                  {pasteImporting ? 'Wird verarbeitet…' : 'Bewertungen importieren'}
+                </button>
+                <button type="button" onClick={() => { setShowPasteImport(false); setPasteText('') }} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
+                  Abbrechen
+                </button>
+              </div>
             </div>
           )}
 
