@@ -524,10 +524,10 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             : '0 1px 0 rgba(0,0,0,0.06)',
         }}
       >
-        <div style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
+        <div className="nav-inner" style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
 
           {/* Logo */}
-          <Link href="/" style={{ flexShrink: 0, textDecoration: 'none' }}>
+          <Link href="/" className="nav-logo" style={{ flexShrink: 0, textDecoration: 'none' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="TRIMOSA" style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
           </Link>
@@ -817,12 +817,10 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   </Link>
                 </div>
 
-                {/* Global chat overlay */}
-                {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} />}
-
                 {/* Avatar + Dropdown */}
                 <div style={{ position: 'relative' }}>
                   <button
+                    className="nav-menu-btn"
                     onClick={() => setMenuOpen(!menuOpen)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '8px',
@@ -834,14 +832,14 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)' }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={2} strokeLinecap="round">
+                    <svg className="nav-menu-hamburger" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={2} strokeLinecap="round">
                       <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
                     {avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarUrl} alt="" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <img src={avatarUrl} alt="" className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
-                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
+                      <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
                         {initials}
                       </div>
                     )}
@@ -956,6 +954,9 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           </div>
         </div>
       </header>
+
+      {/* Global chat overlay — rendered outside header to avoid stacking context from backdrop-filter */}
+      {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} />}
 
       {(menuOpen || activeField) && (
         <div
@@ -1160,6 +1161,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
       ══════════════════════════════════════════════════════ */}
       {user && !chatOpen && (
         <button
+          className="mobile-fab"
           onClick={() => setChatOpen(true)}
           style={{
             position: 'fixed',

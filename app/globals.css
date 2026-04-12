@@ -290,20 +290,46 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     display: none;
   }
   .filter-section {
-    padding: 8px 14px !important;
+    padding: 8px 12px !important;
+  }
+  .filter-container {
+    flex-direction: column !important;
+    gap: 6px !important;
   }
 }
 
-/* Card text — tighter on mobile */
+/* ── Mobile-only overrides (max-width: 640px) ── */
 @media (max-width: 640px) {
+  /* NavBar: tighter padding + gap, smaller logo */
+  .nav-inner {
+    padding: 0 10px !important;
+    gap: 8px !important;
+  }
+  .nav-logo img {
+    height: 22px !important;
+  }
+  /* Menu button: slimmer on mobile */
+  .nav-menu-btn {
+    padding: 4px 4px 4px 10px !important;
+    gap: 6px !important;
+  }
+  .nav-menu-hamburger {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  .nav-avatar {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 10px !important;
+  }
+
+  /* Card text + info */
   .listing-card h3 {
     font-size: 12px !important;
   }
-  /* Card info area more compact */
   .card-info {
     padding: 8px 10px 10px !important;
   }
-  /* Card image taller on mobile */
   .card-image-wrap {
     aspect-ratio: 3 / 2 !important;
   }

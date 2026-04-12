@@ -242,7 +242,7 @@ export default async function Home({
               <p className="filter-label">
                 Beliebte Filter
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="filter-container" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
                 <div className="filter-scroll">
                   {[
                     { label: 'Alle', q: '' },
