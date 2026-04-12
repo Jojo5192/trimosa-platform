@@ -34,8 +34,9 @@ const fallbackColors = [
   'linear-gradient(135deg, #DDD6FE, #A78BFA)',
 ]
 
-export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string }> }) {
   const { id } = await params
+  const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests } = await searchParams
   const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', id).single()
 
   if (!listing) {
@@ -175,6 +176,9 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               allowRequests={hostProfile?.allow_requests ?? true}
               minRequestNights={hostProfile?.min_request_nights ?? 1}
               cancellationPolicy={listing.cancellation_policy ?? 'moderat'}
+              initialCheckIn={searchCheckin}
+              initialCheckOut={searchCheckout}
+              initialGuests={searchGuests ? parseInt(searchGuests) : undefined}
             />
           </div>
         </div>

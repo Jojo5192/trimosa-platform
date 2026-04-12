@@ -233,6 +233,8 @@ export default async function Home({
           centerLon={centerCoords?.[1]}
           searchQuery={q}
           searchGuests={guestsNum}
+          searchCheckin={checkin}
+          searchCheckout={checkout}
         />
       ) : (
         <>

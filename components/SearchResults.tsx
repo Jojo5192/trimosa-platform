@@ -45,6 +45,8 @@ interface Props {
   centerLon?: number
   searchQuery?: string
   searchGuests?: number
+  searchCheckin?: string
+  searchCheckout?: string
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -192,13 +194,13 @@ function FilterModal({ filters, onApply, onClose }: {
 }
 
 /* ── Listing Card ── */
-function ListingCard({ card, index }: { card: CardData; index: number }) {
+function ListingCard({ card, index, linkParams }: { card: CardData; index: number; linkParams?: string }) {
   const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
   const showTotal = card.totalPrice > 0
 
   return (
     <Link
-      href={`/listing/${card.id}`}
+      href={`/listing/${card.id}${linkParams || ''}`}
       className="listing-card"
       target="_blank"
       style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}
@@ -269,7 +271,7 @@ function ListingCard({ card, index }: { card: CardData; index: number }) {
 }
 
 /* ── Main component ── */
-export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests }: Props) {
+export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout }: Props) {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(
     centerLat && centerLon ? { lat: centerLat, lon: centerLon } : null
   )
@@ -277,6 +279,16 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   const [showFilter, setShowFilter] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(false)
+
+  // Build query string to pass search dates/guests to detail page
+  const linkParams = useMemo(() => {
+    const p = new URLSearchParams()
+    if (searchCheckin) p.set('checkin', searchCheckin)
+    if (searchCheckout) p.set('checkout', searchCheckout)
+    if (searchGuests && searchGuests > 1) p.set('guests', String(searchGuests))
+    const s = p.toString()
+    return s ? `?${s}` : ''
+  }, [searchCheckin, searchCheckout, searchGuests])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -393,7 +405,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           {sorted.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {sorted.map((card, i) => (
-                <ListingCard key={card.id} card={card} index={i} />
+                <ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />
               ))}
             </div>
           ) : (
@@ -491,7 +503,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               gap: '14px',
             }}>
               {sorted.map((card, i) => (
-                <ListingCard key={card.id} card={card} index={i} />
+                <ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />
               ))}
             </div>
           ) : (

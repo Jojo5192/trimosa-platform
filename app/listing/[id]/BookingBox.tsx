@@ -13,6 +13,9 @@ interface BookingBoxProps {
   allowRequests?: boolean
   minRequestNights?: number
   cancellationPolicy?: string
+  initialCheckIn?: string
+  initialCheckOut?: string
+  initialGuests?: number
 }
 
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
@@ -111,19 +114,28 @@ export default function BookingBox({
   allowRequests = true,
   minRequestNights = 1,
   cancellationPolicy = 'moderat',
+  initialCheckIn,
+  initialCheckOut,
+  initialGuests,
 }: BookingBoxProps) {
   const router = useRouter()
 
   // Mode: 'instant' | 'request'
   const [mode, setMode] = useState<'instant' | 'request'>(allowInstant ? 'instant' : 'request')
 
-  const [checkIn, setCheckIn] = useState('')
-  const [checkOut, setCheckOut] = useState('')
-  const [selecting, setSelecting] = useState<'in' | 'out'>('in')
+  const [checkIn, setCheckIn] = useState(initialCheckIn ?? '')
+  const [checkOut, setCheckOut] = useState(initialCheckOut ?? '')
+  const [selecting, setSelecting] = useState<'in' | 'out'>(initialCheckIn && !initialCheckOut ? 'out' : 'in')
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const [calMonth, setCalMonth] = useState(new Date())
+  const [calMonth, setCalMonth] = useState(() => {
+    if (initialCheckIn) {
+      const [y, m] = initialCheckIn.split('-').map(Number)
+      return new Date(y, m - 1, 1)
+    }
+    return new Date()
+  })
 
-  const [adults, setAdults] = useState(2)
+  const [adults, setAdults] = useState(initialGuests ?? 2)
   const [children, setChildren] = useState(0)
   const [message, setMessage] = useState('')
   const [priceSuggestion, setPriceSuggestion] = useState('')
