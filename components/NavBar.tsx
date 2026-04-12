@@ -768,53 +768,57 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {user ? (
               <>
-                {/* Chat icon with unread badge — opens overlay */}
-                <button
-                  onClick={() => setChatOpen(true)}
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, cursor: 'pointer', color: '#555' }}
-                  title="Nachrichten"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                  {unreadCount > 0 && (
-                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', borderRadius: '50%', background: '#EF4444', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </button>
+                {/* Chat icon + Meine Reisen — nur auf Desktop sichtbar */}
+                <div className="hidden md:flex" style={{ alignItems: 'center', gap: '8px' }}>
+                  {/* Chat icon with unread badge — opens overlay */}
+                  <button
+                    onClick={() => setChatOpen(true)}
+                    style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, cursor: 'pointer', color: '#555' }}
+                    title="Nachrichten"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    {unreadCount > 0 && (
+                      <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', borderRadius: '50%', background: '#EF4444', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Direkter Dashboard / Trips Button */}
+                  <Link
+                    href={isHost ? '/dashboard' : '/guest'}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      fontSize: '13px', fontWeight: 600, color: '#111',
+                      padding: compact ? '7px 14px' : '9px 16px',
+                      borderRadius: '999px',
+                      border: '1px solid #E0DDD6',
+                      backgroundColor: '#fff',
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)'; e.currentTarget.style.borderColor = '#CCC' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#E0DDD6' }}
+                  >
+                    {isHost ? (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                      </svg>
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                      </svg>
+                    )}
+                    {!compact && (isHost ? 'Dashboard' : 'Meine Reisen')}
+                  </Link>
+                </div>
+
                 {/* Global chat overlay */}
                 {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} />}
-
-                {/* Direkter Dashboard / Trips Button */}
-                <Link
-                  href={isHost ? '/dashboard' : '/guest'}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    fontSize: '13px', fontWeight: 600, color: '#111',
-                    padding: compact ? '7px 14px' : '9px 16px',
-                    borderRadius: '999px',
-                    border: '1px solid #E0DDD6',
-                    backgroundColor: '#fff',
-                    textDecoration: 'none',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)'; e.currentTarget.style.borderColor = '#CCC' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#E0DDD6' }}
-                >
-                  {isHost ? (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-                    </svg>
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-                    </svg>
-                  )}
-                  {!compact && (isHost ? 'Dashboard' : 'Meine Reisen')}
-                </Link>
 
                 {/* Avatar + Dropdown */}
                 <div style={{ position: 'relative' }}>

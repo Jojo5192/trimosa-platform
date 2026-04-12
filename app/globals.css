@@ -251,7 +251,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 640px) {
   .homepage-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
   }
 }
 
@@ -268,7 +268,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
     -ms-overflow-style: none;
   }
   .filter-scroll::-webkit-scrollbar {
@@ -276,10 +276,36 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 }
 
+/* Filter label — hide on mobile */
+.filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #AAA6A0;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+@media (max-width: 640px) {
+  .filter-label {
+    display: none;
+  }
+  .filter-section {
+    padding: 8px 14px !important;
+  }
+}
+
 /* Card text — tighter on mobile */
 @media (max-width: 640px) {
   .listing-card h3 {
     font-size: 12px !important;
+  }
+  /* Card info area more compact */
+  .card-info {
+    padding: 8px 10px 10px !important;
+  }
+  /* Card image taller on mobile */
+  .card-image-wrap {
+    aspect-ratio: 3 / 2 !important;
   }
 }
 

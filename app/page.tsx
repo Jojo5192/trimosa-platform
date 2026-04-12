@@ -237,12 +237,12 @@ export default async function Home({
       ) : (
         <>
           {/* ── Filter Bar (homepage only) ── */}
-          <section style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
+          <section className="filter-section" style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
             <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-              <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA6A0', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '10px' }}>
+              <p className="filter-label">
                 Beliebte Filter
               </p>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div className="filter-scroll">
                   {[
                     { label: 'Alle', q: '' },
@@ -296,8 +296,8 @@ export default async function Home({
           </section>
 
           {/* ── Homepage Listings Grid ── */}
-          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 20px 60px' }}>
-            <h1 style={{ fontSize: 'clamp(17px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 20px', lineHeight: 1.2 }}>
+          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(14px, 3vw, 24px) clamp(12px, 4vw, 20px) 80px' }}>
+            <h1 style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 14px', lineHeight: 1.25 }}>
               Finde dein <span style={{ background: 'linear-gradient(135deg, #A8882A, #C4A235)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Premium-Apartment</span> für die perfekte Auszeit.
             </h1>
             <div className="homepage-grid">
@@ -306,7 +306,7 @@ export default async function Home({
                 return (
                   <Link key={card.id} href={`/listing/${card.id}`} className="listing-card"
                     style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
-                    <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
+                    <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
                       {card.image
                         ? <img src={card.image} alt={card.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }} />
                         : <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 55%)' }} />
@@ -323,7 +323,7 @@ export default async function Home({
                       </div>
                       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: `linear-gradient(to top, ${g.accent}55 0%, transparent 100%)` }} />
                     </div>
-                    <div style={{ padding: '11px 13px 13px' }}>
+                    <div className="card-info" style={{ padding: '11px 13px 13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
                         <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, flex: 1 }}>{card.title}</h3>
                         {(card.pricePerNight > 0 || card.totalPrice > 0) && (
