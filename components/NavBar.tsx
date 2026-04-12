@@ -539,7 +539,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             style={{
               flex: 1, margin: '0 4px', height: '44px', borderRadius: '999px',
               backgroundColor: '#F7F5F2', border: '1px solid #E8E4DC',
-              display: 'flex', alignItems: 'center', padding: '0 14px', gap: '10px',
+              alignItems: 'center', padding: '0 14px', gap: '10px',
               cursor: 'pointer', textAlign: 'left', minWidth: 0,
               boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
             }}
