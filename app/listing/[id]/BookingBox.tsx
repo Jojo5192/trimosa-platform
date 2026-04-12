@@ -146,6 +146,17 @@ export default function BookingBox({
       .finally(() => setLoadingRates(false))
   }, [listingId])
 
+  /* Listen for date selections from the occupancy calendar */
+  useEffect(() => {
+    function handleCalendarDates(e: Event) {
+      const { checkIn: ci, checkOut: co } = (e as CustomEvent).detail
+      if (ci) setCheckIn(ci)
+      if (co) { setCheckOut(co); setSelecting('in'); setCalendarOpen(false) }
+    }
+    window.addEventListener('calendar-dates', handleCalendarDates)
+    return () => window.removeEventListener('calendar-dates', handleCalendarDates)
+  }, [])
+
   useEffect(() => {
     if (!checkIn || !checkOut) { setTotalPrice(null); setAvailability(null); return }
     fetch('/api/smoobu/availability', {

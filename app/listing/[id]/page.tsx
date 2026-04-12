@@ -9,6 +9,7 @@ import {
   FloorPlanSection,
   OccupancyCalendar,
   ReviewsPlaceholder,
+  HouseRulesDisplay,
 } from './DetailSections'
 
 /* Fallback gradient when no photos uploaded yet */
@@ -69,10 +70,23 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
-        {/* ── Title ── */}
-        <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
-          {listing.title}
-        </h1>
+        {/* ── Title row with host badge ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '12px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: 0, letterSpacing: '-0.4px', flex: 1 }}>
+            {listing.title}
+          </h1>
+          {hostProfile && (
+            <HostBadge host={{
+              id: hostProfile.id,
+              display_name: hostProfile.display_name,
+              avatar_url: hostProfile.avatar_url,
+              bio: hostProfile.bio,
+              location: hostProfile.location,
+              member_since: hostProfile.member_since,
+              languages: hostProfile.languages,
+            }} />
+          )}
+        </div>
 
         {/* ── Rating + City ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -120,24 +134,12 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
                   </div>
                 </div>
               ))}
-              {/* Host badge */}
-              {hostProfile && (
-                <HostBadge host={{
-                  id: hostProfile.id,
-                  display_name: hostProfile.display_name,
-                  avatar_url: hostProfile.avatar_url,
-                  bio: hostProfile.bio,
-                  location: hostProfile.location,
-                  member_since: hostProfile.member_since,
-                  languages: hostProfile.languages,
-                }} />
-              )}
             </div>
 
             {/* Description */}
             <div style={{ marginBottom: '32px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Über diese Unterkunft</h2>
-              <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+              <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0, textAlign: 'justify' }}>
                 {listing.description || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
               </p>
             </div>
@@ -145,38 +147,13 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             {/* Amenities (client component with overlay) */}
             <AmenitiesSection amenities={amenities} />
 
-            {/* Floor plan */}
-            {listing.floor_plan_url && (
-              <FloorPlanSection url={listing.floor_plan_url} />
-            )}
-
-            {/* Rooms */}
-            {rooms.length > 0 && (
-              <div style={{ marginBottom: '32px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Zimmer</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-                  {rooms.map((room) => (
-                    <div key={room.id} style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
-                      {room.images[0] && (
-                        <div style={{ aspectRatio: '16/10', overflow: 'hidden' }}>
-                          <img src={room.images[0]} alt={room.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                      )}
-                      <div style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: 700, fontSize: '14px', color: '#1D1D1F', marginBottom: '4px' }}>{room.name}</div>
-                        {room.description && <p style={{ fontSize: '13px', color: '#6E6E73', margin: '0 0 8px', lineHeight: 1.5 }}>{room.description}</p>}
-                        {room.features && room.features.length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {room.features.map(f => (
-                              <span key={f} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#F5F5F7', color: '#6E6E73' }}>{f}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {/* Floor plans (multiple) */}
+            {((listing.floor_plan_urls && listing.floor_plan_urls.length > 0) || listing.floor_plan_url) && (
+              <FloorPlanSection urls={
+                listing.floor_plan_urls && listing.floor_plan_urls.length > 0
+                  ? listing.floor_plan_urls
+                  : listing.floor_plan_url ? [listing.floor_plan_url] : []
+              } />
             )}
 
             {/* Check-in / Check-out */}
@@ -196,7 +173,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* Occupancy calendar */}
+            {/* Occupancy calendar — 2 months, clickable dates feed into BookingBox */}
             <OccupancyCalendar listingId={listing.id} />
 
           </div>
@@ -248,17 +225,23 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
             )}
           </div>
 
-          {/* House Rules (detailed) */}
-          {(listing.house_rules || listing.house_rules_details) && (
-            <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Hausregeln</h2>
-              <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
-                <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-                  {listing.house_rules_details || listing.house_rules}
-                </p>
-              </div>
-            </div>
-          )}
+          {/* House Rules (structured + text) */}
+          <HouseRulesDisplay
+            rules={{
+              pets_allowed: listing.rule_pets_allowed,
+              events_allowed: listing.rule_events_allowed,
+              smoking_allowed: listing.rule_smoking_allowed,
+              quiet_hours: listing.rule_quiet_hours,
+              quiet_start: listing.rule_quiet_start,
+              quiet_end: listing.rule_quiet_end,
+              commercial_photo: listing.rule_commercial_photo,
+              max_guests: listing.rule_max_guests ?? listing.max_guests,
+              additional_rules: listing.rule_additional_rules,
+            }}
+            checkIn={listing.check_in_time}
+            checkOut={listing.check_out_time}
+            legacyText={listing.house_rules_details || listing.house_rules}
+          />
 
           {/* Check-in Instructions */}
           {listing.checkin_instructions && (

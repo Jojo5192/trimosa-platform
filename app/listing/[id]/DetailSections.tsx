@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 
 /* ── Types ─────────────────────────────────────────────────── */
 interface HostProfile {
@@ -107,6 +107,13 @@ for (const cat of AMENITY_CATEGORIES) {
   }
 }
 
+/* Priority amenities — these appear first in the preview when available */
+const PRIORITY_AMENITY_IDS = [
+  'WLAN', 'Küche', 'Parkplatz (kostenlos)', 'Klimaanlage', 'Pool', 'Waschmaschine',
+  'Balkon', 'Terrasse', 'Garten', 'Sauna', 'TV', 'Haustiere erlaubt',
+  'Bergpanorama', 'Seenähe', 'Kamin', 'Grill', 'E-Auto Ladepunkt', 'Babyausstattung',
+]
+
 /* ── Overlay backdrop ──────────────────────────────────────── */
 function Overlay({ onClose, children, title }: { onClose: () => void; children: React.ReactNode; title: string }) {
   useEffect(() => {
@@ -144,17 +151,17 @@ export function HostBadge({ host }: { host: HostProfile }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #E5E5EA', cursor: 'pointer', flex: '1 1 130px', minWidth: '120px', textAlign: 'left' }}>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {host.avatar_url ? (
             <img src={host.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
+            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
           )}
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: '14px', color: '#1D1D1F' }}>{host.display_name || 'Gastgeber'}</div>
-          <div style={{ fontSize: '11px', color: '#6E6E73' }}>Gastgeber</div>
+          <div style={{ fontWeight: 600, fontSize: '13px', color: '#1D1D1F', lineHeight: 1.2 }}>{host.display_name || 'Gastgeber'}</div>
+          <div style={{ fontSize: '10px', color: '#6E6E73' }}>Gastgeber</div>
         </div>
       </button>
 
@@ -212,25 +219,35 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   const [showAll, setShowAll] = useState(false)
   const MAX_SHOW = 8
 
-  const enriched = useMemo(() =>
-    amenities.map(a => {
+  /* Enrich with emoji + category, then sort: priority amenities first */
+  const enriched = useMemo(() => {
+    const all = amenities.map(a => {
       const info = AMENITY_MAP.get(a)
       return { id: a, emoji: info?.emoji ?? '✓', label: info?.label ?? a, category: info?.category ?? 'Sonstiges' }
-    }), [amenities])
+    })
+    // Sort: priority items first (in PRIORITY_AMENITY_IDS order), then the rest
+    const prioSet = new Set(PRIORITY_AMENITY_IDS)
+    const prio = PRIORITY_AMENITY_IDS
+      .filter(pid => all.some(a => a.id === pid))
+      .map(pid => all.find(a => a.id === pid)!)
+    const rest = all.filter(a => !prioSet.has(a.id))
+    return [...prio, ...rest]
+  }, [amenities])
 
   const visible = enriched.slice(0, MAX_SHOW)
   const remaining = enriched.length - MAX_SHOW
 
-  // Group by category for overlay
+  /* Group by category for overlay — keep AMENITY_CATEGORIES order */
   const grouped = useMemo(() => {
-    const map = new Map<string, typeof enriched>()
-    for (const a of enriched) {
-      const list = map.get(a.category) ?? []
-      list.push(a)
-      map.set(a.category, list)
-    }
-    return Array.from(map.entries())
-  }, [enriched])
+    const amenitySet = new Set(amenities)
+    return AMENITY_CATEGORIES
+      .map(cat => ({
+        name: cat.name,
+        icon: cat.icon,
+        items: cat.items.filter(item => amenitySet.has(item.id)),
+      }))
+      .filter(cat => cat.items.length > 0)
+  }, [amenities])
 
   if (amenities.length === 0) return null
 
@@ -253,11 +270,11 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
 
       {showAll && (
         <Overlay onClose={() => setShowAll(false)} title="Alle Ausstattungsmerkmale">
-          {grouped.map(([cat, items]) => (
-            <div key={cat} style={{ marginBottom: '24px' }}>
-              <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>{cat}</h4>
+          {grouped.map(cat => (
+            <div key={cat.name} style={{ marginBottom: '24px' }}>
+              <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>{cat.icon} {cat.name}</h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {items.map(a => (
+                {cat.items.map(a => (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#F9F9FB', border: '1px solid #F0EEE8' }}>
                     <span style={{ fontSize: '16px', flexShrink: 0 }}>{a.emoji}</span>
                     <span style={{ fontSize: '13px', color: '#1D1D1F' }}>{a.label}</span>
@@ -272,32 +289,50 @@ export function AmenitiesSection({ amenities }: { amenities: string[] }) {
   )
 }
 
-/* ── 3. Floor Plan Section + Overlay ───────────────────────── */
-export function FloorPlanSection({ url }: { url: string }) {
-  const [open, setOpen] = useState(false)
+/* ── 3. Floor Plan Section (multiple) + Overlay ────────────── */
+export function FloorPlanSection({ urls }: { urls: string[] }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null)
+  if (urls.length === 0) return null
   return (
     <div style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Grundriss</h2>
-      <div
-        onClick={() => setOpen(true)}
-        style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', cursor: 'pointer', position: 'relative', maxHeight: '300px', background: '#fff' }}
-      >
-        <img src={url} alt="Grundriss" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
-        <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '12px', fontWeight: 600, padding: '6px 14px', borderRadius: '99px', backdropFilter: 'blur(4px)' }}>
-          🔍 Vergrößern
-        </div>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>
+        {urls.length === 1 ? 'Grundriss' : 'Grundrisse'}
+      </h2>
+      <div style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
+        {urls.map((url, i) => (
+          <div
+            key={i}
+            onClick={() => setOpenIdx(i)}
+            style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', cursor: 'pointer', position: 'relative', maxHeight: '300px', background: '#fff' }}
+          >
+            <img src={url} alt={`Grundriss ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
+            <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
+              🔍 Vergrößern
+            </div>
+          </div>
+        ))}
       </div>
 
-      {open && (
-        <Overlay onClose={() => setOpen(false)} title="Grundriss">
-          <img src={url} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+      {openIdx !== null && (
+        <Overlay onClose={() => setOpenIdx(null)} title={urls.length === 1 ? 'Grundriss' : `Grundriss ${openIdx + 1}`}>
+          <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+          {urls.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
+              {urls.map((_, i) => (
+                <button key={i} type="button" onClick={() => setOpenIdx(i)} style={{
+                  width: '32px', height: '32px', borderRadius: '8px', border: i === openIdx ? '2px solid #1D1D1F' : '1px solid #E5E5EA',
+                  background: i === openIdx ? '#F5F5F7' : '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#1D1D1F',
+                }}>{i + 1}</button>
+              ))}
+            </div>
+          )}
         </Overlay>
       )}
     </div>
   )
 }
 
-/* ── 4. Occupancy Calendar ─────────────────────────────────── */
+/* ── 4. Occupancy Calendar — 2 months, clickable → BookingBox ─ */
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 const DE_DAYS_SHORT = ['Mo','Di','Mi','Do','Fr','Sa','So']
 
@@ -305,10 +340,74 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
+function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, onClickDay }: {
+  year: number; month: number
+  rates: Record<string, { available: number }>
+  todayStr: string
+  checkIn: string; checkOut: string
+  onClickDay: (iso: string) => void
+}) {
+  const firstDow = new Date(year, month, 1).getDay()
+  const leadBlanks = firstDow === 0 ? 6 : firstDow - 1
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  return (
+    <div>
+      <div style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>
+        {DE_MONTHS[month]} {year}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '3px' }}>
+        {DE_DAYS_SHORT.map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: '10px', fontWeight: 600, color: '#999', padding: '3px 0' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
+        {Array.from({ length: leadBlanks }).map((_, i) => <div key={`b${i}`} />)}
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+          const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+          const isPast = iso < todayStr
+          const rate = rates[iso]
+          const isBooked = !isPast && rate?.available === 0
+          const isSelected = iso === checkIn || iso === checkOut
+          const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut
+          const clickable = !isPast && !isBooked
+
+          let bg = '#F0FDF4'; let color = '#16A34A'; let border = '1px solid #BBF7D0'
+          if (isPast) { bg = '#F9FAFB'; color = '#D1D5DB'; border = '1px solid #F3F4F6' }
+          else if (isBooked) { bg = '#FEF2F2'; color = '#DC2626'; border = '1px solid #FECACA' }
+          if (isSelected) { bg = '#111'; color = '#fff'; border = '1px solid #111' }
+          else if (inRange) { bg = 'rgba(17,17,17,0.08)'; color = '#1D1D1F'; border = '1px solid rgba(17,17,17,0.12)' }
+
+          return (
+            <button
+              key={day}
+              type="button"
+              disabled={!clickable}
+              onClick={() => clickable && onClickDay(iso)}
+              style={{
+                aspectRatio: '1', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '12px', fontWeight: isSelected ? 700 : isPast ? 400 : 600,
+                backgroundColor: bg, color, border,
+                cursor: clickable ? 'pointer' : 'default',
+                transition: 'all 0.1s',
+              }}
+            >
+              {day}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function OccupancyCalendar({ listingId }: { listingId: string }) {
   const [viewDate, setViewDate] = useState(new Date())
   const [rates, setRates] = useState<Record<string, { available: number }>>({})
   const [loading, setLoading] = useState(true)
+  const [checkIn, setCheckIn] = useState('')
+  const [checkOut, setCheckOut] = useState('')
+  const [selecting, setSelecting] = useState<'in' | 'out'>('in')
 
   useEffect(() => {
     setLoading(true)
@@ -321,15 +420,36 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
       .finally(() => setLoading(false))
   }, [listingId])
 
-  const year = viewDate.getFullYear()
-  const month = viewDate.getMonth()
-  const firstDow = new Date(year, month, 1).getDay()
-  const leadBlanks = firstDow === 0 ? 6 : firstDow - 1
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
   const todayStr = isoDate(new Date())
 
-  function prev() { setViewDate(new Date(year, month - 1, 1)) }
-  function next() { setViewDate(new Date(year, month + 1, 1)) }
+  const handleClickDay = useCallback((iso: string) => {
+    if (selecting === 'in') {
+      setCheckIn(iso); setCheckOut(''); setSelecting('out')
+    } else {
+      if (iso <= checkIn) {
+        setCheckIn(iso); setCheckOut(''); setSelecting('out')
+      } else {
+        setCheckOut(iso); setSelecting('in')
+      }
+    }
+  }, [selecting, checkIn])
+
+  /* When both dates selected, scroll BookingBox into view and update its fields via custom event */
+  useEffect(() => {
+    if (checkIn && checkOut) {
+      window.dispatchEvent(new CustomEvent('calendar-dates', { detail: { checkIn, checkOut } }))
+      // Scroll booking box into view on mobile
+      const box = document.querySelector('.detail-booking-col')
+      if (box && window.innerWidth < 769) {
+        box.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }, [checkIn, checkOut])
+
+  function prev() { setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1)) }
+  function next() { setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1)) }
+
+  const month2 = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1)
 
   return (
     <div style={{ marginBottom: '32px' }}>
@@ -338,47 +458,33 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
         {/* Month navigation */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <button type="button" onClick={prev} style={{ width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E5E5EA', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>‹</button>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: '#1D1D1F' }}>{DE_MONTHS[month]} {year}</span>
+          <span style={{ fontSize: '13px', color: '#6E6E73' }}>
+            {selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}
+          </span>
           <button type="button" onClick={next} style={{ width: '36px', height: '36px', borderRadius: '10px', border: '1px solid #E5E5EA', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>›</button>
         </div>
 
-        {/* Day headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
-          {DE_DAYS_SHORT.map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: '11px', fontWeight: 600, color: '#999', padding: '4px 0' }}>{d}</div>
-          ))}
-        </div>
-
-        {/* Days grid */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>Laden…</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-            {Array.from({ length: leadBlanks }).map((_, i) => <div key={`b${i}`} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-              const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-              const isPast = iso < todayStr
-              const rate = rates[iso]
-              const isAvailable = !isPast && (!rate || rate.available !== 0)
-              const isBooked = !isPast && rate?.available === 0
-
-              let bg = '#F0FDF4'
-              let color = '#16A34A'
-              let border = '1px solid #BBF7D0'
-              if (isPast) { bg = '#F9FAFB'; color = '#D1D5DB'; border = '1px solid #F3F4F6' }
-              else if (isBooked) { bg = '#FEF2F2'; color = '#DC2626'; border = '1px solid #FECACA' }
-
-              return (
-                <div key={day} style={{ aspectRatio: '1', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: isPast ? 400 : 600, backgroundColor: bg, color, border }}>
-                  {day}
-                </div>
-              )
-            })}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <CalendarMonthGrid
+              year={viewDate.getFullYear()} month={viewDate.getMonth()}
+              rates={rates} todayStr={todayStr}
+              checkIn={checkIn} checkOut={checkOut}
+              onClickDay={handleClickDay}
+            />
+            <CalendarMonthGrid
+              year={month2.getFullYear()} month={month2.getMonth()}
+              rates={rates} todayStr={todayStr}
+              checkIn={checkIn} checkOut={checkOut}
+              onClickDay={handleClickDay}
+            />
           </div>
         )}
 
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: '16px', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #F0EEE8' }}>
+        {/* Legend + selection info */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #F0EEE8', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6E6E73' }}>
             <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#F0FDF4', border: '1px solid #BBF7D0' }} />Frei
           </div>
@@ -386,15 +492,90 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
             <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#FEF2F2', border: '1px solid #FECACA' }} />Belegt
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#6E6E73' }}>
-            <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#F9FAFB', border: '1px solid #F3F4F6' }} />Vergangen
+            <span style={{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '4px', background: '#111', border: '1px solid #111' }} />Ausgewählt
           </div>
+          {checkIn && (
+            <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#1D1D1F', fontWeight: 600 }}>
+              {checkIn}{checkOut ? ` → ${checkOut}` : ' → ?'}
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-/* ── 5. Reviews Placeholder ────────────────────────────────── */
+/* ── 5. House Rules Display (structured Airbnb-style) ──────── */
+interface HouseRules {
+  pets_allowed?: boolean
+  events_allowed?: boolean
+  smoking_allowed?: boolean
+  quiet_hours?: boolean
+  quiet_start?: string
+  quiet_end?: string
+  commercial_photo?: boolean
+  max_guests?: number
+  additional_rules?: string
+}
+
+export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText }: {
+  rules: HouseRules; checkIn?: string; checkOut?: string; legacyText?: string
+}) {
+  const hasStructured = rules.pets_allowed !== undefined || rules.quiet_hours || rules.max_guests || rules.additional_rules
+  if (!hasStructured && !legacyText) return null
+
+  const items: { emoji: string; label: string; value: string }[] = []
+  if (rules.max_guests) items.push({ emoji: '👥', label: 'Maximale Gästeanzahl', value: `${rules.max_guests} Gäste` })
+  if (checkIn) items.push({ emoji: '🕐', label: 'Check-in', value: `ab ${checkIn} Uhr` })
+  if (checkOut) items.push({ emoji: '🕐', label: 'Check-out', value: `bis ${checkOut} Uhr` })
+  items.push({ emoji: '🐾', label: 'Haustiere', value: rules.pets_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
+  items.push({ emoji: '🎉', label: 'Veranstaltungen', value: rules.events_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
+  items.push({ emoji: '🚬', label: 'Rauchen', value: rules.smoking_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
+  items.push({ emoji: '📸', label: 'Kommerzielles Fotografieren', value: rules.commercial_photo ? 'Erlaubt' : 'Nicht erlaubt' })
+  if (rules.quiet_hours) {
+    items.push({ emoji: '🤫', label: 'Ruhezeiten', value: `${rules.quiet_start ?? '22:00'} – ${rules.quiet_end ?? '07:00'}` })
+  }
+
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Hausregeln</h2>
+      {hasStructured ? (
+        <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
+          {items.map((item, i) => (
+            <div key={item.label} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px',
+              borderBottom: i < items.length - 1 ? '1px solid #F0EEE8' : 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>{item.emoji}</span>
+                <span style={{ fontSize: '14px', color: '#1D1D1F' }}>{item.label}</span>
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: item.value.includes('Nicht') ? '#DC2626' : '#1D1D1F' }}>
+                {item.value}
+              </span>
+            </div>
+          ))}
+          {rules.additional_rules && (
+            <div style={{ padding: '14px 18px', borderTop: '1px solid #F0EEE8' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#6E6E73', marginBottom: '6px' }}>Zusätzliche Regeln</div>
+              <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+                {rules.additional_rules}
+              </p>
+            </div>
+          )}
+        </div>
+      ) : legacyText ? (
+        <div style={{ borderRadius: '14px', padding: '18px', backgroundColor: '#fff', border: '1px solid #E5E5EA' }}>
+          <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
+            {legacyText}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/* ── 6. Reviews Placeholder ────────────────────────────────── */
 export function ReviewsPlaceholder() {
   return (
     <div id="reviews-section" style={{ marginBottom: '32px' }}>

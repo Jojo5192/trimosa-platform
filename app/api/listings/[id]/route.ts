@@ -28,13 +28,18 @@ export async function PATCH(
   const body = await request.json()
 
   const allowed = [
-    'title', 'description', 'location', 'address',
+    'title', 'description', 'location', 'address', 'city',
     'max_guests', 'bedrooms', 'bathrooms',
     'amenities', 'rooms',
-    'house_rules', 'check_in_time', 'check_out_time',
+    'house_rules', 'house_rules_details', 'checkin_instructions', 'important_notes',
+    'check_in_time', 'check_out_time',
     'is_active', 'cancellation_policy',
     'cancel_free_days', 'cancel_free_percent',
     'cancel_partial_days', 'cancel_partial_percent',
+    'floor_plan_url', 'floor_plan_urls',
+    'rule_pets_allowed', 'rule_events_allowed', 'rule_smoking_allowed',
+    'rule_quiet_hours', 'rule_quiet_start', 'rule_quiet_end',
+    'rule_commercial_photo', 'rule_additional_rules',
   ]
   const patch: Record<string, unknown> = {}
   for (const key of allowed) {

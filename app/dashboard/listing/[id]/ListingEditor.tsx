@@ -176,6 +176,16 @@ interface Listing {
   checkin_instructions?: string
   important_notes?: string
   floor_plan_url?: string
+  floor_plan_urls?: string[]
+  rule_pets_allowed?: boolean
+  rule_events_allowed?: boolean
+  rule_smoking_allowed?: boolean
+  rule_quiet_hours?: boolean
+  rule_quiet_start?: string
+  rule_quiet_end?: string
+  rule_commercial_photo?: boolean
+  rule_max_guests?: number
+  rule_additional_rules?: string
   check_in_time?: string
   check_out_time?: string
   is_active: boolean
@@ -250,13 +260,23 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [amenities, setAmenities] = useState<string[]>(listing.amenities ?? [])
   const [coverImage, setCoverImage] = useState<string>(listing.images?.[0] ?? '')
   const [coverUploading, setCoverUploading] = useState(false)
-  const [floorPlanUrl, setFloorPlanUrl] = useState<string>(listing.floor_plan_url ?? '')
+  const [floorPlanUrls, setFloorPlanUrls] = useState<string[]>(
+    listing.floor_plan_urls?.length ? listing.floor_plan_urls : (listing.floor_plan_url ? [listing.floor_plan_url] : [])
+  )
   const [floorPlanUploading, setFloorPlanUploading] = useState(false)
   const [rooms, setRooms] = useState<Room[]>(listing.rooms ?? [])
   const [houseRules, setHouseRules] = useState(listing.house_rules ?? '')
   const [houseRulesDetails, setHouseRulesDetails] = useState(listing.house_rules_details ?? '')
   const [checkinInstructions, setCheckinInstructions] = useState(listing.checkin_instructions ?? '')
   const [importantNotes, setImportantNotes] = useState(listing.important_notes ?? '')
+  const [rulePetsAllowed, setRulePetsAllowed] = useState(listing.rule_pets_allowed ?? false)
+  const [ruleEventsAllowed, setRuleEventsAllowed] = useState(listing.rule_events_allowed ?? false)
+  const [ruleSmokingAllowed, setRuleSmokingAllowed] = useState(listing.rule_smoking_allowed ?? false)
+  const [ruleQuietHours, setRuleQuietHours] = useState(listing.rule_quiet_hours ?? false)
+  const [ruleQuietStart, setRuleQuietStart] = useState(listing.rule_quiet_start ?? '22:00')
+  const [ruleQuietEnd, setRuleQuietEnd] = useState(listing.rule_quiet_end ?? '07:00')
+  const [ruleCommercialPhoto, setRuleCommercialPhoto] = useState(listing.rule_commercial_photo ?? false)
+  const [ruleAdditionalRules, setRuleAdditionalRules] = useState(listing.rule_additional_rules ?? '')
   const [checkInTime, setCheckInTime] = useState(listing.check_in_time ?? '15:00')
   const [checkOutTime, setCheckOutTime] = useState(listing.check_out_time ?? '11:00')
   const [isActive, setIsActive] = useState(listing.is_active)
@@ -338,13 +358,14 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
     }
 
     const url: string = upData.url
-    setFloorPlanUrl(url)
+    const newUrls = [...floorPlanUrls, url]
+    setFloorPlanUrls(newUrls)
 
     // 2. Immediately save to DB
     const saveRes = await fetch(`/api/listings/${listing.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ floor_plan_url: url }),
+      body: JSON.stringify({ floor_plan_urls: newUrls, floor_plan_url: newUrls[0] }),
     })
     if (!saveRes.ok) {
       const saveData = await saveRes.json()
@@ -375,7 +396,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           bathrooms,
           amenities,
           cover_image: coverImage,
-          floor_plan_url: floorPlanUrl,
+          floor_plan_url: floorPlanUrls[0] ?? '',
+          floor_plan_urls: floorPlanUrls,
           rooms,
           cancellation_policy: cancelPolicy === 'custom' ? 'custom' : cancelPolicy,
           cancel_free_days: cancelFreeDays,
@@ -386,6 +408,14 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           house_rules_details: houseRulesDetails,
           checkin_instructions: checkinInstructions,
           important_notes: importantNotes,
+          rule_pets_allowed: rulePetsAllowed,
+          rule_events_allowed: ruleEventsAllowed,
+          rule_smoking_allowed: ruleSmokingAllowed,
+          rule_quiet_hours: ruleQuietHours,
+          rule_quiet_start: ruleQuietStart,
+          rule_quiet_end: ruleQuietEnd,
+          rule_commercial_photo: ruleCommercialPhoto,
+          rule_additional_rules: ruleAdditionalRules,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
           is_active: isActive,
@@ -627,57 +657,48 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
         />
       </Section>
 
-      {/* ── Grundriss ── */}
-      <Section title="Grundriss">
-        <Field label="Grundriss">
-          {floorPlanUrl ? (
-            <div style={{ borderRadius: '14px', overflow: 'hidden', background: '#f9f7f3', border: '1px solid #E8E6E0' }}>
-              <img
-                src={floorPlanUrl}
-                alt="Grundriss"
-                style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '300px', objectFit: 'cover' }}
-              />
-              <div style={{ padding: '12px', display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => floorPlanInputRef.current?.click()}
-                  disabled={floorPlanUploading}
-                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#111' }}
-                >
-                  {floorPlanUploading ? 'Wird hochgeladen…' : '↺ Ersetzen'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFloorPlanUrl('')}
-                  style={{ padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#c00' }}
-                >
-                  ✕
-                </button>
-              </div>
+      {/* ── Grundrisse (mehrere) ── */}
+      <Section title="Grundrisse">
+        <Field label="Grundrisse" hint="Mehrere Grundrisse möglich (z.B. pro Etage)">
+          {floorPlanUrls.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: floorPlanUrls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              {floorPlanUrls.map((url, i) => (
+                <div key={i} style={{ borderRadius: '14px', overflow: 'hidden', background: '#f9f7f3', border: '1px solid #E8E6E0' }}>
+                  <img src={url} alt={`Grundriss ${i + 1}`} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '200px', objectFit: 'cover' }} />
+                  <div style={{ padding: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setFloorPlanUrls(prev => prev.filter((_, idx) => idx !== i))}
+                      style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#c00' }}
+                    >
+                      ✕ Entfernen
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => floorPlanInputRef.current?.click()}
-              disabled={floorPlanUploading}
-              style={{
-                width: '100%', padding: '40px', borderRadius: '14px', border: '2px dashed #D4C5B0',
-                background: '#fafaf8', cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: '10px',
-              }}
-            >
-              {floorPlanUploading ? (
-                <>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Wird hochgeladen…</span>
-                </>
-              ) : (
-                <>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Grundriss hochladen</span>
-                  <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
-                </>
-              )}
-            </button>
           )}
+          <button
+            type="button"
+            onClick={() => floorPlanInputRef.current?.click()}
+            disabled={floorPlanUploading}
+            style={{
+              width: '100%', padding: floorPlanUrls.length > 0 ? '16px' : '40px', borderRadius: '14px', border: '2px dashed #D4C5B0',
+              background: '#fafaf8', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: '6px',
+            }}
+          >
+            {floorPlanUploading ? (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Wird hochgeladen…</span>
+            ) : (
+              <>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>
+                  {floorPlanUrls.length > 0 ? '+ Weiteren Grundriss hochladen' : 'Grundriss hochladen'}
+                </span>
+                <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
+              </>
+            )}
+          </button>
           <input
             ref={floorPlanInputRef}
             type="file"
@@ -689,8 +710,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       </Section>
 
       {/* ── Hausregeln & Check-in ── */}
-      <Section title="Hausregeln & Check-in">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+      <Section title="Hausregeln">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <Field label="Check-in ab">
             <input type="time" style={inputStyle} value={checkInTime} onChange={e => setCheckInTime(e.target.value)} />
           </Field>
@@ -698,24 +719,94 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <input type="time" style={inputStyle} value={checkOutTime} onChange={e => setCheckOutTime(e.target.value)} />
           </Field>
         </div>
-        <Field label="Hausregeln" hint="z.B. keine Partys, Hunde erlaubt, Rauchen nur draußen">
+
+        {/* Toggle rules (Airbnb-style) */}
+        <div style={{ borderRadius: '14px', border: '1px solid #E8E6E0', overflow: 'hidden', marginBottom: '16px' }}>
+          {([
+            { label: 'Haustiere erlaubt', value: rulePetsAllowed, set: setRulePetsAllowed },
+            { label: 'Veranstaltungen erlaubt', value: ruleEventsAllowed, set: setRuleEventsAllowed },
+            { label: 'Rauchen, Vaporizer und E-Zigaretten erlaubt', value: ruleSmokingAllowed, set: setRuleSmokingAllowed },
+            { label: 'Kommerzielles Fotografieren und Filmen erlaubt', value: ruleCommercialPhoto, set: setRuleCommercialPhoto },
+          ] as const).map((rule, i) => (
+            <div key={rule.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: i < 3 ? '1px solid #F0EEE8' : 'none' }}>
+              <span style={{ fontSize: '14px', color: '#1D1D1F' }}>{rule.label}</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" onClick={() => rule.set(false)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: !rule.value ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: !rule.value ? '#1D1D1F' : '#fff',
+                  color: !rule.value ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✕</button>
+                <button type="button" onClick={() => rule.set(true)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: rule.value ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: rule.value ? '#1D1D1F' : '#fff',
+                  color: rule.value ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✓</button>
+              </div>
+            </div>
+          ))}
+
+          {/* Quiet hours toggle with time pickers */}
+          <div style={{ borderTop: '1px solid #F0EEE8', padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: ruleQuietHours ? '12px' : 0 }}>
+              <span style={{ fontSize: '14px', color: '#1D1D1F' }}>Ruhezeiten</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" onClick={() => setRuleQuietHours(false)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: !ruleQuietHours ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: !ruleQuietHours ? '#1D1D1F' : '#fff',
+                  color: !ruleQuietHours ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✕</button>
+                <button type="button" onClick={() => setRuleQuietHours(true)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: ruleQuietHours ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: ruleQuietHours ? '#1D1D1F' : '#fff',
+                  color: ruleQuietHours ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✓</button>
+              </div>
+            </div>
+            {ruleQuietHours && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', marginBottom: '4px', display: 'block' }}>Beginn der Ruhezeit</label>
+                  <select style={inputStyle} value={ruleQuietStart} onChange={e => setRuleQuietStart(e.target.value)}>
+                    {Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', marginBottom: '4px', display: 'block' }}>Ende der Ruhezeit</label>
+                  <select style={inputStyle} value={ruleQuietEnd} onChange={e => setRuleQuietEnd(e.target.value)}>
+                    {Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Max guests within rules */}
+          <div style={{ borderTop: '1px solid #F0EEE8', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '14px', color: '#1D1D1F' }}>Anzahl der Gäste</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button type="button" onClick={() => setMaxGuests(v => Math.max(1, v - 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111' }}>−</button>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#111', minWidth: '20px', textAlign: 'center' }}>{maxGuests}</span>
+              <button type="button" onClick={() => setMaxGuests(v => Math.min(30, v + 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111' }}>+</button>
+            </div>
+          </div>
+        </div>
+
+        <Field label="Zusätzliche Regeln" hint="Gib an, was du von Gästen sonst noch erwartest">
           <textarea
             style={{ ...inputStyle, resize: 'vertical' }}
-            value={houseRules}
-            onChange={e => setHouseRules(e.target.value)}
-            placeholder="Bitte seid rücksichtsvoll zu den Nachbarn…"
+            value={ruleAdditionalRules}
+            onChange={e => setRuleAdditionalRules(e.target.value)}
+            placeholder="z.B. Schuhe bitte am Eingang ausziehen, Müll bitte trennen…"
             rows={3}
           />
         </Field>
-        <Field label="Detaillierte Hausregeln">
-          <textarea
-            style={{ ...inputStyle, resize: 'vertical' }}
-            value={houseRulesDetails}
-            onChange={e => setHouseRulesDetails(e.target.value)}
-            placeholder="z.B. Nachtruhe ab 22 Uhr, Rauchen nur auf dem Balkon…"
-            rows={4}
-          />
-        </Field>
+
         <Field label="Check-In Anweisungen">
           <textarea
             style={{ ...inputStyle, resize: 'vertical' }}
