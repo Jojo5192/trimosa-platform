@@ -200,6 +200,7 @@ interface Listing {
   booking_url?: string
   vrbo_url?: string
   google_place_id?: string
+  revyoos_property_id?: string
 }
 
 const CANCELLATION_TEMPLATES = [
@@ -295,12 +296,13 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [bookingUrl, setBookingUrl] = useState(listing.booking_url ?? '')
   const [vrboUrl, setVrboUrl] = useState(listing.vrbo_url ?? '')
   const [googlePlaceId, setGooglePlaceId] = useState(listing.google_place_id ?? '')
+  const [revyoosId, setRevyoosId] = useState(listing.revyoos_property_id ?? '')
 
   // Reviews management
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [fetchingReviews, setFetchingReviews] = useState(false)
-  const [fetchResult, setFetchResult] = useState<{ results: { source: string; fetched: number; errors?: string }[] } | null>(null)
+  const [fetchResult, setFetchResult] = useState<{ results: { source: string; fetched: number; score?: number; count?: number; errors?: string }[] } | null>(null)
   const [showAddReview, setShowAddReview] = useState(false)
   const [showPasteImport, setShowPasteImport] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -446,6 +448,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           booking_url: bookingUrl,
           vrbo_url: vrboUrl,
           google_place_id: googlePlaceId,
+          revyoos_property_id: revyoosId,
           is_active: isActive,
         }),
       })
@@ -889,6 +892,14 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
           </Field>
         </div>
+        <div style={{ marginBottom: '20px' }}>
+          <Field label="Revyoos Property ID (optional)">
+            <input value={revyoosId} onChange={e => setRevyoosId(e.target.value)} placeholder="z.B. abc123 oder Embed-Code einfügen" style={inputStyle} />
+            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+              Falls du Revyoos nutzt: Property-ID oder den kompletten Embed-Code hier einfügen. Das Revyoos-Widget wird dann automatisch auf der Detailseite angezeigt.
+            </p>
+          </Field>
+        </div>
         {/* Reviews list */}
         <div style={{ borderTop: '1px solid #F0EEE8', paddingTop: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -943,7 +954,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
               {fetchResult.results.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: r.errors ? '#DC2626' : '#16A34A' }}>
-                    {r.source}: {r.fetched > 0 ? `${r.fetched} Bewertungen importiert ✓` : r.errors ? `Fehler` : 'Keine neuen Bewertungen'}
+                    {r.source}: {r.score !== undefined
+                      ? `★ ${r.score.toFixed(1)} (${r.count} Bewertungen)${r.fetched > 0 ? ` + ${r.fetched} importiert` : ''} ✓`
+                      : r.fetched > 0 ? `${r.fetched} Bewertungen importiert ✓`
+                      : r.errors ? `Fehler` : 'Keine neuen Bewertungen'}
                   </span>
                   {r.errors && <span style={{ fontSize: '11px', color: '#999' }}>— {r.errors}</span>}
                 </div>

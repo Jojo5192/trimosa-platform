@@ -595,7 +595,7 @@ interface ReviewsAggregate {
   sources: Record<string, { avg: number; count: number }>
 }
 
-export function ReviewsSection({ listingId, showReviewForm = false }: { listingId: string; showReviewForm?: boolean }) {
+export function ReviewsSection({ listingId, showReviewForm = false, revyoosPropertyId }: { listingId: string; showReviewForm?: boolean; revyoosPropertyId?: string }) {
   const [data, setData] = useState<ReviewsAggregate | null>(null)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
@@ -676,11 +676,15 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
     return (
       <div id="reviews-section" style={{ marginBottom: '32px' }}>
         <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Bewertungen</h2>
-        <div style={{ padding: '32px', textAlign: 'center' }}>
-          <div style={{ fontSize: '40px', marginBottom: '8px' }}>⭐</div>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: '#1D1D1F', margin: '0 0 4px' }}>Noch keine Bewertungen</p>
-          <p style={{ fontSize: '13px', color: '#6E6E73', margin: 0 }}>Bewertungen werden nach dem ersten Aufenthalt angezeigt.</p>
-        </div>
+        {revyoosPropertyId ? (
+          <RevyoosWidget embedCode={revyoosPropertyId} />
+        ) : (
+          <div style={{ padding: '32px', textAlign: 'center' }}>
+            <div style={{ fontSize: '40px', marginBottom: '8px' }}>⭐</div>
+            <p style={{ fontSize: '15px', fontWeight: 600, color: '#1D1D1F', margin: '0 0 4px' }}>Noch keine Bewertungen</p>
+            <p style={{ fontSize: '13px', color: '#6E6E73', margin: 0 }}>Bewertungen werden nach dem ersten Aufenthalt angezeigt.</p>
+          </div>
+        )}
       </div>
     )
   }
@@ -885,6 +889,9 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
           Mehr laden
         </button>
       )}
+
+      {/* Revyoos Widget */}
+      {revyoosPropertyId && <RevyoosWidget embedCode={revyoosPropertyId} />}
     </div>
   )
 }
@@ -909,6 +916,69 @@ function ReviewText({ text }: { text: string }) {
           {expanded ? 'Weniger' : 'Mehr lesen'}
         </button>
       )}
+    </div>
+  )
+}
+
+/* ── Revyoos Widget ── */
+function RevyoosWidget({ embedCode }: { embedCode: string }) {
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return
+
+    // Clear previous content
+    node.innerHTML = ''
+
+    // Check if the user pasted a full embed code (contains <script or <div)
+    if (embedCode.includes('<script') || embedCode.includes('<div')) {
+      // Parse and inject the embed code
+      const temp = document.createElement('div')
+      temp.innerHTML = embedCode
+
+      // Move all elements into the container
+      Array.from(temp.children).forEach(child => {
+        if (child.tagName === 'SCRIPT') {
+          // Scripts need to be re-created to execute
+          const script = document.createElement('script')
+          const srcAttr = child.getAttribute('src')
+          if (srcAttr) {
+            script.src = srcAttr
+            script.async = true
+          } else {
+            script.textContent = child.textContent
+          }
+          // Copy other attributes
+          Array.from(child.attributes).forEach(attr => {
+            if (attr.name !== 'src') script.setAttribute(attr.name, attr.value)
+          })
+          node.appendChild(script)
+        } else {
+          node.appendChild(child.cloneNode(true))
+        }
+      })
+    } else {
+      // Just an ID — create a standard Revyoos widget embed
+      // Revyoos uses: <div id="revyoos-widget" data-property="PROPERTY_ID"></div>
+      // + <script src="https://app.revyoos.com/widget.js" async></script>
+      const widgetDiv = document.createElement('div')
+      widgetDiv.id = 'revyoos-widget-' + embedCode
+      widgetDiv.setAttribute('data-property', embedCode)
+      widgetDiv.className = 'revyoos-widget'
+      node.appendChild(widgetDiv)
+
+      const script = document.createElement('script')
+      script.src = `https://app.revyoos.com/widget.js?property=${embedCode}`
+      script.async = true
+      node.appendChild(script)
+    }
+  }, [embedCode])
+
+  return (
+    <div style={{ marginTop: '24px', borderTop: '1px solid #F0EEE8', paddingTop: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: '#1D1D1F' }}>Bewertungen auf anderen Plattformen</span>
+        <span style={{ fontSize: '10px', color: '#999', fontWeight: 500 }}>powered by Revyoos</span>
+      </div>
+      <div ref={containerRef} />
     </div>
   )
 }

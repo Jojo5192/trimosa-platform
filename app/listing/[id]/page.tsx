@@ -255,7 +255,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           )}
 
           {/* Reviews */}
-          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} />
+          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} revyoosPropertyId={listing.revyoos_property_id ?? undefined} />
 
         </div>
       </div>

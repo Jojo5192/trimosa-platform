@@ -43,3 +43,12 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS airbnb_url TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS booking_url TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS vrbo_url TEXT;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS google_place_id TEXT;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS revyoos_property_id TEXT;
+
+-- Score cache columns (auto-filled by fetch endpoint)
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS airbnb_score NUMERIC;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS airbnb_review_count INTEGER;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS booking_score NUMERIC;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS booking_review_count INTEGER;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS google_score NUMERIC;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS google_review_count INTEGER;
