@@ -15,13 +15,17 @@ const geistMono = Geist_Mono({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 }
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
+
 export const metadata: Metadata = {
-  title: "TRIMOSA Ferienplattform",
-  description: "Einzigartige Ferienwohnungen in Bayern — direkt vom Gastgeber",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "TRIMOSA — Ferienwohnungen in Sirzenich, Trier, Bitburg & der Südeifel",
+    template: "%s | TRIMOSA",
+  },
+  description: "Handverlesene Ferienwohnungen in Sirzenich bei Trier, Bitburg und der Südeifel — direkt vom Gastgeber, ohne Vermittler.",
 };
 
 export default function RootLayout({
@@ -31,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="de"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
