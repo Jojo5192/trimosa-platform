@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 
 export interface Room {
   id: string
@@ -134,19 +135,19 @@ export default function PhotoViewer({ rooms, allImages, listingTitle, open, onCl
                       key={i}
                       onClick={() => setLightboxImg(url)}
                       style={{
+                        position: 'relative',
                         aspectRatio: '3/2',
                         borderRadius: '10px',
                         overflow: 'hidden',
                         cursor: 'zoom-in',
                       }}
                     >
-                      <img
+                      <Image
                         src={url}
                         alt={`${room.name} ${i + 1}`}
-                        style={{
-                          width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-                          transition: 'transform 0.2s',
-                        }}
+                        fill
+                        sizes="45vw"
+                        style={{ objectFit: 'cover', transition: 'transform 0.2s' }}
                         onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
                         onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                       />
@@ -170,16 +171,18 @@ export default function PhotoViewer({ rooms, allImages, listingTitle, open, onCl
             cursor: 'zoom-out',
           }}
         >
-          <img
-            src={lightboxImg}
-            alt=""
+          <div
             onClick={e => e.stopPropagation()}
-            style={{
-              maxWidth: '90vw', maxHeight: '90vh',
-              objectFit: 'contain', borderRadius: '8px',
-              cursor: 'default',
-            }}
-          />
+            style={{ position: 'relative', width: '90vw', height: '90vh', cursor: 'default' }}
+          >
+            <Image
+              src={lightboxImg}
+              alt=""
+              fill
+              sizes="90vw"
+              style={{ objectFit: 'contain', borderRadius: '8px' }}
+            />
+          </div>
           <button
             onClick={() => setLightboxImg(null)}
             style={{
