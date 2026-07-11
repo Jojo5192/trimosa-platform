@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import Link from 'next/link'
+import Image from 'next/image'
 import ListingEditor from './ListingEditor'
 
 export default async function EditListingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
       {/* Mini-Nav */}
       <nav style={{ backgroundColor: '#fff', borderBottom: '1px solid #E5E5EA', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link href="/">
-          <img src="/logo.png" alt="TRIMOSA" style={{ height: '28px', width: 'auto' }} />
+          <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} style={{ height: '28px', width: 'auto' }} />
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Link href={`/listing/${id}`} style={{ fontSize: '12px', color: '#888', textDecoration: 'none' }} target="_blank">
