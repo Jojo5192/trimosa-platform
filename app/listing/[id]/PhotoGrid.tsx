@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import PhotoViewer, { type Room } from '@/components/PhotoViewer'
 
 interface Props {
@@ -49,10 +50,13 @@ export default function PhotoGrid({
         {/* Main photo */}
         <div style={{ gridColumn: '1', gridRow: '1 / 3', position: 'relative', overflow: 'hidden' }}>
           {firstImage ? (
-            <img
+            <Image
               src={firstImage}
               alt={listingTitle}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.3s' }}
+              fill
+              priority
+              sizes="(max-width: 900px) 100vw, 55vw"
+              style={{ objectFit: 'cover', transition: 'transform 0.3s' }}
               onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
               onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
             />
@@ -84,10 +88,12 @@ export default function PhotoGrid({
               }}
             >
               {src ? (
-                <img
+                <Image
                   src={src}
                   alt={`Foto ${idx + 1}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.3s' }}
+                  fill
+                  sizes="(max-width: 900px) 50vw, 22vw"
+                  style={{ objectFit: 'cover', transition: 'transform 0.3s' }}
                   onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
                   onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                 />
