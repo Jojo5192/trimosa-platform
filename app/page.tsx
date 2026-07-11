@@ -221,8 +221,23 @@ export default async function Home({
 
   const centerCoords = q ? getCoords(q) : null
 
+  const organizationJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'TRIMOSA',
+    url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app',
+    areaServed: {
+      '@type': 'Place',
+      name: 'Sirzenich, Trier, Bitburg, Sauertal, Südeifel',
+    },
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#ECEEF4' }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
       <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} />
 
       {hasSearch ? (
