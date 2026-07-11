@@ -1,8 +1,9 @@
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import BookingBox from './BookingBox'
 import PhotoGrid from './PhotoGrid'
-import Link from 'next/link'
 import {
   HostBadge,
   AmenitiesSection,
@@ -12,6 +13,38 @@ import {
   HouseRulesDisplay,
 } from './DetailSections'
 import MobileBookingBar from './MobileBookingBar'
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const { data: listing } = await supabaseAdmin
+    .from('listings')
+    .select('title, description, location, city, images, is_active')
+    .eq('id', id)
+    .single()
+
+  if (!listing || listing.is_active === false) return {}
+
+  const city = listing.city || listing.location
+  const title = `${listing.title} — Ferienwohnung in ${city}`
+  const description = listing.description
+    ? listing.description.slice(0, 155)
+    : `${listing.title} in ${city} — buche direkt bei TRIMOSA, ohne Vermittler.`
+  const image = listing.images?.[0]
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `${siteUrl}/listing/${id}` },
+    openGraph: {
+      title,
+      description,
+      url: `${siteUrl}/listing/${id}`,
+      images: image ? [{ url: image }] : undefined,
+    },
+  }
+}
 
 /* Fallback gradient when no photos uploaded yet */
 function getGradientStyle(location: string, title: string): React.CSSProperties {
@@ -39,16 +72,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm } = await searchParams
   const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', id).single()
 
-  if (!listing) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', backgroundColor: '#F5F5F7' }}>
-        <p style={{ fontWeight: 700, fontSize: '18px', color: '#1D1D1F' }}>Unterkunft nicht gefunden</p>
-        <Link href="/" style={{ fontSize: '13px', fontWeight: 600, padding: '8px 20px', borderRadius: '999px', color: '#8A7020', backgroundColor: '#FAF5E4', textDecoration: 'none' }}>
-          ← Zurück zur Übersicht
-        </Link>
-      </div>
-    )
-  }
+  if (!listing || listing.is_active === false) notFound()
 
   // Fetch host profile
   const { data: hostProfile } = await supabaseAdmin
@@ -66,8 +90,28 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   // Derive city: prefer explicit city field, then try to extract from address, fallback to location
   const displayCity = listing.city || listing.address?.split(',').pop()?.trim() || listing.location
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'VacationRental',
+    name: listing.title,
+    description: listing.description || undefined,
+    url: `${siteUrl}/listing/${listing.id}`,
+    image: allImagesFlat.length > 0 ? allImagesFlat : undefined,
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: displayCity,
+      addressCountry: 'DE',
+    },
+    numberOfRooms: listing.bedrooms,
+    petsAllowed: listing.rule_pets_allowed ?? undefined,
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <NavBar />
 
       <div className="detail-container" style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
