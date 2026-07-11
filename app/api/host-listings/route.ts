@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     .from('listings')
     .select('id, title, images, city, location, price_per_night')
     .eq('host_id', hostId)
-    .eq('status', 'published')
+    .eq('is_active', true)
     .order('created_at', { ascending: false })
 
   return NextResponse.json({ listings: data ?? [] })
