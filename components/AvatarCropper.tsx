@@ -97,8 +97,14 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
       const scale = zoom
       const displaySize = 160 // px of the preview circle
       const ratio = SIZE / displaySize
-      const drawW = img.naturalWidth  * (displaySize / img.naturalWidth)  * scale * ratio
-      const drawH = img.naturalHeight * (displaySize / img.naturalHeight) * scale * ratio
+      // Mirror the preview's CSS `object-fit: cover`: scale so the
+      // smaller source dimension fills displaySize, preserving aspect
+      // ratio, before applying the user's zoom/pan.
+      const coverScale = displaySize / Math.min(img.naturalWidth, img.naturalHeight)
+      const baseW = img.naturalWidth * coverScale
+      const baseH = img.naturalHeight * coverScale
+      const drawW = baseW * scale * ratio
+      const drawH = baseH * scale * ratio
       const dx = SIZE / 2 - drawW / 2 + offset.x * ratio
       const dy = SIZE / 2 - drawH / 2 + offset.y * ratio
       ctx.drawImage(img, dx, dy, drawW, drawH)
