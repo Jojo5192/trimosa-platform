@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createReservation } from '@/lib/smoobu'
+import { createReservation, cancelReservation } from '@/lib/smoobu'
 
 export const config = { api: { bodyParser: false } }
 
@@ -9,7 +9,7 @@ export const config = { api: { bodyParser: false } }
  * POST /api/payments/webhook
  * Stripe sends events here. Set up in Stripe Dashboard:
  *   Webhook URL: https://trimosa-app.vercel.app/api/payments/webhook
- *   Events: checkout.session.completed, charge.refunded
+ *   Events: checkout.session.completed, checkout.session.expired, charge.refunded
  */
 export async function POST(req: NextRequest) {
   const sig = req.headers.get('stripe-signature') ?? ''
@@ -196,6 +196,97 @@ export async function POST(req: NextRequest) {
           conversation_id: conv.id,
           sender_id: listing.host_id,
           content: msg,
+        })
+        await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+      }
+    } catch (err) {
+      console.error('[Webhook] chat msg failed:', err)
+    }
+  }
+
+  // A booking row is created (status 'confirmed'/'pending') before the
+  // guest ever reaches Stripe Checkout. If the session expires unpaid
+  // (30 min, see /api/payments/checkout), that row would otherwise sit
+  // there indefinitely, looking like a real booking and — for instant
+  // bookings — blocking the calendar via the confirmed-only exclusion
+  // constraint on bookings.
+  if (event.type === 'checkout.session.expired') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const session = event.data.object as any
+    const bookingId = session.metadata?.bookingId
+    if (!bookingId) return NextResponse.json({ ok: true })
+
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('id, payment_status')
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    // Only cancel if it's still unpaid — a completed payment always wins
+    // over an expiry event, regardless of arrival order.
+    if (booking && booking.payment_status !== 'paid') {
+      await supabaseAdmin
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId)
+    }
+
+    return NextResponse.json({ ok: true })
+  }
+
+  // Refunds triggered from the Stripe Dashboard (outside our own
+  // /api/payments/refund or declineBooking flows) never reached the DB
+  // before — this keeps bookings.status/refunded_at in sync either way.
+  if (event.type === 'charge.refunded') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const charge = event.data.object as any
+    const paymentIntentId = charge.payment_intent as string | null
+    if (!paymentIntentId) return NextResponse.json({ ok: true })
+
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('*, listings(title, host_id)')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .maybeSingle()
+
+    if (!booking) return NextResponse.json({ ok: true }) // unrelated charge
+
+    // Idempotent: our own refund/decline flows already set refunded_at
+    // themselves, so skip re-processing (and re-notifying) here.
+    if (booking.refunded_at) return NextResponse.json({ ok: true })
+
+    const listing = booking.listings as unknown as { title: string; host_id: string } | null
+    const refundId = (charge.refunds?.data?.[0]?.id as string) ?? null
+
+    await supabaseAdmin
+      .from('bookings')
+      .update({
+        status: 'cancelled',
+        refunded_at: new Date().toISOString(),
+        stripe_refund_id: refundId,
+      })
+      .eq('id', booking.id)
+
+    if (booking.smoobu_reservation_id) {
+      try {
+        await cancelReservation(booking.smoobu_reservation_id)
+      } catch (err) {
+        console.error('[Webhook] Smoobu cancelReservation failed:', err)
+      }
+    }
+
+    try {
+      const { data: conv } = await supabaseAdmin
+        .from('conversations')
+        .select('id')
+        .eq('booking_id', booking.id)
+        .maybeSingle()
+      if (conv) {
+        const refundedAmount = (charge.amount_refunded ?? 0) / 100
+        await supabaseAdmin.from('messages').insert({
+          conversation_id: conv.id,
+          sender_id: listing?.host_id ?? booking.guest_id,
+          content: `❌ Buchung storniert. Rückerstattung von €${refundedAmount.toFixed(2)} wurde veranlasst und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode.`,
         })
         await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
       }
