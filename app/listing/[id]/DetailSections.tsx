@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import Image from 'next/image'
 
 /* ── Types ─────────────────────────────────────────────────── */
 interface HostProfile {
@@ -152,9 +153,9 @@ export function HostBadge({ host }: { host: HostProfile }) {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}>
-        <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {host.avatar_url ? (
-            <img src={host.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <Image src={host.avatar_url} alt="" fill sizes="32px" style={{ objectFit: 'cover' }} />
           ) : (
             <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
           )}
@@ -168,9 +169,9 @@ export function HostBadge({ host }: { host: HostProfile }) {
       {open && (
         <Overlay onClose={() => setOpen(false)} title="Dein Gastgeber">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {host.avatar_url ? (
-                <img src={host.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <Image src={host.avatar_url} alt="" fill sizes="64px" style={{ objectFit: 'cover' }} />
               ) : (
                 <span style={{ color: '#fff', fontSize: '24px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
               )}
@@ -193,8 +194,8 @@ export function HostBadge({ host }: { host: HostProfile }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                 {listings.map(l => (
                   <a key={l.id} href={`/listing/${l.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
-                    <div style={{ aspectRatio: '3/2', background: '#F5F5F7', overflow: 'hidden' }}>
-                      {l.images?.[0] && <img src={l.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                    <div style={{ position: 'relative', aspectRatio: '3/2', background: '#F5F5F7', overflow: 'hidden' }}>
+                      {l.images?.[0] && <Image src={l.images[0]} alt="" fill sizes="200px" style={{ objectFit: 'cover' }} />}
                     </div>
                     <div style={{ padding: '10px 12px' }}>
                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#1D1D1F', marginBottom: '2px' }}>{l.title}</div>
@@ -295,6 +296,7 @@ export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels
         {urls.map((url, i) => (
           <div key={i} onClick={() => setOpenIdx(i)} style={{ cursor: 'pointer', position: 'relative' }}>
             <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', maxHeight: '300px', background: '#fff' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- no fixed-height container, low SEO value */}
               <img src={url} alt={labels[i] || `Grundriss ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
               <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
                 🔍 Vergrößern
@@ -309,6 +311,7 @@ export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels
 
       {openIdx !== null && (
         <Overlay onClose={() => setOpenIdx(null)} title={labels[openIdx] || (urls.length === 1 ? 'Grundriss' : `Grundriss ${openIdx + 1}`)}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- natural sizing, low SEO value */}
           <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
           {urls.length > 1 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
@@ -832,6 +835,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, revyoosPrope
                     overflow: 'hidden', flexShrink: 0,
                   }}>
                     {review.author_avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- external (Airbnb/Google/Booking) domains, not whitelisted for next/image
                       <img src={review.author_avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
