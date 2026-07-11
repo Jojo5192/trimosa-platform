@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createListing } from '../actions'
 
 export default function NewListingPage() {
@@ -55,7 +56,7 @@ export default function NewListingPage() {
       {/* Mini-Nav */}
       <nav className="flex items-center justify-between px-8 py-4 bg-white" style={{ borderBottom: '1px solid #E5E5EA' }}>
         <Link href="/" className="h-8">
-          <img src="/logo.png" alt="TRIMOSA" className="h-8 w-auto object-contain" />
+          <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} className="h-8 w-auto object-contain" />
         </Link>
         <Link href="/dashboard" className="text-sm font-medium hover:underline" style={{ color: '#B0912B' }}>
           ← Dashboard
