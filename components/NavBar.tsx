@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
@@ -535,8 +536,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
           {/* Logo */}
           <Link href="/" className="nav-logo" style={{ flexShrink: 0, textDecoration: 'none' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="TRIMOSA" style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
+            <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} priority style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
           </Link>
 
           {/* ── Mobile Search Trigger (hidden on md+) ── */}
@@ -843,8 +843,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                       <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
                     </svg>
                     {avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarUrl} alt="" className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <Image src={avatarUrl} alt="" width={30} height={30} className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
                       <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
                         {initials}
