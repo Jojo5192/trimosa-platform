@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 const NAV = [
   { href: '/dashboard',               icon: '⊞',  label: 'Übersicht'    },
@@ -15,6 +16,15 @@ const NAV = [
 
 export default function DashboardNav() {
   const path = usePathname()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // /api/admin/users itself is admin-gated (403 for non-admins) — reused
+  // here purely to decide whether to show the tab, not as an auth check.
+  useEffect(() => {
+    fetch('/api/admin/users').then(r => { if (r.ok) setIsAdmin(true) }).catch(() => {})
+  }, [])
+
+  const items = isAdmin ? [...NAV, { href: '/dashboard/admin', icon: '🛡️', label: 'Admin' }] : NAV
 
   return (
     <nav style={{
@@ -31,7 +41,7 @@ export default function DashboardNav() {
         gap: '2px',
         minWidth: 'max-content',
       }}>
-        {NAV.map(({ href, icon, label }) => {
+        {items.map(({ href, icon, label }) => {
           const active = href === '/dashboard'
             ? path === '/dashboard'
             : path.startsWith(href)

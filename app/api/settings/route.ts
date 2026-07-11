@@ -16,6 +16,15 @@ export async function PATCH(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 })
 
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (!profile?.is_admin) {
+    return NextResponse.json({ error: 'Nur Admins dürfen diese Einstellung ändern.' }, { status: 403 })
+  }
+
   const body = await request.json()
   const pct = parseFloat(body.platform_markup_pct ?? 0)
 

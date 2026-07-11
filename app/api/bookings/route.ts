@@ -83,6 +83,12 @@ export async function POST(request: Request) {
     .single()
 
   if (bookingError || !newBooking) {
+    // 23P01 = exclusion_violation → the DB-level double-booking guard caught
+    // an overlapping confirmed booking for this listing (see migration
+    // 20260711_prevent_double_booking.sql).
+    if (bookingError?.code === '23P01') {
+      return NextResponse.json({ error: 'Diese Daten sind leider inzwischen belegt.' }, { status: 409 })
+    }
     console.error('[Bookings] insert error:', bookingError)
     return NextResponse.json({ error: 'Buchung konnte nicht gespeichert werden.' }, { status: 500 })
   }

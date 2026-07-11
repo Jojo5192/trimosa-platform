@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# internal handoff doc — contains security posture details, infra IDs and
+# personal emails; this repo is public, keep this local-only
+HANDOFF.md

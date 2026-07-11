@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { createReservation } from '@/lib/smoobu'
+import { stripe } from '@/lib/stripe'
 
 export async function acceptBooking(bookingId: string) {
   const supabase = await createSupabaseServerClient()
@@ -20,10 +21,17 @@ export async function acceptBooking(bookingId: string) {
   if (!booking || listing?.host_id !== user.id) throw new Error('Keine Berechtigung')
 
   // Update booking to confirmed
-  await supabaseAdmin
+  const { error: confirmError } = await supabaseAdmin
     .from('bookings')
     .update({ status: 'confirmed' })
     .eq('id', bookingId)
+
+  // 23P01 = exclusion_violation → another confirmed booking already covers
+  // an overlapping date range for this listing (DB-level double-booking guard).
+  if (confirmError?.code === '23P01') {
+    throw new Error('Diese Daten überschneiden sich mit einer bereits bestätigten Buchung.')
+  }
+  if (confirmError) throw new Error('Buchung konnte nicht bestätigt werden.')
 
   // Push to Smoobu to block the calendar (for requests that weren't previously pushed)
   if (listing?.smoobu_id && !booking.smoobu_reservation_id) {
@@ -103,9 +111,32 @@ export async function declineBooking(bookingId: string) {
   const listing = booking?.listings as unknown as { id: string; title: string; host_id: string } | null
   if (!booking || listing?.host_id !== user.id) throw new Error('Keine Berechtigung')
 
+  // The guest didn't cancel — the host declined the request — so this is
+  // always a full refund of whatever was actually charged, regardless of
+  // the listing's cancellation policy (that policy only applies when the
+  // guest cancels a confirmed stay).
+  let stripeRefundId: string | null = null
+  let refunded = 0
+  if (booking.payment_status === 'paid' && booking.stripe_payment_intent_id) {
+    try {
+      const stripeRefund = await stripe.refunds.create({
+        payment_intent: booking.stripe_payment_intent_id,
+        reason: 'requested_by_customer',
+      })
+      stripeRefundId = stripeRefund.id
+      refunded = booking.total_price
+    } catch (err) {
+      console.error('[declineBooking] Stripe refund failed:', err)
+      throw new Error('Ablehnung fehlgeschlagen: Rückerstattung konnte nicht veranlasst werden.')
+    }
+  }
+
   await supabaseAdmin
     .from('bookings')
-    .update({ status: 'cancelled' })
+    .update({
+      status: 'cancelled',
+      ...(stripeRefundId ? { refunded_at: new Date().toISOString(), stripe_refund_id: stripeRefundId } : {}),
+    })
     .eq('id', bookingId)
 
   // Notify guest via chat
@@ -116,10 +147,13 @@ export async function declineBooking(bookingId: string) {
       .eq('booking_id', bookingId)
       .maybeSingle()
     if (conv) {
+      const refundNote = refunded > 0
+        ? ` Die bereits gezahlten €${refunded.toFixed(2)} wurden vollständig zurückerstattet und erscheinen in 5–10 Werktagen auf deiner Zahlungsmethode.`
+        : ''
       await supabaseAdmin.from('messages').insert({
         conversation_id: conv.id,
         sender_id: user.id,
-        content: `Deine Anfrage für "${listing?.title}" (${booking.check_in} – ${booking.check_out}) wurde leider abgelehnt. Bei Fragen stehe ich dir gerne zur Verfügung.`,
+        content: `Deine Anfrage für "${listing?.title}" (${booking.check_in} – ${booking.check_out}) wurde leider abgelehnt.${refundNote} Bei Fragen stehe ich dir gerne zur Verfügung.`,
       })
       await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
     }

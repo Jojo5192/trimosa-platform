@@ -7,11 +7,21 @@ import { getReservationMessages } from '@/lib/smoobu'
  *
  * Receives reservation events from Smoobu.
  * Configure in Smoobu → Settings → Notifications → Webhook URL:
- *   https://your-domain.com/api/smoobu/webhook
+ *   https://your-domain.com/api/smoobu/webhook?secret=<SMOOBU_WEBHOOK_SECRET>
+ *
+ * Smoobu webhooks carry no signature — the ?secret= query param on the
+ * configured URL is the only way to authenticate the caller.
  *
  * Events: reservation.created, reservation.modified, reservation.cancelled
  */
 export async function POST(request: Request) {
+  const url = new URL(request.url)
+  const expectedSecret = process.env.SMOOBU_WEBHOOK_SECRET
+  if (!expectedSecret || url.searchParams.get('secret') !== expectedSecret) {
+    console.warn('[Smoobu Webhook] Rejected: missing or invalid secret')
+    return new Response('Unauthorized', { status: 401 })
+  }
+
   let payload: Record<string, unknown>
 
   try {
