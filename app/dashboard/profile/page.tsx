@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import AvatarCropper from '@/components/AvatarCropper'
 
@@ -93,8 +94,7 @@ export default function ProfilePage() {
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <nav style={{ backgroundColor: '#fff', borderBottom: '1px solid #E5E5EA', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link href="/">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="TRIMOSA" style={{ height: '28px', width: 'auto' }} />
+          <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} style={{ height: '28px', width: 'auto' }} />
         </Link>
         <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: '#A8882A', textDecoration: 'none' }}>
           ← Dashboard
