@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
 
 /* ── Card gradient palette (mirrors page.tsx) ── */
@@ -207,10 +208,12 @@ function ListingCard({ card, index, linkParams }: { card: CardData; index: numbe
     >
       <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
         {card.image && (
-          <img
+          <Image
             src={card.image}
             alt={card.title}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }}
+            fill
+            sizes="(max-width: 768px) 100vw, 33vw"
+            style={{ objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }}
           />
         )}
         {!card.image && (
