@@ -46,8 +46,15 @@ export default async function DashboardPage() {
         .order('created_at', { ascending: false })
     : { data: [] }
 
-  const pendingBookings = bookings?.filter((b) => b.status === 'pending') ?? []
-  const confirmedBookings = bookings?.filter((b) => b.status === 'confirmed') ?? []
+  // Direct TRIMOSA bookings (source === 'trimosa') are only worth showing
+  // once actually paid — otherwise an abandoned/expired Stripe Checkout
+  // would show up as a real request or confirmed stay. External bookings
+  // synced from Smoobu (other channels) never carry payment_status at all,
+  // so they're always shown.
+  const isPaidOrExternal = (b: { source: string | null; payment_status: string | null }) =>
+    b.source !== 'trimosa' || b.payment_status === 'paid'
+  const pendingBookings = bookings?.filter((b) => b.status === 'pending' && isPaidOrExternal(b)) ?? []
+  const confirmedBookings = bookings?.filter((b) => b.status === 'confirmed' && isPaidOrExternal(b)) ?? []
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: '#F5F5F7' }}>
