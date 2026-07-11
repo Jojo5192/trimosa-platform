@@ -21,6 +21,7 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
   const fileRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string>('')
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
 
   useEffect(() => {
     import('@/lib/supabase-browser').then(({ supabaseBrowser }) => {
@@ -37,6 +38,7 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
     setImgSrc(url)
     setZoom(1)
     setOffset({ x: 0, y: 0 })
+    setNaturalSize(null)
     setStep('crop')
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -136,6 +138,14 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
   }
 
   const PREVIEW = 160
+  // Full cover-fit size of the source image at the preview scale — same
+  // formula used in handleConfirm's canvas draw, just at PREVIEW instead
+  // of SIZE. Rendering the <img> at this size (instead of clamping it to
+  // PREVIEW×PREVIEW with CSS object-fit: cover) keeps the preview and the
+  // final saved crop showing exactly the same content when panned/zoomed.
+  const previewCoverScale = naturalSize ? PREVIEW / Math.min(naturalSize.w, naturalSize.h) : 1
+  const previewW = naturalSize ? naturalSize.w * previewCoverScale : PREVIEW
+  const previewH = naturalSize ? naturalSize.h * previewCoverScale : PREVIEW
 
   return (
     <div>
@@ -189,15 +199,15 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
                 src={imgSrc}
                 alt=""
                 draggable={false}
+                onLoad={e => setNaturalSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                 style={{
                   position: 'absolute',
                   top: '50%',
                   left: '50%',
                   transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
                   maxWidth: 'none',
-                  width: `${PREVIEW}px`,
-                  height: `${PREVIEW}px`,
-                  objectFit: 'cover',
+                  width: `${previewW}px`,
+                  height: `${previewH}px`,
                   transformOrigin: 'center',
                   pointerEvents: 'none',
                 }}
