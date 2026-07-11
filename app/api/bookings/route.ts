@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkAvailability } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
+import { sendBookingEmail } from '@/lib/email'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -160,11 +161,9 @@ export async function POST(request: Request) {
     console.error('[Bookings] auto-conversation failed (non-fatal):', err)
   }
 
-  fetch(`${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/api/send-booking-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookingId: newBooking.id }),
-  }).catch(() => {})
+  sendBookingEmail(newBooking.id).catch(err =>
+    console.error('[Bookings] confirmation email failed (non-fatal):', err)
+  )
 
   return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type })
 }
