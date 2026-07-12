@@ -167,6 +167,55 @@ export async function checkAvailability(
   return { available: allAvailable, totalPrice: Math.round(totalPrice), nights, minStayViolation }
 }
 
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+/**
+ * Flexible-date availability. Finds the free window of the SAME length whose
+ * check-in is closest to the requested date, within ±flexDays (checked in the
+ * order 0, −1, +1, −2, +2 …). Respects min_length_of_stay and never suggests a
+ * window in the past. Returns the best window (with `shifted` = whether it
+ * differs from the requested dates), or null if nothing in range is free.
+ */
+export async function findFlexibleStay(
+  smoobuApartmentId: string | number,
+  checkIn: string,
+  checkOut: string,
+  flexDays = 3,
+): Promise<{ checkIn: string; checkOut: string; totalPrice: number; nights: number; shifted: boolean } | null> {
+  const nights = eachDayBetween(checkIn, checkOut).length
+  if (nights === 0) return null
+
+  // One fetch over the whole widened window.
+  const rates = await getApartmentRates(
+    smoobuApartmentId,
+    addDaysIso(checkIn, -flexDays),
+    addDaysIso(checkOut, flexDays),
+  )
+
+  const offsets: number[] = [0]
+  for (let d = 1; d <= flexDays; d++) offsets.push(-d, d)
+  const today = new Date().toISOString().split('T')[0]
+
+  for (const offset of offsets) {
+    const ci = addDaysIso(checkIn, offset)
+    if (ci < today) continue // never suggest a stay starting in the past
+    const co = addDaysIso(ci, nights)
+    let ok = true
+    let price = 0
+    for (const day of eachDayBetween(ci, co)) {
+      const rate = rates[day]
+      if (!rate || rate.available === 0 || rate.min_length_of_stay > nights) { ok = false; break }
+      price += rate.price
+    }
+    if (ok) return { checkIn: ci, checkOut: co, totalPrice: Math.round(price), nights, shifted: offset !== 0 }
+  }
+  return null
+}
+
 /* ── Reservations ───────────────────────────────────────────── */
 
 export interface CreateReservationInput {
