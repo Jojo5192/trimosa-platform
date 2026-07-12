@@ -14,6 +14,7 @@ export interface MapListing {
   location?: string    // shown as a subtle label in the popup
   maxGuests?: number   // capacity shown in the popup
   matched?: boolean    // matches the active filters → prominent; else muted
+  flexNote?: string    // nearby free window (flexible dates)
 }
 
 interface Props {
@@ -190,7 +191,8 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
             <div style="padding:11px 13px 13px">
               ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}
               <p style="font-size:13.5px;font-weight:600;color:#111;margin:0 0 4px;line-height:1.3">${listing.title}</p>
-              ${listing.maxGuests ? `<p style="font-size:11.5px;color:#888;margin:0 0 8px;line-height:1">Bis zu ${listing.maxGuests} Gäste</p>` : '<div style="height:4px"></div>'}
+              ${listing.maxGuests ? `<p style="font-size:11.5px;color:#888;margin:0 0 6px;line-height:1">Bis zu ${listing.maxGuests} Gäste</p>` : '<div style="height:4px"></div>'}
+              ${listing.flexNote ? `<p style="display:inline-block;font-size:10.5px;font-weight:600;color:#2D6A1E;background:#EAF3EC;border:1px solid #CDE6D2;border-radius:999px;padding:2px 8px;margin:0 0 8px;line-height:1.3">📅 Frei: ${listing.flexNote}</p>` : ''}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span style="line-height:1">${priceBlock}</span>
                 <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">Ansehen →</span>
@@ -230,9 +232,9 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
 
       if (boundsPoints.length > 1) {
         const bounds = L.latLngBounds(boundsPoints)
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 })
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 })
       } else if (boundsPoints.length === 1) {
-        map.setView(boundsPoints[0], 13)
+        map.setView(boundsPoints[0], 12)
       }
 
       // Inject popup + zoom control styles once
