@@ -211,10 +211,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         const style = document.createElement('style')
         style.id = 'trimosa-map-styles'
         style.textContent = `
-          /* Give the light base map depth so it doesn't read washed-out:
-             boost saturation + contrast, nudge it slightly darker/warmer. */
+          /* Warm up + deepen the light base map so it reads premium, not
+             washed-out: a touch of sepia kills the cold grey, stronger contrast
+             adds depth, slightly darker overall. */
           .trimosa-searchmap .leaflet-tile {
-            filter: saturate(1.55) contrast(1.12) brightness(0.965);
+            filter: sepia(0.18) saturate(1.5) contrast(1.22) brightness(0.92);
           }
           /* Popup — crisp white card with full-bleed image header */
           .trimosa-popup .leaflet-popup-content-wrapper {
