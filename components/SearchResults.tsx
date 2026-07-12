@@ -352,6 +352,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     price: c.pricePerNight,
     totalPrice: c.totalPrice || undefined,
     nights: c.nights || undefined,
+    image: c.image || undefined,
+    location: c.location || undefined,
   }))
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
