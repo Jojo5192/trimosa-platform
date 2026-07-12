@@ -7,7 +7,6 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
 type AccountType = 'person' | 'business'
-type Role = 'guest' | 'host'
 
 /* ── Kleine Hilfskomponenten ── */
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -51,7 +50,6 @@ export default function RegisterPage() {
   const [city, setCity]               = useState('')
   const [country, setCountry]         = useState('Deutschland')
   const [phone, setPhone]             = useState('')
-  const [role, setRole]               = useState<Role>('guest')
   const [email, setEmail]             = useState('')
   const [password, setPassword]       = useState('')
   const [error, setError]             = useState('')
@@ -96,7 +94,6 @@ export default function RegisterPage() {
       body: JSON.stringify({
         email: email.trim().toLowerCase(),
         password,
-        role,
         accountType,
         firstName:   accountType === 'person' ? firstName.trim() : undefined,
         lastName:    accountType === 'person' ? lastName.trim()  : undefined,
@@ -269,29 +266,6 @@ export default function RegisterPage() {
               <Field label="Telefonnummer *" hint="Wird für Buchungen benötigt und an den Gastgeber weitergegeben.">
                 <input type="tel" style={inp} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49 170 1234567" autoComplete="tel" />
               </Field>
-            </div>
-
-            {/* ── 5. Rolle ── */}
-            <div>
-              <SectionLabel>Ich möchte…</SectionLabel>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                {([
-                  { value: 'guest' as Role, emoji: '🧳', title: 'Gast sein',       sub: 'Unterkunft suchen & buchen' },
-                  { value: 'host'  as Role, emoji: '🏠', title: 'Gastgeber sein',  sub: 'Wohnung vermieten' },
-                ] as const).map(opt => (
-                  <button key={opt.value} type="button" onClick={() => setRole(opt.value)}
-                    style={{
-                      padding: '14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                      border: role === opt.value ? '2px solid var(--gold)' : '1.5px solid #D2D2D7',
-                      backgroundColor: role === opt.value ? '#FAF5E4' : '#fff',
-                      transition: 'all 0.15s',
-                    }}>
-                    <span style={{ fontSize: '22px' }}>{opt.emoji}</span>
-                    <p style={{ fontSize: '13px', fontWeight: 700, color: '#1D1D1F', margin: '6px 0 2px' }}>{opt.title}</p>
-                    <p style={{ fontSize: '11px', color: '#6E6E73', margin: 0 }}>{opt.sub}</p>
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* ── 6. Zugangsdaten ── */}
