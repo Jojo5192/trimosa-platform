@@ -131,8 +131,11 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
         </p>
         {card.flexNote && (
           <div style={{ marginTop: '7px' }}>
-            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '3px 8px', borderRadius: '999px', backgroundColor: '#EAF3EC', color: '#2D6A1E', border: '1px solid #CDE6D2' }}>
-              📅 Frei: {card.flexNote}
+            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '3px 8px', borderRadius: '999px',
+              ...(card.unavailable
+                ? { backgroundColor: '#FBF3E3', color: '#8A6D1E', border: '1px solid #F0E0A0' }
+                : { backgroundColor: '#EAF3EC', color: '#2D6A1E', border: '1px solid #CDE6D2' }) }}>
+              📅 {card.unavailable ? 'Alternativ frei' : 'Frei'}: {card.flexNote}
             </span>
           </div>
         )}
@@ -220,6 +223,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     maxGuests: c.maxGuests || undefined,
     matched: c.matched,
     flexNote: c.flexNote,
+    unavailable: c.unavailable,
   }))
 
   // Render the card list, injecting a divider between the fully-matching
