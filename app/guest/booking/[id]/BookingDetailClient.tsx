@@ -140,7 +140,7 @@ export default function BookingDetailClient({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverImage} alt="" style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '20px', marginBottom: '20px' }} />
       ) : (
-        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: 'linear-gradient(135deg, #C4A235 0%, #8A6818 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
+        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
       )}
 
       {/* Title + status */}
@@ -156,7 +156,7 @@ export default function BookingDetailClient({
 
       {/* Details card */}
       <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E5E5EA', padding: '20px 24px', marginBottom: '16px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 16px' }}>Buchungsdetails</p>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 16px' }}>Buchungsdetails</p>
 
         {[
           { label: 'Check-in',    value: formatDate(booking.check_in) },
@@ -177,8 +177,8 @@ export default function BookingDetailClient({
       {/* Cancellation policy info */}
       {!cancelled && booking.status !== 'cancelled' && (
         <div style={{ background: '#FFF9EC', borderRadius: '16px', border: '1px solid #F0E5C0', padding: '14px 18px', marginBottom: '16px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Stornierungsbedingungen</p>
-          <p style={{ fontSize: '12px', color: '#7A5C1A', margin: 0, lineHeight: 1.6 }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Stornierungsbedingungen</p>
+          <p style={{ fontSize: '12px', color: 'var(--gold-dark)', margin: 0, lineHeight: 1.6 }}>
             🛡 {buildPolicyText(listing)}
           </p>
         </div>
@@ -206,7 +206,7 @@ export default function BookingDetailClient({
       {/* Action buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <Link href={chatHref}
-          style={{ display: 'block', padding: '14px', borderRadius: '14px', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
+          style={{ display: 'block', padding: '14px', borderRadius: '14px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
           💬 Zum Chat
         </Link>
 
