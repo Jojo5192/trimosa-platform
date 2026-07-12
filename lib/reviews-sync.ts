@@ -270,12 +270,12 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
   }
 
   const date =
-    toIsoDate(pick(item, 'createdAt', 'created_at', 'date', 'reviewDate', 'publishedAt', 'postedAt', 'submissionTime', 'stayDate', 'localizedDate')) ??
+    toIsoDate(pick(item, 'createdAt', 'created_at', 'date', 'reviewDate', 'publishedAt', 'publishedAtDate', 'postedAt', 'submissionTime', 'stayDate', 'localizedDate')) ??
     dateFromStayedText(item.stayedText) ??
     new Date().toISOString().split('T')[0]
 
   const rawId = pick(item, 'id', 'reviewId', 'review_id', 'reviewUrl')
-  const avatar = pick(item, 'reviewer.pictureUrl', 'author.pictureUrl', 'author.avatar', 'avatar', 'profilePicture', 'userAvatar', 'authorAvatar')
+  const avatar = pick(item, 'reviewer.pictureUrl', 'author.pictureUrl', 'author.avatar', 'reviewerPhotoUrl', 'avatar', 'profilePicture', 'userAvatar', 'authorAvatar')
 
   return {
     source_review_id: rawId ? `${source}_${String(rawId)}` : `${source}_${stableId(author, date, String(text ?? '').slice(0, 80))}`,
@@ -286,6 +286,42 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
     review_date: date,
     language: (pick(item, 'language', 'locale') as string | undefined)?.slice(0, 8) ?? null,
   }
+}
+
+/**
+ * Full Google review texts via Apify (compass~google-maps-reviews-scraper).
+ * The official Places API caps at ~5 review texts; this actor returns all of
+ * them (name, stars, text, date, avatar). The official API remains the
+ * authoritative source for the overall score/count.
+ */
+async function runGoogleReviewsActor(placeId: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error('APIFY_API_TOKEN fehlt')
+
+  const input = {
+    placeIds: [placeId],
+    maxReviews: MAX_REVIEWS_PER_RUN,
+    reviewsSort: 'newest',
+    language: 'de',
+    personalData: true, // reviewer name + avatar (publicly visible on Google)
+  }
+
+  const res = await fetch(
+    `https://api.apify.com/v2/acts/compass~google-maps-reviews-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(timeoutMs + 15_000),
+    },
+  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Apify google-reviews → HTTP ${res.status}: ${text.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  // The actor may emit place-level items without a rating; the normalizer drops those.
+  return Array.isArray(data) ? data : []
 }
 
 /* ── Google Places API (New) ────────────────────────────── */
@@ -443,16 +479,40 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     if (!listing.google_place_id) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'keine Place-ID hinterlegt' }
     if (!process.env.GOOGLE_PLACES_API_KEY) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'GOOGLE_PLACES_API_KEY fehlt' }
     try {
-      const { rating, count, reviews } = await fetchGooglePlace(listing.google_place_id)
-      const upserted = await upsertReviews(listing.id, 'google', reviews)
-      // Google's own rating/count are authoritative (we only get ~5 review texts)
+      // Official API → authoritative overall score + count
+      const { rating, count, reviews: apiReviews } = await fetchGooglePlace(listing.google_place_id)
       if (rating !== null && count !== null) {
         await supabaseAdmin
           .from('listings')
           .update({ google_score: rating, google_review_count: count })
           .eq('id', listing.id)
       }
-      return { source: 'google', status: 'ok', fetched: reviews.length, upserted, score: rating ?? undefined, count: count ?? undefined }
+
+      // Full review texts via Apify (all reviews, not just the API's ~5).
+      // Exclusive per run: the two sources use different review-id spaces, so
+      // we only fall back to the API's reviews when the actor fails.
+      let fetched = 0
+      let upserted = 0
+      let detail: string | undefined
+      if (process.env.APIFY_API_TOKEN && count && count > 0) {
+        try {
+          const items = await runGoogleReviewsActor(listing.google_place_id, 150_000)
+          const normalized = items
+            .map(i => normalizeScraperItem(i, 'google'))
+            .filter((r): r is NormalizedReview => r !== null)
+          fetched = normalized.length
+          upserted = await upsertReviews(listing.id, 'google', normalized)
+        } catch (e) {
+          detail = `Volltexte: ${String(e).slice(0, 220)}`
+          fetched = apiReviews.length
+          upserted = await upsertReviews(listing.id, 'google', apiReviews)
+        }
+      } else {
+        fetched = apiReviews.length
+        upserted = await upsertReviews(listing.id, 'google', apiReviews)
+      }
+
+      return { source: 'google', status: 'ok', fetched, upserted, score: rating ?? undefined, count: count ?? undefined, detail }
     } catch (e) {
       return { source: 'google', status: 'error', fetched: 0, upserted: 0, detail: String(e).slice(0, 300) }
     }
