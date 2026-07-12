@@ -98,7 +98,7 @@ export default function BookingChat({ bookingId, currentUserId, isHost }: Props)
 
       {/* Header */}
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #F0EEE8', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
@@ -142,7 +142,7 @@ export default function BookingChat({ bookingId, currentUserId, isHost }: Props)
                   maxWidth: '72%',
                   padding: '10px 14px',
                   borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: isMine ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#F5F3EF',
+                  background: isMine ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#F5F3EF',
                   color: isMine ? '#fff' : '#111',
                   fontSize: '13px',
                   lineHeight: 1.5,
@@ -192,7 +192,7 @@ export default function BookingChat({ bookingId, currentUserId, isHost }: Props)
             height: '40px',
             borderRadius: '12px',
             border: 'none',
-            background: input.trim() ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#E5E5E5',
+            background: input.trim() ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E5E5',
             cursor: input.trim() && !sending ? 'pointer' : 'not-allowed',
             display: 'flex',
             alignItems: 'center',
