@@ -82,8 +82,9 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
         .addTo(map)
 
-      // CartoDB Voyager — vibrant, colourful, modern
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      // CartoDB Positron — light, desaturated, minimal. Keeps the map calm so
+      // the gold price markers and photo popups are what stands out.
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',
         maxZoom: 19,
       }).addTo(map)
@@ -115,14 +116,14 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
                 display: inline-flex;
                 align-items: center;
                 background: #fff;
-                color: ${isRequest ? '#999' : '#111'};
+                color: ${isRequest ? '#555' : '#111'};
                 font-size: 12.5px;
-                font-weight: ${isRequest ? 500 : 700};
+                font-weight: ${isRequest ? 600 : 700};
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                 padding: 6px 13px;
                 border-radius: 12px;
                 white-space: nowrap;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1.5px ${isRequest ? 'rgba(0,0,0,0.07)' : 'rgba(196,162,53,0.35)'};
+                box-shadow: 0 3px 14px rgba(0,0,0,0.20), 0 0 0 1.5px ${isRequest ? 'rgba(0,0,0,0.14)' : 'var(--gold)'};
                 letter-spacing: ${isRequest ? '0' : '-0.01em'};
               ">
                 ${isRequest ? priceLabel : `<span style="color:var(--gold);font-weight:800;margin-right:1px">€</span>${priceLabel.replace('€\u202F','')}`}
