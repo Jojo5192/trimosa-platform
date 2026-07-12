@@ -51,7 +51,10 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
 
   return (
     <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E8E6E0', padding: '20px 24px' }}>
-      <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>Buchungseinstellungen</h2>
+      <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 4px' }}>Buchungseinstellungen (Standard)</h2>
+      <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>
+        Gelten als Vorgabe für neue Inserate. Bei jedem Inserat lassen sie sich einzeln übersteuern.
+      </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
         {/* Instant booking */}
