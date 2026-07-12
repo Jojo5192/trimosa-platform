@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
   // ── Check availability + get price (with platform markup) ────────────
   let totalPrice = 0
-  const markup = await getMarkupMultiplier()
+  const markup = await getMarkupMultiplier(listing.host_id)
   console.log('[Bookings] markup multiplier:', markup)
 
   if (listing.smoobu_id) {
