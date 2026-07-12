@@ -12,7 +12,7 @@ type Role = 'guest' | 'host'
 /* ── Kleine Hilfskomponenten ── */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>
+    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>
       {children}
     </p>
   )
@@ -138,7 +138,7 @@ export default function RegisterPage() {
 
       {/* Left: Deko */}
       <div className="hidden lg:flex lg:w-2/5 items-center justify-center p-16 sticky top-0 h-screen"
-        style={{ background: 'linear-gradient(145deg, #B0912B 0%, #8A7020 60%, #6B5618 100%)' }}>
+        style={{ background: 'linear-gradient(145deg, var(--gold) 0%, var(--gold-dark) 60%, var(--gold-dark) 100%)' }}>
         <div className="text-center">
           <Image src="/logo.png" alt="TRIMOSA" width={240} height={54}
             className="h-12 w-auto object-contain brightness-0 invert opacity-90 mb-8" />
@@ -187,7 +187,7 @@ export default function RegisterPage() {
                   <button key={opt.value} type="button" onClick={() => setAccountType(opt.value)}
                     style={{
                       padding: '14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                      border: accountType === opt.value ? '2px solid #B0912B' : '1.5px solid #D2D2D7',
+                      border: accountType === opt.value ? '2px solid var(--gold)' : '1.5px solid #D2D2D7',
                       backgroundColor: accountType === opt.value ? '#FAF5E4' : '#fff',
                       transition: 'all 0.15s',
                     }}>
@@ -282,7 +282,7 @@ export default function RegisterPage() {
                   <button key={opt.value} type="button" onClick={() => setRole(opt.value)}
                     style={{
                       padding: '14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                      border: role === opt.value ? '2px solid #B0912B' : '1.5px solid #D2D2D7',
+                      border: role === opt.value ? '2px solid var(--gold)' : '1.5px solid #D2D2D7',
                       backgroundColor: role === opt.value ? '#FAF5E4' : '#fff',
                       transition: 'all 0.15s',
                     }}>
@@ -321,7 +321,7 @@ export default function RegisterPage() {
               disabled={loading}
               style={{
                 width: '100%', padding: '15px', borderRadius: '12px', border: 'none',
-                background: 'linear-gradient(135deg, #B0912B, #8A7020)',
+                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
                 color: '#fff', fontSize: '15px', fontWeight: 700,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 opacity: loading ? 0.7 : 1,
@@ -333,7 +333,7 @@ export default function RegisterPage() {
 
             <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '-8px', paddingBottom: '16px' }}>
               Bereits ein Konto?{' '}
-              <Link href="/login" style={{ color: '#B0912B', fontWeight: 700, textDecoration: 'none' }}>Anmelden</Link>
+              <Link href="/login" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Anmelden</Link>
             </p>
           </div>
         </div>
