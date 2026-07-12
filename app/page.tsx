@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
+import QuickFilters from '@/components/QuickFilters'
 import { checkAvailability } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 
@@ -157,19 +158,13 @@ export default async function Home({
   const hasSearch = !!(q || guestsNum)
   const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] as string[], matched: true }))
 
-  // Build a homepage URL that keeps the other active filters intact, so the
-  // quick-filter pills combine (Ort + Personen) instead of overriding each other.
-  function filterHref(overrides: { q?: string; guests?: string }) {
-    const params = new URLSearchParams()
-    const nextQ = 'q' in overrides ? overrides.q : q
-    const nextGuests = 'guests' in overrides ? overrides.guests : guests
-    if (nextQ) params.set('q', nextQ)
-    if (nextGuests) params.set('guests', nextGuests)
-    if (checkin) params.set('checkin', checkin)
-    if (checkout) params.set('checkout', checkout)
-    const qs = params.toString()
-    return qs ? `/?${qs}` : '/'
+  // Top location names for the quick-filter pills (shared by homepage + search view)
+  const locationCounts: Record<string, number> = {}
+  for (const l of filtered) {
+    const loc = (l.location as string) || ''
+    if (loc) locationCounts[loc] = (locationCounts[loc] || 0) + 1
   }
+  const topLocations = Object.entries(locationCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([loc]) => loc)
 
   // Check Smoobu availability for all listings when dates are selected
   let availabilityMap: Record<string, { available: boolean; totalPrice: number }> = {}
@@ -274,65 +269,17 @@ export default async function Home({
           searchGuests={guestsNum}
           searchCheckin={checkin}
           searchCheckout={checkout}
+          locations={topLocations}
         />
       ) : (
         <>
-          {/* ── Filter Bar (homepage only) ── */}
+          {/* ── Filter Bar (homepage) ── */}
           <section className="filter-section" style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
             <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
               <p className="filter-label">
                 Beliebte Filter
               </p>
-              <div className="filter-container" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                <div className="filter-scroll">
-                  {[
-                    { label: 'Alle', q: '' },
-                    ...(() => {
-                      // Build dynamic location filters from actual listings
-                      const locationCounts: Record<string, number> = {}
-                      for (const l of filtered) {
-                        const loc = (l.location as string) || ''
-                        if (loc) {
-                          locationCounts[loc] = (locationCounts[loc] || 0) + 1
-                        }
-                      }
-                      return Object.entries(locationCounts)
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 6)
-                        .map(([loc]) => ({ label: loc, q: loc }))
-                    })(),
-                  ].map((f) => {
-                    const isActive = f.q === '' ? !q : q === f.q
-                    const href = filterHref({ q: f.q || undefined })
-                    return (
-                      <Link key={f.label} href={href} style={{
-                        padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
-                        textDecoration: 'none', whiteSpace: 'nowrap',
-                        ...(isActive ? { backgroundColor: 'var(--gold)', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
-                      }}>{f.label}</Link>
-                    )
-                  })}
-                </div>
-                <div className="filter-scroll">
-                  {[
-                    { label: 'Alle', g: '' },
-                    { label: '2 Pers.', g: '2' },
-                    { label: '4 Pers.', g: '4' },
-                    { label: '6 Pers.', g: '6' },
-                    { label: '8 Pers.', g: '8' },
-                  ].map((f) => {
-                    const isActive = guests === f.g || (f.g === '' && !guests)
-                    const href = filterHref({ guests: f.g || undefined })
-                    return (
-                      <Link key={f.label} href={href} style={{
-                        padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
-                        textDecoration: 'none', whiteSpace: 'nowrap',
-                        ...(isActive ? { backgroundColor: 'var(--gold)', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
-                      }}>{f.label}</Link>
-                    )
-                  })}
-                </div>
-              </div>
+              <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} />
             </div>
           </section>
 
