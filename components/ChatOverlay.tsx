@@ -57,7 +57,7 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg,#C4A235,#8A6D1B)',
+      background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * .37, fontWeight: 700, color: '#fff', userSelect: 'none',
     }}>{ava(name)}</div>
@@ -206,7 +206,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
               width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
               padding: fullWidth ? '14px 20px' : '12px 14px',
               borderBottom: '1px solid #EDEBE4',
-              borderLeft: isSel ? '3px solid #C4A235' : '3px solid transparent',
+              borderLeft: isSel ? '3px solid var(--gold)' : '3px solid transparent',
               background: isSel ? '#F5EFE2' : 'transparent',
               display: 'flex', alignItems: 'center', gap: 12,
               transition: 'background .12s',
@@ -220,7 +220,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                   <span style={{
                     position: 'absolute', top: -2, right: -2,
                     minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9,
-                    background: '#C4A235', border: '2px solid #FAFAF8',
+                    background: 'var(--gold)', border: '2px solid #FAFAF8',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10, fontWeight: 800, color: '#fff',
                   }}>
@@ -288,7 +288,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
               </div>
               <div style={{ fontSize: 11, color: '#AAA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {active.listing_title}
-                {dateRange && <span style={{ color: '#C4A235', fontWeight: 600 }}> · {dateRange}</span>}
+                {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
               </div>
             </div>
           </div>
@@ -345,7 +345,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                         padding: '10px 14px',
                         borderRadius,
                         background: isMe
-                          ? 'linear-gradient(135deg, #C4A235, #8A6D1B)'
+                          ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))'
                           : '#FFFFFF',
                         color: isMe ? '#fff' : '#1A1814',
                         fontSize: 15, lineHeight: 1.45,
@@ -360,7 +360,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                       {isLast && (
                         <span style={{ fontSize: 10.5, color: '#AAA', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
                           {fmtMsgT(msg.created_at)}
-                          {isMe && msg.read_at && <span style={{ color: '#C4A235', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
+                          {isMe && msg.read_at && <span style={{ color: 'var(--gold)', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
                         </span>
                       )}
                     </div>
@@ -394,7 +394,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
               background: '#FAF9F6', color: '#1A1814',
               maxHeight: 96, overflowY: 'auto', transition: 'border-color .15s',
             }}
-            onFocus={e => { e.target.style.borderColor = '#C4A235' }}
+            onFocus={e => { e.target.style.borderColor = 'var(--gold)' }}
             onBlur={e => { e.target.style.borderColor = '#E0DCD2' }}
           />
           <button
@@ -402,7 +402,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
             disabled={busy || !draft.trim()}
             style={{
               width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
-              background: draft.trim() && !busy ? 'linear-gradient(135deg,#C4A235,#8A6D1B)' : '#EDE9E0',
+              background: draft.trim() && !busy ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#EDE9E0',
               color: draft.trim() && !busy ? '#fff' : '#CCC',
               cursor: draft.trim() && !busy ? 'pointer' : 'default',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -454,13 +454,13 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
           }}>
             {mobileView === 'list' ? (
               <>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A08B3A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 <span style={{ flex: 1, fontWeight: 700, fontSize: 17, color: '#1A1814' }}>
                   Nachrichten
                   {unread > 0 && (
-                    <span style={{ marginLeft: 8, background: '#C4A235', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
+                    <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
                       {unread}
                     </span>
                   )}
@@ -518,13 +518,13 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
             padding: '0 18px', height: 52, flexShrink: 0,
             background: '#FFFFFF', borderBottom: '1px solid #EDEBE4',
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A08B3A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: '#1A1814' }}>
               Nachrichten
               {unread > 0 && (
-                <span style={{ marginLeft: 8, background: '#C4A235', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
+                <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
                   {unread}
                 </span>
               )}
@@ -536,7 +536,7 @@ export default function ChatOverlay({ open, onClose, userId }: Props) {
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#3D3A32', lineHeight: 1.2 }}>{partner(active)}</span>
                   <span style={{ fontSize: 10.5, color: '#999', lineHeight: 1.2 }}>
                     {active.listing_title}
-                    {dateRange && <> · <strong style={{ color: '#A08B3A' }}>{dateRange}</strong></>}
+                    {dateRange && <> · <strong style={{ color: 'var(--gold)' }}>{dateRange}</strong></>}
                   </span>
                 </div>
               </div>
