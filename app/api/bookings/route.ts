@@ -4,11 +4,17 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkAvailability } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 import { sendBookingEmail } from '@/lib/email'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Bitte zuerst anmelden' }, { status: 401 })
+
+  const allowed = await checkRateLimit(`bookings:${user.id}`, 20, 3600)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Zu viele Buchungsanfragen. Bitte später erneut versuchen.' }, { status: 429 })
+  }
 
   const body = await request.json()
   const {
