@@ -164,20 +164,25 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
  */
 const FEWO_PAGE_FUNCTION = `async function pageFunction(context) {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  await wait(4500);
+  await wait(5000);
+
+  // Diagnostics item — always emitted so failures are visible from outside
+  const debug = { __debug: true, t: (document.title || '').slice(0, 60), consent: false, btn: false, dlg: false, body: '' };
 
   // Dismiss a cookie/consent banner if present
   const consent = [...document.querySelectorAll('button')].find((b) => /akzeptieren|accept/i.test(b.textContent));
-  if (consent) { consent.click(); await wait(1200); }
+  if (consent) { debug.consent = true; consent.click(); await wait(1500); }
 
   // Open the reviews dialog ("Alle N Bewertungen anzeigen")
   const openBtn = [...document.querySelectorAll('button, a')].find((b) => /Bewertung(en)? anzeigen/.test(b.textContent));
-  if (!openBtn) return [];
+  debug.btn = !!openBtn;
+  if (!openBtn) { debug.body = document.body.innerText.slice(0, 150); return [debug]; }
   openBtn.click();
   await wait(4000);
 
   const dialog = document.querySelector('[role="dialog"]');
-  if (!dialog) return [];
+  debug.dlg = !!dialog;
+  if (!dialog) { debug.body = document.body.innerText.slice(0, 150); return [debug]; }
 
   // Scroll the dialog to load lazy reviews
   const scroller = [...dialog.querySelectorAll('*')].find((el) => el.scrollHeight > el.clientHeight + 50) || dialog;
@@ -215,7 +220,8 @@ const FEWO_PAGE_FUNCTION = `async function pageFunction(context) {
       reviewDate,
     });
   }
-  return out;
+  if (out.length === 0) debug.body = dialog.innerText.slice(0, 150);
+  return [debug, ...out];
 }`
 
 async function runFewoWebScraper(url: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
@@ -245,7 +251,16 @@ async function runFewoWebScraper(url: string, timeoutMs: number): Promise<Record
     throw new Error(`Apify web-scraper (fewo) → HTTP ${res.status}: ${text.slice(0, 300)}`)
   }
   const data = await res.json()
-  return Array.isArray(data) ? data : []
+  const items = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
+
+  // Separate the diagnostics item; surface failures with what the browser saw.
+  const debug = items.find(i => i.__debug)
+  const real = items.filter(i => !i.__debug)
+  if (real.length === 0) {
+    if (!debug) throw new Error('Fewo: Seite wurde im Apify-Browser nicht geladen (Bot-Schutz/Proxy?)')
+    throw new Error(`Fewo: geladen, aber 0 Bewertungen extrahiert — ${JSON.stringify(debug).slice(0, 220)}`)
+  }
+  return real
 }
 
 /** Maps one raw scraper item to our review shape (tolerant across actors). */
