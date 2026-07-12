@@ -205,7 +205,12 @@ export default async function Home({
           }
         }
         const result = await checkAvailability(smoobuId, checkin!, checkout!)
-        return { id, available: result.available, totalPrice: Math.round(result.totalPrice * markup) }
+        if (result.available) return { id, available: true, totalPrice: Math.round(result.totalPrice * markup) }
+        // Not free for the exact dates → still suggest the nearest alternative
+        // window as a hint (point i), while keeping it marked unavailable.
+        const alt = await findFlexibleStay(smoobuId, checkin!, checkout!, 3)
+        if (alt && alt.shifted) return { id, available: false, totalPrice: 0, flexCheckin: alt.checkIn, flexCheckout: alt.checkOut }
+        return { id, available: false, totalPrice: 0 }
       } catch {
         // On error, fall back to static price, assume available
         const ppn = (l.price_per_night as number) || 0
