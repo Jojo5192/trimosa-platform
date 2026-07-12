@@ -13,6 +13,7 @@ export interface MapListing {
   image?: string       // cover image for the popup
   location?: string    // shown as a subtle label in the popup
   maxGuests?: number   // capacity shown in the popup
+  matched?: boolean    // matches the active filters → prominent; else muted
 }
 
 interface Props {
@@ -96,53 +97,73 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           ? listing.totalPrice
           : listing.price
         const hasTotal = !!(listing.totalPrice && listing.totalPrice > 0 && listing.nights && listing.nights > 1)
-        const priceLabel = displayPrice > 0
-          ? `€\u202F${displayPrice}${hasTotal ? '' : ''}`
-          : 'Anfrage'
+        const hasPrice = displayPrice > 0
+        const isMatched = listing.matched !== false
+        // Matched results are gold and prominent; non-matching ones are muted
+        // grey so they read as "nearby / not an exact fit" at a glance.
+        const ring = isMatched ? 'var(--gold)' : 'rgba(120,120,120,0.5)'
+        const pinFill = isMatched ? 'var(--gold)' : '#B4B0A8'
 
-        const isRequest = priceLabel === 'Anfrage'
-        const icon = L.divIcon({
-          className: '',
-          html: `
-            <div class="trimosa-marker" style="
-              position: relative;
-              display: inline-flex;
-              flex-direction: column;
-              align-items: center;
-              cursor: pointer;
-              transform-origin: bottom center;
-              transition: transform 0.18s cubic-bezier(0.22,1,0.36,1);
-            ">
-              <div style="
-                display: inline-flex;
-                align-items: center;
-                background: #fff;
-                color: ${isRequest ? '#555' : '#111'};
-                font-size: 12.5px;
-                font-weight: ${isRequest ? 600 : 700};
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                padding: 6px 13px;
-                border-radius: 12px;
-                white-space: nowrap;
-                box-shadow: 0 3px 14px rgba(0,0,0,0.20), 0 0 0 1.5px ${isRequest ? 'rgba(0,0,0,0.14)' : 'var(--gold)'};
-                letter-spacing: ${isRequest ? '0' : '-0.01em'};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let icon: any
+        if (hasPrice) {
+          // Price pill
+          icon = L.divIcon({
+            className: '',
+            html: `
+              <div class="trimosa-marker" style="
+                position: relative; display: inline-flex; flex-direction: column;
+                align-items: center; cursor: pointer; transform-origin: bottom center;
+                transition: transform 0.18s cubic-bezier(0.22,1,0.36,1);
+                ${isMatched ? '' : 'opacity: 0.9;'}
               ">
-                ${isRequest ? priceLabel : `<span style="color:var(--gold);font-weight:800;margin-right:1px">€</span>${priceLabel.replace('€\u202F','')}`}
+                <div style="
+                  display: inline-flex; align-items: center; background: #fff;
+                  color: #111; font-size: 12.5px; font-weight: 700;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                  padding: 6px 13px; border-radius: 12px; white-space: nowrap;
+                  box-shadow: 0 3px 14px rgba(0,0,0,0.20), 0 0 0 1.5px ${ring};
+                  letter-spacing: -0.01em;
+                ">
+                  <span style="color:${isMatched ? 'var(--gold)' : '#8A8680'};font-weight:800;margin-right:1px">€</span>${String(displayPrice)}
+                </div>
+                <div style="
+                  width: 0; height: 0; border-left: 5px solid transparent;
+                  border-right: 5px solid transparent; border-top: 6px solid #fff;
+                  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.12)); margin-top: -1px;
+                "></div>
               </div>
-              <div style="
-                width: 0; height: 0;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid #fff;
-                filter: drop-shadow(0 2px 2px rgba(0,0,0,0.12));
-                margin-top: -1px;
-              "></div>
-            </div>
-          `,
-          iconAnchor: [35, 42],
-          popupAnchor: [0, -44],
-          iconSize: [70, 42],
-        })
+            `,
+            iconAnchor: [35, 42],
+            popupAnchor: [0, -44],
+            iconSize: [70, 42],
+          })
+        } else {
+          // No price yet -> a clean teardrop pin instead of an "Anfrage" label.
+          icon = L.divIcon({
+            className: '',
+            html: `
+              <div class="trimosa-marker" style="
+                position: relative; display: inline-flex; cursor: pointer;
+                transform-origin: bottom center;
+                transition: transform 0.18s cubic-bezier(0.22,1,0.36,1);
+                ${isMatched ? '' : 'opacity: 0.92;'}
+              ">
+                <div style="
+                  width: 26px; height: 26px; border-radius: 50% 50% 50% 0;
+                  transform: rotate(-45deg); background: ${pinFill};
+                  box-shadow: 0 3px 10px rgba(0,0,0,0.28), 0 0 0 2px #fff;
+                  display: flex; align-items: center; justify-content: center;
+                ">
+                  <div style="width: 8px; height: 8px; border-radius: 50%; background: #fff; transform: rotate(45deg);"></div>
+                </div>
+              </div>
+            `,
+            iconAnchor: [13, 30],
+            popupAnchor: [0, -30],
+            iconSize: [26, 34],
+          })
+        }
 
         const priceBlock = displayPrice > 0
           ? hasTotal
