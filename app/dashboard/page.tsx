@@ -66,7 +66,7 @@ export default async function DashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#B0912B' }}>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--gold)' }}>
               Gastgeber-Dashboard
             </p>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#1D1D1F' }}>
@@ -76,7 +76,7 @@ export default async function DashboardPage() {
           <Link
             href="/dashboard/new-listing"
             className="text-sm font-semibold text-white px-5 py-2.5 rounded-full hover:opacity-90 transition-all shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #B0912B, #8A7020)' }}
+            style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}
           >
             + Neues Inserat
           </Link>
@@ -85,7 +85,7 @@ export default async function DashboardPage() {
         {/* Setup Banner */}
         <Link href="/dashboard/setup"
           className="flex items-center justify-between mb-6 rounded-2xl px-6 py-4 hover:opacity-90 transition-all shadow-sm"
-          style={{ background: 'linear-gradient(135deg, #B0912B 0%, #8A7020 100%)', textDecoration: 'none' }}>
+          style={{ background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', textDecoration: 'none' }}>
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
               Neu hier?
@@ -104,7 +104,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-3 gap-4 mb-8">
           {[
             { value: listings?.length ?? 0, label: 'Inserate', accent: '#1D1D1F', bg: '#fff' },
-            { value: pendingBookings.length,  label: 'Offene Anfragen', accent: '#B0912B', bg: '#FAF5E4' },
+            { value: pendingBookings.length,  label: 'Offene Anfragen', accent: 'var(--gold)', bg: '#FAF5E4' },
             { value: confirmedBookings.length, label: 'Bestätigt', accent: '#16A34A', bg: '#F0FDF4' },
           ].map((stat) => (
             <div key={stat.label} className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: stat.bg, border: '1px solid #E5E5EA' }}>
@@ -186,7 +186,7 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold tracking-tight" style={{ color: '#1D1D1F' }}>Meine Inserate</h2>
             <Link href="/dashboard/profile" className="text-xs font-semibold px-3 py-1.5 rounded-full"
-              style={{ backgroundColor: '#F5F3EF', color: '#A8882A', textDecoration: 'none', border: '1px solid #E8E0D0' }}>
+              style={{ backgroundColor: '#F5F3EF', color: 'var(--gold)', textDecoration: 'none', border: '1px solid #E8E0D0' }}>
               Gastgeber-Profil bearbeiten →
             </Link>
           </div>
@@ -227,7 +227,7 @@ export default async function DashboardPage() {
               <p className="text-sm mb-4" style={{ color: '#6E6E73' }}>Du hast noch keine Inserate.</p>
               <Link href="/dashboard/new-listing"
                 className="text-sm font-semibold text-white px-6 py-2.5 rounded-full hover:opacity-90 transition-all"
-                style={{ background: 'linear-gradient(135deg, #B0912B, #8A7020)' }}>
+                style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}>
                 Erstes Inserat erstellen
               </Link>
             </div>
