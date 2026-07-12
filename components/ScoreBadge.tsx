@@ -1,8 +1,8 @@
 /**
- * Compact review-score badge for listing cards: "★ 4,7 (50)".
- * On hover, a small dark popover breaks the score down per platform.
- * Pure markup + CSS (.score-badge / .score-pop in globals.css), so it works
- * in server components (homepage grid) and client components alike.
+ * Review-score badge for listing cards: a gold pill "★ 4,7 (50)".
+ * On hover, a dark popover shows the overall score plus a per-platform
+ * breakdown with score bars. Pure markup + CSS (.score-badge / .score-pop in
+ * globals.css), so it works in server components and client components alike.
  */
 export interface CardRating {
   overall: number
@@ -12,35 +12,52 @@ export interface CardRating {
 
 const PLATFORM_META: Record<string, { label: string; color: string }> = {
   airbnb: { label: 'Airbnb', color: '#FF5A5F' },
-  booking: { label: 'Booking.com', color: '#0071C2' },
-  google: { label: 'Google', color: '#4285F4' },
-  vrbo: { label: 'FeWo-direkt', color: '#6C3BAA' },
-  trimosa: { label: 'TRIMOSA', color: '#AE8D2D' },
+  booking: { label: 'Booking.com', color: '#2E7CF6' },
+  google: { label: 'Google', color: '#34A853' },
+  vrbo: { label: 'FeWo-direkt', color: '#8B5CF6' },
+  trimosa: { label: 'TRIMOSA', color: '#D4AF37' },
 }
 
 function de(n: number, digits = 1): string {
   return n.toFixed(digits).replace('.', ',')
 }
 
+function stars(overall: number): string {
+  const full = Math.round(overall)
+  return '★'.repeat(full) + '☆'.repeat(5 - full)
+}
+
 export default function ScoreBadge({ rating }: { rating: CardRating }) {
   return (
     <span className="score-badge">
-      <span style={{ color: 'var(--gold)', fontSize: '11px' }}>★</span>
-      <span style={{ fontWeight: 700, color: '#111' }}>{de(rating.overall)}</span>
-      <span style={{ color: '#999', fontWeight: 400 }}>({rating.count})</span>
+      <span style={{ color: 'var(--gold)', fontSize: '13px', lineHeight: 1 }}>★</span>
+      <span style={{ fontWeight: 800, color: '#1A1400', fontSize: '13px', letterSpacing: '-0.01em' }}>{de(rating.overall)}</span>
+      <span style={{ color: '#9C8F6A', fontWeight: 500, fontSize: '11px' }}>({rating.count})</span>
 
       <span className="score-pop">
-        <span style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#F5F0E8', marginBottom: '7px', whiteSpace: 'nowrap' }}>
-          ★ {de(rating.overall, 2)} · {rating.count} Bewertung{rating.count !== 1 ? 'en' : ''}
+        {/* Header: big score + stars */}
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
+          <span style={{ fontSize: '26px', fontWeight: 800, color: '#F5F0E8', lineHeight: 1, letterSpacing: '-0.02em' }}>{de(rating.overall, 2)}</span>
+          <span style={{ color: 'var(--gold)', fontSize: '13px', letterSpacing: '2px' }}>{stars(rating.overall)}</span>
         </span>
+        <span style={{ display: 'block', fontSize: '11px', color: 'rgba(245,240,232,0.55)', marginBottom: '12px' }}>
+          {rating.count} Bewertung{rating.count !== 1 ? 'en' : ''} · {rating.platforms.length} Plattform{rating.platforms.length !== 1 ? 'en' : ''}
+        </span>
+
+        {/* Per-platform rows with score bars */}
         {rating.platforms.map((p) => {
           const meta = PLATFORM_META[p.source] ?? { label: p.source, color: '#888' }
           return (
-            <span key={p.source} style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '4px', whiteSpace: 'nowrap' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
-              <span style={{ fontSize: '11px', color: 'rgba(245,240,232,0.75)', minWidth: '76px' }}>{meta.label}</span>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#F5F0E8' }}>{de(p.score)}</span>
-              <span style={{ fontSize: '10px', color: 'rgba(245,240,232,0.45)' }}>({p.count})</span>
+            <span key={p.source} style={{ display: 'block', marginTop: '9px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px', whiteSpace: 'nowrap' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'rgba(245,240,232,0.85)' }}>{meta.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 800, color: '#F5F0E8' }}>{de(p.score)}</span>
+                <span style={{ fontSize: '10px', color: 'rgba(245,240,232,0.45)' }}>({p.count})</span>
+              </span>
+              <span style={{ display: 'block', height: '4px', borderRadius: '99px', background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                <span style={{ display: 'block', height: '100%', borderRadius: '99px', background: meta.color, width: `${Math.min(100, (p.score / 5) * 100)}%` }} />
+              </span>
             </span>
           )
         })}
