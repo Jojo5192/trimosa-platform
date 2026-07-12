@@ -353,8 +353,8 @@ export default async function Home({
                 const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
                 return (
                   <Link key={card.id} href={`/listing/${card.id}`} className="listing-card" target="_blank"
-                    style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
-                    <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
+                    style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
+                    <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
                       {card.image
                         ? <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 50vw, 25vw" style={{ objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }} />
                         : <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 55%)' }} />
@@ -371,7 +371,13 @@ export default async function Home({
                       </div>
                       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: `linear-gradient(to top, ${g.accent}55 0%, transparent 100%)` }} />
                     </div>
-                    <div className="card-info" style={{ padding: '11px 13px 13px' }}>
+                    {/* Score chip straddling the photo edge */}
+                    {card.rating && (
+                      <div style={{ display: 'flex', padding: '0 12px', marginTop: '-14px', position: 'relative', zIndex: 3 }}>
+                        <ScoreBadge rating={card.rating} />
+                      </div>
+                    )}
+                    <div className="card-info" style={{ padding: card.rating ? '7px 13px 13px' : '11px 13px 13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
                         <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, flex: 1 }}>{card.title}</h3>
                         {(card.pricePerNight > 0 || card.totalPrice > 0) && (
@@ -385,8 +391,8 @@ export default async function Home({
                           </div>
                         )}
                       </div>
-                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                        {card.rating && <><ScoreBadge rating={card.rating} /> ·</>} {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
+                        {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
                       </p>
                     </div>
                   </Link>
