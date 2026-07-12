@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
 import QuickFilters from './QuickFilters'
+import ScoreBadge, { type CardRating } from './ScoreBadge'
 
 /* ── Card gradient palette (mirrors page.tsx) ── */
 const CARD_GRADIENTS = [
@@ -35,6 +36,7 @@ export interface CardData {
   image?: string   // first photo if uploaded
   unavailable?: boolean  // true if not available for selected dates
   flexNote?: string   // nearby free window (flexible dates), e.g. "12. – 16. Aug."
+  rating?: CardRating // aggregated review score (overall + per platform)
 }
 
 interface Props {
@@ -126,8 +128,8 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
             </div>
           )}
         </div>
-        <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
-          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+        <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+          {card.rating && <><ScoreBadge rating={card.rating} /> ·</>} {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
         </p>
         {card.flexNote && (
           <div style={{ marginTop: '7px' }}>
