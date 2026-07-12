@@ -14,6 +14,7 @@ interface NavBarProps {
   initialGuests?: string
   initialCheckin?: string
   initialCheckout?: string
+  initialFlex?: boolean
 }
 
 const LOCATION_SUGGESTIONS = [
@@ -150,12 +151,14 @@ function CalendarMonth({
 
 /* ─── Date Picker Popover ─────────────────────────────── */
 function DatePickerPopover({
-  checkin, checkout, selecting, onSelectCheckin, onSelectCheckout, onClose
+  checkin, checkout, selecting, onSelectCheckin, onSelectCheckout, onClose, flexDates, onToggleFlex
 }: {
   checkin: string; checkout: string; selecting: 'checkin' | 'checkout'
   onSelectCheckin: (iso: string) => void
   onSelectCheckout: (iso: string) => void
   onClose: () => void
+  flexDates: boolean
+  onToggleFlex: (v: boolean) => void
 }) {
   const now = new Date()
   const [viewYear, setViewYear] = useState(now.getFullYear())
@@ -238,15 +241,27 @@ function DatePickerPopover({
         </div>
       </div>
 
-      {checkin && checkout && (
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ alignSelf: 'flex-end', marginTop: '4px', fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer' }}
-        >
-          Übernehmen
-        </button>
-      )}
+      {/* Flexible dates + confirm */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: '6px', paddingTop: '12px', borderTop: '1px solid #F2F0EC' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#333', fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={flexDates}
+            onChange={e => onToggleFlex(e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: 'var(--gold)', cursor: 'pointer' }}
+          />
+          An-/Abreise ± 3 Tage flexibel
+        </label>
+        {checkin && checkout && (
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer', flexShrink: 0 }}
+          >
+            Übernehmen
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -324,7 +339,7 @@ function GuestPickerPopover({
 }
 
 /* ─── Main NavBar ─────────────────────────────────────── */
-export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '' }: NavBarProps) {
+export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '', initialFlex = false }: NavBarProps) {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -346,6 +361,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [q, setQ] = useState(initialQ)
   const [checkin, setCheckin] = useState(initialCheckin)
   const [checkout, setCheckout] = useState(initialCheckout)
+  const [flexDates, setFlexDates] = useState(initialFlex)
   const [adults, setAdults] = useState(Math.max(1, parseInt(initialGuests) || 1))
   const [kids, setKids] = useState(0)
 
@@ -458,6 +474,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     if (totalGuests > 1) params.set('guests', String(totalGuests))
     if (checkin) params.set('checkin', checkin)
     if (checkout) params.set('checkout', checkout)
+    if (flexDates && checkin && checkout) params.set('flex', '3')
     router.push(params.toString() ? `/?${params}` : '/')
   }
 
@@ -726,6 +743,8 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   onSelectCheckin={(iso) => { setCheckin(iso); setDateSelecting('checkout') }}
                   onSelectCheckout={(iso) => setCheckout(iso)}
                   onClose={() => setActiveField(null)}
+                  flexDates={flexDates}
+                  onToggleFlex={setFlexDates}
                 />
               )}
 
@@ -1107,6 +1126,10 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                       <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F0EEE8' }}>
                         <CalendarMonth year={y1} month={m1} checkin={checkin} checkout={checkout} selecting={dateSelecting} onSelect={handleMobileSelect} />
                       </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F0EEE8', cursor: 'pointer', fontSize: '13px', color: '#333', fontWeight: 500 }}>
+                        <input type="checkbox" checked={flexDates} onChange={e => setFlexDates(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--gold)' }} />
+                        An-/Abreise ± 3 Tage flexibel
+                      </label>
                     </>
                   })()}
                 </div>
@@ -1159,6 +1182,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 if (adults + kids > 1) params.set('guests', String(adults + kids))
                 if (checkin) params.set('checkin', checkin)
                 if (checkout) params.set('checkout', checkout)
+                if (flexDates && checkin && checkout) params.set('flex', '3')
                 router.push(params.toString() ? `/?${params}` : '/')
               }}
               style={{ flex: 1, padding: '14px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
