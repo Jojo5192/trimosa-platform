@@ -56,7 +56,7 @@ export default function GuestNotificationSettings({ bookingConfirmed, bookingCan
               disabled={saving === item.key}
               style={{
                 width: '48px', height: '28px', borderRadius: '14px', border: 'none', cursor: 'pointer',
-                background: active ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#E5E5EA',
+                background: active ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E5EA',
                 position: 'relative', transition: 'background 0.2s', flexShrink: 0,
                 boxShadow: active ? '0 2px 8px rgba(196,162,53,0.3)' : 'none',
               }}
