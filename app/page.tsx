@@ -419,8 +419,12 @@ export default async function Home({
         <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {['Impressum', 'Datenschutz', 'AGB'].map((item) => (
-              <a key={item} href="#" style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item}</a>
+            {[
+              { label: 'Impressum', href: '/impressum' },
+              { label: 'Datenschutz', href: '/datenschutz' },
+              { label: 'AGB', href: '/agb' },
+            ].map((item) => (
+              <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
         </div>
