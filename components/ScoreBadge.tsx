@@ -27,14 +27,14 @@ function stars(overall: number): string {
   return '★'.repeat(full) + '☆'.repeat(5 - full)
 }
 
-export default function ScoreBadge({ rating }: { rating: CardRating }) {
+export default function ScoreBadge({ rating, popDirection = 'up' }: { rating: CardRating; popDirection?: 'up' | 'down' }) {
   return (
     <span className="score-badge">
-      <span style={{ color: 'var(--gold)', fontSize: '13px', lineHeight: 1 }}>★</span>
-      <span style={{ fontWeight: 800, color: '#1A1400', fontSize: '13px', letterSpacing: '-0.01em' }}>{de(rating.overall)}</span>
-      <span style={{ color: '#9C8F6A', fontWeight: 500, fontSize: '11px' }}>({rating.count})</span>
+      <span style={{ color: '#F2C94C', fontSize: '13px', lineHeight: 1, filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))' }}>★</span>
+      <span style={{ fontWeight: 800, color: '#fff', fontSize: '13px', letterSpacing: '-0.01em' }}>{de(rating.overall)}</span>
+      <span style={{ color: 'rgba(255,255,255,0.75)', fontWeight: 500, fontSize: '11px' }}>({rating.count})</span>
 
-      <span className="score-pop">
+      <span className={popDirection === 'down' ? 'score-pop score-pop--down' : 'score-pop'}>
         {/* Header: big score + stars */}
         <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
           <span style={{ fontSize: '26px', fontWeight: 800, color: '#F5F0E8', lineHeight: 1, letterSpacing: '-0.02em' }}>{de(rating.overall, 2)}</span>
