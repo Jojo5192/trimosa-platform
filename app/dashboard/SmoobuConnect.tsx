@@ -158,7 +158,7 @@ export default function SmoobuConnect({
             <button
               onClick={handleSync}
               disabled={loading}
-              style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', backgroundColor: '#FAF5E4', color: '#8A7020', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+              style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', backgroundColor: '#FAF5E4', color: 'var(--gold-dark)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
             >
               {loading ? '⟳ Lädt...' : '⟳ Apartments synchronisieren'}
             </button>
@@ -184,14 +184,14 @@ export default function SmoobuConnect({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
                 {availableChannels.map(ch => (
-                  <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${selectedChannelId === ch.id ? '#B0912B' : '#E5E5EA'}`, background: selectedChannelId === ch.id ? '#FAF5E4' : '#fff', cursor: 'pointer' }}>
+                  <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${selectedChannelId === ch.id ? 'var(--gold)' : '#E5E5EA'}`, background: selectedChannelId === ch.id ? '#FAF5E4' : '#fff', cursor: 'pointer' }}>
                     <input
                       type="radio"
                       name="channel"
                       value={ch.id}
                       checked={selectedChannelId === ch.id}
                       onChange={() => setSelectedChannelId(ch.id)}
-                      style={{ accentColor: '#B0912B' }}
+                      style={{ accentColor: 'var(--gold)' }}
                     />
                     <span style={{ fontSize: '13px', fontWeight: 500, color: '#1D1D1F' }}>{ch.name}</span>
                     <span style={{ fontSize: '11px', color: '#999', marginLeft: 'auto' }}>ID {ch.id}</span>
@@ -205,7 +205,7 @@ export default function SmoobuConnect({
                 <button
                   onClick={handleSaveChannel}
                   disabled={loading || !selectedChannelId}
-                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
                 >
                   {loading ? 'Speichere...' : 'Verbindung speichern'}
                 </button>
@@ -223,7 +223,7 @@ export default function SmoobuConnect({
               <div style={{ background: '#F9F7F3', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
                 <div style={{ fontSize: '12px', fontWeight: 600, color: '#1D1D1F', marginBottom: '8px' }}>So verbindest du Smoobu in 3 Schritten:</div>
                 <ol style={{ margin: 0, padding: '0 0 0 16px', fontSize: '12px', color: '#444', lineHeight: '1.8' }}>
-                  <li>Melde dich in <strong>Smoobu</strong> an (<a href="https://login.smoobu.com" target="_blank" rel="noreferrer" style={{ color: '#B0912B' }}>login.smoobu.com</a>)</li>
+                  <li>Melde dich in <strong>Smoobu</strong> an (<a href="https://login.smoobu.com" target="_blank" rel="noreferrer" style={{ color: 'var(--gold)' }}>login.smoobu.com</a>)</li>
                   <li>Gehe zu <strong>Einstellungen → API</strong> (oben rechts, Zahnrad-Symbol)</li>
                   <li>Kopiere deinen <strong>API Key</strong> und füge ihn hier ein</li>
                 </ol>
@@ -240,7 +240,7 @@ export default function SmoobuConnect({
                 <button
                   onClick={handleConnect}
                   disabled={loading || !apiKey.trim()}
-                  style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
+                  style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
                 >
                   {loading ? '...' : 'Weiter'}
                 </button>
@@ -279,7 +279,7 @@ export default function SmoobuConnect({
           <button
             onClick={handleSaveMarkup}
             disabled={savingMarkup}
-            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #B0912B, #8A7020)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: savingMarkup ? 0.6 : 1 }}
+            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: savingMarkup ? 0.6 : 1 }}
           >
             {savingMarkup ? '...' : savedMarkup ? '✓' : 'Speichern'}
           </button>
