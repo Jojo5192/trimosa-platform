@@ -2,57 +2,82 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
-type Admin = { id: string; display_name: string | null; email: string }
+type Person = { id: string; display_name: string | null; email: string }
+type Msg = { type: 'ok' | 'error'; text: string }
 
 export default function AdminUsersClient() {
-  const [admins, setAdmins] = useState<Admin[]>([])
+  const [admins, setAdmins] = useState<Person[]>([])
+  const [hosts, setHosts] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
-  const [email, setEmail] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
-  const loadAdmins = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     const res = await fetch('/api/admin/users')
     const json = await res.json()
-    if (res.ok) setAdmins(json.admins ?? [])
+    if (res.ok) {
+      setAdmins(json.admins ?? [])
+      setHosts(json.hosts ?? [])
+    }
     setLoading(false)
   }, [])
 
-  useEffect(() => { loadAdmins() }, [loadAdmins])
+  useEffect(() => { load() }, [load])
 
-  async function grantAdmin() {
-    if (!email.trim()) return
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      <RoleSection
+        flag="is_admin"
+        title="Admins"
+        addLabel="Zu Admin machen"
+        grantedMsg="ist jetzt Admin."
+        revokedMsg="ist kein Admin mehr."
+        people={admins}
+        loading={loading}
+        onChanged={load}
+      />
+      <RoleSection
+        flag="is_host"
+        title="Gastgeber"
+        addLabel="Zu Gastgeber machen"
+        grantedMsg="ist jetzt Gastgeber und hat Zugriff auf das Gastgeber-Dashboard."
+        revokedMsg="ist kein Gastgeber mehr."
+        people={hosts}
+        loading={loading}
+        onChanged={load}
+      />
+    </div>
+  )
+}
+
+function RoleSection({
+  flag, title, addLabel, grantedMsg, revokedMsg, people, loading, onChanged,
+}: {
+  flag: 'is_admin' | 'is_host'
+  title: string
+  addLabel: string
+  grantedMsg: string
+  revokedMsg: string
+  people: Person[]
+  loading: boolean
+  onChanged: () => void
+}) {
+  const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<Msg | null>(null)
+
+  async function setFlag(targetEmail: string, value: boolean) {
     setSaving(true)
     setMessage(null)
     const res = await fetch('/api/admin/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), is_admin: true }),
+      body: JSON.stringify({ email: targetEmail, [flag]: value }),
     })
     const json = await res.json()
     if (res.ok) {
-      setMessage({ type: 'ok', text: `${email.trim()} ist jetzt Admin.` })
-      setEmail('')
-      loadAdmins()
-    } else {
-      setMessage({ type: 'error', text: json.error ?? 'Fehler beim Speichern.' })
-    }
-    setSaving(false)
-  }
-
-  async function revokeAdmin(targetEmail: string) {
-    setSaving(true)
-    setMessage(null)
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: targetEmail, is_admin: false }),
-    })
-    const json = await res.json()
-    if (res.ok) {
-      setMessage({ type: 'ok', text: `${targetEmail} ist kein Admin mehr.` })
-      loadAdmins()
+      setMessage({ type: 'ok', text: `${targetEmail} ${value ? grantedMsg : revokedMsg}` })
+      if (value) setEmail('')
+      onChanged()
     } else {
       setMessage({ type: 'error', text: json.error ?? 'Fehler beim Speichern.' })
     }
@@ -62,7 +87,7 @@ export default function AdminUsersClient() {
   return (
     <div>
       <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E8E6E0', padding: '20px', marginBottom: '16px' }}>
-        <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 12px' }}>Admin hinzufügen</p>
+        <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 12px' }}>{title} hinzufügen</p>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
             type="email"
@@ -75,7 +100,7 @@ export default function AdminUsersClient() {
             }}
           />
           <button
-            onClick={grantAdmin}
+            onClick={() => email.trim() && setFlag(email.trim(), true)}
             disabled={saving || !email.trim()}
             style={{
               padding: '12px 20px', borderRadius: '12px', border: 'none',
@@ -84,7 +109,7 @@ export default function AdminUsersClient() {
               cursor: saving || !email.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
             }}
           >
-            Zu Admin machen
+            {addLabel}
           </button>
         </div>
         <p style={{ fontSize: '12px', color: '#999', margin: '10px 0 0' }}>
@@ -99,16 +124,16 @@ export default function AdminUsersClient() {
 
       <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E8E6E0', overflow: 'hidden' }}>
         <p style={{ fontSize: '12px', fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, padding: '14px 20px 0' }}>
-          Aktuelle Admins
+          Aktuelle {title}
         </p>
         {loading ? (
           <p style={{ fontSize: '13px', color: '#888', padding: '16px 20px' }}>Lädt…</p>
-        ) : admins.length === 0 ? (
-          <p style={{ fontSize: '13px', color: '#888', padding: '16px 20px' }}>Keine Admins gefunden.</p>
+        ) : people.length === 0 ? (
+          <p style={{ fontSize: '13px', color: '#888', padding: '16px 20px' }}>Keine {title} gefunden.</p>
         ) : (
-          admins.map((a, i) => (
+          people.map((p, i) => (
             <div
-              key={a.id}
+              key={p.id}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '14px 20px', borderTop: i > 0 ? '1px solid #F0EDE8' : 'none',
@@ -116,12 +141,12 @@ export default function AdminUsersClient() {
             >
               <div>
                 <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>
-                  {a.display_name || a.email}
+                  {p.display_name || p.email}
                 </p>
-                <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>{a.email}</p>
+                <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>{p.email}</p>
               </div>
               <button
-                onClick={() => revokeAdmin(a.email)}
+                onClick={() => setFlag(p.email, false)}
                 disabled={saving}
                 style={{
                   padding: '8px 14px', borderRadius: '10px', border: '1px solid #E0DDD5',
