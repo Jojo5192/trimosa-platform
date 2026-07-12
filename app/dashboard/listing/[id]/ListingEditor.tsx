@@ -511,7 +511,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           style={{
             padding: '8px 20px', borderRadius: '999px', border: 'none', cursor: 'pointer',
             fontSize: '12px', fontWeight: 700,
-            background: isActive ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#E5E5E5',
+            background: isActive ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E5E5',
             color: isActive ? '#fff' : '#666',
             transition: 'all 0.15s',
           }}
@@ -562,18 +562,18 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px',
               width: '100%', maxWidth: '360px', aspectRatio: '4/3',
-              borderRadius: '14px', border: '2px dashed #C4A235',
+              borderRadius: '14px', border: '2px dashed var(--gold)',
               background: '#FFFBF0', cursor: coverUploading ? 'not-allowed' : 'pointer',
             }}
           >
             {coverUploading ? (
-              <span style={{ fontSize: '13px', color: '#8A6818' }}>Wird hochgeladen…</span>
+              <span style={{ fontSize: '13px', color: 'var(--gold-dark)' }}>Wird hochgeladen…</span>
             ) : (
               <>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C4A235" strokeWidth={1.5} strokeLinecap="round">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={1.5} strokeLinecap="round">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Titelbild hochladen</span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold-dark)' }}>Titelbild hochladen</span>
                 <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
               </>
             )}
@@ -636,14 +636,14 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       {/* ── Ausstattungsmerkmale ── */}
       <Section title="Ausstattungsmerkmale">
         {amenities.length > 0 && (
-          <p style={{ fontSize: '12px', color: '#8A6818', fontWeight: 600, margin: '0 0 16px' }}>
+          <p style={{ fontSize: '12px', color: 'var(--gold-dark)', fontWeight: 600, margin: '0 0 16px' }}>
             {amenities.length} ausgewählt
           </p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {AMENITY_CATEGORIES.map(({ category, items }) => (
             <div key={category}>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
                 {category}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '7px' }}>
@@ -657,10 +657,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                       style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         padding: '9px 12px', borderRadius: '11px',
-                        border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`,
+                        border: `1.5px solid ${active ? 'var(--gold)' : '#E0DDD6'}`,
                         background: active ? '#FDF6E3' : '#fff',
                         cursor: 'pointer', fontSize: '12px', fontWeight: active ? 600 : 400,
-                        color: active ? '#8A6818' : '#555',
+                        color: active ? 'var(--gold-dark)' : '#555',
                         transition: 'all 0.12s',
                         textAlign: 'left',
                       }}
@@ -734,10 +734,10 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             }}
           >
             {floorPlanUploading ? (
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>Wird hochgeladen…</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold-dark)' }}>Wird hochgeladen…</span>
             ) : (
               <>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#8A6818' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold-dark)' }}>
                   {floorPlanUrls.length > 0 ? '+ Weiteren Grundriss hochladen' : 'Grundriss hochladen'}
                 </span>
                 <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
@@ -915,7 +915,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
               }} style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#666' }}>
                 {reviewsLoading ? 'Laden…' : '↻ Laden'}
               </button>
-              <button type="button" onClick={() => { setShowAddReview(!showAddReview); setShowPasteImport(false) }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#8A7020' }}>
+              <button type="button" onClick={() => { setShowAddReview(!showAddReview); setShowPasteImport(false) }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#FAF5E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--gold-dark)' }}>
                 + Einzeln
               </button>
               <button type="button" onClick={() => { setShowPasteImport(!showPasteImport); setShowAddReview(false) }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#E8F0E4', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#2D6A1E' }}>
@@ -941,7 +941,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                 } finally {
                   setFetchingReviews(false)
                 }
-              }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', cursor: fetchingReviews ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: fetchingReviews ? 0.6 : 1 }}>
+              }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', cursor: fetchingReviews ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: fetchingReviews ? 0.6 : 1 }}>
                 {fetchingReviews ? '⏳ Wird abgerufen…' : '🔄 Bewertungen abrufen'}
               </button>
             </div>
@@ -950,7 +950,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           {/* Fetch result display */}
           {fetchResult && (
             <div style={{ marginBottom: '12px', padding: '12px 16px', borderRadius: '12px', background: '#FAFAF5', border: '1px solid #E8D9A0' }}>
-              <p style={{ fontSize: '12px', fontWeight: 700, color: '#8A7020', margin: '0 0 8px' }}>Ergebnis der Abfrage:</p>
+              <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold-dark)', margin: '0 0 8px' }}>Ergebnis der Abfrage:</p>
               {fetchResult.results.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: r.errors ? '#DC2626' : '#16A34A' }}>
@@ -1080,7 +1080,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                     .then(r => r.json())
                     .then(d => setReviews(d.reviews ?? []))
                 }
-              }} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              }} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                 Speichern
               </button>
             </div>
@@ -1124,7 +1124,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <label key={t.id} style={{
               display: 'flex', alignItems: 'flex-start', gap: '12px',
               padding: '12px 16px', borderRadius: '12px', cursor: 'pointer',
-              border: cancelPolicy === t.id ? '2px solid #A8882A' : '1.5px solid #E0DDD6',
+              border: cancelPolicy === t.id ? '2px solid var(--gold)' : '1.5px solid #E0DDD6',
               background: cancelPolicy === t.id ? '#FBF6EC' : '#fff',
             }}>
               <input
@@ -1139,7 +1139,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                   setCancelPartialDays(t.partialDays)
                   setCancelPartialPercent(t.partialPercent)
                 }}
-                style={{ marginTop: '2px', accentColor: '#A8882A' }}
+                style={{ marginTop: '2px', accentColor: 'var(--gold)' }}
               />
               <div>
                 <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 2px' }}>{t.label}</p>
@@ -1195,7 +1195,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                   }
                   setCancelPolicy('custom')
                 }}
-                style={{ accentColor: '#A8882A' }}
+                style={{ accentColor: 'var(--gold)' }}
               />
               Zusätzliche Teilerstattungs-Stufe aktivieren
             </label>
@@ -1226,7 +1226,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
 
           {/* Live preview */}
           <div style={{ marginTop: '16px', padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #E8E6E0' }}>
-            <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vorschau für Gäste</p>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vorschau für Gäste</p>
             <p style={{ fontSize: '12px', color: '#555', margin: 0, lineHeight: 1.5 }}>
               {cancelFreePercent === 100
                 ? `Kostenlose Stornierung bis ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
@@ -1253,7 +1253,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 10px' }}>
             Um ein Inserat zu aktivieren, musst du den Einrichtungsassistenten abschließen und deine Zahlungsdaten (IBAN) hinterlegen.
           </p>
-          <a href="/dashboard/setup" style={{ fontSize: '12px', fontWeight: 700, color: '#A8882A' }}>
+          <a href="/dashboard/setup" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)' }}>
             Zur Einrichtung →
           </a>
         </div>
@@ -1273,7 +1273,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           disabled={saving}
           style={{
             flex: 1, padding: '14px', borderRadius: '14px', border: 'none',
-            background: 'linear-gradient(135deg, #C4A235, #8A6818)',
+            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
             color: '#fff', fontSize: '14px', fontWeight: 700,
             cursor: saving ? 'not-allowed' : 'pointer',
             boxShadow: '0 4px 20px rgba(168,136,42,0.35)',
