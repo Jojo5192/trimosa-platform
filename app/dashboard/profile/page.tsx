@@ -96,14 +96,14 @@ export default function ProfilePage() {
         <Link href="/">
           <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} style={{ height: '28px', width: 'auto' }} />
         </Link>
-        <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: '#A8882A', textDecoration: 'none' }}>
+        <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
           ← Dashboard
         </Link>
       </nav>
 
       <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 20px 80px' }}>
         <div style={{ marginBottom: '28px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Profil</p>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Profil</p>
           <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111', margin: 0 }}>Gastgeber-Profil</h1>
           <p style={{ fontSize: '13px', color: '#888', margin: '4px 0 0' }}>Dein Profil ist öffentlich sichtbar für Gäste auf deinen Inseraten.</p>
         </div>
@@ -157,9 +157,9 @@ export default function ProfilePage() {
                   onClick={() => toggleLanguage(lang)}
                   style={{
                     padding: '7px 16px', borderRadius: '999px', fontSize: '13px', fontWeight: active ? 600 : 400,
-                    border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`,
+                    border: `1.5px solid ${active ? 'var(--gold)' : '#E0DDD6'}`,
                     background: active ? '#FDF6E3' : '#fff',
-                    color: active ? '#8A6818' : '#555',
+                    color: active ? 'var(--gold-dark)' : '#555',
                     cursor: 'pointer', transition: 'all 0.12s',
                   }}
                 >
@@ -182,7 +182,7 @@ export default function ProfilePage() {
           disabled={saving}
           style={{
             width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-            background: 'linear-gradient(135deg, #C4A235, #8A6818)',
+            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
             color: '#fff', fontSize: '14px', fontWeight: 700,
             cursor: saving ? 'not-allowed' : 'pointer',
             boxShadow: '0 4px 20px rgba(168,136,42,0.35)',
