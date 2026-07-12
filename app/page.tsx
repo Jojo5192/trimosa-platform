@@ -385,28 +385,62 @@ export default async function Home({
         </div>
       </section>
 
-      {/* ── Host CTA ── */}
+      {/* ── Direkt bei TRIMOSA (Über uns · Vorteile · Regionen · Kontakt) ── */}
       <section style={{ padding: '48px 20px' }}>
         <div style={{
           maxWidth: '900px', margin: '0 auto', borderRadius: '20px', overflow: 'hidden',
-          background: 'linear-gradient(135deg, #1A1814 0%, #2C2820 100%)',
-          padding: '52px 40px', textAlign: 'center',
+          background: 'linear-gradient(135deg, #12222E 0%, #172A22 100%)',
+          padding: 'clamp(34px, 6vw, 52px) clamp(22px, 5vw, 48px)',
         }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', marginBottom: '12px' }}>FÜR GASTGEBER</p>
-          <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 12px' }}>
-            Deine Unterkunft. Direkt gebucht.
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', margin: '0 0 12px', textAlign: 'center' }}>DIREKT BEI TRIMOSA</p>
+          <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 14px', textAlign: 'center' }}>
+            Ohne Umwege gebucht. Persönlich betreut.
           </h2>
-          <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.45)', marginBottom: '28px', maxWidth: '400px', margin: '0 auto 28px', lineHeight: 1.6 }}>
-            Günstiger als die Konkurrenz. Direkte Buchungen. Smoobu-Integration.
+          <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 32px', textAlign: 'center' }}>
+            Rund 20 eigene Ferienwohnungen in Sirzenich, Trier, Bitburg und der Südeifel –
+            handverlesen und persönlich betreut von Johannes, Pascal und Dominik.
           </p>
-          <Link href="/register" style={{
-            display: 'inline-block', fontSize: '13px', fontWeight: 600,
-            padding: '12px 28px', borderRadius: '999px', color: '#1A1814',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold))',
-            textDecoration: 'none', letterSpacing: '0.01em',
-          }}>
-            Jetzt kostenlos starten →
-          </Link>
+
+          {/* Vorteile: direkt buchen */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '30px' }}>
+            {[
+              { icon: '💶', title: 'Fairer Direktpreis', desc: 'Keine Portalgebühren wie bei Airbnb & Co.' },
+              { icon: '💬', title: 'Persönlicher Kontakt', desc: 'Direkter Draht statt Callcenter.' },
+              { icon: '📍', title: 'Lokale Gastgeber', desc: 'Vor Ort in der Region Trier / Eifel.' },
+            ].map((b) => (
+              <div key={b.title} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '14px', padding: '18px 16px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: '22px', marginBottom: '8px' }}>{b.icon}</div>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#F5F0E8', margin: '0 0 4px' }}>{b.title}</p>
+                <p style={{ fontSize: '12px', color: 'rgba(245,240,232,0.5)', margin: 0, lineHeight: 1.45 }}>{b.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Regionen */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '9px', marginBottom: '28px' }}>
+            <span style={{ fontSize: '12px', color: 'rgba(245,240,232,0.45)', fontWeight: 600 }}>Regionen:</span>
+            {['Trier', 'Bitburg', 'Südeifel'].map((r) => (
+              <Link key={r} href={`/?q=${encodeURIComponent(r)}`} style={{
+                fontSize: '12.5px', fontWeight: 600, color: '#F5F0E8', textDecoration: 'none',
+                padding: '6px 14px', borderRadius: '999px', border: '1px solid rgba(174,141,45,0.5)',
+                background: 'rgba(174,141,45,0.14)',
+              }}>{r}</Link>
+            ))}
+          </div>
+
+          {/* CTAs */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px' }}>
+            <Link href="/?view=map" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
+              padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
+              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+            }}>Alle Unterkünfte ansehen →</Link>
+            <a href="mailto:mail@trimosa.de" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 600,
+              padding: '12px 24px', borderRadius: '999px', color: '#F5F0E8', textDecoration: 'none',
+              border: '1px solid rgba(245,240,232,0.25)',
+            }}>Kontakt aufnehmen</a>
+          </div>
         </div>
       </section>
 
