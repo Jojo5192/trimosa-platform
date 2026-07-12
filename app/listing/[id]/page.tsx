@@ -123,11 +123,11 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
         {/* ── Rating + City + Host badge (aligned bottom) ── */}
         <div className="detail-meta-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: '#8A7020', textDecoration: 'none', cursor: 'pointer' }}>
+          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', cursor: 'pointer' }}>
             ★★★★★ Neu
           </a>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={2}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={2}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
             {displayCity}
@@ -247,11 +247,11 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               </div>
             ) : (
               <div style={{ borderRadius: '16px', padding: '24px', backgroundColor: '#FAF5E4', border: '1px solid #E8D9A0', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B0912B" strokeWidth={1.8}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={1.8}>
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
                 </svg>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#8A7020' }}>{displayCity}</div>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--gold-dark)' }}>{displayCity}</div>
                   {listing.location && listing.location !== displayCity && (
                     <div style={{ fontSize: '12px', color: '#6E6E73', marginTop: '2px' }}>{listing.location}</div>
                   )}
