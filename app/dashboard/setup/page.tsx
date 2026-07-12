@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import SmoobuConnect from '@/app/dashboard/SmoobuConnect'
 
-const GOLD = '#A8882A'
+const GOLD = 'var(--gold)'
 
 const STEPS = [
   { id: 1, title: 'Wie TRIMOSA funktioniert', icon: '📋' },
@@ -543,11 +543,11 @@ const h1: React.CSSProperties = { fontSize: '26px', fontWeight: 800, color: '#11
 const sub: React.CSSProperties = { fontSize: '15px', color: '#555', lineHeight: 1.7, marginBottom: '28px' }
 const btnStyle: React.CSSProperties = {
   display: 'block', width: '100%', padding: '14px', marginTop: '24px',
-  background: `linear-gradient(135deg, ${GOLD}, #8A6818)`,
+  background: `linear-gradient(135deg, ${GOLD}, var(--gold-dark))`,
   color: '#fff', fontSize: '14px', fontWeight: 700, borderRadius: '12px', border: 'none', cursor: 'pointer',
 }
 const btnSmall: React.CSSProperties = {
-  padding: '10px 18px', background: `linear-gradient(135deg, ${GOLD}, #8A6818)`,
+  padding: '10px 18px', background: `linear-gradient(135deg, ${GOLD}, var(--gold-dark))`,
   color: '#fff', fontSize: '13px', fontWeight: 600, borderRadius: '10px', border: 'none', cursor: 'pointer',
 }
 const skipStyle: React.CSSProperties = {
