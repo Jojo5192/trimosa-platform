@@ -197,7 +197,13 @@ export default async function Home({
   // Serialize all card data for the client component
   const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues, matched }) => {
     const l = listing as Record<string, unknown>
-    const coords = getCoords(l.location as string)
+    // Prefer the listing's own saved coordinates (set via the editor's map pin);
+    // fall back to the coarse location-name lookup only when they're missing, so
+    // markers sit on the real address instead of stacking on the town centroid.
+    const latRaw = l.latitude != null ? Number(l.latitude) : null
+    const lonRaw = l.longitude != null ? Number(l.longitude) : null
+    const hasRealCoords = latRaw != null && lonRaw != null && (latRaw !== 0 || lonRaw !== 0)
+    const coords: [number, number] = hasRealCoords ? [latRaw, lonRaw] : getCoords(l.location as string)
     const ppn = (l.price_per_night as number) || 0
     const id = l.id as string
     const avail = availabilityMap[id]
