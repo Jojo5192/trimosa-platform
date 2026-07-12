@@ -354,6 +354,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     nights: c.nights || undefined,
     image: c.image || undefined,
     location: c.location || undefined,
+    maxGuests: c.maxGuests || undefined,
   }))
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
