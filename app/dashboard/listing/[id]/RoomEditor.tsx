@@ -204,9 +204,9 @@ export default function RoomEditor({ listingId, rooms, onChange }: Props) {
                   <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', display: 'block', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ausstattungsmerkmale</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                     {room.features.map(f => (
-                      <span key={f} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '999px', background: '#FDF6E3', border: '1px solid #E8D9A0', fontSize: '12px', color: '#8A6818' }}>
+                      <span key={f} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '999px', background: '#FDF6E3', border: '1px solid #E8D9A0', fontSize: '12px', color: 'var(--gold-dark)' }}>
                         {f}
-                        <button type="button" onClick={() => removeFeature(room.id, f)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4A235', fontSize: '12px', padding: '0', lineHeight: 1 }}>✕</button>
+                        <button type="button" onClick={() => removeFeature(room.id, f)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold)', fontSize: '12px', padding: '0', lineHeight: 1 }}>✕</button>
                       </span>
                     ))}
                   </div>
@@ -219,7 +219,7 @@ export default function RoomEditor({ listingId, rooms, onChange }: Props) {
                       placeholder="z.B. Smart-TV, Doppelbett…"
                     />
                     <button type="button" onClick={() => addFeature(room.id)}
-                      style={{ padding: '8px 14px', borderRadius: '10px', border: '1.5px solid #C4A235', background: '#FDF6E3', color: '#8A6818', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ padding: '8px 14px', borderRadius: '10px', border: '1.5px solid var(--gold)', background: '#FDF6E3', color: 'var(--gold-dark)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       + Hinzufügen
                     </button>
                   </div>
@@ -245,9 +245,9 @@ export default function RoomEditor({ listingId, rooms, onChange }: Props) {
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '6px',
                       padding: '8px 16px', borderRadius: '10px',
-                      border: '1.5px dashed #C4A235', background: uploading === room.id ? '#FAF5E4' : '#FFFBF0',
+                      border: '1.5px dashed var(--gold)', background: uploading === room.id ? '#FAF5E4' : '#FFFBF0',
                       cursor: uploading === room.id ? 'not-allowed' : 'pointer',
-                      fontSize: '12px', fontWeight: 600, color: '#8A6818',
+                      fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)',
                       marginBottom: '10px',
                     }}
                   >
@@ -322,7 +322,7 @@ export default function RoomEditor({ listingId, rooms, onChange }: Props) {
             type="button"
             onClick={() => addRoom(newRoomName)}
             disabled={!newRoomName.trim()}
-            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: newRoomName.trim() ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#E0DDD6', color: newRoomName.trim() ? '#fff' : '#aaa', fontSize: '13px', fontWeight: 600, cursor: newRoomName.trim() ? 'pointer' : 'default' }}
+            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: newRoomName.trim() ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E0DDD6', color: newRoomName.trim() ? '#fff' : '#aaa', fontSize: '13px', fontWeight: 600, cursor: newRoomName.trim() ? 'pointer' : 'default' }}
           >
             Anlegen
           </button>
