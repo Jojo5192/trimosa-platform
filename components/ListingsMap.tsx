@@ -12,6 +12,7 @@ export interface MapListing {
   nights?: number
   image?: string       // cover image for the popup
   location?: string    // shown as a subtle label in the popup
+  maxGuests?: number   // capacity shown in the popup
 }
 
 interface Props {
@@ -167,7 +168,8 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
             ${imageHeader}
             <div style="padding:11px 13px 13px">
               ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}
-              <p style="font-size:13.5px;font-weight:600;color:#111;margin:0 0 8px;line-height:1.3">${listing.title}</p>
+              <p style="font-size:13.5px;font-weight:600;color:#111;margin:0 0 4px;line-height:1.3">${listing.title}</p>
+              ${listing.maxGuests ? `<p style="font-size:11.5px;color:#888;margin:0 0 8px;line-height:1">Bis zu ${listing.maxGuests} Gäste</p>` : '<div style="height:4px"></div>'}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span style="line-height:1">${priceBlock}</span>
                 <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">Ansehen →</span>
