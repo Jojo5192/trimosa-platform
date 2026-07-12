@@ -59,16 +59,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'email und is_admin oder is_host (boolean) sind erforderlich.' }, { status: 400 })
   }
 
-  const { data: target } = await supabaseAdmin
-    .schema('auth')
-    .from('users')
-    .select('id')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle()
+  // auth.users isn't queryable via PostgREST — resolve the id through a
+  // SECURITY DEFINER RPC (see 20260712_user_id_by_email.sql).
+  const { data: targetId } = await supabaseAdmin
+    .rpc('get_user_id_by_email', { p_email: email.trim().toLowerCase() })
 
-  if (!target) {
+  if (!targetId) {
     return NextResponse.json({ error: 'Kein Nutzer mit dieser E-Mail-Adresse registriert.' }, { status: 404 })
   }
+  const target = { id: targetId as string }
 
   // ── Admin flag ──────────────────────────────────────────────
   if (hasAdmin) {
