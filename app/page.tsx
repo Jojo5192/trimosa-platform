@@ -4,7 +4,7 @@ import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
 import QuickFilters from '@/components/QuickFilters'
-import { checkAvailability } from '@/lib/smoobu'
+import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
 
 /* ── Refined, muted card gradients ── */
@@ -49,6 +49,13 @@ function getCoords(location: string): [number, number] {
     if (lower.includes(key)) return coords
   }
   return KNOWN_COORDS['default']
+}
+
+function formatShortRange(ci: string, co: string): string {
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  const a = new Date(ci + 'T00:00:00').toLocaleDateString('de-DE', opts)
+  const b = new Date(co + 'T00:00:00').toLocaleDateString('de-DE', opts)
+  return `${a} – ${b}`
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -138,9 +145,9 @@ function rankListings(
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string }>
+  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string; flex?: string }>
 }) {
-  const { q, guests, checkin, checkout, view } = await searchParams
+  const { q, guests, checkin, checkout, view, flex } = await searchParams
   const guestsNum = guests ? parseInt(guests) : undefined
 
   // Calculate nights for total price display
@@ -169,12 +176,16 @@ export default async function Home({
   }
   const topLocations = Object.entries(locationCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([loc]) => loc)
 
-  // Check Smoobu availability for all listings when dates are selected
-  let availabilityMap: Record<string, { available: boolean; totalPrice: number }> = {}
+  // Check Smoobu availability for all listings when dates are selected.
+  // Flexible dates (?flex=3) look for the nearest free window of the same
+  // length instead of only the exact range.
+  const flexDays = flex ? (parseInt(flex) || 3) : 0
+  type Avail = { available: boolean; totalPrice: number; flexCheckin?: string; flexCheckout?: string }
+  let availabilityMap: Record<string, Avail> = {}
   if (nights > 0) {
     // Each listing is priced with its own host's markup.
     const hostMarkup = await getHostMarkupMap(ranked.map(r => (r.listing as Record<string, unknown>).host_id as string))
-    const checks = ranked.map(async ({ listing }) => {
+    const checks = ranked.map(async ({ listing }): Promise<{ id: string } & Avail> => {
       const l = listing as Record<string, unknown>
       const id = l.id as string
       const markup = hostMarkup[l.host_id as string] ?? 1
@@ -185,6 +196,14 @@ export default async function Home({
         return { id, available: true, totalPrice: ppn * nights }
       }
       try {
+        if (flexDays > 0) {
+          const found = await findFlexibleStay(smoobuId, checkin!, checkout!, flexDays)
+          if (!found) return { id, available: false, totalPrice: 0 }
+          return {
+            id, available: true, totalPrice: Math.round(found.totalPrice * markup),
+            ...(found.shifted ? { flexCheckin: found.checkIn, flexCheckout: found.checkOut } : {}),
+          }
+        }
         const result = await checkAvailability(smoobuId, checkin!, checkout!)
         return { id, available: result.available, totalPrice: Math.round(result.totalPrice * markup) }
       } catch {
@@ -195,7 +214,7 @@ export default async function Home({
     })
     const results = await Promise.all(checks)
     for (const r of results) {
-      availabilityMap[r.id] = { available: r.available, totalPrice: r.totalPrice }
+      availabilityMap[r.id] = { available: r.available, totalPrice: r.totalPrice, flexCheckin: r.flexCheckin, flexCheckout: r.flexCheckout }
     }
   }
 
@@ -214,6 +233,10 @@ export default async function Home({
     const avail = availabilityMap[id]
     const tp = avail ? avail.totalPrice : (nights > 0 && ppn > 0 ? ppn * nights : 0)
     const unavailable = avail ? !avail.available : false
+    // When flexible dates found a nearby (shifted) window, note it for display.
+    const flexNote = avail?.flexCheckin && avail?.flexCheckout
+      ? formatShortRange(avail.flexCheckin, avail.flexCheckout)
+      : undefined
     return {
       id,
       title: l.title as string,
@@ -229,6 +252,7 @@ export default async function Home({
       lat: coords[0],
       lon: coords[1],
       unavailable,
+      flexNote,
       image: (() => {
         const flat = (l.images as string[] | null) ?? []
         if (flat[0]) return flat[0]
