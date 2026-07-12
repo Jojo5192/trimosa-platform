@@ -153,7 +153,7 @@ export function HostBadge({ host }: { host: HostProfile }) {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}>
-        <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {host.avatar_url ? (
             <Image src={host.avatar_url} alt="" fill sizes="32px" style={{ objectFit: 'cover' }} />
           ) : (
@@ -169,7 +169,7 @@ export function HostBadge({ host }: { host: HostProfile }) {
       {open && (
         <Overlay onClose={() => setOpen(false)} title="Dein Gastgeber">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-            <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {host.avatar_url ? (
                 <Image src={host.avatar_url} alt="" fill sizes="64px" style={{ objectFit: 'cover' }} />
               ) : (
@@ -201,7 +201,7 @@ export function HostBadge({ host }: { host: HostProfile }) {
                       <div style={{ fontSize: '13px', fontWeight: 600, color: '#1D1D1F', marginBottom: '2px' }}>{l.title}</div>
                       <div style={{ fontSize: '11px', color: '#6E6E73' }}>{l.city || l.location}</div>
                       {l.price_per_night != null && l.price_per_night > 0 && (
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#B0912B', marginTop: '4px' }}>ab € {l.price_per_night} / Nacht</div>
+                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)', marginTop: '4px' }}>ab € {l.price_per_night} / Nacht</div>
                       )}
                     </div>
                   </a>
@@ -577,7 +577,7 @@ const SOURCE_META: Record<string, { label: string; color: string; icon: string }
   booking: { label: 'Booking', color: '#003580', icon: '🅱️' },
   google:  { label: 'Google',  color: '#4285F4', icon: '🔵' },
   vrbo:    { label: 'VRBO',    color: '#6C3BAA', icon: '🟣' },
-  trimosa: { label: 'TRIMOSA', color: '#B0912B', icon: '⭐' },
+  trimosa: { label: 'TRIMOSA', color: 'var(--gold)', icon: '⭐' },
 }
 
 interface ReviewData {
@@ -798,7 +798,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, revyoosPrope
               }}
               style={{
                 padding: '10px 24px', borderRadius: '10px', border: 'none',
-                background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff',
+                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff',
                 fontSize: '13px', fontWeight: 700, cursor: submitStatus === 'submitting' ? 'not-allowed' : 'pointer',
               }}
             >
@@ -915,7 +915,7 @@ function ReviewText({ text }: { text: string }) {
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '4px', fontSize: '13px', fontWeight: 600, color: '#B0912B' }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '4px', fontSize: '13px', fontWeight: 600, color: 'var(--gold)' }}
         >
           {expanded ? 'Weniger' : 'Mehr lesen'}
         </button>
