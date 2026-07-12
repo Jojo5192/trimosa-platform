@@ -61,7 +61,7 @@ export default function NotificationSettings({
               onClick={() => toggle(key)}
               style={{
                 width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
-                background: settings[key] ? '#A8882A' : '#D1D1D6',
+                background: settings[key] ? 'var(--gold)' : '#D1D1D6',
                 position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
               }}
             >
@@ -82,7 +82,7 @@ export default function NotificationSettings({
         disabled={saving}
         style={{
           width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-          background: saved ? '#16A34A' : 'linear-gradient(135deg, #C4A235, #8A6818)',
+          background: saved ? '#16A34A' : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
           color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
         }}
       >
