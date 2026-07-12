@@ -138,9 +138,9 @@ function rankListings(
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string }>
+  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string }>
 }) {
-  const { q, guests, checkin, checkout } = await searchParams
+  const { q, guests, checkin, checkout, view } = await searchParams
   const guestsNum = guests ? parseInt(guests) : undefined
 
   // Calculate nights for total price display
@@ -156,6 +156,9 @@ export default async function Home({
   const filtered = allListings ?? []
 
   const hasSearch = !!(q || guestsNum)
+  // Map view can also be opened straight from the homepage (?view=map) without
+  // any active filter — then we show all active listings on the map.
+  const showResults = hasSearch || view === 'map'
   const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] as string[], matched: true }))
 
   // Top location names for the quick-filter pills (shared by homepage + search view)
@@ -265,7 +268,7 @@ export default async function Home({
       />
       <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} />
 
-      {hasSearch ? (
+      {showResults ? (
         /* ── Full-viewport split: listings + map ── */
         <SearchResults
           cards={cardData}
@@ -282,9 +285,23 @@ export default async function Home({
           {/* ── Filter Bar (homepage) ── */}
           <section className="filter-section" style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
             <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-              <p className="filter-label">
-                Beliebte Filter
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '2px' }}>
+                <p className="filter-label" style={{ margin: 0 }}>
+                  Beliebte Filter
+                </p>
+                <Link href="/?view=map" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+                  padding: '7px 14px', borderRadius: '999px', border: '1.5px solid var(--gold)',
+                  background: '#fff', color: 'var(--gold-dark)', fontSize: '12.5px', fontWeight: 700,
+                  textDecoration: 'none',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+                    <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
+                  </svg>
+                  Kartenansicht
+                </Link>
+              </div>
               <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} />
             </div>
           </section>
