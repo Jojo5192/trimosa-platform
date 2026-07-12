@@ -198,7 +198,7 @@ function FilterModal({ filters, onApply, onClose }: {
 }
 
 /* ── Listing Card ── */
-function ListingCard({ card, index, linkParams }: { card: CardData; index: number; linkParams?: string }) {
+function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { card: CardData; index: number; linkParams?: string; isHovered?: boolean; onHover?: (id: string | null) => void }) {
   const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
   const showTotal = card.totalPrice > 0
 
@@ -207,7 +207,15 @@ function ListingCard({ card, index, linkParams }: { card: CardData; index: numbe
       href={`/listing/${card.id}${linkParams || ''}`}
       className="listing-card"
       target="_blank"
-      style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}
+      onMouseEnter={() => onHover?.(card.id)}
+      onMouseLeave={() => onHover?.(null)}
+      style={{
+        display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff',
+        border: isHovered ? '1px solid var(--gold)' : '1px solid #EAE7E0',
+        boxShadow: isHovered ? '0 8px 24px rgba(174,141,45,0.18)' : 'none',
+        transform: isHovered ? 'translateY(-2px)' : 'none',
+        transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
+      }}
     >
       <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
         {card.image && (
@@ -282,6 +290,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   const [showFilter, setShowFilter] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(false)
+  // Hover-sync between the card list and the map markers (both directions).
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   // Build query string to pass search dates/guests to detail page
   const linkParams = useMemo(() => {
@@ -360,7 +370,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           </div>
         )
       }
-      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />)
+      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} isHovered={hoveredId === card.id} onHover={setHoveredId} />)
     })
     return out
   }
@@ -477,6 +487,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                   listings={mapListings}
                   centerLat={centerLat}
                   centerLon={centerLon}
+                  hoveredId={hoveredId}
+                  onHoverListing={setHoveredId}
                 />
               </div>
               <button
@@ -569,6 +581,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
             listings={mapListings}
             centerLat={centerLat}
             centerLon={centerLon}
+            hoveredId={hoveredId}
+            onHoverListing={setHoveredId}
           />
         </div>
       </div>
