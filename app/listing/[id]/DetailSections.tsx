@@ -573,11 +573,11 @@ export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText }: {
 /* ── 6. Reviews Section (aggregated from all platforms) ──── */
 
 const SOURCE_META: Record<string, { label: string; color: string; icon: string }> = {
-  airbnb:  { label: 'Airbnb',  color: '#FF5A5F', icon: '🅰️' },
-  booking: { label: 'Booking', color: '#003580', icon: '🅱️' },
-  google:  { label: 'Google',  color: '#4285F4', icon: '🔵' },
-  vrbo:    { label: 'VRBO',    color: '#6C3BAA', icon: '🟣' },
-  trimosa: { label: 'TRIMOSA', color: 'var(--gold)', icon: '⭐' },
+  airbnb:  { label: 'Airbnb',      color: '#FF5A5F', icon: '🅰️' },
+  booking: { label: 'Booking.com', color: '#2E7CF6', icon: '🅱️' },
+  google:  { label: 'Google',      color: '#34A853', icon: '🔵' },
+  vrbo:    { label: 'FeWo-direkt', color: '#8B5CF6', icon: '🟣' },
+  trimosa: { label: 'TRIMOSA',     color: 'var(--gold)', icon: '⭐' },
 }
 
 interface ReviewData {
@@ -696,21 +696,26 @@ export function ReviewsSection({ listingId, showReviewForm = false, revyoosPrope
     <div id="reviews-section" style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Bewertungen</h2>
 
-      {/* ── Aggregate Score Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #F0EEE8' }}>
+      {/* ── Aggregate Score Panel ── */}
+      <div style={{
+        display: 'flex', gap: 'clamp(20px, 4vw, 40px)', flexWrap: 'wrap', alignItems: 'center',
+        marginBottom: '24px', padding: 'clamp(18px, 3vw, 26px) clamp(18px, 3vw, 30px)',
+        borderRadius: '20px', background: 'linear-gradient(160deg, #FDFCF8 0%, #F7F4EC 100%)',
+        border: '1px solid #EDE7D8',
+      }}>
         {/* Overall score */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-          <span style={{ fontSize: '36px', fontWeight: 700, color: '#1D1D1F', lineHeight: 1 }}>{data.overall.avg.toFixed(2)}</span>
-          <div>
-            {renderStars(data.overall.avg)}
-            <div style={{ fontSize: '12px', color: '#6E6E73', marginTop: '2px' }}>
-              {data.overall.count} Bewertung{data.overall.count !== 1 ? 'en' : ''}
-            </div>
+        <div style={{ textAlign: 'center', minWidth: '130px' }}>
+          <div style={{ fontSize: '46px', fontWeight: 800, color: '#1A1400', lineHeight: 1, letterSpacing: '-0.03em' }}>
+            {data.overall.avg.toFixed(2).replace('.', ',')}
+          </div>
+          <div style={{ marginTop: '6px' }}>{renderStars(data.overall.avg)}</div>
+          <div style={{ fontSize: '12px', color: '#8A8065', marginTop: '4px', fontWeight: 500 }}>
+            {data.overall.count} Bewertung{data.overall.count !== 1 ? 'en' : ''} · {Object.keys(data.sources).length} Plattform{Object.keys(data.sources).length !== 1 ? 'en' : ''}
           </div>
         </div>
 
-        {/* Per-source badges */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+        {/* Per-platform score bars (click = filter) */}
+        <div style={{ flex: 1, minWidth: '250px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {Object.entries(data.sources).map(([src, stats]) => {
             const meta = SOURCE_META[src] ?? { label: src, color: '#888', icon: '●' }
             const isActive = filterSource === src
@@ -719,19 +724,24 @@ export function ReviewsSection({ listingId, showReviewForm = false, revyoosPrope
                 key={src}
                 type="button"
                 onClick={() => handleFilterSource(isActive ? null : src)}
+                title={isActive ? 'Filter entfernen' : `Nur ${meta.label}-Bewertungen anzeigen`}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 12px', borderRadius: '99px',
-                  border: isActive ? `2px solid ${meta.color}` : '1px solid #E5E5EA',
-                  background: isActive ? `${meta.color}10` : '#fff',
-                  cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-                  color: isActive ? meta.color : '#6E6E73',
+                  display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+                  background: isActive ? '#fff' : 'transparent',
+                  border: isActive ? `1.5px solid ${meta.color}` : '1.5px solid transparent',
+                  borderRadius: '12px', padding: '7px 10px',
                   transition: 'all 0.15s',
                 }}
               >
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
-                {stats.avg.toFixed(1)}
-                <span style={{ fontSize: '10px', color: '#999', fontWeight: 400 }}>({stats.count})</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#3A3427' }}>{meta.label}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: 800, color: '#1A1400' }}>{stats.avg.toFixed(1).replace('.', ',')}</span>
+                  <span style={{ fontSize: '11px', color: '#9C9377', fontWeight: 500 }}>({stats.count})</span>
+                </span>
+                <span style={{ display: 'block', height: '5px', borderRadius: '99px', background: '#E9E3D2', overflow: 'hidden' }}>
+                  <span style={{ display: 'block', height: '100%', borderRadius: '99px', background: `linear-gradient(90deg, ${meta.color}CC, ${meta.color})`, width: `${Math.min(100, (stats.avg / 5) * 100)}%`, transition: 'width 0.4s ease' }} />
+                </span>
               </button>
             )
           })}
