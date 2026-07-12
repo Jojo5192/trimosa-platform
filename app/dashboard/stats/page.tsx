@@ -62,7 +62,7 @@ export default async function StatsPage() {
       <DashboardNav />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '32px 20px 80px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
           Auswertungen
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 28px' }}>Statistiken</h1>
@@ -71,7 +71,7 @@ export default async function StatsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '32px' }}>
           {[
             { label: 'Gesamtumsatz', value: fmt(totalRevenue), sub: 'alle Buchungen', color: '#1D1D1F' },
-            { label: 'Provision (10%)', value: fmt(totalCommission), sub: 'an TRIMOSA', color: '#A8882A' },
+            { label: 'Provision (10%)', value: fmt(totalCommission), sub: 'an TRIMOSA', color: 'var(--gold)' },
             { label: 'Dein Anteil', value: fmt(totalPayout), sub: '90% Auszahlung', color: '#16A34A' },
             { label: 'Ø pro Buchung', value: fmt(avgBooking), sub: `${bookings?.length ?? 0} Buchungen gesamt`, color: '#0369A1' },
           ].map(kpi => (
@@ -107,7 +107,7 @@ export default async function StatsPage() {
                       title={`${v.bookings} Buchungen · ${fmt(v.revenue)}`}
                       style={{
                         width: '100%', height: `${h}px`,
-                        background: 'linear-gradient(180deg, #C4A235, #8A6818)',
+                        background: 'linear-gradient(180deg, var(--gold), var(--gold-dark))',
                         borderRadius: '6px 6px 2px 2px',
                         transition: 'height 0.3s',
                         minHeight: '4px',
