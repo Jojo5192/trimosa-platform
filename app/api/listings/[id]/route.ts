@@ -33,6 +33,7 @@ export async function PATCH(
     'amenities', 'rooms',
     'house_rules', 'house_rules_details', 'checkin_instructions', 'important_notes',
     'check_in_time', 'check_out_time',
+    'allow_instant_booking', 'allow_requests', 'min_request_nights',
     'is_active', 'cancellation_policy',
     'cancel_free_days', 'cancel_free_percent',
     'cancel_partial_days', 'cancel_partial_percent',
