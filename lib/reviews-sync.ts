@@ -164,13 +164,22 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
  * verified review count, which we use for the listing columns directly.
  */
 const FEWO_CHEERIO_FUNCTION = `async function pageFunction(context) {
-  const html = context.body || '';
-  const debug = { __debug: true, len: html.length, title: (html.match(/<title>([^<]*)/) || [])[1] || '' };
+  // Decode the entities we match against — the raw SSR body may encode them.
+  const html = (context.body || '')
+    .replace(/&#x2013;|&#8211;|&ndash;/g, '\\u2013')
+    .replace(/&#xFC;|&#252;|&uuml;/g, '\\u00fc')
+    .replace(/&#xE4;|&#228;|&auml;/g, '\\u00e4');
+  const debug = {
+    __debug: true, len: html.length,
+    title: (html.match(/<title>([^<]*)/) || [])[1] || '',
+    h3: (html.match(/<h3/g) || []).length,
+    para: (html.match(/uitk-paragraph-2/g) || []).length,
+  };
 
   const meta = { __meta: true, score: null, count: null };
   const s = html.match(/(\\d+(?:,\\d+)?) von 10\\./);
   if (s) meta.score = parseFloat(s[1].replace(',', '.'));
-  const c = html.match(/aria-label="(\\d+) gepr\\u00fcfte Bewertung/);
+  const c = html.match(/Alle (\\d+) Bewertungen anzeigen/) || html.match(/aria-label="(\\d+) gepr\\u00fcfte Bewertung/) || html.match(/(\\d+) gepr\\u00fcfte Bewertung/);
   if (c) meta.count = parseInt(c[1], 10);
 
   const MONTHS = { januar: 1, februar: 2, m\u00e4rz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
