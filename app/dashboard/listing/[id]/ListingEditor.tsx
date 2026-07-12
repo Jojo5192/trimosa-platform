@@ -189,6 +189,9 @@ interface Listing {
   rule_additional_rules?: string
   check_in_time?: string
   check_out_time?: string
+  allow_instant_booking?: boolean
+  allow_requests?: boolean
+  min_request_nights?: number
   is_active: boolean
   smoobu_id?: string
   cancellation_policy?: string
@@ -286,6 +289,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [ruleAdditionalRules, setRuleAdditionalRules] = useState(listing.rule_additional_rules ?? '')
   const [checkInTime, setCheckInTime] = useState(listing.check_in_time ?? '15:00')
   const [checkOutTime, setCheckOutTime] = useState(listing.check_out_time ?? '11:00')
+  const [allowInstant, setAllowInstant] = useState(listing.allow_instant_booking ?? true)
+  const [allowRequests, setAllowRequests] = useState(listing.allow_requests ?? true)
+  const [minRequestNights, setMinRequestNights] = useState(listing.min_request_nights ?? 1)
   const [isActive, setIsActive] = useState(listing.is_active)
   const [cancelPolicy, setCancelPolicy] = useState(listing.cancellation_policy ?? 'moderat')
   const [cancelFreeDays, setCancelFreeDays] = useState<number>(listing.cancel_free_days ?? (CANCELLATION_TEMPLATES.find(t => t.id === (listing.cancellation_policy ?? 'moderat'))?.freeDays ?? 5))
@@ -444,6 +450,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           rule_additional_rules: ruleAdditionalRules,
           check_in_time: checkInTime,
           check_out_time: checkOutTime,
+          allow_instant_booking: allowInstant,
+          allow_requests: allowRequests,
+          min_request_nights: minRequestNights,
           airbnb_url: airbnbUrl,
           booking_url: bookingUrl,
           vrbo_url: vrboUrl,
@@ -1110,6 +1119,67 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <p style={{ fontSize: '12px', color: '#AAA', margin: '8px 0 0' }}>Noch keine Bewertungen importiert. Klicke &quot;Laden&quot; um vorhandene abzurufen.</p>
           )}
         </div>
+      </Section>
+
+      {/* ── Buchungsmodus (pro Inserat) ── */}
+      <Section title="Buchung">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 4px' }}>
+          Lege für dieses Inserat fest, wie Gäste buchen können.
+        </p>
+
+        {/* Sofortbuchung */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #F0EDE8', cursor: 'pointer' }}>
+          <div style={{ paddingRight: '16px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>⚡ Sofortbuchung erlauben</p>
+            <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Gäste können sofort buchen – der Kalender wird direkt gesperrt.</p>
+          </div>
+          <div onClick={(e) => { e.preventDefault(); setAllowInstant(v => !v) }} style={{
+            width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
+            background: allowInstant ? 'var(--gold)' : '#D1D1D6', position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+          }}>
+            <div style={{ position: 'absolute', top: '3px', left: allowInstant ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+          </div>
+        </label>
+
+        {/* Anfragen */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: allowRequests ? '1px solid #F0EDE8' : 'none', cursor: 'pointer' }}>
+          <div style={{ paddingRight: '16px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>✉ Anfragen erlauben</p>
+            <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Gäste können Anfragen stellen – du bestätigst manuell.</p>
+          </div>
+          <div onClick={(e) => { e.preventDefault(); setAllowRequests(v => !v) }} style={{
+            width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
+            background: allowRequests ? 'var(--gold)' : '#D1D1D6', position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+          }}>
+            <div style={{ position: 'absolute', top: '3px', left: allowRequests ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+          </div>
+        </label>
+
+        {/* Mindestnächte für Anfragen */}
+        {allowRequests && (
+          <div style={{ padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ paddingRight: '16px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>Mindestaufenthalt für Anfragen</p>
+              <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Anfragen erst ab dieser Anzahl Nächte möglich.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button type="button" onClick={() => setMinRequestNights(n => Math.max(1, n - 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>−</button>
+              <span style={{ fontSize: '14px', fontWeight: 700, minWidth: '30px', textAlign: 'center' }}>{minRequestNights}</span>
+              <button type="button" onClick={() => setMinRequestNights(n => Math.min(30, n + 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>+</button>
+              <span style={{ fontSize: '12px', color: '#888' }}>Nacht{minRequestNights !== 1 ? 'e' : ''}</span>
+            </div>
+          </div>
+        )}
+
+        {!allowInstant && !allowRequests && (
+          <div style={{ marginTop: '12px', padding: '10px 14px', background: '#FEF2F2', borderRadius: '10px', border: '1px solid #FECACA' }}>
+            <p style={{ fontSize: '12px', color: '#DC2626', margin: 0 }}>
+              ⚠️ Weder Sofortbuchung noch Anfragen sind aktiv. Gäste können dieses Inserat nicht buchen.
+            </p>
+          </div>
+        )}
       </Section>
 
       {/* ── Stornierungsbedingungen ── */}
