@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
@@ -28,6 +28,7 @@ export interface CardData {
   nights: number
   distanceKm: number | null
   issues: string[]
+  matched?: boolean   // fully matches the active filters
   lat: number
   lon: number
   image?: string   // first photo if uploaded
@@ -314,26 +315,24 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     })
   }, [cards, filters])
 
-  // 2. Re-sort: available nearby first, then unavailable nearby, then available far, then unavailable far
+  // 2. Grouped sort: fully-matching results first, unavailable sinks within
+  //    each group, then by distance to the search center.
   const sorted = useMemo(() => {
-    if (!mapCenter) return filtered
-    const NEARBY_KM = 75
+    const dist = (c: CardData) =>
+      mapCenter ? haversineKm(mapCenter.lat, mapCenter.lon, c.lat, c.lon) : (c.distanceKm ?? 0)
     return [...filtered].sort((a, b) => {
-      const da = haversineKm(mapCenter.lat, mapCenter.lon, a.lat, a.lon)
-      const db = haversineKm(mapCenter.lat, mapCenter.lon, b.lat, b.lon)
-      const aNearby = da <= NEARBY_KM
-      const bNearby = db <= NEARBY_KM
-      const aAvail = !a.unavailable
-      const bAvail = !b.unavailable
-
-      // Assign sort bucket: 0=available+nearby, 1=unavailable+nearby, 2=available+far, 3=unavailable+far
-      const bucketA = aNearby ? (aAvail ? 0 : 1) : (aAvail ? 2 : 3)
-      const bucketB = bNearby ? (bAvail ? 0 : 1) : (bAvail ? 2 : 3)
-
-      if (bucketA !== bucketB) return bucketA - bucketB
-      return da - db
+      const am = a.matched !== false
+      const bm = b.matched !== false
+      if (am !== bm) return am ? -1 : 1                       // matched first
+      if (!!a.unavailable !== !!b.unavailable) return a.unavailable ? 1 : -1  // available first
+      return dist(a) - dist(b)                                // then by distance
     })
   }, [filtered, mapCenter])
+
+  // Index where the "matched" group ends and the "close by" group starts —
+  // used to render a divider. Only meaningful when both groups are non-empty.
+  const firstUnmatchedIdx = sorted.findIndex(c => c.matched === false)
+  const showGroupDivider = firstUnmatchedIdx > 0
 
   // Map listings (all filtered, sorted by map center)
   const mapListings: MapListing[] = sorted.map(c => ({
@@ -347,6 +346,25 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   }))
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
+
+  // Render the card list, injecting a divider between the fully-matching
+  // results and the "close by" (non-matching) ones. Works in both the mobile
+  // flex column and the desktop grid (gridColumn is ignored in flex).
+  function renderCards(): ReactNode[] {
+    const out: ReactNode[] = []
+    sorted.forEach((card, i) => {
+      if (showGroupDivider && i === firstUnmatchedIdx) {
+        out.push(
+          <div key="group-divider" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 2px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#888', whiteSpace: 'nowrap' }}>Weitere Ergebnisse in der Nähe</span>
+            <span style={{ flex: 1, height: '1px', background: '#E4E0D8' }} />
+          </div>
+        )
+      }
+      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />)
+    })
+    return out
+  }
 
   /* ── Header bar (shared between mobile + desktop) ── */
   const headerBar = (
@@ -407,9 +425,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
         <div style={{ padding: '12px 12px 100px' }}>
           {sorted.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {sorted.map((card, i) => (
-                <ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />
-              ))}
+              {renderCards()}
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '50px 20px', borderRadius: '16px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
@@ -505,9 +521,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               gridTemplateColumns: 'repeat(auto-fill, minmax(196px, 1fr))',
               gap: '14px',
             }}>
-              {sorted.map((card, i) => (
-                <ListingCard key={card.id} card={card} index={i} linkParams={linkParams} />
-              ))}
+              {renderCards()}
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
