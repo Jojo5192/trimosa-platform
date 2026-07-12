@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --gold: #B0912B;
-  --gold-dark: #8A7020;
+  /* Sampled directly from public/logo.png — the one true brand gold. */
+  --gold: #AE8D2D;
+  --gold-dark: #715C1D;
   --gold-light: #FAF5E4;
   --gold-muted: #E8D9A0;
   --teal: #0C9AAB;
