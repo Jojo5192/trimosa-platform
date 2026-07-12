@@ -132,7 +132,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       </div>
 
       {/* Required fields: name + address */}
-      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '2px solid #C4A235' }}>
+      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '2px solid var(--gold)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>Pflichtangaben für Buchungen</h2>
           <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400E', background: '#FFF7ED', padding: '2px 8px', borderRadius: '99px' }}>Erforderlich</span>
@@ -225,7 +225,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
             const active = languages.includes(lang)
             return (
               <button key={lang} type="button" onClick={() => toggleLanguage(lang)}
-                style={{ padding: '7px 16px', borderRadius: '999px', fontSize: '13px', fontWeight: active ? 600 : 400, border: `1.5px solid ${active ? '#C4A235' : '#E0DDD6'}`, background: active ? '#FDF6E3' : '#fff', color: active ? '#8A6818' : '#555', cursor: 'pointer' }}>
+                style={{ padding: '7px 16px', borderRadius: '999px', fontSize: '13px', fontWeight: active ? 600 : 400, border: `1.5px solid ${active ? 'var(--gold)' : '#E0DDD6'}`, background: active ? '#FDF6E3' : '#fff', color: active ? 'var(--gold-dark)' : '#555', cursor: 'pointer' }}>
                 {lang}
               </button>
             )
@@ -240,7 +240,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       )}
 
       <button type="button" onClick={handleSave} disabled={saving}
-        style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
+        style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
         {saving ? 'Wird gespeichert…' : saved ? '✓ Gespeichert' : 'Profil speichern'}
       </button>
 
