@@ -74,10 +74,10 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
   if (!listing || listing.is_active === false) notFound()
 
-  // Fetch host profile
+  // Fetch host profile (for the host badge; booking settings now live on the listing)
   const { data: hostProfile } = await supabaseAdmin
     .from('profiles')
-    .select('*,allow_instant_booking,allow_requests,min_request_nights')
+    .select('*')
     .eq('id', listing.host_id)
     .maybeSingle()
 
@@ -216,9 +216,9 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               listingId={listing.id}
               pricePerNight={listing.price_per_night}
               hostId={listing.host_id}
-              allowInstant={hostProfile?.allow_instant_booking ?? true}
-              allowRequests={hostProfile?.allow_requests ?? true}
-              minRequestNights={hostProfile?.min_request_nights ?? 1}
+              allowInstant={listing.allow_instant_booking ?? true}
+              allowRequests={listing.allow_requests ?? true}
+              minRequestNights={listing.min_request_nights ?? 1}
               cancellationPolicy={listing.cancellation_policy ?? 'moderat'}
               initialCheckIn={searchCheckin}
               initialCheckOut={searchCheckout}
