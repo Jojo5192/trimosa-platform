@@ -271,7 +271,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <Link href={chatHref} style={{ display: 'block', padding: '13px', borderRadius: '14px', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none' }}>
+          <Link href={chatHref} style={{ display: 'block', padding: '13px', borderRadius: '14px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none' }}>
             💬 Zum Chat
           </Link>
           <Link href="/guest" style={{ display: 'block', padding: '13px', borderRadius: '14px', border: '1px solid #E0DDD6', color: '#555', fontWeight: 600, fontSize: '14px', textDecoration: 'none' }}>
