@@ -24,35 +24,53 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Aggregate stats
-  const { data: stats } = await supabaseAdmin
-    .from('reviews')
-    .select('source, rating')
-    .eq('listing_id', listingId)
+  // Aggregate stats — prefer the synced per-platform scores stored on the
+  // listing (authoritative; e.g. Google reports its full rating/count while
+  // only ~5 review texts are available), fall back to row-derived averages.
+  const [{ data: stats }, { data: listingScores }] = await Promise.all([
+    supabaseAdmin.from('reviews').select('source, rating').eq('listing_id', listingId),
+    supabaseAdmin
+      .from('listings')
+      .select('airbnb_score, airbnb_review_count, booking_score, booking_review_count, google_score, google_review_count, vrbo_score, vrbo_review_count')
+      .eq('id', listingId)
+      .maybeSingle(),
+  ])
 
   const sources: Record<string, { count: number; total: number }> = {}
-  let totalRating = 0
-  let totalCount = 0
-
   for (const r of stats ?? []) {
     if (!sources[r.source]) sources[r.source] = { count: 0, total: 0 }
     sources[r.source].count++
     sources[r.source].total += Number(r.rating)
-    totalRating += Number(r.rating)
-    totalCount++
   }
 
   const aggregated: Record<string, { avg: number; count: number }> = {}
   for (const [src, { count: c, total }] of Object.entries(sources)) {
     aggregated[src] = { avg: Math.round((total / c) * 100) / 100, count: c }
   }
+  // Override with synced platform scores where present
+  const ls = (listingScores ?? {}) as Record<string, number | null>
+  for (const src of ['airbnb', 'booking', 'google', 'vrbo']) {
+    const score = ls[`${src}_score`]
+    const cnt = ls[`${src}_review_count`]
+    if (score != null && cnt != null && cnt > 0) {
+      aggregated[src] = { avg: Math.round(Number(score) * 100) / 100, count: Number(cnt) }
+    }
+  }
+
+  // Overall = count-weighted average across all platform scores
+  let weightedTotal = 0
+  let weightedCount = 0
+  for (const { avg, count: c } of Object.values(aggregated)) {
+    weightedTotal += avg * c
+    weightedCount += c
+  }
 
   return NextResponse.json({
     reviews: reviews ?? [],
     total: count ?? 0,
-    overall: totalCount > 0 ? {
-      avg: Math.round((totalRating / totalCount) * 100) / 100,
-      count: totalCount,
+    overall: weightedCount > 0 ? {
+      avg: Math.round((weightedTotal / weightedCount) * 100) / 100,
+      count: weightedCount,
     } : null,
     sources: aggregated,
   })
