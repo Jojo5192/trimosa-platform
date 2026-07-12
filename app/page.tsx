@@ -64,6 +64,7 @@ interface ScoredListing {
   score: number
   distanceKm: number | null
   issues: string[]
+  matched: boolean   // fully matches the active filters (no issues)
 }
 
 function rankListings(
@@ -119,9 +120,18 @@ function rankListings(
     // Price bonus (prefer listings with actual prices)
     if (price > 0) score += 20
 
-    return { listing, score, distanceKm, issues }
+    return { listing, score, distanceKm, issues, matched: issues.length === 0 }
   })
-    .sort((a, b) => b.score - a.score)
+    // Grouped sort: fully-matching results first (by relevance), then the
+    // rest ("close by") sorted by distance, so a filter click surfaces the
+    // real matches on top instead of one flat score list.
+    .sort((a, b) => {
+      if (a.matched !== b.matched) return a.matched ? -1 : 1
+      if (a.matched) return b.score - a.score
+      if (a.distanceKm !== null && b.distanceKm !== null && a.distanceKm !== b.distanceKm)
+        return a.distanceKm - b.distanceKm
+      return b.score - a.score
+    })
 }
 
 export default async function Home({
@@ -145,7 +155,21 @@ export default async function Home({
   const filtered = allListings ?? []
 
   const hasSearch = !!(q || guestsNum)
-  const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] }))
+  const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] as string[], matched: true }))
+
+  // Build a homepage URL that keeps the other active filters intact, so the
+  // quick-filter pills combine (Ort + Personen) instead of overriding each other.
+  function filterHref(overrides: { q?: string; guests?: string }) {
+    const params = new URLSearchParams()
+    const nextQ = 'q' in overrides ? overrides.q : q
+    const nextGuests = 'guests' in overrides ? overrides.guests : guests
+    if (nextQ) params.set('q', nextQ)
+    if (nextGuests) params.set('guests', nextGuests)
+    if (checkin) params.set('checkin', checkin)
+    if (checkout) params.set('checkout', checkout)
+    const qs = params.toString()
+    return qs ? `/?${qs}` : '/'
+  }
 
   // Check Smoobu availability for all listings when dates are selected
   let availabilityMap: Record<string, { available: boolean; totalPrice: number }> = {}
@@ -176,7 +200,7 @@ export default async function Home({
   }
 
   // Serialize all card data for the client component
-  const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues }) => {
+  const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues, matched }) => {
     const l = listing as Record<string, unknown>
     const coords = getCoords(l.location as string)
     const ppn = (l.price_per_night as number) || 0
@@ -195,6 +219,7 @@ export default async function Home({
       nights,
       distanceKm,
       issues,
+      matched,
       lat: coords[0],
       lon: coords[1],
       unavailable,
@@ -208,14 +233,12 @@ export default async function Home({
     }
   })
 
-  // When dates are selected: sort available first, then by distance; unavailable go last
+  // When dates are selected: unavailable always sink to the bottom, but keep
+  // the matched-first grouping within the available set (ranked order already
+  // encodes it, so only re-sort by availability here — stable within groups).
   if (nights > 0) {
     cardData.sort((a, b) => {
       if (a.unavailable !== b.unavailable) return a.unavailable ? 1 : -1
-      // Within same group: sort by distance if available, else keep original order
-      if (a.distanceKm !== null && b.distanceKm !== null) return a.distanceKm - b.distanceKm
-      if (a.distanceKm !== null) return -1
-      if (b.distanceKm !== null) return 1
       return 0
     })
   }
@@ -280,7 +303,7 @@ export default async function Home({
                     })(),
                   ].map((f) => {
                     const isActive = f.q === '' ? !q : q === f.q
-                    const href = f.q ? `/?q=${encodeURIComponent(f.q)}` : '/'
+                    const href = filterHref({ q: f.q || undefined })
                     return (
                       <Link key={f.label} href={href} style={{
                         padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
@@ -299,7 +322,7 @@ export default async function Home({
                     { label: '8 Pers.', g: '8' },
                   ].map((f) => {
                     const isActive = guests === f.g || (f.g === '' && !guests)
-                    const href = f.g ? `/?guests=${f.g}` : '/'
+                    const href = filterHref({ guests: f.g || undefined })
                     return (
                       <Link key={f.label} href={href} style={{
                         padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
