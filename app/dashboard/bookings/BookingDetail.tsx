@@ -48,7 +48,7 @@ export default function BookingDetail({ bookingId }: { bookingId: string }) {
             {/* Guest info */}
             {(detail.guest_name as string | undefined) && (
               <div style={{ background: '#F9F7F2', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px' }}>
-                <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gast</p>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gast</p>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>{detail.guest_name as string}</p>
                 {(detail.guest_street as string | undefined) && (
                   <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>
