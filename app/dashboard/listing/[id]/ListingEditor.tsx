@@ -1026,9 +1026,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                     })
                     const data = await res.json()
                     if (data.error) {
-                      setFetchResult({ results: [{ source: pasteSource, fetched: 0, errors: data.error }] })
+                      setFetchResult({ results: [{ source: pasteSource, status: 'error', fetched: 0, detail: data.error }] })
                     } else {
-                      setFetchResult({ results: [{ source: pasteSource, fetched: data.imported ?? 0 }] })
+                      setFetchResult({ results: [{ source: pasteSource, status: 'ok', fetched: data.imported ?? 0 }] })
                       setPasteText('')
                       setShowPasteImport(false)
                       // Reload
@@ -1037,7 +1037,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                       setReviews(revData.reviews ?? [])
                     }
                   } catch (e) {
-                    setFetchResult({ results: [{ source: pasteSource, fetched: 0, errors: String(e) }] })
+                    setFetchResult({ results: [{ source: pasteSource, status: 'error', fetched: 0, detail: String(e) }] })
                   } finally {
                     setPasteImporting(false)
                   }
