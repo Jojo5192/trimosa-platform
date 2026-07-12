@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
@@ -37,12 +37,6 @@ export interface CardData {
   flexNote?: string   // nearby free window (flexible dates), e.g. "12. – 16. Aug."
 }
 
-interface FilterState {
-  minBedrooms: number | null   // null = any
-  minGuests: number | null     // null = any
-  maxPrice: number | null      // null = any, per night
-}
-
 interface Props {
   cards: CardData[]
   centerLat?: number
@@ -60,142 +54,6 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   const dLon = (lon2 - lon1) * Math.PI / 180
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-/* ── Filter Modal ── */
-function FilterModal({ filters, onApply, onClose }: {
-  filters: FilterState
-  onApply: (f: FilterState) => void
-  onClose: () => void
-}) {
-  const [local, setLocal] = useState<FilterState>(filters)
-
-  function PillGroup<T extends number | null>({ label, options, value, onChange }: {
-    label: string
-    options: { label: string; value: T }[]
-    value: T
-    onChange: (v: T) => void
-  }) {
-    return (
-      <div style={{ marginBottom: '20px' }}>
-        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 10px' }}>{label}</p>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {options.map(opt => (
-            <button
-              key={String(opt.value)}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '999px',
-                border: '1.5px solid',
-                borderColor: value === opt.value ? '#111' : '#E0DDD6',
-                background: value === opt.value ? '#111' : '#fff',
-                color: value === opt.value ? '#fff' : '#333',
-                fontSize: '13px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.32)', zIndex: 200, backdropFilter: 'blur(2px)' }}
-        onClick={onClose}
-      />
-
-      {/* Sheet */}
-      <div style={{
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '480px',
-        maxWidth: 'calc(100vw - 32px)',
-        maxHeight: '85vh',
-        background: '#fff',
-        borderRadius: '24px',
-        zIndex: 201,
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.18)',
-        overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: '1px solid #F0EEE8' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111', margin: 0 }}>Filter</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666', lineHeight: 1, padding: '4px' }}>✕</button>
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-          <PillGroup<number | null>
-            label="Schlafzimmer"
-            value={local.minBedrooms}
-            onChange={(v) => setLocal(s => ({ ...s, minBedrooms: v }))}
-            options={[
-              { label: 'Beliebig', value: null },
-              { label: '1+', value: 1 },
-              { label: '2+', value: 2 },
-              { label: '3+', value: 3 },
-            ]}
-          />
-          <PillGroup<number | null>
-            label="Mindestanzahl Gäste"
-            value={local.minGuests}
-            onChange={(v) => setLocal(s => ({ ...s, minGuests: v }))}
-            options={[
-              { label: 'Beliebig', value: null },
-              { label: '2+', value: 2 },
-              { label: '4+', value: 4 },
-              { label: '6+', value: 6 },
-              { label: '8+', value: 8 },
-            ]}
-          />
-          <PillGroup<number | null>
-            label="Max. Preis / Nacht"
-            value={local.maxPrice}
-            onChange={(v) => setLocal(s => ({ ...s, maxPrice: v }))}
-            options={[
-              { label: 'Beliebig', value: null },
-              { label: 'bis 100 €', value: 100 },
-              { label: 'bis 150 €', value: 150 },
-              { label: 'bis 200 €', value: 200 },
-              { label: 'bis 250 €', value: 250 },
-            ]}
-          />
-        </div>
-
-        {/* Footer */}
-        <div style={{ display: 'flex', gap: '10px', padding: '16px 24px', borderTop: '1px solid #F0EEE8' }}>
-          <button
-            type="button"
-            onClick={() => { setLocal({ minBedrooms: null, minGuests: null, maxPrice: null }); onApply({ minBedrooms: null, minGuests: null, maxPrice: null }) }}
-            style={{ flex: 1, padding: '12px', borderRadius: '999px', border: '1.5px solid #E0DDD6', background: '#fff', color: '#333', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}
-          >
-            Alle löschen
-          </button>
-          <button
-            type="button"
-            onClick={() => { onApply(local); onClose() }}
-            style={{ flex: 2, padding: '12px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-          >
-            Ergebnisse anzeigen
-          </button>
-        </div>
-      </div>
-    </>
-  )
 }
 
 /* ── Listing Card ── */
@@ -294,8 +152,6 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
 
 /* ── Main component ── */
 export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [] }: Props) {
-  const [filters, setFilters] = useState<FilterState>({ minBedrooms: null, minGuests: null, maxPrice: null })
-  const [showFilter, setShowFilter] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(false)
   // Hover-sync between the card list and the map markers (both directions).
@@ -318,15 +174,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // 1. Apply filters
-  const filtered = useMemo(() => {
-    return cards.filter(c => {
-      if (filters.minBedrooms !== null && c.bedrooms < filters.minBedrooms) return false
-      if (filters.minGuests !== null && c.maxGuests < filters.minGuests) return false
-      if (filters.maxPrice !== null && c.pricePerNight > 0 && c.pricePerNight > filters.maxPrice) return false
-      return true
-    })
-  }, [cards, filters])
+  const filtered = cards
 
   // 2. Grouped sort: fully-matching results first, unavailable sinks within
   //    each group, then by distance to the SEARCH location. Distance uses the
@@ -374,8 +222,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     flexNote: c.flexNote,
   }))
 
-  const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
-
   // Render the card list, injecting a divider between the fully-matching
   // results and the "close by" (non-matching) ones. Works in both the mobile
   // flex column and the desktop grid (gridColumn is ignored in flex).
@@ -414,27 +260,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
         {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-        <button
-          type="button"
-          onClick={() => setShowFilter(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '5px',
-            padding: '6px 12px', borderRadius: '999px',
-            border: `1.5px solid ${activeFilterCount > 0 ? '#111' : '#E0DDD6'}`,
-            background: activeFilterCount > 0 ? '#111' : '#fff',
-            color: activeFilterCount > 0 ? '#fff' : '#333',
-            fontSize: '12px', fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-            <line x1="12" y1="18" x2="12" y2="18" />
-          </svg>
-          Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-        </button>
         <Link href="/" style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
           ✕ Zurücksetzen
         </Link>
@@ -472,9 +297,9 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
               <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Keine Unterkünfte gefunden</p>
               <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Versuche andere Filter oder einen anderen Ort.</p>
-              <button type="button" onClick={() => setFilters({ minBedrooms: null, minGuests: null, maxPrice: null })} style={{ fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                Filter zurücksetzen
-              </button>
+              <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
+                Suche zurücksetzen
+              </Link>
             </div>
           )}
         </div>
@@ -532,7 +357,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           </>
         )}
 
-        {showFilter && <FilterModal filters={filters} onApply={setFilters} onClose={() => setShowFilter(false)} />}
       </div>
     )
   }
@@ -569,9 +393,9 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
               <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Keine Unterkünfte gefunden</p>
               <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Versuche andere Filter oder einen anderen Ort.</p>
-              <button type="button" onClick={() => setFilters({ minBedrooms: null, minGuests: null, maxPrice: null })} style={{ fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                Filter zurücksetzen
-              </button>
+              <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
+                Suche zurücksetzen
+              </Link>
             </div>
           )}
         </div>
@@ -606,15 +430,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           />
         </div>
       </div>
-
-      {/* ── Filter Modal ── */}
-      {showFilter && (
-        <FilterModal
-          filters={filters}
-          onApply={setFilters}
-          onClose={() => setShowFilter(false)}
-        />
-      )}
     </div>
   )
 }
