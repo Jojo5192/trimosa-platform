@@ -5,7 +5,7 @@ import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
 import QuickFilters from '@/components/QuickFilters'
 import { checkAvailability } from '@/lib/smoobu'
-import { getMarkupMultiplier } from '@/lib/pricing'
+import { getHostMarkupMap } from '@/lib/pricing'
 
 /* ── Refined, muted card gradients ── */
 const CARD_GRADIENTS = [
@@ -172,10 +172,12 @@ export default async function Home({
   // Check Smoobu availability for all listings when dates are selected
   let availabilityMap: Record<string, { available: boolean; totalPrice: number }> = {}
   if (nights > 0) {
-    const markup = await getMarkupMultiplier()
+    // Each listing is priced with its own host's markup.
+    const hostMarkup = await getHostMarkupMap(ranked.map(r => (r.listing as Record<string, unknown>).host_id as string))
     const checks = ranked.map(async ({ listing }) => {
       const l = listing as Record<string, unknown>
       const id = l.id as string
+      const markup = hostMarkup[l.host_id as string] ?? 1
       const smoobuId = l.smoobu_id as string | number | null
       if (!smoobuId) {
         // No Smoobu — use static price, assume available
@@ -285,23 +287,9 @@ export default async function Home({
           {/* ── Filter Bar (homepage) ── */}
           <section className="filter-section" style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
             <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '2px' }}>
-                <p className="filter-label" style={{ margin: 0 }}>
-                  Beliebte Filter
-                </p>
-                <Link href="/?view=map" style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
-                  padding: '7px 14px', borderRadius: '999px', border: '1.5px solid var(--gold)',
-                  background: '#fff', color: 'var(--gold-dark)', fontSize: '12.5px', fontWeight: 700,
-                  textDecoration: 'none',
-                }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
-                    <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
-                  </svg>
-                  Kartenansicht
-                </Link>
-              </div>
+              <p className="filter-label">
+                Beliebte Filter
+              </p>
               <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} />
             </div>
           </section>
@@ -355,6 +343,21 @@ export default async function Home({
               })}
             </div>
           </section>
+
+          {/* Floating map-view toggle — booking-site style, bottom center */}
+          <Link href="/?view=map" aria-label="Karte anzeigen" style={{
+            position: 'fixed', bottom: '26px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 50, display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '12px 22px', borderRadius: '999px',
+            background: '#12222E', color: '#fff', fontSize: '14px', fontWeight: 700,
+            textDecoration: 'none', boxShadow: '0 8px 28px rgba(18,34,46,0.38)',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+              <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
+            </svg>
+            Karte anzeigen
+          </Link>
         </>
       )}
 
