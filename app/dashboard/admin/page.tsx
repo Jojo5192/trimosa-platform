@@ -28,8 +28,8 @@ export default async function AdminPage() {
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px' }}>Admin-Verwaltung</h1>
         <p style={{ fontSize: '13px', color: '#888', margin: '0 0 28px' }}>
-          Admins können den plattformweiten Preisaufschlag ändern. Nur bereits registrierte
-          Nutzer können zu Admins gemacht werden.
+          Admins verwalten Einstellungen und Rollen. Gastgeber können Inserate anlegen und
+          verwalten. Nur bereits registrierte Nutzer können zu Admins oder Gastgebern gemacht werden.
         </p>
 
         <AdminUsersClient />
