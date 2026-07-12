@@ -215,8 +215,10 @@ async function runFewoScraper(url: string, timeoutMs: number): Promise<{
     startUrls: [{ url }],
     pageFunction: FEWO_CHEERIO_FUNCTION,
     maxPagesPerCrawl: 1,
-    // Expedia storefronts block datacenter IPs — use residential proxies.
-    proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
+    // Expedia's bot protection blocks probabilistically — retry generously
+    // with rotating German residential IPs (most natural for fewo-direkt.de).
+    maxRequestRetries: 10,
+    proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'], apifyProxyCountry: 'DE' },
   }
 
   const res = await fetch(
