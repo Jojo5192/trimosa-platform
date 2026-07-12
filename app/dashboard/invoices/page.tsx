@@ -62,7 +62,7 @@ export default async function InvoicesPage() {
       <DashboardNav />
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '32px 20px 80px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
           Finanzen
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px' }}>Provisionsrechnungen</h1>
@@ -97,7 +97,7 @@ export default async function InvoicesPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', paddingTop: '14px', borderTop: '1px solid #F0EDE8' }}>
                     {[
                       { label: 'Buchungsumsatz', value: fmt(data.totalRevenue), color: '#111' },
-                      { label: `Provision (10% + 7% MwSt.)`, value: fmt(commissionWithVat), color: '#A8882A' },
+                      { label: `Provision (10% + 7% MwSt.)`, value: fmt(commissionWithVat), color: 'var(--gold)' },
                       { label: 'Deine Auszahlung', value: fmt(data.payout), color: '#16A34A' },
                     ].map(item => (
                       <div key={item.label}>
