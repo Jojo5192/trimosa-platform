@@ -124,7 +124,7 @@ export default async function BookingsPage({
 
         {/* Header */}
         <div style={{ marginBottom: '24px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
             Buchungsübersicht
           </p>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: 0 }}>Alle Buchungen</h1>
