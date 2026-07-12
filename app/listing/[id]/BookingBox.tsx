@@ -532,7 +532,7 @@ export default function BookingBox({
         disabled={submitting || !canSubmit || status === 'success'}
         style={{
           width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-          background: canSubmit ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#E5E5E5',
+          background: canSubmit ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E5E5',
           color: canSubmit ? '#fff' : '#AAA',
           fontSize: '14px', fontWeight: 700,
           cursor: !canSubmit || submitting || status === 'success' ? 'not-allowed' : 'pointer',
