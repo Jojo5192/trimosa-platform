@@ -130,7 +130,26 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="10. Cookies">
+      <LegalSection heading="10. Anzeige von Gästebewertungen externer Plattformen">
+        <LegalP>
+          Auf unseren Unterkunftsseiten zeigen wir Gästebewertungen an, die Gäste öffentlich auf
+          Buchungsplattformen (Airbnb, Booking.com, FeWo-direkt/Vrbo) sowie bei Google veröffentlicht
+          haben. Dabei übernehmen wir die dort öffentlich einsehbaren Angaben (Vorname bzw.
+          angezeigter Name, ggf. Profilbild, Bewertungstext, Sternebewertung und Datum) in unsere
+          Datenbank und stellen sie gebündelt mit Quellenangabe dar. Google-Bewertungen beziehen wir
+          über die offizielle Schnittstelle von Google (Places API); Bewertungen anderer Plattformen
+          werden über den technischen Dienstleister Apify Technologies s.r.o. (Prag, Tschechische
+          Republik, EU) aus den öffentlich zugänglichen Seiten ausgelesen. Rechtsgrundlage ist unser
+          berechtigtes Interesse an einer transparenten Darstellung der Qualität unserer Unterkünfte
+          anhand bereits öffentlich verfügbarer Bewertungen (Art. 6 Abs. 1 lit. f DSGVO). Als
+          bewertende Person können Sie der Anzeige Ihrer Bewertung auf unserer Seite jederzeit
+          widersprechen (Art. 21 DSGVO) – eine formlose Nachricht an{' '}
+          <a href="mailto:mail@trimosa.de" style={{ color: 'var(--gold)' }}>mail@trimosa.de</a>{' '}
+          genügt; wir entfernen die Bewertung dann umgehend.
+        </LegalP>
+      </LegalSection>
+
+      <LegalSection heading="11. Cookies">
         <LegalP>
           Wir verwenden ausschließlich technisch notwendige Cookies, die für die Anmeldung und die
           Aufrechterhaltung Ihrer Sitzung erforderlich sind. Diese Cookies benötigen keine
@@ -139,7 +158,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="11. Schutz vor Missbrauch (Rate-Limiting)">
+      <LegalSection heading="12. Schutz vor Missbrauch (Rate-Limiting)">
         <LegalP>
           Zum Schutz vor automatisiertem Missbrauch (z. B. massenhaften Registrierungs- oder
           Buchungsversuchen) speichern wir bei bestimmten Anfragen kurzfristig einen Zählwert in
@@ -149,7 +168,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="12. Speicherdauer">
+      <LegalSection heading="13. Speicherdauer">
         <LegalP>
           Wir speichern personenbezogene Daten nur so lange, wie es für die genannten Zwecke
           erforderlich ist oder gesetzliche Aufbewahrungsfristen (insbesondere handels- und
@@ -158,7 +177,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="13. Ihre Rechte">
+      <LegalSection heading="14. Ihre Rechte">
         <LegalP>
           Sie haben im Rahmen der gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche
           Auskunft über Ihre gespeicherten personenbezogenen Daten (Art. 15 DSGVO), auf Berichtigung
@@ -175,7 +194,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="14. Datenübermittlung in Drittstaaten">
+      <LegalSection heading="15. Datenübermittlung in Drittstaaten">
         <LegalP>
           Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google) können
           personenbezogene Daten in Länder außerhalb der EU/des EWR – insbesondere in die USA –
