@@ -394,25 +394,20 @@ export default async function Home({
         }}>
           <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', margin: '0 0 12px', textAlign: 'center' }}>DIREKT BEI TRIMOSA</p>
           <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 14px', textAlign: 'center' }}>
-            Ohne Umwege gebucht. Persönlich betreut.
+            Ohne Umwege. Direkt gebucht.
           </h2>
           <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 32px', textAlign: 'center' }}>
             Rund 20 eigene Ferienwohnungen in Sirzenich, Trier, Bitburg und der Südeifel –
-            handverlesen und persönlich betreut von Johannes, Pascal und Dominik.
+            handverlesen und kuratiert von Johannes, Pascal und Dominik.
           </p>
 
-          {/* CTAs */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px' }}>
+          {/* CTA */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <Link href="/?view=map" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
             }}>Alle Unterkünfte ansehen →</Link>
-            <a href="mailto:mail@trimosa.de" style={{
-              display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 600,
-              padding: '12px 24px', borderRadius: '999px', color: '#F5F0E8', textDecoration: 'none',
-              border: '1px solid rgba(245,240,232,0.25)',
-            }}>Kontakt aufnehmen</a>
           </div>
         </div>
       </section>
