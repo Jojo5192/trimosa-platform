@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react
 import Link from 'next/link'
 import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
+import QuickFilters from './QuickFilters'
 
 /* ── Card gradient palette (mirrors page.tsx) ── */
 const CARD_GRADIENTS = [
@@ -49,6 +50,7 @@ interface Props {
   searchGuests?: number
   searchCheckin?: string
   searchCheckout?: string
+  locations?: string[]
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -275,7 +277,7 @@ function ListingCard({ card, index, linkParams }: { card: CardData; index: numbe
 }
 
 /* ── Main component ── */
-export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout }: Props) {
+export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [] }: Props) {
   const [filters, setFilters] = useState<FilterState>({ minBedrooms: null, minGuests: null, maxPrice: null })
   const [showFilter, setShowFilter] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -373,10 +375,10 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       zIndex: 10,
       borderBottom: '1px solid #EAE7E0',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      flexDirection: 'column',
       gap: '10px',
     }}>
+     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
       <h1 style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
         {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: 'var(--gold)' }}>„{searchQuery}"</span></> : ''}
         {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
@@ -407,6 +409,17 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           ✕ Zurücksetzen
         </Link>
       </div>
+     </div>
+
+     {/* Quick-filter pills — combine Ort + Personen, stay visible in the search view */}
+     <QuickFilters
+       locations={locations}
+       activeQ={searchQuery}
+       activeGuests={searchGuests ? String(searchGuests) : undefined}
+       checkin={searchCheckin}
+       checkout={searchCheckout}
+       compact
+     />
     </div>
   )
 
