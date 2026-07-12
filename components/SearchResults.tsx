@@ -9,7 +9,7 @@ import ListingsMap, { type MapListing } from './ListingsMap'
 const CARD_GRADIENTS = [
   { from: '#D6EAE8', to: '#4A8F96', accent: '#2E7A82' },
   { from: '#DCEADC', to: '#567A5C', accent: '#3E6344' },
-  { from: '#EDE5D0', to: '#A8882A', accent: '#8A6E1A' },
+  { from: '#EDE5D0', to: 'var(--gold)', accent: 'var(--gold-dark)' },
   { from: '#E4DFF0', to: '#7A6EA0', accent: '#5E537E' },
   { from: '#EDE1D8', to: '#A8705A', accent: '#8A5A44' },
   { from: '#D8E8F0', to: '#4A7EA8', accent: '#326080' },
@@ -184,7 +184,7 @@ function FilterModal({ filters, onApply, onClose }: {
           <button
             type="button"
             onClick={() => { onApply(local); onClose() }}
-            style={{ flex: 2, padding: '12px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #9A7820)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+            style={{ flex: 2, padding: '12px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
           >
             Ergebnisse anzeigen
           </button>
@@ -262,7 +262,7 @@ function ListingCard({ card, index, linkParams }: { card: CardData; index: numbe
         {card.issues.length > 0 && (
           <div style={{ display: 'flex', gap: '4px', marginTop: '7px', flexWrap: 'wrap' }}>
             {card.issues.map((issue) => (
-              <span key={issue} style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '999px', backgroundColor: '#FEF9EC', color: '#8A6A10', border: '1px solid #F0E0A0' }}>
+              <span key={issue} style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '999px', backgroundColor: '#FEF9EC', color: 'var(--gold-dark)', border: '1px solid #F0E0A0' }}>
                 {issue}
               </span>
             ))}
@@ -363,7 +363,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       gap: '10px',
     }}>
       <h1 style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
-        {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: '#A8882A' }}>„{searchQuery}"</span></> : ''}
+        {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: 'var(--gold)' }}>„{searchQuery}"</span></> : ''}
         {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
