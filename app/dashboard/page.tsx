@@ -15,16 +15,9 @@ export default async function DashboardPage() {
 
   const isHost = user.user_metadata?.role === 'host'
 
-  // Load platform settings (markup)
-  const { data: platformSettings } = await supabase
-    .from('platform_settings')
-    .select('platform_markup_pct')
-    .eq('id', 1)
-    .maybeSingle()
-
   const { data: profile } = await supabase
     .from('profiles')
-    .select('allow_instant_booking, allow_requests, min_request_nights, smoobu_api_key, smoobu_channel_id')
+    .select('allow_instant_booking, allow_requests, min_request_nights, smoobu_api_key, smoobu_channel_id, markup_pct')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -177,7 +170,7 @@ export default async function DashboardPage() {
           <SmoobuConnect
             currentApiKey={smoobuApiKey}
             currentChannelId={smoobuChannelId}
-            currentMarkup={platformSettings?.platform_markup_pct ?? 0}
+            currentMarkup={profile?.markup_pct ?? 0}
           />
         </section>
 
