@@ -276,9 +276,6 @@ function ListingCard({ card, index, linkParams }: { card: CardData; index: numbe
 
 /* ── Main component ── */
 export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout }: Props) {
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number } | null>(
-    centerLat && centerLon ? { lat: centerLat, lon: centerLon } : null
-  )
   const [filters, setFilters] = useState<FilterState>({ minBedrooms: null, minGuests: null, maxPrice: null })
   const [showFilter, setShowFilter] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -301,10 +298,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const handleCenterChange = useCallback((lat: number, lon: number) => {
-    setMapCenter({ lat, lon })
-  }, [])
-
   // 1. Apply filters
   const filtered = useMemo(() => {
     return cards.filter(c => {
@@ -316,10 +309,14 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   }, [cards, filters])
 
   // 2. Grouped sort: fully-matching results first, unavailable sinks within
-  //    each group, then by distance to the search center.
+  //    each group, then by distance to the SEARCH location. Distance uses the
+  //    same value shown on the card badge (distanceKm, relative to the search
+  //    location) — deliberately not the live map center, which drifts to the
+  //    marker centroid on fitBounds and would desync sort order from the badges.
   const sorted = useMemo(() => {
     const dist = (c: CardData) =>
-      mapCenter ? haversineKm(mapCenter.lat, mapCenter.lon, c.lat, c.lon) : (c.distanceKm ?? 0)
+      c.distanceKm ??
+      (centerLat != null && centerLon != null ? haversineKm(centerLat, centerLon, c.lat, c.lon) : 0)
     return [...filtered].sort((a, b) => {
       const am = a.matched !== false
       const bm = b.matched !== false
@@ -327,7 +324,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       if (!!a.unavailable !== !!b.unavailable) return a.unavailable ? 1 : -1  // available first
       return dist(a) - dist(b)                                // then by distance
     })
-  }, [filtered, mapCenter])
+  }, [filtered, centerLat, centerLon])
 
   // Index where the "matched" group ends and the "close by" group starts —
   // used to render a divider. Only meaningful when both groups are non-empty.
@@ -467,7 +464,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                   listings={mapListings}
                   centerLat={centerLat}
                   centerLon={centerLon}
-                  onCenterChange={handleCenterChange}
                 />
               </div>
               <button
@@ -560,7 +556,6 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
             listings={mapListings}
             centerLat={centerLat}
             centerLon={centerLon}
-            onCenterChange={handleCenterChange}
           />
         </div>
       </div>
