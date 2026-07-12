@@ -35,7 +35,7 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
     return (
       <div onClick={() => onChange(!value)} style={{
         width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
-        background: value ? '#A8882A' : '#D1D1D6',
+        background: value ? 'var(--gold)' : '#D1D1D6',
         position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
       }}>
         <div style={{
@@ -104,7 +104,7 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
         disabled={saving}
         style={{
           marginTop: '16px', width: '100%', padding: '12px', borderRadius: '12px', border: 'none',
-          background: saved ? '#16A34A' : 'linear-gradient(135deg, #C4A235, #8A6818)',
+          background: saved ? '#16A34A' : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
           color: '#fff', fontSize: '13px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
         }}
       >
