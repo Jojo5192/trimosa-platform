@@ -102,7 +102,7 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
               <button key={opt.value} type="button" onClick={() => setAccountType(opt.value)}
                 style={{
                   padding: '10px 14px', borderRadius: '12px', textAlign: 'left', cursor: 'pointer',
-                  border: accountType === opt.value ? '2px solid #C4A235' : '1.5px solid #E0DDD6',
+                  border: accountType === opt.value ? '2px solid var(--gold)' : '1.5px solid #E0DDD6',
                   backgroundColor: accountType === opt.value ? '#FAF5E4' : '#fff',
                   display: 'flex', alignItems: 'center', gap: '8px',
                 }}>
@@ -123,13 +123,13 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>
-              Vorname <span style={{ color: '#C4A235' }}>*</span>
+              Vorname <span style={{ color: 'var(--gold)' }}>*</span>
             </label>
             <input style={inp} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" autoFocus />
           </div>
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>
-              Nachname <span style={{ color: '#C4A235' }}>*</span>
+              Nachname <span style={{ color: 'var(--gold)' }}>*</span>
             </label>
             <input style={inp} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Mustermann" />
           </div>
@@ -138,7 +138,7 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
         {/* Street */}
         <div style={{ marginBottom: '12px' }}>
           <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>
-            Straße und Hausnummer <span style={{ color: '#C4A235' }}>*</span>
+            Straße und Hausnummer <span style={{ color: 'var(--gold)' }}>*</span>
           </label>
           <input style={inp} value={street} onChange={e => setStreet(e.target.value)} placeholder="Musterstraße 1" />
         </div>
@@ -147,13 +147,13 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
         <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px', marginBottom: '12px' }}>
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>
-              PLZ <span style={{ color: '#C4A235' }}>*</span>
+              PLZ <span style={{ color: 'var(--gold)' }}>*</span>
             </label>
             <input style={inp} value={zip} onChange={e => setZip(e.target.value)} placeholder="10115" />
           </div>
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>
-              Stadt <span style={{ color: '#C4A235' }}>*</span>
+              Stadt <span style={{ color: 'var(--gold)' }}>*</span>
             </label>
             <input style={inp} value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />
           </div>
@@ -192,7 +192,7 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
           disabled={saving || !canSave}
           style={{
             width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-            background: canSave ? 'linear-gradient(135deg, #C4A235, #8A6818)' : '#D2D2D7',
+            background: canSave ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#D2D2D7',
             color: '#fff', fontSize: '15px', fontWeight: 700,
             cursor: saving || !canSave ? 'not-allowed' : 'pointer',
             boxShadow: canSave ? '0 4px 20px rgba(168,136,42,0.35)' : 'none',
