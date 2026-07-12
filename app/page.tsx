@@ -162,7 +162,9 @@ export default async function Home({
   const { data: allListings } = await supabaseAdmin.from('listings').select('*').eq('is_active', true).order('created_at', { ascending: false })
   const filtered = allListings ?? []
 
-  const hasSearch = !!(q || guestsNum)
+  // A search is active with a location, a guest count, OR just dates — a
+  // date-only search should open the results + map view too.
+  const hasSearch = !!(q || guestsNum || (checkin && checkout))
   // Map view can also be opened straight from the homepage (?view=map) without
   // any active filter — then we show all active listings on the map.
   const showResults = hasSearch || view === 'map'
