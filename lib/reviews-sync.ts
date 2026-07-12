@@ -95,18 +95,16 @@ function dateFromStayedText(t: unknown): string | null {
 }
 
 /**
- * Cleans a stored source URL for the scraper: ensures a protocol, and maps
- * Fewo-Direkt property URLs to their vrbo.com equivalent (Fewo-Direkt is
- * Vrbo's German storefront; the scraper only accepts vrbo.com).
+ * Cleans a stored source URL for the scraper: ensures a protocol and strips
+ * tracking query params for vrbo/fewo-direkt. Fewo-Direkt URLs are passed
+ * as-is (canonical, without query): the property IDs do NOT resolve on
+ * vrbo.com (tested: redirects to the homepage), but both storefronts share
+ * the same Expedia page structure, so the scraper may parse them directly.
  */
 function normalizeSourceUrl(source: string, raw: string): string {
   let url = raw.trim()
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
-  if (source === 'vrbo') {
-    const fewo = url.match(/fewo-direkt\.de\/[^?]*\/p(\d+)/i)
-    if (fewo) return `https://www.vrbo.com/${fewo[1]}`
-    return url.split('?')[0]
-  }
+  if (source === 'vrbo') return url.split('?')[0]
   return url
 }
 
