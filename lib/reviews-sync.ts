@@ -154,6 +154,100 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
   return Array.isArray(data) ? data : []
 }
 
+/**
+ * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists and the
+ * vrbo.com actors can't parse it, so we run Apify's generic web-scraper with
+ * our own in-browser extraction function. It opens the reviews dialog and
+ * parses the review blocks (structure verified against the live page).
+ * Emitted items go through the same normalizeScraperItem as everything else
+ * (author / rating on the 10-scale / reviewText / reviewDate).
+ */
+const FEWO_PAGE_FUNCTION = `async function pageFunction(context) {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await wait(4500);
+
+  // Dismiss a cookie/consent banner if present
+  const consent = [...document.querySelectorAll('button')].find((b) => /akzeptieren|accept/i.test(b.textContent));
+  if (consent) { consent.click(); await wait(1200); }
+
+  // Open the reviews dialog ("Alle N Bewertungen anzeigen")
+  const openBtn = [...document.querySelectorAll('button, a')].find((b) => /Bewertung(en)? anzeigen/.test(b.textContent));
+  if (!openBtn) return [];
+  openBtn.click();
+  await wait(4000);
+
+  const dialog = document.querySelector('[role="dialog"]');
+  if (!dialog) return [];
+
+  // Scroll the dialog to load lazy reviews
+  const scroller = [...dialog.querySelectorAll('*')].find((el) => el.scrollHeight > el.clientHeight + 50) || dialog;
+  for (let i = 0; i < 8; i++) { scroller.scrollTop = scroller.scrollHeight; await wait(1000); }
+
+  const MONTHS = { januar: 1, februar: 2, 'märz': 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
+  const SKIP = /^(Mehr anzeigen|Verifizierte Bewertung|Mit Google übersetzen|Gut: )/;
+
+  const parts = dialog.innerText.split(/\\n(?=\\d+\\/10 – )/);
+  const out = [];
+  for (const part of parts) {
+    const head = part.match(/^(\\d+)\\/10 – /);
+    if (!head) continue;
+    const lines = part.split('\\n').map((l) => l.trim()).filter(Boolean);
+
+    const stayIdx = lines.findIndex((l) => /^Aufenthalt von \\d+ (Nacht|Nächten) im /.test(l));
+    if (stayIdx === -1) continue;
+    const travelIdx = lines.findIndex((l, i) => i < stayIdx && /gereist$/.test(l));
+    const authorIdx = travelIdx > 0 ? travelIdx - 1 : stayIdx - 1;
+    const author = authorIdx >= 1 ? lines[authorIdx] : 'Gast';
+
+    const textLines = lines.slice(1, Math.max(1, authorIdx)).filter((l) => !SKIP.test(l));
+
+    let reviewDate = null;
+    const stay = lines[stayIdx].match(/im ([A-Za-zäöüÄÖÜ]+) (\\d{4})/);
+    if (stay) {
+      const mon = MONTHS[stay[1].toLowerCase()];
+      if (mon) reviewDate = stay[2] + '-' + String(mon).padStart(2, '0') + '-01';
+    }
+
+    out.push({
+      author,
+      rating: parseInt(head[1], 10),
+      reviewText: textLines.join('\\n') || null,
+      reviewDate,
+    });
+  }
+  return out;
+}`
+
+async function runFewoWebScraper(url: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) throw new Error('APIFY_API_TOKEN fehlt')
+
+  const input = {
+    startUrls: [{ url }],
+    pageFunction: FEWO_PAGE_FUNCTION,
+    injectJQuery: false,
+    maxPagesPerCrawl: 1,
+    // Expedia storefronts block datacenter IPs — use residential proxies.
+    proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
+  }
+
+  const res = await fetch(
+    `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(timeoutMs + 15_000),
+    },
+  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Apify web-scraper (fewo) → HTTP ${res.status}: ${text.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  return Array.isArray(data) ? data : []
+}
+
 /** Maps one raw scraper item to our review shape (tolerant across actors). */
 function normalizeScraperItem(item: Record<string, unknown>, source: string): NormalizedReview | null {
   const rating = normalizeRating(pick(item, 'rating', 'stars', 'score', 'reviewScore', 'overallRating', 'rating.value'))
@@ -312,7 +406,10 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     if (!url) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'keine URL hinterlegt' }
     if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt' }
     try {
-      const items = await runApifyActor(APIFY_ACTORS[source], normalizeSourceUrl(source, url), 150_000)
+      const cleanUrl = normalizeSourceUrl(source, url)
+      const items = source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)
+        ? await runFewoWebScraper(cleanUrl, 150_000)
+        : await runApifyActor(APIFY_ACTORS[source], cleanUrl, 150_000)
       const normalized = items
         .map(i => normalizeScraperItem(i, source))
         .filter((r): r is NormalizedReview => r !== null)
