@@ -334,9 +334,16 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       const bm = b.matched !== false
       if (am !== bm) return am ? -1 : 1                       // matched first
       if (!!a.unavailable !== !!b.unavailable) return a.unavailable ? 1 : -1  // available first
+      // Among non-matching results, surface the closest-fitting capacity first
+      // (searching 8 guests → a 6-guest place before a 2-guest one).
+      if (!am && searchGuests) {
+        const ca = Math.abs(a.maxGuests - searchGuests)
+        const cb = Math.abs(b.maxGuests - searchGuests)
+        if (ca !== cb) return ca - cb
+      }
       return dist(a) - dist(b)                                // then by distance
     })
-  }, [filtered, centerLat, centerLon])
+  }, [filtered, centerLat, centerLon, searchGuests])
 
   // Index where the "matched" group ends and the "close by" group starts —
   // used to render a divider. Only meaningful when both groups are non-empty.
@@ -355,6 +362,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     image: c.image || undefined,
     location: c.location || undefined,
     maxGuests: c.maxGuests || undefined,
+    matched: c.matched,
   }))
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
