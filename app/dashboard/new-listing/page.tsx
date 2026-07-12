@@ -58,13 +58,13 @@ export default function NewListingPage() {
         <Link href="/" className="h-8">
           <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} className="h-8 w-auto object-contain" />
         </Link>
-        <Link href="/dashboard" className="text-sm font-medium hover:underline" style={{ color: '#B0912B' }}>
+        <Link href="/dashboard" className="text-sm font-medium hover:underline" style={{ color: 'var(--gold)' }}>
           ← Dashboard
         </Link>
       </nav>
 
       <div className="max-w-2xl mx-auto px-8 py-12">
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#B0912B' }}>Gastgeber</p>
+        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--gold)' }}>Gastgeber</p>
         <h1 className="text-3xl font-bold tracking-tight mb-2" style={{ color: '#1D1D1F' }}>Neues Inserat</h1>
         <p className="mb-8" style={{ color: '#6E6E73' }}>Füge deine Unterkunft der TRIMOSA Plattform hinzu.</p>
 
@@ -179,7 +179,7 @@ export default function NewListingPage() {
               type="submit"
               disabled={loading}
               className="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #B0912B, #8A7020)' }}
+              style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}
             >
               {loading ? 'Wird erstellt…' : 'Inserat erstellen'}
             </button>
