@@ -215,7 +215,7 @@ export default function SearchBar({ initialQ = '', initialGuests = '', initialCh
             color: '#fff',
             border: 'none',
             cursor: 'pointer',
-            background: 'linear-gradient(135deg, #C4A235 0%, #B0912B 50%, #8A7020 100%)',
+            background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold) 50%, var(--gold-dark) 100%)',
             boxShadow: '0 2px 8px rgba(176, 145, 43, 0.35)',
             transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
