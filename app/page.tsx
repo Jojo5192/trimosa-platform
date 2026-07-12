@@ -10,7 +10,7 @@ import { getMarkupMultiplier } from '@/lib/pricing'
 const CARD_GRADIENTS = [
   { from: '#D6EAE8', to: '#4A8F96', accent: '#2E7A82' },   // still teal
   { from: '#DCEADC', to: '#567A5C', accent: '#3E6344' },   // sage
-  { from: '#EDE5D0', to: '#A8882A', accent: '#8A6E1A' },   // warm gold
+  { from: '#EDE5D0', to: 'var(--gold)', accent: 'var(--gold-dark)' },   // warm gold
   { from: '#E4DFF0', to: '#7A6EA0', accent: '#5E537E' },   // muted lavender
   { from: '#EDE1D8', to: '#A8705A', accent: '#8A5A44' },   // terracotta
   { from: '#D8E8F0', to: '#4A7EA8', accent: '#326080' },   // steel blue
@@ -285,7 +285,7 @@ export default async function Home({
                       <Link key={f.label} href={href} style={{
                         padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
                         textDecoration: 'none', whiteSpace: 'nowrap',
-                        ...(isActive ? { backgroundColor: '#A8882A', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
+                        ...(isActive ? { backgroundColor: 'var(--gold)', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
                       }}>{f.label}</Link>
                     )
                   })}
@@ -304,7 +304,7 @@ export default async function Home({
                       <Link key={f.label} href={href} style={{
                         padding: '5px 13px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
                         textDecoration: 'none', whiteSpace: 'nowrap',
-                        ...(isActive ? { backgroundColor: '#A8882A', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
+                        ...(isActive ? { backgroundColor: 'var(--gold)', color: '#fff' } : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
                       }}>{f.label}</Link>
                     )
                   })}
@@ -316,7 +316,7 @@ export default async function Home({
           {/* ── Homepage Listings Grid ── */}
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(14px, 3vw, 24px) clamp(12px, 4vw, 20px) 80px' }}>
             <h1 style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 14px', lineHeight: 1.25 }}>
-              Finde dein <span style={{ background: 'linear-gradient(135deg, #A8882A, #C4A235)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Premium-Apartment</span> für die perfekte Auszeit.
+              Finde dein <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Premium-Apartment</span> für die perfekte Auszeit.
             </h1>
             <div className="homepage-grid">
               {cardData.map((card, index) => {
@@ -374,7 +374,7 @@ export default async function Home({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {[
               { n: '01', title: 'Entdecken', desc: 'Stöbere durch handverlesene Premium-Apartments in den schönsten Regionen.', accent: '#0C9AAB' },
-              { n: '02', title: 'Buchen', desc: 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.', accent: '#A8882A' },
+              { n: '02', title: 'Buchen', desc: 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.', accent: 'var(--gold)' },
               { n: '03', title: 'Ankommen', desc: 'Schlüssel rein, Koffer ab — und einfach da sein. Kein Schnickschnack, kein Stress.', accent: '#4A8A60' },
             ].map((item) => (
               <div key={item.n} style={{ padding: '24px', borderRadius: '16px', border: '1px solid #EEEBE4', backgroundColor: '#FAFAF8' }}>
@@ -396,7 +396,7 @@ export default async function Home({
           background: 'linear-gradient(135deg, #1A1814 0%, #2C2820 100%)',
           padding: '52px 40px', textAlign: 'center',
         }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.12em', marginBottom: '12px' }}>FÜR GASTGEBER</p>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', marginBottom: '12px' }}>FÜR GASTGEBER</p>
           <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 12px' }}>
             Deine Unterkunft. Direkt gebucht.
           </h2>
@@ -406,7 +406,7 @@ export default async function Home({
           <Link href="/register" style={{
             display: 'inline-block', fontSize: '13px', fontWeight: 600,
             padding: '12px 28px', borderRadius: '999px', color: '#1A1814',
-            background: 'linear-gradient(135deg, #C4A235, #A8882A)',
+            background: 'linear-gradient(135deg, var(--gold), var(--gold))',
             textDecoration: 'none', letterSpacing: '0.01em',
           }}>
             Jetzt kostenlos starten →
