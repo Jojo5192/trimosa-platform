@@ -177,11 +177,22 @@ export async function createListing(formData: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Nicht eingeloggt')
 
+  // Take the host's default booking settings as the starting point for the
+  // new listing; they can be overridden per listing in the editor afterwards.
+  const { data: hostDefaults } = await supabaseAdmin
+    .from('profiles')
+    .select('allow_instant_booking, allow_requests, min_request_nights')
+    .eq('id', user.id)
+    .maybeSingle()
+
   const { error } = await supabase.from('listings').insert({
     ...formData,
     host_id: user.id,
     is_active: true,
     images: [],
+    allow_instant_booking: hostDefaults?.allow_instant_booking ?? true,
+    allow_requests: hostDefaults?.allow_requests ?? true,
+    min_request_nights: hostDefaults?.min_request_nights ?? 1,
   })
 
   if (error) throw new Error(error.message)
