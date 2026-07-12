@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import RoomEditor, { type Room } from './RoomEditor'
+import LocationPicker from '@/components/LocationPicker'
 
 const AMENITY_CATEGORIES = [
   {
@@ -164,6 +165,8 @@ interface Listing {
   location: string
   address?: string
   city?: string
+  latitude?: number
+  longitude?: number
   price_per_night: number
   max_guests: number
   bedrooms: number
@@ -263,6 +266,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [location, setLocation] = useState(listing.location ?? '')
   const [address, setAddress] = useState(listing.address ?? '')
   const [city, setCity] = useState(listing.city ?? '')
+  const [lat, setLat] = useState<number | null>(listing.latitude ?? null)
+  const [lon, setLon] = useState<number | null>(listing.longitude ?? null)
   const [maxGuests, setMaxGuests] = useState(listing.max_guests ?? 2)
   const [bedrooms, setBedrooms] = useState(listing.bedrooms ?? 1)
   const [bathrooms, setBathrooms] = useState(listing.bathrooms ?? 1)
@@ -422,6 +427,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           location,
           address,
           city,
+          latitude: lat,
+          longitude: lon,
           max_guests: maxGuests,
           bedrooms,
           bathrooms,
@@ -614,6 +621,16 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
         <Field label="Ort (wird auf Detailseite angezeigt)">
           <input style={inputStyle} value={city} onChange={e => setCity(e.target.value)} placeholder="z.B. Schliersee" />
         </Field>
+      </Section>
+
+      {/* ── Standort auf der Karte ── */}
+      <Section title="Standort auf der Karte">
+        <LocationPicker
+          lat={lat}
+          lon={lon}
+          address={[address, city, location].filter(Boolean).join(', ')}
+          onChange={(la, lo) => { setLat(la); setLon(lo) }}
+        />
       </Section>
 
       {/* ── Kapazität ── */}
