@@ -29,26 +29,20 @@ export async function POST(request: Request) {
 
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('id, title, smoobu_id, price_per_night, host_id')
+    .select('id, title, smoobu_id, price_per_night, host_id, allow_instant_booking, allow_requests, min_request_nights')
     .eq('id', listingId)
     .single()
   if (!listing) return NextResponse.json({ error: 'Unterkunft nicht gefunden' }, { status: 404 })
 
-  // Check host booking settings
-  const { data: hostProfile } = await supabaseAdmin
-    .from('profiles')
-    .select('allow_instant_booking, allow_requests, min_request_nights')
-    .eq('id', listing.host_id)
-    .single()
-
-  if (booking_type === 'instant' && hostProfile?.allow_instant_booking === false)
+  // Booking settings live on the listing (per-listing, not per-host)
+  if (booking_type === 'instant' && listing.allow_instant_booking === false)
     return NextResponse.json({ error: 'Sofortbuchung ist für diese Unterkunft nicht verfügbar.' }, { status: 403 })
-  if (booking_type === 'request' && hostProfile?.allow_requests === false)
+  if (booking_type === 'request' && listing.allow_requests === false)
     return NextResponse.json({ error: 'Anfragen sind für diese Unterkunft deaktiviert.' }, { status: 403 })
 
   const nights = Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
   if (booking_type === 'request') {
-    const minNights = hostProfile?.min_request_nights ?? 1
+    const minNights = listing.min_request_nights ?? 1
     if (nights < minNights)
       return NextResponse.json({ error: `Anfragen erst ab ${minNights} Nächten möglich.` }, { status: 400 })
   }
