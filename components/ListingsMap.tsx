@@ -216,17 +216,23 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         })
       }
 
-      // Fit bounds — center point + closest ~5 listings
-      const closestListings = listings.slice(0, Math.min(5, listings.length))
-      const boundsPoints: [number, number][] = closestListings.map((l: MapListing) => [l.lat, l.lon])
-      // Always include the search center so map is anchored to what the user typed
-      if (centerLat && centerLon) boundsPoints.push([centerLat, centerLon])
+      // Fit bounds to the results that MATCH the search, so a "Bitburg" search
+      // zooms to Bitburg instead of out to far-away "nearby" suggestions. Fall
+      // back to all results when nothing fully matches (or on the unfiltered
+      // map view, where everything is "matched").
+      const matched = listings.filter((l: MapListing) => l.matched !== false)
+      const focusListings = matched.length > 0 ? matched : listings
+      const boundsPoints: [number, number][] = focusListings.map((l: MapListing) => [l.lat, l.lon])
+      // Anchor to the typed location only when something actually matches it;
+      // otherwise (e.g. a search far from any listing) its centroid would widen
+      // the view back out.
+      if (centerLat && centerLon && matched.length > 0) boundsPoints.push([centerLat, centerLon])
 
       if (boundsPoints.length > 1) {
         const bounds = L.latLngBounds(boundsPoints)
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 11 })
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 })
       } else if (boundsPoints.length === 1) {
-        map.setView(boundsPoints[0], 11)
+        map.setView(boundsPoints[0], 13)
       }
 
       // Inject popup + zoom control styles once
