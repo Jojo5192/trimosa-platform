@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   // Look up smoobu_id for this listing
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('smoobu_id')
+    .select('smoobu_id, host_id')
     .eq('id', listingId)
     .single()
 
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Keine Smoobu-ID für diese Unterkunft' }, { status: 404 })
   }
 
-  const markup = await getMarkupMultiplier()
+  const markup = await getMarkupMultiplier(listing.host_id)
   const rawRates = await getApartmentRates(listing.smoobu_id, from, to)
 
   // Apply platform markup to all prices
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('smoobu_id, price_per_night')
+    .select('smoobu_id, price_per_night, host_id')
     .eq('id', listingId)
     .single()
 
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     })
   }
 
-  const markup = await getMarkupMultiplier()
+  const markup = await getMarkupMultiplier(listing.host_id)
   const result = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
   const totalPrice = Math.round(result.totalPrice * markup)
   return NextResponse.json({ ...result, totalPrice, source: 'smoobu', markupPct: (markup - 1) * 100 })
