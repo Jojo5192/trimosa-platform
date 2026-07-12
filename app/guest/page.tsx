@@ -50,7 +50,7 @@ export default async function GuestPage() {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={firstImage} alt="" style={{ width: '120px', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
-          <div style={{ width: '120px', flexShrink: 0, background: 'linear-gradient(135deg, #C4A235 0%, #8A6818 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
+          <div style={{ width: '120px', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
         )}
         <div style={{ flex: 1, padding: '16px 20px', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
@@ -66,7 +66,7 @@ export default async function GuestPage() {
             {formatDate(booking.check_in as string)} – {formatDate(booking.check_out as string)}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
-            <span style={{ fontSize: '11px', color: '#A8882A', fontWeight: 600 }}>
+            <span style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: 600 }}>
               Details &amp; Stornierung →
             </span>
             {tripStatus(booking.check_in as string, booking.check_out as string) === 'past' && (booking.status === 'confirmed' || booking.status === 'completed') && (
@@ -108,7 +108,7 @@ export default async function GuestPage() {
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '32px 20px 80px' }}>
       {/* Header */}
       <div style={{ marginBottom: '28px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Bereich</p>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Bereich</p>
         <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111', margin: 0 }}>
           Hallo, {user.user_metadata?.name?.split(' ')[0] || 'dort'}! 👋
         </h1>
@@ -119,7 +119,7 @@ export default async function GuestPage() {
       {bookings && bookings.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '28px' }}>
           {[
-            { value: upcoming.length,  label: 'Bevorstehend',   accent: '#B0912B', bg: '#FAF5E4' },
+            { value: upcoming.length,  label: 'Bevorstehend',   accent: 'var(--gold)', bg: '#FAF5E4' },
             { value: current.length,   label: 'Aktuelle Reise', accent: '#16A34A', bg: '#F0FDF4' },
             { value: past.length,      label: 'Vergangen',      accent: '#6E6E73', bg: '#F9F9F9' },
           ].map(s => (
@@ -138,7 +138,7 @@ export default async function GuestPage() {
       {bookings?.length === 0 && (
         <div style={{ textAlign: 'center', marginTop: '20px' }}>
           <Link href="/"
-            style={{ display: 'inline-block', padding: '14px 32px', borderRadius: '999px', background: 'linear-gradient(135deg, #C4A235, #8A6818)', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', boxShadow: '0 4px 20px rgba(168,136,42,0.3)' }}>
+            style={{ display: 'inline-block', padding: '14px 32px', borderRadius: '999px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', boxShadow: '0 4px 20px rgba(168,136,42,0.3)' }}>
             Unterkunft suchen →
           </Link>
         </div>
