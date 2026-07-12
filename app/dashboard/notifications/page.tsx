@@ -22,7 +22,7 @@ export default async function NotificationsPage() {
       <DashboardNav />
 
       <div style={{ maxWidth: '680px', margin: '0 auto', padding: '32px 20px 80px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>
           Einstellungen
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px' }}>Benachrichtigungen</h1>
