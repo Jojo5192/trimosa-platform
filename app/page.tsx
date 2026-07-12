@@ -401,33 +401,6 @@ export default async function Home({
             handverlesen und persönlich betreut von Johannes, Pascal und Dominik.
           </p>
 
-          {/* Vorteile: direkt buchen */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '30px' }}>
-            {[
-              { icon: '💶', title: 'Fairer Direktpreis', desc: 'Keine Portalgebühren wie bei Airbnb & Co.' },
-              { icon: '💬', title: 'Persönlicher Kontakt', desc: 'Direkter Draht statt Callcenter.' },
-              { icon: '📍', title: 'Lokale Gastgeber', desc: 'Vor Ort in der Region Trier / Eifel.' },
-            ].map((b) => (
-              <div key={b.title} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '14px', padding: '18px 16px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div style={{ fontSize: '22px', marginBottom: '8px' }}>{b.icon}</div>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: '#F5F0E8', margin: '0 0 4px' }}>{b.title}</p>
-                <p style={{ fontSize: '12px', color: 'rgba(245,240,232,0.5)', margin: 0, lineHeight: 1.45 }}>{b.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Regionen */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '9px', marginBottom: '28px' }}>
-            <span style={{ fontSize: '12px', color: 'rgba(245,240,232,0.45)', fontWeight: 600 }}>Regionen:</span>
-            {['Trier', 'Bitburg', 'Südeifel'].map((r) => (
-              <Link key={r} href={`/?q=${encodeURIComponent(r)}`} style={{
-                fontSize: '12.5px', fontWeight: 600, color: '#F5F0E8', textDecoration: 'none',
-                padding: '6px 14px', borderRadius: '999px', border: '1px solid rgba(174,141,45,0.5)',
-                background: 'rgba(174,141,45,0.14)',
-              }}>{r}</Link>
-            ))}
-          </div>
-
           {/* CTAs */}
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px' }}>
             <Link href="/?view=map" style={{
