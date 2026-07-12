@@ -49,7 +49,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
 
         {/* Header */}
         <div style={{ marginBottom: '24px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
             {isHost ? 'Eingehende Buchungsanfrage' : 'Deine Buchungsanfrage'}
           </p>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px', letterSpacing: '-0.3px' }}>
