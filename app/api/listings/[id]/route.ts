@@ -29,6 +29,7 @@ export async function PATCH(
 
   const allowed = [
     'title', 'description', 'location', 'address', 'city',
+    'latitude', 'longitude',
     'max_guests', 'bedrooms', 'bathrooms',
     'amenities', 'rooms',
     'house_rules', 'house_rules_details', 'checkin_instructions', 'important_notes',
