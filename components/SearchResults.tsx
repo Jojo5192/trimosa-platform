@@ -34,6 +34,7 @@ export interface CardData {
   lon: number
   image?: string   // first photo if uploaded
   unavailable?: boolean  // true if not available for selected dates
+  flexNote?: string   // nearby free window (flexible dates), e.g. "12. – 16. Aug."
 }
 
 interface FilterState {
@@ -270,6 +271,13 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
         <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
           {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
         </p>
+        {card.flexNote && (
+          <div style={{ marginTop: '7px' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '3px 8px', borderRadius: '999px', backgroundColor: '#EAF3EC', color: '#2D6A1E', border: '1px solid #CDE6D2' }}>
+              📅 Frei: {card.flexNote}
+            </span>
+          </div>
+        )}
         {card.issues.length > 0 && (
           <div style={{ display: 'flex', gap: '4px', marginTop: '7px', flexWrap: 'wrap' }}>
             {card.issues.map((issue) => (
@@ -363,6 +371,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     location: c.location || undefined,
     maxGuests: c.maxGuests || undefined,
     matched: c.matched,
+    flexNote: c.flexNote,
   }))
 
   const activeFilterCount = [filters.minBedrooms, filters.minGuests, filters.maxPrice].filter(v => v !== null).length
