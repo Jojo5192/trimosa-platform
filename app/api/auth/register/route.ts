@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 /**
  * POST /api/auth/register
@@ -8,12 +9,17 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
  * E-Mail-Bestätigung wird übersprungen damit der User sofort eingeloggt werden kann.
  */
 export async function POST(request: Request) {
+  const ip = getClientIp(request)
+  const allowed = await checkRateLimit(`register:${ip}`, 5, 3600)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Zu viele Registrierungsversuche. Bitte später erneut versuchen.' }, { status: 429 })
+  }
+
   const body = await request.json()
 
   const {
     email,
     password,
-    role,            // 'guest' | 'host'
     accountType,     // 'person' | 'business'
     firstName,       // nur bei Privatperson
     lastName,        // nur bei Privatperson
@@ -27,8 +33,13 @@ export async function POST(request: Request) {
     phone,
   } = body
 
+  // Öffentliche Registrierung legt immer nur Gast-Konten an (Single-Host —
+  // TRIMOSA vergibt Gastgeber-Zugänge selbst). Wird serverseitig erzwungen,
+  // ein evtl. mitgeschicktes body.role wird ignoriert.
+  const role = 'guest'
+
   // Pflichtfelder prüfen
-  if (!email || !password || !role || !accountType) {
+  if (!email || !password || !accountType) {
     return NextResponse.json({ error: 'Pflichtfelder fehlen.' }, { status: 400 })
   }
   if (accountType === 'person' && (!firstName?.trim() || !lastName?.trim())) {
