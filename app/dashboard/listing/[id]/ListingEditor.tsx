@@ -313,7 +313,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [fetchingReviews, setFetchingReviews] = useState(false)
-  const [fetchResult, setFetchResult] = useState<{ results: { source: string; fetched: number; score?: number; count?: number; errors?: string }[] } | null>(null)
+  const [fetchResult, setFetchResult] = useState<{ results: { source: string; status?: string; fetched: number; upserted?: number; score?: number; count?: number; detail?: string }[] } | null>(null)
   const [showAddReview, setShowAddReview] = useState(false)
   const [showPasteImport, setShowPasteImport] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -951,7 +951,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                 setFetchingReviews(true)
                 setFetchResult(null)
                 try {
-                  const res = await fetch('/api/reviews/fetch', {
+                  const res = await fetch('/api/reviews/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ listingId: listing.id }),
@@ -963,7 +963,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
                   const revData = await revRes.json()
                   setReviews(revData.reviews ?? [])
                 } catch (e) {
-                  setFetchResult({ results: [{ source: 'system', fetched: 0, errors: String(e) }] })
+                  setFetchResult({ results: [{ source: 'system', status: 'error', fetched: 0, detail: String(e) }] })
                 } finally {
                   setFetchingReviews(false)
                 }
@@ -978,14 +978,15 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             <div style={{ marginBottom: '12px', padding: '12px 16px', borderRadius: '12px', background: '#FAFAF5', border: '1px solid #E8D9A0' }}>
               <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold-dark)', margin: '0 0 8px' }}>Ergebnis der Abfrage:</p>
               {fetchResult.results.map((r, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: r.errors ? '#DC2626' : '#16A34A' }}>
-                    {r.source}: {r.score !== undefined
-                      ? `★ ${r.score.toFixed(1)} (${r.count} Bewertungen)${r.fetched > 0 ? ` + ${r.fetched} importiert` : ''} ✓`
-                      : r.fetched > 0 ? `${r.fetched} Bewertungen importiert ✓`
-                      : r.errors ? `Fehler` : 'Keine neuen Bewertungen'}
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: r.status === 'error' ? '#DC2626' : r.status === 'skipped' ? '#999' : '#16A34A' }}>
+                    {r.source}: {r.status === 'error' ? 'Fehler'
+                      : r.status === 'skipped' ? 'übersprungen'
+                      : r.score !== undefined
+                        ? `★ ${Number(r.score).toFixed(1)} (${r.count} Bewertungen) · ${r.fetched} abgerufen ✓`
+                        : `${r.fetched} abgerufen ✓`}
                   </span>
-                  {r.errors && <span style={{ fontSize: '11px', color: '#999' }}>— {r.errors}</span>}
+                  {r.detail && <span style={{ fontSize: '11px', color: '#999' }}>— {r.detail}</span>}
                 </div>
               ))}
               <button type="button" onClick={() => setFetchResult(null)} style={{ marginTop: '6px', fontSize: '11px', color: '#999', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕ Schließen</button>
