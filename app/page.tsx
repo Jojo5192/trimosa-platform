@@ -4,6 +4,7 @@ import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
 import QuickFilters from '@/components/QuickFilters'
+import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
 
@@ -49,6 +50,22 @@ function getCoords(location: string): [number, number] {
     if (lower.includes(key)) return coords
   }
   return KNOWN_COORDS['default']
+}
+
+/* Weighted review rating from the synced per-platform score columns. */
+function buildCardRating(l: Record<string, unknown>) {
+  const platforms: { source: string; score: number; count: number }[] = []
+  for (const src of ['airbnb', 'booking', 'google', 'vrbo']) {
+    const score = l[`${src}_score`]
+    const count = l[`${src}_review_count`]
+    if (score != null && count != null && Number(count) > 0) {
+      platforms.push({ source: src, score: Math.round(Number(score) * 10) / 10, count: Number(count) })
+    }
+  }
+  if (platforms.length === 0) return undefined
+  const total = platforms.reduce((s, p) => s + p.score * p.count, 0)
+  const count = platforms.reduce((s, p) => s + p.count, 0)
+  return { overall: Math.round((total / count) * 100) / 100, count, platforms }
 }
 
 function formatShortRange(ci: string, co: string): string {
@@ -260,6 +277,7 @@ export default async function Home({
       lon: coords[1],
       unavailable,
       flexNote,
+      rating: buildCardRating(l),
       image: (() => {
         const flat = (l.images as string[] | null) ?? []
         if (flat[0]) return flat[0]
@@ -367,7 +385,9 @@ export default async function Home({
                           </div>
                         )}
                       </div>
-                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer</p>
+                      <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                        {card.rating && <><ScoreBadge rating={card.rating} /> ·</>} {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+                      </p>
                     </div>
                   </Link>
                 )
