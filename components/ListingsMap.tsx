@@ -110,7 +110,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
                 box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1.5px ${isRequest ? 'rgba(0,0,0,0.07)' : 'rgba(196,162,53,0.35)'};
                 letter-spacing: ${isRequest ? '0' : '-0.01em'};
               ">
-                ${isRequest ? priceLabel : `<span style="color:#B8921F;font-weight:800;margin-right:1px">€</span>${priceLabel.replace('€\u202F','')}`}
+                ${isRequest ? priceLabel : `<span style="color:var(--gold);font-weight:800;margin-right:1px">€</span>${priceLabel.replace('€\u202F','')}`}
               </div>
               <div style="
                 width: 0; height: 0;
@@ -129,9 +129,9 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
 
         const priceBlock = displayPrice > 0
           ? hasTotal
-            ? `<span style="font-size:15px;font-weight:800;color:#C4A235">€\u202F${displayPrice}</span>
+            ? `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
                <span style="font-size:11px;color:#888;margin-left:3px">gesamt · ${listing.nights} Nächte</span>`
-            : `<span style="font-size:15px;font-weight:800;color:#C4A235">€\u202F${displayPrice}</span>
+            : `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
                <span style="font-size:11px;color:#888;margin-left:3px">/Nacht</span>`
           : `<span style="font-size:12px;font-weight:500;color:#888">Preis auf Anfrage</span>`
 
@@ -145,7 +145,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
             <p style="font-size:13px;font-weight:600;color:#111;margin:0 0 6px;line-height:1.3">${listing.title}</p>
             <p style="margin:0 0 10px;line-height:1">${priceBlock}</p>
             <a href="/listing/${listing.id}"
-              style="display:inline-block;font-size:12px;font-weight:600;color:#1A1400;background:linear-gradient(135deg,#D4AF37,#A8882A);padding:6px 14px;border-radius:999px;text-decoration:none">
+              style="display:inline-block;font-size:12px;font-weight:600;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold));padding:6px 14px;border-radius:999px;text-decoration:none">
               Ansehen →
             </a>
           </div>
