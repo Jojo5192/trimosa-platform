@@ -56,9 +56,9 @@ export default function DashboardNav() {
                 padding: '12px 14px',
                 fontSize: '13px',
                 fontWeight: active ? 700 : 500,
-                color: active ? '#A8882A' : '#555',
+                color: active ? 'var(--gold)' : '#555',
                 textDecoration: 'none',
-                borderBottom: active ? '2px solid #A8882A' : '2px solid transparent',
+                borderBottom: active ? '2px solid var(--gold)' : '2px solid transparent',
                 whiteSpace: 'nowrap',
                 transition: 'color 0.15s',
               }}
