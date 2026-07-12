@@ -126,7 +126,7 @@ function CalendarMonth({
                 fontWeight: isSelected ? 700 : 400,
                 color: isPast ? '#CCC' : isSelected ? '#fff' : '#111',
                 background: isSelected
-                  ? 'linear-gradient(135deg, #C4A235, #A8882A)'
+                  ? 'linear-gradient(135deg, var(--gold), var(--gold))'
                   : inRange
                     ? 'rgba(196,162,53,0.12)'
                     : 'transparent',
@@ -242,7 +242,7 @@ function DatePickerPopover({
         <button
           type="button"
           onClick={onClose}
-          style={{ alignSelf: 'flex-end', marginTop: '4px', fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, #C4A235, #A8882A)', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer' }}
+          style={{ alignSelf: 'flex-end', marginTop: '4px', fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer' }}
         >
           Übernehmen
         </button>
@@ -315,7 +315,7 @@ function GuestPickerPopover({
       <button
         type="button"
         onClick={onClose}
-        style={{ display: 'block', width: '100%', marginTop: '16px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, #C4A235, #A8882A)', border: 'none', borderRadius: '999px', padding: '10px', cursor: 'pointer' }}
+        style={{ display: 'block', width: '100%', marginTop: '16px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '10px', cursor: 'pointer' }}
       >
         Fertig
       </button>
@@ -749,7 +749,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     color: '#fff',
                     border: 'none',
                     cursor: 'pointer',
-                    background: 'linear-gradient(135deg, #C4A235 0%, #9A7820 100%)',
+                    background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)',
                     boxShadow: '0 2px 10px rgba(164,130,40,0.4)',
                     transition: 'all 0.2s ease',
                     flexShrink: 0,
@@ -845,7 +845,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     {avatarUrl ? (
                       <Image src={avatarUrl} alt="" width={30} height={30} className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
-                      <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, #C4A235, #8A6818)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
+                      <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
                         {initials}
                       </div>
                     )}
@@ -939,7 +939,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   </Link>
                   <Link
                     href="/register"
-                    style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, #C4A235, #9A7820)', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
+                    style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
                   >
                     Registrieren
                   </Link>
@@ -1089,7 +1089,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     <button type="button" onClick={() => setMobileCalMonth(new Date(mobileCalMonth.getFullYear(), mobileCalMonth.getMonth() + 1, 1))} style={{ width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '8px' }}>
-                    <button type="button" onClick={() => setMobileDateOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#A8882A', fontWeight: 600, padding: 0 }}>Fertig</button>
+                    <button type="button" onClick={() => setMobileDateOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--gold)', fontWeight: 600, padding: 0 }}>Fertig</button>
                   </div>
                   {(() => {
                     const y0 = mobileCalMonth.getFullYear(), m0 = mobileCalMonth.getMonth()
@@ -1161,7 +1161,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 if (checkout) params.set('checkout', checkout)
                 router.push(params.toString() ? `/?${params}` : '/')
               }}
-              style={{ flex: 1, padding: '14px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, #C4A235, #9A7820)', color: '#fff', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              style={{ flex: 1, padding: '14px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '15px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -1186,7 +1186,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             width: '54px',
             height: '54px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #C4A235 0%, #8A6818 100%)',
+            background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)',
             color: '#fff',
             border: 'none',
             cursor: 'pointer',
