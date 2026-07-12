@@ -292,7 +292,7 @@ export default async function Home({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
       />
-      <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} />
+      <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} initialFlex={!!flex} />
 
       {showResults ? (
         /* ── Full-viewport split: listings + map ── */
