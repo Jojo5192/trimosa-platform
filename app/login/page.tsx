@@ -38,7 +38,7 @@ export default function LoginPage() {
 
       {/* Left: Decorative */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-16"
-        style={{ background: 'linear-gradient(145deg, #B0912B 0%, #8A7020 60%, #6B5618 100%)' }}>
+        style={{ background: 'linear-gradient(145deg, var(--gold) 0%, var(--gold-dark) 60%, var(--gold-dark) 100%)' }}>
         <div className="text-center">
           <Image src="/logo.png" alt="TRIMOSA" width={260} height={58}
             className="h-14 w-auto object-contain brightness-0 invert opacity-90 mb-8" />
@@ -107,7 +107,7 @@ export default function LoginPage() {
             disabled={loading || !email.trim() || !password}
             style={{
               width: '100%', padding: '14px', borderRadius: '12px', border: 'none',
-              background: 'linear-gradient(135deg, #B0912B, #8A7020)',
+              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
               color: '#fff', fontSize: '15px', fontWeight: 700,
               cursor: loading || !email.trim() || !password ? 'not-allowed' : 'pointer',
               opacity: !email.trim() || !password ? 0.5 : 1,
@@ -120,7 +120,7 @@ export default function LoginPage() {
 
           <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '24px' }}>
             Noch kein Konto?{' '}
-            <Link href="/register" style={{ color: '#B0912B', fontWeight: 700, textDecoration: 'none' }}>
+            <Link href="/register" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>
               Registrieren
             </Link>
           </p>
