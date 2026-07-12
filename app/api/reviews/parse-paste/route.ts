@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { createHash } from 'crypto'
 
 /**
  * POST /api/reviews/parse-paste
@@ -38,7 +39,11 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('reviews').upsert({
       listing_id: listingId,
       source: source || 'airbnb',
-      source_review_id: `${source}_paste_${review.author.replace(/\s+/g, '_')}_${i}_${Date.now()}`,
+      // Stable ID from content — re-pasting the same reviews updates instead
+      // of duplicating (the old Date.now() suffix created a new row each time).
+      source_review_id: `${source}_paste_${createHash('sha1')
+        .update(`${review.author}|${review.date}|${(review.text ?? '').slice(0, 80)}`)
+        .digest('hex').slice(0, 24)}`,
       author_name: review.author,
       rating: review.rating,
       review_text: review.text || null,
