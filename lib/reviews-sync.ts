@@ -80,8 +80,34 @@ function pick(obj: Record<string, unknown>, ...keys: string[]): unknown {
 function normalizeRating(raw: unknown): number | null {
   const n = parseFloat(String(raw))
   if (isNaN(n) || n <= 0) return null
-  const scaled = n > 5 ? n / 2 : n   // Booking uses a 1–10 scale
+  const scaled = n > 5 ? n / 2 : n   // Booking/Vrbo use a 1–10 scale
   return Math.min(5, Math.max(1, Math.round(scaled * 10) / 10))
+}
+
+/** Vrbo has no review date — approximate from "Stayed 4 nights in Sep 2025". */
+const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 }
+function dateFromStayedText(t: unknown): string | null {
+  const m = String(t ?? '').match(/in ([A-Za-z]{3})[a-z]*\.? (\d{4})/i)
+  if (!m) return null
+  const mon = MONTHS[m[1].toLowerCase()]
+  if (!mon) return null
+  return `${m[2]}-${String(mon).padStart(2, '0')}-01`
+}
+
+/**
+ * Cleans a stored source URL for the scraper: ensures a protocol, and maps
+ * Fewo-Direkt property URLs to their vrbo.com equivalent (Fewo-Direkt is
+ * Vrbo's German storefront; the scraper only accepts vrbo.com).
+ */
+function normalizeSourceUrl(source: string, raw: string): string {
+  let url = raw.trim()
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  if (source === 'vrbo') {
+    const fewo = url.match(/fewo-direkt\.de\/[^?]*\/p(\d+)/i)
+    if (fewo) return `https://www.vrbo.com/${fewo[1]}`
+    return url.split('?')[0]
+  }
+  return url
 }
 
 /* ── Apify ──────────────────────────────────────────────── */
@@ -104,7 +130,8 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
 
   const input = {
-    startUrls: [{ url }],
+    startUrls: [{ url }],   // airbnb (tri_angle), booking (voyager)
+    searchUrl: url,         // vrbo (powerai)
     propertyUrls: [url],
     url,
     maxReviews: MAX_REVIEWS_PER_RUN,
@@ -134,9 +161,14 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
   const rating = normalizeRating(pick(item, 'rating', 'stars', 'score', 'reviewScore', 'overallRating', 'rating.value'))
   if (rating === null) return null
 
-  const author = String(
-    pick(item, 'author.firstName', 'author.name', 'authorName', 'guestName', 'userName', 'name', 'reviewer', 'reviewerName', 'user.name') ?? 'Gast',
-  ).slice(0, 120)
+  // Author: nested first (airbnb: reviewer.firstName), bare objects last —
+  // with a guard so an unexpected object never renders as "[object Object]".
+  let authorRaw = pick(item, 'reviewer.firstName', 'author.firstName', 'author.name', 'reviewer.name', 'authorName', 'guestName', 'userName', 'reviewerName', 'user.name', 'name', 'author', 'reviewer')
+  if (authorRaw && typeof authorRaw === 'object') {
+    const o = authorRaw as Record<string, unknown>
+    authorRaw = o.firstName ?? o.name ?? o.displayName
+  }
+  const author = (typeof authorRaw === 'string' && authorRaw.trim() ? authorRaw.trim() : 'Gast').slice(0, 120)
 
   // Booking splits reviews into liked/disliked parts
   const liked = pick(item, 'likedText', 'reviewTextParts.Liked', 'positive')
@@ -148,10 +180,11 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
 
   const date =
     toIsoDate(pick(item, 'createdAt', 'created_at', 'date', 'reviewDate', 'publishedAt', 'postedAt', 'submissionTime', 'stayDate', 'localizedDate')) ??
+    dateFromStayedText(item.stayedText) ??
     new Date().toISOString().split('T')[0]
 
   const rawId = pick(item, 'id', 'reviewId', 'review_id', 'reviewUrl')
-  const avatar = pick(item, 'author.pictureUrl', 'author.avatar', 'avatar', 'profilePicture', 'userAvatar', 'authorAvatar')
+  const avatar = pick(item, 'reviewer.pictureUrl', 'author.pictureUrl', 'author.avatar', 'avatar', 'profilePicture', 'userAvatar', 'authorAvatar')
 
   return {
     source_review_id: rawId ? `${source}_${String(rawId)}` : `${source}_${stableId(author, date, String(text ?? '').slice(0, 80))}`,
@@ -248,7 +281,14 @@ async function refreshScoreFromRows(listingId: string, source: string): Promise<
     .select('rating')
     .eq('listing_id', listingId)
     .eq('source', source)
-  if (!data || data.length === 0) return null
+  if (!data || data.length === 0) {
+    // No rows (e.g. after deleting bad imports) → clear stale score columns
+    await supabaseAdmin
+      .from('listings')
+      .update({ [`${source}_score`]: null, [`${source}_review_count`]: 0 })
+      .eq('id', listingId)
+    return null
+  }
   const avg = data.reduce((s, r) => s + Number(r.rating), 0) / data.length
   const score = Math.round(avg * 100) / 100
   await supabaseAdmin
@@ -274,7 +314,7 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     if (!url) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'keine URL hinterlegt' }
     if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt' }
     try {
-      const items = await runApifyActor(APIFY_ACTORS[source], url, 150_000)
+      const items = await runApifyActor(APIFY_ACTORS[source], normalizeSourceUrl(source, url), 150_000)
       const normalized = items
         .map(i => normalizeScraperItem(i, source))
         .filter((r): r is NormalizedReview => r !== null)
