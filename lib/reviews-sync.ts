@@ -155,90 +155,63 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
 }
 
 /**
- * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists and the
- * vrbo.com actors can't parse it, so we run Apify's generic web-scraper with
- * our own in-browser extraction function. It opens the reviews dialog and
- * parses the review blocks (structure verified against the live page).
- * Emitted items go through the same normalizeScraperItem as everything else
- * (author / rating on the 10-scale / reviewText / reviewDate).
+ * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists, vrbo.com
+ * actors can't parse it, and Expedia's bot protection blocks headless
+ * browsers. But the reviews are SERVER-RENDERED into the initial HTML — so a
+ * plain HTML fetch via Apify's cheerio-scraper (browser-like TLS/headers +
+ * residential proxy, no browser fingerprint) plus regex parsing suffices.
+ * The page also carries the authoritative overall score ("9,6 von 10.") and
+ * verified review count, which we use for the listing columns directly.
  */
-const FEWO_PAGE_FUNCTION = `async function pageFunction(context) {
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  await wait(5000);
+const FEWO_CHEERIO_FUNCTION = `async function pageFunction(context) {
+  const html = context.body || '';
+  const debug = { __debug: true, len: html.length, title: (html.match(/<title>([^<]*)/) || [])[1] || '' };
 
-  // Diagnostics item — always emitted so failures are visible from outside
-  const debug = { __debug: true, t: (document.title || '').slice(0, 60), consent: false, btn: false, dlg: false, body: '' };
+  const meta = { __meta: true, score: null, count: null };
+  const s = html.match(/(\\d+(?:,\\d+)?) von 10\\./);
+  if (s) meta.score = parseFloat(s[1].replace(',', '.'));
+  const c = html.match(/aria-label="(\\d+) gepr\\u00fcfte Bewertung/);
+  if (c) meta.count = parseInt(c[1], 10);
 
-  // Dismiss a cookie/consent banner if present
-  const consent = [...document.querySelectorAll('button')].find((b) => /akzeptieren|accept/i.test(b.textContent));
-  if (consent) { debug.consent = true; consent.click(); await wait(1500); }
-
-  // Open the reviews dialog ("Alle N Bewertungen anzeigen")
-  const openBtn = [...document.querySelectorAll('button, a')].find((b) => /Bewertung(en)? anzeigen/.test(b.textContent));
-  debug.btn = !!openBtn;
-  if (!openBtn) { debug.body = document.body.innerText.slice(0, 150); return [debug]; }
-  openBtn.click();
-  await wait(4000);
-
-  const dialog = document.querySelector('[role="dialog"]');
-  debug.dlg = !!dialog;
-  if (!dialog) { debug.body = document.body.innerText.slice(0, 150); return [debug]; }
-
-  // Scroll the dialog to load lazy reviews
-  const scroller = [...dialog.querySelectorAll('*')].find((el) => el.scrollHeight > el.clientHeight + 50) || dialog;
-  for (let i = 0; i < 8; i++) { scroller.scrollTop = scroller.scrollHeight; await wait(1000); }
-
-  const MONTHS = { januar: 1, februar: 2, 'märz': 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
-  const SKIP = /^(Mehr anzeigen|Verifizierte Bewertung|Mit Google übersetzen|Gut: )/;
-
-  const parts = dialog.innerText.split(/\\n(?=\\d+\\/10 – )/);
+  const MONTHS = { januar: 1, februar: 2, m\u00e4rz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
   const out = [];
-  for (const part of parts) {
-    const head = part.match(/^(\\d+)\\/10 – /);
-    if (!head) continue;
-    const lines = part.split('\\n').map((l) => l.trim()).filter(Boolean);
-
-    const stayIdx = lines.findIndex((l) => /^Aufenthalt von \\d+ (Nacht|Nächten) im /.test(l));
-    if (stayIdx === -1) continue;
-    const travelIdx = lines.findIndex((l, i) => i < stayIdx && /gereist$/.test(l));
-    const authorIdx = travelIdx > 0 ? travelIdx - 1 : stayIdx - 1;
-    const author = authorIdx >= 1 ? lines[authorIdx] : 'Gast';
-
-    const textLines = lines.slice(1, Math.max(1, authorIdx)).filter((l) => !SKIP.test(l));
-
+  const chunks = html.split(/(?=<h3[^>]*>\\d+\\/10 \\u2013 )/).slice(1);
+  for (const chunk of chunks) {
+    const rating = parseInt((chunk.match(/^<h3[^>]*>(\\d+)\\/10 \\u2013 /) || [])[1], 10);
+    if (!rating) continue;
+    const author = (chunk.match(/uitk-text uitk-type-300 uitk-type-medium uitk-text-standard-theme">([^<]+)</) || [])[1];
+    const stay = chunk.match(/Aufenthalt von \\d+ (?:Nacht|N\\u00e4chten) im ([A-Za-z\\u00e4\\u00f6\\u00fc\\u00c4\\u00d6\\u00dc]+) (\\d{4})/);
     let reviewDate = null;
-    const stay = lines[stayIdx].match(/im ([A-Za-zäöüÄÖÜ]+) (\\d{4})/);
-    if (stay) {
-      const mon = MONTHS[stay[1].toLowerCase()];
-      if (mon) reviewDate = stay[2] + '-' + String(mon).padStart(2, '0') + '-01';
-    }
-
+    if (stay) { const m = MONTHS[stay[1].toLowerCase()]; if (m) reviewDate = stay[2] + '-' + String(m).padStart(2, '0') + '-01'; }
+    const text = (chunk.match(/<p class="uitk-paragraph uitk-paragraph-2">([\\s\\S]*?)<\\/p>/) || [])[1];
     out.push({
-      author,
-      rating: parseInt(head[1], 10),
-      reviewText: textLines.join('\\n') || null,
+      author: author || 'Gast',
+      rating,
+      reviewText: text ? text.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim() : null,
       reviewDate,
     });
   }
-  if (out.length === 0) debug.body = dialog.innerText.slice(0, 150);
-  return [debug, ...out];
+  if (out.length === 0) debug.snippet = html.slice(0, 200);
+  return [debug, meta, ...out];
 }`
 
-async function runFewoWebScraper(url: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
+async function runFewoScraper(url: string, timeoutMs: number): Promise<{
+  items: Record<string, unknown>[]
+  meta: { score: number | null; count: number | null } | null
+}> {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
 
   const input = {
     startUrls: [{ url }],
-    pageFunction: FEWO_PAGE_FUNCTION,
-    injectJQuery: false,
+    pageFunction: FEWO_CHEERIO_FUNCTION,
     maxPagesPerCrawl: 1,
     // Expedia storefronts block datacenter IPs — use residential proxies.
     proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
   }
 
   const res = await fetch(
-    `https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
+    `https://api.apify.com/v2/acts/apify~cheerio-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,19 +221,19 @@ async function runFewoWebScraper(url: string, timeoutMs: number): Promise<Record
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Apify web-scraper (fewo) → HTTP ${res.status}: ${text.slice(0, 300)}`)
+    throw new Error(`Apify cheerio-scraper (fewo) → HTTP ${res.status}: ${text.slice(0, 300)}`)
   }
   const data = await res.json()
-  const items = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
+  const all = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
 
-  // Separate the diagnostics item; surface failures with what the browser saw.
-  const debug = items.find(i => i.__debug)
-  const real = items.filter(i => !i.__debug)
-  if (real.length === 0) {
-    if (!debug) throw new Error('Fewo: Seite wurde im Apify-Browser nicht geladen (Bot-Schutz/Proxy?)')
-    throw new Error(`Fewo: geladen, aber 0 Bewertungen extrahiert — ${JSON.stringify(debug).slice(0, 220)}`)
+  const debug = all.find(i => i.__debug)
+  const metaItem = all.find(i => i.__meta) as { score?: number | null; count?: number | null } | undefined
+  const items = all.filter(i => !i.__debug && !i.__meta)
+  if (items.length === 0 && (!metaItem || metaItem.score == null)) {
+    if (!debug) throw new Error('Fewo: Seite wurde nicht geladen (Bot-Schutz/Proxy?)')
+    throw new Error(`Fewo: geladen, aber nichts extrahiert — ${JSON.stringify(debug).slice(0, 220)}`)
   }
-  return real
+  return { items, meta: metaItem ? { score: metaItem.score ?? null, count: metaItem.count ?? null } : null }
 }
 
 /** Maps one raw scraper item to our review shape (tolerant across actors). */
@@ -422,9 +395,27 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt' }
     try {
       const cleanUrl = normalizeSourceUrl(source, url)
-      const items = source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)
-        ? await runFewoWebScraper(cleanUrl, 150_000)
-        : await runApifyActor(APIFY_ACTORS[source], cleanUrl, 150_000)
+
+      // Fewo-Direkt: plain-HTML scrape incl. authoritative page score/count
+      if (source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)) {
+        const { items, meta } = await runFewoScraper(cleanUrl, 120_000)
+        const normalized = items
+          .map(i => normalizeScraperItem(i, source))
+          .filter((r): r is NormalizedReview => r !== null)
+        const upserted = await upsertReviews(listing.id, source, normalized)
+        if (meta?.score != null && meta?.count != null) {
+          const score5 = Math.round((meta.score / 2) * 100) / 100
+          await supabaseAdmin
+            .from('listings')
+            .update({ vrbo_score: score5, vrbo_review_count: meta.count })
+            .eq('id', listing.id)
+          return { source, status: 'ok', fetched: items.length, upserted, score: score5, count: meta.count }
+        }
+        const stats = await refreshScoreFromRows(listing.id, source)
+        return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count }
+      }
+
+      const items = await runApifyActor(APIFY_ACTORS[source], cleanUrl, 150_000)
       const normalized = items
         .map(i => normalizeScraperItem(i, source))
         .filter((r): r is NormalizedReview => r !== null)
