@@ -71,14 +71,14 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
       onMouseEnter={() => onHover?.(card.id)}
       onMouseLeave={() => onHover?.(null)}
       style={{
-        display: 'block', textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', backgroundColor: '#fff',
+        display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff',
         border: isHovered ? '1px solid var(--gold)' : '1px solid #EAE7E0',
         boxShadow: isHovered ? '0 8px 24px rgba(174,141,45,0.18)' : 'none',
         transform: isHovered ? 'translateY(-2px)' : 'none',
         transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
       }}
     >
-      <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden' }}>
+      <div style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
         {card.image && (
           <Image
             src={card.image}
@@ -112,7 +112,13 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
         )}
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: `linear-gradient(to top, rgba(0,0,0,0.25) 0%, transparent 100%)` }} />
       </div>
-      <div style={{ padding: '11px 13px 13px' }}>
+      {/* Score chip straddling the photo edge */}
+      {card.rating && (
+        <div style={{ display: 'flex', padding: '0 12px', marginTop: '-14px', position: 'relative', zIndex: 3 }}>
+          <ScoreBadge rating={card.rating} />
+        </div>
+      )}
+      <div style={{ padding: card.rating ? '7px 13px 13px' : '11px 13px 13px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
           <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
             {card.title}
@@ -128,8 +134,8 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
             </div>
           )}
         </div>
-        <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-          {card.rating && <><ScoreBadge rating={card.rating} /> ·</>} {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+        <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
+          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
         </p>
         {card.flexNote && (
           <div style={{ marginTop: '7px' }}>
