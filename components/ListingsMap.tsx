@@ -17,6 +17,10 @@ interface Props {
   centerLat?: number
   centerLon?: number
   onCenterChange?: (lat: number, lon: number) => void
+  /** Currently hovered listing id (highlights its marker). */
+  hoveredId?: string | null
+  /** Called when a marker is hovered/unhovered, so the list can highlight in sync. */
+  onHoverListing?: (id: string | null) => void
 }
 
 declare global {
@@ -26,11 +30,19 @@ declare global {
   }
 }
 
-export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange }: Props) {
+export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange, hoveredId, onHoverListing }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
   const leafletLoadedRef = useRef(false)
+  // Marker instances keyed by listing id — lets a separate effect highlight the
+  // hovered one without re-initialising the whole map.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markersRef = useRef<Record<string, any>>({})
+  // Latest hover callback held in a ref so the marker handlers stay stable and
+  // don't force a map re-init when the parent passes a fresh function.
+  const onHoverRef = useRef(onHoverListing)
+  useEffect(() => { onHoverRef.current = onHoverListing }, [onHoverListing])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -40,6 +52,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         mapRef.current.remove()
         mapRef.current = null
       }
+      markersRef.current = {}
       const L = window.L
       if (!L || !containerRef.current) return
 
@@ -155,7 +168,9 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           .addTo(map)
           .bindPopup(popup)
 
-        marker.on('mouseover', () => marker.openPopup())
+        marker.on('mouseover', () => { marker.openPopup(); onHoverRef.current?.(listing.id) })
+        marker.on('mouseout', () => { onHoverRef.current?.(null) })
+        markersRef.current[listing.id] = marker
       })
 
       // Emit center on map move so parent can reorder listings
@@ -222,12 +237,14 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           .leaflet-control-zoom a:hover {
             background: #f5f5f5 !important;
           }
-          /* Marker hover */
-          .trimosa-marker:hover {
+          /* Marker hover — direct pointer hover AND synced list hover */
+          .trimosa-marker:hover,
+          .trimosa-marker.trimosa-marker-active {
             transform: scale(1.08) translateY(-2px) !important;
           }
-          .trimosa-marker:hover > div:first-child {
-            box-shadow: 0 6px 24px rgba(0,0,0,0.18), 0 0 0 2px rgba(196,162,53,0.5) !important;
+          .trimosa-marker:hover > div:first-child,
+          .trimosa-marker.trimosa-marker-active > div:first-child {
+            box-shadow: 0 6px 24px rgba(0,0,0,0.18), 0 0 0 2px var(--gold) !important;
           }
           /* Attribution */
           .leaflet-attribution-flag { display: none !important; }
@@ -269,6 +286,15 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listings.length, centerLat, centerLon, onCenterChange])
+
+  // Highlight the hovered marker (driven by list hover) without touching the map
+  useEffect(() => {
+    Object.entries(markersRef.current).forEach(([id, marker]) => {
+      const el = marker.getElement?.()?.querySelector('.trimosa-marker') as HTMLElement | null
+      if (el) el.classList.toggle('trimosa-marker-active', id === hoveredId)
+      marker.setZIndexOffset?.(id === hoveredId ? 1000 : 0)
+    })
+  }, [hoveredId])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
