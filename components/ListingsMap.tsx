@@ -211,6 +211,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         const style = document.createElement('style')
         style.id = 'trimosa-map-styles'
         style.textContent = `
+          /* Give the light base map depth so it doesn't read washed-out:
+             boost saturation + contrast, nudge it slightly darker/warmer. */
+          .trimosa-searchmap .leaflet-tile {
+            filter: saturate(1.55) contrast(1.12) brightness(0.965);
+          }
           /* Popup — crisp white card with full-bleed image header */
           .trimosa-popup .leaflet-popup-content-wrapper {
             border-radius: 16px !important;
@@ -314,8 +319,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      {/* Subtle warm tint overlay on map */}
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} className="trimosa-searchmap" style={{ width: '100%', height: '100%' }} />
       {listings.length === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F2F0EC', borderRadius: '16px' }}>
           <p style={{ fontSize: '13px', color: '#AAA' }}>Keine Ergebnisse auf der Karte</p>
