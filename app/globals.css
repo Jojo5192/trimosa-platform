@@ -513,3 +513,36 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     bottom: calc(20px + env(safe-area-inset-bottom));
   }
 }
+
+/* ── Review score badge on listing cards (hover → per-platform breakdown) ── */
+.score-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
+}
+.score-pop {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -6px;
+  z-index: 40;
+  background: #12222E;
+  border-radius: 12px;
+  padding: 10px 13px;
+  box-shadow: 0 10px 32px rgba(18, 34, 46, 0.35);
+  width: max-content;
+  pointer-events: none;
+}
+.score-pop::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 18px;
+  border: 6px solid transparent;
+  border-top-color: #12222E;
+}
+.score-badge:hover .score-pop {
+  display: block;
+}
