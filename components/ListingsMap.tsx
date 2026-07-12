@@ -10,6 +10,8 @@ export interface MapListing {
   price: number        // per night
   totalPrice?: number  // for the searched period
   nights?: number
+  image?: string       // cover image for the popup
+  location?: string    // shown as a subtle label in the popup
 }
 
 interface Props {
@@ -148,20 +150,29 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
                <span style="font-size:11px;color:#888;margin-left:3px">/Nacht</span>`
           : `<span style="font-size:12px;font-weight:500;color:#888">Preis auf Anfrage</span>`
 
+        const imageHeader = listing.image
+          ? `<div style="width:100%;height:132px;overflow:hidden;background:#EDEBE4">
+               <img src="${listing.image}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" />
+             </div>`
+          : ''
+
         const popup = L.popup({
           closeButton: false,
           className: 'trimosa-popup',
-          maxWidth: 240,
-          offset: [0, -4],
+          maxWidth: 244,
+          offset: [0, -6],
         }).setContent(`
-          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:2px 0">
-            <p style="font-size:13px;font-weight:600;color:#111;margin:0 0 6px;line-height:1.3">${listing.title}</p>
-            <p style="margin:0 0 10px;line-height:1">${priceBlock}</p>
-            <a href="/listing/${listing.id}"
-              style="display:inline-block;font-size:12px;font-weight:600;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold));padding:6px 14px;border-radius:999px;text-decoration:none">
-              Ansehen →
-            </a>
-          </div>
+          <a href="/listing/${listing.id}" style="display:block;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:inherit">
+            ${imageHeader}
+            <div style="padding:11px 13px 13px">
+              ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}
+              <p style="font-size:13.5px;font-weight:600;color:#111;margin:0 0 8px;line-height:1.3">${listing.title}</p>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="line-height:1">${priceBlock}</span>
+                <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">Ansehen →</span>
+              </div>
+            </div>
+          </a>
         `)
 
         const marker = L.marker([listing.lat, listing.lon], { icon })
@@ -199,17 +210,21 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         const style = document.createElement('style')
         style.id = 'trimosa-map-styles'
         style.textContent = `
-          /* Popup — crisp white card */
+          /* Popup — crisp white card with full-bleed image header */
           .trimosa-popup .leaflet-popup-content-wrapper {
             border-radius: 16px !important;
-            padding: 16px 18px !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.18) !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.22) !important;
             border: none !important;
             background: #fff !important;
           }
           .trimosa-popup .leaflet-popup-content {
             margin: 0 !important;
+            width: 220px !important;
           }
+          .trimosa-popup a { transition: opacity 0.15s; }
+          .trimosa-popup a:hover { opacity: 0.94; }
           .trimosa-popup .leaflet-popup-tip-container {
             display: none !important;
           }
