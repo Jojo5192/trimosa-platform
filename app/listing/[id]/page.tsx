@@ -13,6 +13,23 @@ import {
   HouseRulesDisplay,
 } from './DetailSections'
 import MobileBookingBar from './MobileBookingBar'
+import ScoreBadge, { type CardRating } from '@/components/ScoreBadge'
+
+/* Weighted review rating from the synced per-platform score columns. */
+function buildListingRating(l: Record<string, unknown>): CardRating | undefined {
+  const platforms: CardRating['platforms'] = []
+  for (const src of ['airbnb', 'booking', 'google', 'vrbo']) {
+    const score = l[`${src}_score`]
+    const count = l[`${src}_review_count`]
+    if (score != null && count != null && Number(count) > 0) {
+      platforms.push({ source: src, score: Math.round(Number(score) * 10) / 10, count: Number(count) })
+    }
+  }
+  if (platforms.length === 0) return undefined
+  const total = platforms.reduce((s, p) => s + p.score * p.count, 0)
+  const count = platforms.reduce((s, p) => s + p.count, 0)
+  return { overall: Math.round((total / count) * 100) / 100, count, platforms }
+}
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -123,9 +140,18 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
         {/* ── Rating + City + Host badge (aligned bottom) ── */}
         <div className="detail-meta-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', cursor: 'pointer' }}>
-            ★★★★★ Neu
-          </a>
+          {(() => {
+            const rating = buildListingRating(listing as Record<string, unknown>)
+            return rating ? (
+              <a href="#reviews-section" style={{ textDecoration: 'none', display: 'inline-flex' }} title="Zu den Bewertungen">
+                <ScoreBadge rating={rating} popDirection="down" />
+              </a>
+            ) : (
+              <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', cursor: 'pointer' }}>
+                ★ Neu
+              </a>
+            )
+          })()}
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={2}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
