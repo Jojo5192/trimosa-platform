@@ -31,7 +31,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
           <Link href={`/listing/${id}`} style={{ fontSize: '12px', color: '#888', textDecoration: 'none' }} target="_blank">
             Vorschau ↗
           </Link>
-          <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: '#A8882A', textDecoration: 'none' }}>
+          <Link href="/dashboard" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
             ← Dashboard
           </Link>
         </div>
@@ -39,7 +39,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '32px 20px 80px' }}>
         <div style={{ marginBottom: '28px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#A8882A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Inserat bearbeiten</p>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Inserat bearbeiten</p>
           <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111', margin: 0, letterSpacing: '-0.3px' }}>
             {listing.title}
           </h1>
