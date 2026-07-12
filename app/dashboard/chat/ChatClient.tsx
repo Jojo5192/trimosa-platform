@@ -35,7 +35,7 @@ function Avatar({ name, size = 38 }: { name: string; size?: number }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg, #C4A235 0%, #7A5410 100%)',
+      background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.37, fontWeight: 700, color: '#fff',
       letterSpacing: '0.02em', userSelect: 'none',
@@ -214,7 +214,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
       {/* Page header */}
       <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
         <div>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: '#B8922A', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
             Kommunikation
           </p>
           <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#111', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -281,7 +281,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                       background: isActive ? '#FDF6E8' : 'transparent',
                       border: 'none',
                       borderBottom: '1px solid #F0ECE4',
-                      borderLeft: isActive ? '3px solid #C4A235' : '3px solid transparent',
+                      borderLeft: isActive ? '3px solid var(--gold)' : '3px solid transparent',
                       cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '11px',
                       transition: 'background 0.15s',
@@ -314,7 +314,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                           marginTop: '4px',
                           minWidth: '18px', height: '18px',
                           fontSize: '10px', fontWeight: 800,
-                          background: '#C4A235', color: '#fff',
+                          background: 'var(--gold)', color: '#fff',
                           padding: '0 6px', borderRadius: '99px',
                         }}>
                           {conv.unread}
@@ -449,7 +449,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                           {!isMe && isFirstInGroup && (
                             <span style={{
                               fontSize: '11px', fontWeight: 700,
-                              color: '#8A6818',
+                              color: 'var(--gold-dark)',
                               marginLeft: '4px',
                             }}>
                               {otherN}
@@ -460,7 +460,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                             padding: '9px 13px',
                             borderRadius,
                             background: isMe
-                              ? 'linear-gradient(135deg, #D4AE3A 0%, #8A6818 100%)'
+                              ? 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)'
                               : '#EDEBE6',
                             color: isMe ? '#fff' : '#1A1A1A',
                             fontSize: '14px',
@@ -484,7 +484,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                             }}>
                               {formatMsgTime(msg.created_at)}
                               {isMe && msg.read_at && (
-                                <span style={{ color: '#C4A235', fontWeight: 700 }}>✓✓</span>
+                                <span style={{ color: 'var(--gold)', fontWeight: 700 }}>✓✓</span>
                               )}
                             </div>
                           )}
@@ -531,7 +531,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                     color: '#111',
                     transition: 'border-color 0.15s',
                   }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#C4A235' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = 'var(--gold)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#DDD9D0' }}
                 />
                 <button
@@ -542,7 +542,7 @@ export default function ChatClient({ userId, initialConvId }: { userId: string; 
                     borderRadius: '50%',
                     border: 'none',
                     background: newMsg.trim() && !sending
-                      ? 'linear-gradient(135deg, #D4AE3A 0%, #8A6818 100%)'
+                      ? 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)'
                       : '#E5E2DB',
                     color: '#fff',
                     fontSize: '20px',
