@@ -62,6 +62,15 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
 
   const otherRegions = Object.values(REGIONS).filter((r) => r.slug !== region.slug)
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Start', item: siteUrl },
+      { '@type': 'ListItem', position: 2, name: region.name, item: `${siteUrl}/region/${region.slug}` },
+    ],
+  }
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'TouristDestination',
@@ -74,6 +83,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <NavBar />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '32px 20px 60px' }}>
