@@ -63,7 +63,7 @@ export default async function UeberUnsPage() {
           Über TRIMOSA
         </p>
         <h1 style={{ fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 800, color: '#1A1400', letterSpacing: '-0.02em', margin: '0 auto 14px', lineHeight: 1.15, textAlign: 'center', maxWidth: '640px' }}>
-          Drei Freunde. Eine Region. Ein Zuhause auf Zeit.
+          Dein Zuhause auf Zeit.
         </h1>
         <p style={{ fontSize: '16px', lineHeight: 1.75, color: '#3A3427', margin: '0 auto 30px', maxWidth: '660px', textAlign: 'center' }}>
           TRIMOSA ist ein junges, regional verwurzeltes Unternehmen aus der Region Trier. Was mit einer
