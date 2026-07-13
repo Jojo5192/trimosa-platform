@@ -8,7 +8,7 @@ import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
-import { POI_CATEGORIES, REGIONS } from '@/lib/regions'
+import { REGIONS } from '@/lib/regions'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -49,10 +49,16 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
     .filter((l) => l.latitude != null && l.longitude != null)
     .map((l) => ({ id: l.id, slug: l.slug ?? undefined, title: l.title, lat: Number(l.latitude), lon: Number(l.longitude) }))
 
-  const heroImages: string[] = regionListings
-    .map((l) => (l.images as string[] | null)?.[0])
-    .filter((img): img is string => !!img)
-    .slice(0, 3)
+  // Hero collage: curated destination photos (not apartment shots — the
+  // listings show themselves further down)
+  const heroPois = region.heroSlugs
+    .map((s) => region.pois.find((p) => p.slug === s))
+    .filter((p): p is NonNullable<typeof p> => !!p?.image)
+  if (heroPois.length < 3) {
+    for (const p of region.pois) {
+      if (p.image && !heroPois.includes(p) && heroPois.length < 3) heroPois.push(p)
+    }
+  }
 
   const otherRegions = Object.values(REGIONS).filter((r) => r.slug !== region.slug)
 
@@ -72,6 +78,13 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '32px 20px 60px' }}>
 
+        {/* ── Breadcrumb ── */}
+        <p style={{ fontSize: '12.5px', color: '#8A8065', margin: '0 0 14px' }}>
+          <Link href="/" style={{ color: '#8A8065', textDecoration: 'none' }}>Start</Link>
+          {' · '}
+          <span style={{ color: '#3A3427', fontWeight: 600 }}>{region.name}</span>
+        </p>
+
         {/* ── Hero ── */}
         <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px' }}>
           Ferienwohnungen · {region.name}
@@ -80,34 +93,20 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           {region.claim}
         </h1>
 
-        {heroImages.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: heroImages.length > 1 ? '2fr 1fr' : '1fr', gridTemplateRows: heroImages.length > 2 ? '1fr 1fr' : '1fr', gap: '10px', margin: '22px 0 26px', height: 'clamp(220px, 38vw, 380px)' }}>
-            {heroImages.map((img, i) => (
-              <div key={img} style={{ position: 'relative', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 && heroImages.length > 2 ? '1 / 3' : undefined }}>
-                <Image src={img} alt={`${region.name} — TRIMOSA Apartment`} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* No apartment photos yet (e.g. upcoming region) — collage from the
-             region's curated destination photos instead */
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gap: '10px', margin: '22px 0 8px', height: 'clamp(220px, 38vw, 380px)' }}>
-            {region.pois.filter((p) => p.image).slice(0, 3).map((p, i) => (
-              <Link key={p.slug} href={`/erlebnis/${p.slug}`} style={{ position: 'relative', display: 'block', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 ? '1 / 3' : undefined }}>
-                <Image src={p.image!.src} alt={p.name} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
-                <span style={{
-                  position: 'absolute', left: '10px', bottom: '8px', fontSize: '11px', fontWeight: 700, color: '#fff',
-                  background: 'rgba(10,16,22,0.55)', padding: '4px 10px', borderRadius: '999px', backdropFilter: 'blur(6px)',
-                }}>{p.emoji} {p.name}</span>
-              </Link>
-            ))}
-          </div>
-        )}
-        {heroImages.length === 0 && (
-          <p style={{ fontSize: '10.5px', color: '#AAA6A0', margin: '0 0 22px' }}>
-            Fotos: Wikimedia Commons — Urheber und Lizenz auf den verlinkten Detailseiten.
-          </p>
-        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gap: '10px', margin: '22px 0 8px', height: 'clamp(220px, 38vw, 380px)' }}>
+          {heroPois.map((p, i) => (
+            <Link key={p.slug} href={`/erlebnis/${p.slug}`} style={{ position: 'relative', display: 'block', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 ? '1 / 3' : undefined }}>
+              <Image src={p.image!.src} alt={p.name} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
+              <span style={{
+                position: 'absolute', left: '10px', bottom: '8px', fontSize: '11px', fontWeight: 700, color: '#fff',
+                background: 'rgba(10,16,22,0.55)', padding: '4px 10px', borderRadius: '999px', backdropFilter: 'blur(6px)',
+              }}>{p.emoji} {p.name}</span>
+            </Link>
+          ))}
+        </div>
+        <p style={{ fontSize: '10.5px', color: '#AAA6A0', margin: '0 0 22px' }}>
+          Fotos: Wikimedia Commons — Urheber und Lizenz auf den verlinkten Detailseiten.
+        </p>
 
         {region.intro.map((p) => (
           <p key={p.slice(0, 24)} style={{ fontSize: '15.5px', lineHeight: 1.75, color: '#3A3427', margin: '0 0 14px', maxWidth: '760px' }}>{p}</p>
@@ -137,41 +136,8 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           center={region.center}
           zoom={region.zoom}
           extraPois={otherRegions.flatMap((r) => r.pois)}
+          showPoiGrid
         />
-
-        {/* ── Destination detail cards (SEO + browsing) ── */}
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
-          Ausflugsziele im Detail
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-          {region.pois.map((p) => {
-            const c = POI_CATEGORIES[p.category].color
-            return (
-              <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
-                display: 'block', textDecoration: 'none', borderRadius: '14px',
-                background: '#fff', border: '1px solid #EAE7E0', overflow: 'hidden',
-              }}>
-                <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
-                  {p.image
-                    ? <Image src={p.image.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 220px" style={{ objectFit: 'cover' }} />
-                    : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>{p.emoji}</span>}
-                  <span style={{
-                    position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
-                    letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
-                    background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                  }}>{POI_CATEGORIES[p.category].label}</span>
-                </div>
-                <div style={{ padding: '10px 12px 11px' }}>
-                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
-                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-        <p style={{ fontSize: '11px', color: '#AAA6A0', margin: '10px 2px 0' }}>
-          Fotos der Ausflugsziele: Wikimedia Commons — Urheber und Lizenz jeweils auf der Detailseite.
-        </p>
 
         {/* ── Komoot tour inspiration (only when tours are curated) ── */}
         {region.komootTours && region.komootTours.length > 0 && (
