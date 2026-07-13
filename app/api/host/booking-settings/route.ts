@@ -53,5 +53,22 @@ export async function PATCH(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Optionally push the booking-mode settings to ALL existing listings of
+  // this host (the listing columns are what the detail page + booking API
+  // actually read — the profile values are only the default for new ones).
+  if (body.apply_to_listings === true) {
+    const listingUpdates: Record<string, unknown> = {}
+    if ('allow_instant_booking' in updates) listingUpdates.allow_instant_booking = updates.allow_instant_booking
+    if ('allow_requests' in updates) listingUpdates.allow_requests = updates.allow_requests
+    if ('min_request_nights' in updates) listingUpdates.min_request_nights = updates.min_request_nights
+    if (Object.keys(listingUpdates).length > 0) {
+      const { error: listErr } = await supabaseAdmin
+        .from('listings')
+        .update(listingUpdates)
+        .eq('host_id', user.id)
+      if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 })
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
