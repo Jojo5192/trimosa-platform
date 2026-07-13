@@ -1,56 +1,118 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 /**
- * Sends the "booking request received" email to the guest via Resend.
- * Uses supabaseAdmin (service role) rather than a cookie-bound client so
- * it can be called directly from server routes/actions without needing
- * an incoming request's session.
+ * Transactional emails via Resend, branded for TRIMOSA.
+ * - sendBookingEmail: guest confirmation right after the booking/request is
+ *   created (before payment) — wording differs by booking_type.
+ * - sendHostBookingAlert: host notification once payment is confirmed
+ *   (called from the Stripe webhook) — requests ask for accept/decline.
+ * All senders use supabaseAdmin so they work from routes and webhooks alike.
  */
-export async function sendBookingEmail(bookingId: string) {
-  const { data: booking } = await supabaseAdmin
-    .from('bookings')
-    .select('*, listings(title, location)')
-    .eq('id', bookingId)
-    .single()
 
-  if (!booking) return { ok: false, error: 'Buchung nicht gefunden' }
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
 
-  const { data: guestData } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
+const DE_MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
-  const listing = booking.listings as { title: string; location: string }
-  const guestEmail = guestData?.user?.email
-  if (!guestEmail) return { ok: false, error: 'Keine Gast-E-Mail gefunden' }
+function formatDateLong(iso: string): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${d}. ${DE_MONTHS[m - 1]} ${y}`
+}
 
+/* ── Shared branded layout (table-based for broad mail-client support) ── */
+function renderEmail({ preheader, heading, paragraphs, details, cta, secondaryCta, note }: {
+  preheader: string
+  heading: string
+  paragraphs: string[]
+  details: { label: string; value: string }[]
+  cta?: { label: string; url: string }
+  secondaryCta?: { label: string; url: string }
+  note?: string
+}): string {
+  const detailRows = details.map(({ label, value }) => `
+    <tr>
+      <td style="padding:9px 0;font-size:13px;color:#8A8065;border-bottom:1px solid #F0EDE5;">${label}</td>
+      <td style="padding:9px 0;font-size:14px;font-weight:600;color:#1A1400;text-align:right;border-bottom:1px solid #F0EDE5;">${value}</td>
+    </tr>`).join('')
+
+  const ctaBlock = cta ? `
+    <tr><td align="center" style="padding:26px 0 6px;">
+      <a href="${cta.url}" style="display:inline-block;background:linear-gradient(135deg,#AE8D2D,#8A7020);background-color:#AE8D2D;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 34px;border-radius:999px;">
+        ${cta.label}
+      </a>
+    </td></tr>` : ''
+
+  const secondaryBlock = secondaryCta ? `
+    <tr><td align="center" style="padding:4px 0 6px;">
+      <a href="${secondaryCta.url}" style="font-size:13px;font-weight:600;color:#8A7020;text-decoration:underline;">
+        ${secondaryCta.label}
+      </a>
+    </td></tr>` : ''
+
+  const noteBlock = note ? `
+    <tr><td style="padding:18px 0 0;">
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#8A8065;background:#FAF7EE;border-radius:12px;padding:12px 16px;">${note}</p>
+    </td></tr>` : ''
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<body style="margin:0;padding:0;background-color:#F2F0EA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;">${preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F2F0EA;padding:28px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+        <!-- Header -->
+        <tr><td style="background-color:#12222E;border-radius:18px 18px 0 0;padding:26px 32px;text-align:center;">
+          <img src="${siteUrl}/logo.png" alt="TRIMOSA Apartments &amp; Homes" width="190" style="display:inline-block;width:190px;max-width:60%;height:auto;" />
+        </td></tr>
+
+        <!-- Body -->
+        <tr><td style="background-color:#ffffff;padding:34px 36px 30px;">
+          <h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;color:#1A1400;letter-spacing:-0.2px;">${heading}</h1>
+          ${paragraphs.map(p => `<p style="margin:0 0 13px;font-size:14.5px;line-height:1.7;color:#4A4438;">${p}</p>`).join('')}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;background:#FCFBF7;border:1px solid #EDE9DE;border-radius:14px;">
+            <tr><td style="padding:6px 20px 10px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${detailRows}</table>
+            </td></tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${ctaBlock}
+            ${secondaryBlock}
+            ${noteBlock}
+          </table>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background-color:#ffffff;border-radius:0 0 18px 18px;border-top:1px solid #F0EDE5;padding:18px 36px 22px;text-align:center;">
+          <p style="margin:0 0 4px;font-size:11.5px;color:#A8A292;">TRIMOSA Apartments &amp; Homes eGbR · Ferienwohnungen in Trier, Bitburg &amp; der Südeifel</p>
+          <p style="margin:0;font-size:11.5px;color:#A8A292;">
+            <a href="${siteUrl}" style="color:#8A7020;text-decoration:none;">trimosa.de</a> ·
+            <a href="${siteUrl}/impressum" style="color:#A8A292;text-decoration:none;">Impressum</a> ·
+            <a href="${siteUrl}/datenschutz" style="color:#A8A292;text-decoration:none;">Datenschutz</a>
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+async function sendViaResend(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string; note?: string }> {
   const resendKey = process.env.RESEND_API_KEY
   if (!resendKey) {
-    console.log('[E-Mail] RESEND_API_KEY nicht gesetzt — E-Mail wird nicht versendet.')
-    console.log(`[E-Mail] An Gast: ${guestEmail}`)
-    console.log(`[E-Mail] Buchung: ${listing.title}, ${booking.check_in} → ${booking.check_out}`)
+    console.log(`[E-Mail] RESEND_API_KEY nicht gesetzt — "${subject}" an ${to} nicht versendet.`)
     return { ok: true, note: 'RESEND_API_KEY fehlt, E-Mail nicht gesendet' }
   }
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${resendKey}`,
-    },
-    body: JSON.stringify({
-      // Absender-Domain muss in Resend verifiziert sein.
-      from: 'TRIMOSA <buchung@trimosa.de>',
-      to: guestEmail,
-      subject: `Deine Buchungsanfrage: ${listing.title}`,
-      html: `
-        <h2>Buchungsanfrage eingegangen</h2>
-        <p>Hallo,</p>
-        <p>deine Anfrage für <strong>${listing.title}</strong> (${listing.location}) wurde empfangen.</p>
-        <p><strong>Anreise:</strong> ${booking.check_in}<br>
-           <strong>Abreise:</strong> ${booking.check_out}<br>
-           <strong>Gesamtpreis:</strong> € ${booking.total_price}</p>
-        <p>Der Gastgeber meldet sich in Kürze bei dir.</p>
-        <p>Viele Grüße,<br>TRIMOSA</p>
-      `,
-    }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendKey}` },
+    body: JSON.stringify({ from: 'TRIMOSA <buchung@trimosa.de>', to, subject, html }),
   })
 
   if (!res.ok) {
@@ -58,6 +120,122 @@ export async function sendBookingEmail(bookingId: string) {
     console.error('[E-Mail] Resend-Versand fehlgeschlagen:', err)
     return { ok: false, error: 'E-Mail-Versand fehlgeschlagen' }
   }
-
   return { ok: true }
+}
+
+/* ── Shared booking loader ── */
+async function loadBooking(bookingId: string) {
+  const { data: booking } = await supabaseAdmin
+    .from('bookings')
+    .select('*, listings(title, location, host_id)')
+    .eq('id', bookingId)
+    .single()
+  if (!booking) return null
+  const listing = booking.listings as { title: string; location: string; host_id: string }
+  const guests = (booking.adults ?? 1) + (booking.children ?? 0)
+  const details = [
+    { label: 'Unterkunft', value: `${listing.title} · ${listing.location}` },
+    { label: 'Anreise', value: formatDateLong(booking.check_in) },
+    { label: 'Abreise', value: formatDateLong(booking.check_out) },
+    { label: 'Gäste', value: String(guests) },
+    { label: 'Gesamtpreis', value: `€ ${booking.total_price}` },
+  ]
+  return { booking, listing, details }
+}
+
+/**
+ * Guest email right after the booking/request was created (pre-payment).
+ */
+export async function sendBookingEmail(bookingId: string) {
+  const loaded = await loadBooking(bookingId)
+  if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }
+  const { booking, listing, details } = loaded
+
+  const { data: guestData } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
+  const guestEmail = guestData?.user?.email
+  if (!guestEmail) return { ok: false, error: 'Keine Gast-E-Mail gefunden' }
+  const rawName = (guestData?.user?.user_metadata?.name as string | undefined) ?? ''
+  const firstName = rawName.trim().split(/\s+/)[0] || ''
+  const anrede = firstName ? `Hallo ${firstName},` : 'Hallo,'
+
+  const isInstant = booking.booking_type === 'instant'
+
+  const html = renderEmail({
+    preheader: isInstant
+      ? `Deine Buchung für ${listing.title} ist eingegangen.`
+      : `Deine Anfrage für ${listing.title} ist eingegangen — wir melden uns.`,
+    heading: isInstant ? 'Deine Buchung ist eingegangen' : 'Deine Anfrage ist eingegangen',
+    paragraphs: isInstant
+      ? [
+          anrede,
+          `schön, dass du dich für <strong>${listing.title}</strong> entschieden hast! Deine Buchung ist bei uns eingegangen — sobald deine Zahlung bestätigt ist, erhältst du alle Details zu Check-in und Aufenthalt.`,
+        ]
+      : [
+          anrede,
+          `vielen Dank für deine Anfrage für <strong>${listing.title}</strong>. Wir prüfen sie und melden uns schnellstmöglich bei dir — in der Regel innerhalb von 24 Stunden.`,
+        ],
+    details,
+    cta: { label: isInstant ? 'Buchung ansehen' : 'Anfrage ansehen', url: `${siteUrl}/guest` },
+    note: isInstant
+      ? undefined
+      : 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.',
+  })
+
+  return sendViaResend(
+    guestEmail,
+    isInstant ? `Deine Buchung: ${listing.title}` : `Deine Anfrage: ${listing.title}`,
+    html
+  )
+}
+
+/**
+ * Host notification once payment is confirmed (Stripe webhook).
+ * Requests ask the host to accept/decline; instant bookings just inform.
+ */
+export async function sendHostBookingAlert(bookingId: string) {
+  const loaded = await loadBooking(bookingId)
+  if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }
+  const { booking, listing, details } = loaded
+
+  const { data: hostData } = await supabaseAdmin.auth.admin.getUserById(listing.host_id)
+  const hostEmail = hostData?.user?.email
+  if (!hostEmail) return { ok: false, error: 'Keine Gastgeber-E-Mail gefunden' }
+
+  const { data: guestData } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
+  const guestName = (guestData?.user?.user_metadata?.name as string | undefined) || guestData?.user?.email || 'Ein Gast'
+
+  const isInstant = booking.booking_type === 'instant'
+  const zeitraum = `${formatDateLong(booking.check_in)} – ${formatDateLong(booking.check_out)}`
+
+  const hostDetails = [{ label: 'Gast', value: guestName }, ...details]
+  if (booking.message) hostDetails.push({ label: 'Nachricht', value: String(booking.message).slice(0, 200) })
+
+  const html = renderEmail({
+    preheader: isInstant
+      ? `Neue bezahlte Buchung für ${listing.title} (${zeitraum}).`
+      : `Neue Anfrage für ${listing.title} (${zeitraum}) — bitte annehmen oder ablehnen.`,
+    heading: isInstant ? '✅ Neue Buchung (bezahlt)' : '🔔 Neue Anfrage — Aktion nötig',
+    paragraphs: isInstant
+      ? [
+          `<strong>${guestName}</strong> hat <strong>${listing.title}</strong> gebucht und bereits bezahlt. Die Reservierung wurde automatisch bestätigt und an Smoobu übertragen.`,
+        ]
+      : [
+          `<strong>${guestName}</strong> hat eine Anfrage für <strong>${listing.title}</strong> gestellt. Die Zahlung ist bereits eingegangen — bei einer Ablehnung wird sie automatisch vollständig erstattet.`,
+          `Bitte nimm die Anfrage im Dashboard an oder lehne sie ab. Für Rückfragen oder einen Gegenvorschlag nutze den Chat.`,
+        ],
+    details: hostDetails,
+    cta: {
+      label: isInstant ? 'Buchung im Dashboard öffnen' : 'Anfrage öffnen: Annehmen / Ablehnen',
+      url: `${siteUrl}/dashboard/bookings`,
+    },
+    secondaryCta: { label: `Mit ${guestName} chatten`, url: `${siteUrl}/dashboard/chat` },
+  })
+
+  return sendViaResend(
+    hostEmail,
+    isInstant
+      ? `✅ Neue Buchung: ${listing.title} · ${zeitraum}`
+      : `🔔 Neue Anfrage: ${listing.title} · ${zeitraum}`,
+    html
+  )
 }
