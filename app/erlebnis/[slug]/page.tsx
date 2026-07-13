@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title,
     description,
     alternates: { canonical: `${siteUrl}/erlebnis/${poi.slug}` },
-    openGraph: { title, description, url: `${siteUrl}/erlebnis/${poi.slug}` },
+    openGraph: { title, description, url: `${siteUrl}/erlebnis/${poi.slug}`, ...(poi.image ? { images: [poi.image.src] } : {}) },
   }
 }
 
@@ -60,6 +60,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
     name: poi.name,
     description: poi.text,
     url: `${siteUrl}/erlebnis/${poi.slug}`,
+    ...(poi.image ? { image: poi.image.src } : {}),
     geo: { '@type': 'GeoCoordinates', latitude: poi.lat, longitude: poi.lon },
     containedInPlace: { '@type': 'TouristDestination', name: region.name, url: `${siteUrl}/region/${region.slug}` },
   }
@@ -80,14 +81,32 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
           <span style={{ color: '#3A3427', fontWeight: 600 }}>{poi.name}</span>
         </p>
 
+        {/* ── Hero photo (Wikimedia Commons, proxied through next/image) ── */}
+        {poi.image && (
+          <div style={{ position: 'relative', height: 'clamp(200px, 34vw, 380px)', borderRadius: '20px', overflow: 'hidden', marginBottom: '22px', boxShadow: '0 10px 36px rgba(0,0,0,0.14)' }}>
+            <Image src={poi.image.src} alt={poi.name} fill sizes="(max-width: 900px) 100vw, 900px" style={{ objectFit: 'cover' }} priority />
+            <div style={{ position: 'absolute', inset: '55% 0 0 0', background: 'linear-gradient(to top, rgba(10,16,22,0.55), transparent)' }} />
+            <span style={{ position: 'absolute', left: '16px', bottom: '12px', fontSize: 'clamp(20px, 3.5vw, 30px)', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))' }}>{poi.emoji}</span>
+            <a href={poi.image.fileUrl} target="_blank" rel="noopener nofollow" style={{
+              position: 'absolute', right: '10px', bottom: '10px', fontSize: '10px', color: 'rgba(255,255,255,0.85)',
+              background: 'rgba(10,16,22,0.55)', padding: '4px 10px', borderRadius: '999px', textDecoration: 'none',
+              backdropFilter: 'blur(6px)', maxWidth: '75%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              📷 {poi.image.author} · {poi.image.license} · Wikimedia Commons
+            </a>
+          </div>
+        )}
+
         {/* ── Hero ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '18px', flexWrap: 'wrap' }}>
+          {!poi.image && (
           <div style={{
             width: '84px', height: '84px', borderRadius: '26px', flexShrink: 0,
             background: `linear-gradient(135deg, ${category.color}22, ${category.color}0D)`,
             border: `2px solid ${category.color}44`,
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '42px',
           }}>{poi.emoji}</div>
+          )}
           <div style={{ minWidth: '220px', flex: 1 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700,
