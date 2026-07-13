@@ -330,6 +330,7 @@ export default async function Home({
           searchCheckin={checkin}
           searchCheckout={checkout}
           locations={topLocations}
+          openMapByDefault={view === 'map'}
         />
       ) : (
         <>
