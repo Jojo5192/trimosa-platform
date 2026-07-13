@@ -94,29 +94,42 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         maxZoom: 19,
       }).addTo(map)
 
-      // Listings at the exact same address stack invisibly on one point — fan
-      // them out in a small circle (~15 m) so every apartment in the building
-      // is visible and individually hoverable.
-      const byCoord: Record<string, MapListing[]> = {}
-      for (const l of listings) {
-        const key = `${l.lat.toFixed(4)},${l.lon.toFixed(4)}`
-        ;(byCoord[key] ??= []).push(l)
+      // Listings at (nearly) the same address stack invisibly on one point —
+      // fan them out in a small circle so every apartment in the building is
+      // visible and individually hoverable. Grouping uses a real distance
+      // threshold (~60 m) instead of a coordinate grid: editor pins set a few
+      // metres apart on the same house must land in ONE group (a fixed
+      // toFixed() grid split them at cell borders).
+      const GROUP_RADIUS_M = 60
+      const distM = (a: MapListing, b: MapListing) => {
+        const dLat = (a.lat - b.lat) * 111_320
+        const dLon = (a.lon - b.lon) * 111_320 * Math.cos((a.lat * Math.PI) / 180)
+        return Math.sqrt(dLat * dLat + dLon * dLon)
       }
-      const positioned = listings.map((l) => {
-        const group = byCoord[`${l.lat.toFixed(4)},${l.lon.toFixed(4)}`]
-        if (group.length === 1) return l
-        const i = group.indexOf(l)
-        const angle = (2 * Math.PI * i) / group.length
-        const r = 0.00015 // ≈ 15 m
-        return {
-          ...l,
-          lat: l.lat + r * Math.sin(angle),
-          lon: l.lon + (r * Math.cos(angle)) / Math.cos((l.lat * Math.PI) / 180),
-        }
+      const groups: MapListing[][] = []
+      for (const l of listings) {
+        const hit = groups.find((g) => g.some((m) => distM(m, l) <= GROUP_RADIUS_M))
+        if (hit) hit.push(l)
+        else groups.push([l])
+      }
+      const positioned = groups.flatMap((group) => {
+        if (group.length === 1) return group
+        // Fan out around the group centroid
+        const cLat = group.reduce((s, m) => s + m.lat, 0) / group.length
+        const cLon = group.reduce((s, m) => s + m.lon, 0) / group.length
+        return group.map((l, i) => {
+          const angle = (2 * Math.PI * i) / group.length
+          const r = 0.00015 // ≈ 15 m
+          return {
+            ...l,
+            lat: cLat + r * Math.sin(angle),
+            lon: cLon + (r * Math.cos(angle)) / Math.cos((cLat * Math.PI) / 180),
+          }
+        })
       })
       // All listing ids sharing an address — hovering one pin highlights them all
       const groupOf: Record<string, string[]> = {}
-      for (const arr of Object.values(byCoord)) {
+      for (const arr of groups) {
         const ids = arr.map((x) => x.id)
         for (const l of arr) groupOf[l.id] = ids
       }
