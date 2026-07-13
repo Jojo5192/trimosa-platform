@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
         hostname: 'wccrfgjzxpztfmnqpfiy.supabase.co',
         pathname: '/storage/v1/object/public/**',
       },
+      {
+        // Curated destination photos (lib/regions.ts) — proxied through the
+        // image optimizer, so visitors never contact Wikimedia directly.
+        protocol: 'https',
+        hostname: 'upload.wikimedia.org',
+        pathname: '/wikipedia/commons/**',
+      },
     ],
   },
   async headers() {
