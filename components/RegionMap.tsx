@@ -7,6 +7,8 @@
  * Leaflet is loaded from CDN exactly like in ListingsMap.
  */
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
 import { POI_CATEGORIES, type Poi, type PoiCategory } from '@/lib/regions'
 
 export interface RegionMapListing {
@@ -29,6 +31,9 @@ interface Props {
   height?: string
   /** POIs of the neighbouring regions — appear once the user zooms out */
   extraPois?: Poi[]
+  /** Render the "Ausflugsziele im Detail" card grid below the map — it
+      follows the same category filter as the markers */
+  showPoiGrid?: boolean
 }
 
 /** Neighbouring-region POIs become visible at this zoom level or wider */
@@ -41,7 +46,7 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -295,6 +300,51 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       <p style={{ fontSize: '11.5px', color: '#999', margin: '8px 2px 0' }}>
         🏠 = TRIMOSA-Apartments · Marker antippen für Details
       </p>
+
+      {/* ── Destination cards, driven by the same category filter ── */}
+      {showPoiGrid && (
+        <>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
+            Ausflugsziele im Detail
+            {activeCategory !== 'alle' && (
+              <span style={{ fontSize: '12px', fontWeight: 600, color: POI_CATEGORIES[activeCategory].color, marginLeft: '10px' }}>
+                {POI_CATEGORIES[activeCategory].label}
+              </span>
+            )}
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+            {pois
+              .filter((p) => activeCategory === 'alle' || p.category === activeCategory)
+              .map((p) => {
+                const c = POI_CATEGORIES[p.category].color
+                return (
+                  <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
+                    display: 'block', textDecoration: 'none', borderRadius: '14px',
+                    background: '#fff', border: '1px solid #EAE7E0', overflow: 'hidden',
+                  }}>
+                    <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
+                      {p.image
+                        ? <Image src={p.image.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 220px" style={{ objectFit: 'cover' }} />
+                        : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>{p.emoji}</span>}
+                      <span style={{
+                        position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
+                        letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
+                        background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                      }}>{POI_CATEGORIES[p.category].label}</span>
+                    </div>
+                    <div style={{ padding: '10px 12px 11px' }}>
+                      <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
+                      <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
+                    </div>
+                  </Link>
+                )
+              })}
+          </div>
+          <p style={{ fontSize: '11px', color: '#AAA6A0', margin: '10px 2px 0' }}>
+            Fotos der Ausflugsziele: Wikimedia Commons — Urheber und Lizenz jeweils auf der Detailseite.
+          </p>
+        </>
+      )}
     </div>
   )
 }
