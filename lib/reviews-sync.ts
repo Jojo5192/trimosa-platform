@@ -438,7 +438,15 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
 
   // Run the three scrapers in parallel (each can take 1–2 minutes)
   const scraperPromises = scraperSources.map(async ({ source, url }): Promise<SyncSourceResult> => {
-    if (!url) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'keine URL hinterlegt' }
+    if (!url) {
+      // No source configured → clear any stale score columns (e.g. leftovers
+      // from the old scraper) so aggregate numbers stay truthful.
+      await supabaseAdmin
+        .from('listings')
+        .update({ [`${source}_score`]: null, [`${source}_review_count`]: 0 })
+        .eq('id', listing.id)
+      return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'keine URL hinterlegt' }
+    }
     if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt' }
     try {
       const cleanUrl = normalizeSourceUrl(source, url)
@@ -476,7 +484,13 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
 
   // Google in parallel too (fast, official API)
   const googlePromise = (async (): Promise<SyncSourceResult> => {
-    if (!listing.google_place_id) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'keine Place-ID hinterlegt' }
+    if (!listing.google_place_id) {
+      await supabaseAdmin
+        .from('listings')
+        .update({ google_score: null, google_review_count: 0 })
+        .eq('id', listing.id)
+      return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'keine Place-ID hinterlegt' }
+    }
     if (!process.env.GOOGLE_PLACES_API_KEY) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'GOOGLE_PLACES_API_KEY fehlt' }
     try {
       // Official API → authoritative overall score + count
