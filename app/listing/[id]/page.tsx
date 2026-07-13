@@ -294,7 +294,8 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                   pois={region?.pois ?? []}
                   listings={[{ id: listing.id, slug: listing.slug ?? undefined, title: listing.title, lat: mapLat!, lon: mapLon! }]}
                   center={[mapLat!, mapLon!]}
-                  zoom={13}
+                  zoom={14}
+                  tiles="voyager"
                   extraPois={Object.values(REGIONS).filter((r) => r.slug !== region?.slug).flatMap((r) => r.pois)}
                   height="clamp(320px, 45vh, 420px)"
                 />
