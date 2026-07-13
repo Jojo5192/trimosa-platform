@@ -143,6 +143,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
           showFilter={false}
           highlightSlug={poi.slug}
           height="clamp(300px, 45vh, 440px)"
+          extraPois={allPois().filter(({ region: r }) => r.slug !== region.slug).map(({ poi: p }) => p)}
         />
 
         {/* ── Nearby apartments ── */}
