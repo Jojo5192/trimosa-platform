@@ -7,7 +7,7 @@ import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
-import { REGIONS } from '@/lib/regions'
+import { POI_CATEGORIES, REGIONS } from '@/lib/regions'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -79,13 +79,24 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           {region.claim}
         </h1>
 
-        {heroImages.length > 0 && (
+        {heroImages.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: heroImages.length > 1 ? '2fr 1fr' : '1fr', gridTemplateRows: heroImages.length > 2 ? '1fr 1fr' : '1fr', gap: '10px', margin: '22px 0 26px', height: 'clamp(220px, 38vw, 380px)' }}>
             {heroImages.map((img, i) => (
               <div key={img} style={{ position: 'relative', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 && heroImages.length > 2 ? '1 / 3' : undefined }}>
                 <Image src={img} alt={`${region.name} — TRIMOSA Apartment`} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
               </div>
             ))}
+          </div>
+        ) : (
+          /* No apartment photos yet (e.g. upcoming region) — decorative hero */
+          <div style={{
+            position: 'relative', margin: '22px 0 26px', height: 'clamp(160px, 26vw, 260px)', borderRadius: '18px', overflow: 'hidden',
+            background: 'linear-gradient(135deg, #12222E 0%, #1E3A4C 55%, var(--gold-dark) 130%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{ display: 'flex', gap: 'clamp(14px, 4vw, 34px)', fontSize: 'clamp(38px, 7vw, 64px)', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))' }}>
+              {region.pois.slice(0, 4).map((p) => <span key={p.slug}>{p.emoji}</span>)}
+            </div>
           </div>
         )}
 
@@ -112,6 +123,47 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           Sehenswürdigkeiten, Rad- und Wanderziele und Familien-Ausflüge — zusammen mit unseren Apartments auf einer Karte.
         </p>
         <RegionMap pois={region.pois} listings={mapListings} center={region.center} zoom={region.zoom} />
+
+        {/* ── Destination detail links (SEO + browsing) ── */}
+        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
+          Ausflugsziele im Detail
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
+          {region.pois.map((p) => {
+            const c = POI_CATEGORIES[p.category].color
+            return (
+              <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
+                display: 'flex', alignItems: 'center', gap: '11px', textDecoration: 'none',
+                padding: '12px 14px', borderRadius: '13px', background: '#fff', border: '1px solid #EAE7E0',
+              }}>
+                <span style={{
+                  width: '38px', height: '38px', borderRadius: '12px', flexShrink: 0, fontSize: '19px',
+                  background: `${c}14`, border: `1.5px solid ${c}40`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{p.emoji}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.25 }}>{p.name}</span>
+                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '2px' }}>{POI_CATEGORIES[p.category].label} →</span>
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+
+        {/* ── Coming soon ── */}
+        {region.comingSoon && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: '16px', marginTop: '36px',
+            background: 'linear-gradient(135deg, #12222E, #1E3A4C)', borderRadius: '18px', padding: '22px 24px',
+          }}>
+            <span style={{ fontSize: '30px', lineHeight: 1 }}>🔨</span>
+            <div>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 5px' }}>In Arbeit</p>
+              <p style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: '0 0 6px', lineHeight: 1.3 }}>{region.comingSoon.title}</p>
+              <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.75)', margin: 0, lineHeight: 1.6 }}>{region.comingSoon.text}</p>
+            </div>
+          </div>
+        )}
 
         {/* ── Listings ── */}
         <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '44px 0 16px', letterSpacing: '-0.01em' }}>
@@ -141,7 +193,11 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
             })}
           </div>
         ) : (
-          <p style={{ fontSize: '14px', color: '#6B6455' }}>Aktuell sind hier keine Apartments verfügbar — schau bald wieder vorbei.</p>
+          <p style={{ fontSize: '14px', color: '#6B6455' }}>
+            {region.comingSoon
+              ? 'Die ersten Apartments entstehen gerade (siehe oben) — bis dahin findet ihr unsere Wohnungen in den Nachbarregionen.'
+              : 'Aktuell sind hier keine Apartments verfügbar — schau bald wieder vorbei.'}
+          </p>
         )}
 
         {/* ── CTA + cross links ── */}
