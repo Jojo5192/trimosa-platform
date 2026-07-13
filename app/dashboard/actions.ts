@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { createReservation } from '@/lib/smoobu'
 import { stripe } from '@/lib/stripe'
+import { slugify } from '@/lib/slug'
 
 export async function acceptBooking(bookingId: string) {
   const supabase = await createSupabaseServerClient()
@@ -185,7 +186,7 @@ export async function createListing(formData: {
     .eq('id', user.id)
     .maybeSingle()
 
-  const { error } = await supabase.from('listings').insert({
+  const baseRow = {
     ...formData,
     host_id: user.id,
     is_active: true,
@@ -193,7 +194,15 @@ export async function createListing(formData: {
     allow_instant_booking: hostDefaults?.allow_instant_booking ?? true,
     allow_requests: hostDefaults?.allow_requests ?? true,
     min_request_nights: hostDefaults?.min_request_nights ?? 1,
-  })
+  }
+
+  // Speaking URL: slug from the title; on collision append a short suffix.
+  let { error } = await supabase.from('listings').insert({ ...baseRow, slug: slugify(formData.title) })
+  if (error?.code === '23505') {
+    ;({ error } = await supabase
+      .from('listings')
+      .insert({ ...baseRow, slug: `${slugify(formData.title)}-${Date.now().toString(36).slice(-4)}` }))
+  }
 
   if (error) throw new Error(error.message)
 
