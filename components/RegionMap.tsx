@@ -22,6 +22,11 @@ interface Props {
   listings: RegionMapListing[]
   center: [number, number]
   zoom: number
+  /** Hide the category filter chips (e.g. on POI detail pages) */
+  showFilter?: boolean
+  /** POI slug rendered larger, e.g. the destination a detail page is about */
+  highlightSlug?: string
+  height?: string
 }
 
 declare global {
@@ -31,7 +36,7 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -90,25 +95,29 @@ export default function RegionMap({ pois, listings, center, zoom }: Props) {
       // Curated POIs — emoji markers with category ring colour
       pois.forEach((poi) => {
         const color = POI_CATEGORIES[poi.category].color
+        const isHighlight = poi.slug === highlightSlug
+        const size = isHighlight ? 42 : 30
         const icon = L.divIcon({
           className: '',
           html: `
-            <div style="width:30px;height:30px;border-radius:50%;background:#fff;cursor:pointer;
-              box-shadow:0 2px 8px rgba(0,0,0,0.22),0 0 0 2.5px ${color};
-              display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1">
+            <div style="width:${size}px;height:${size}px;border-radius:50%;background:#fff;cursor:pointer;
+              box-shadow:0 2px 8px rgba(0,0,0,0.22),0 0 0 ${isHighlight ? 3.5 : 2.5}px ${color}${isHighlight ? `,0 0 0 7px ${color}33` : ''};
+              display:flex;align-items:center;justify-content:center;font-size:${isHighlight ? 21 : 15}px;line-height:1">
               ${poi.emoji}
             </div>`,
-          iconAnchor: [15, 15],
-          popupAnchor: [0, -16],
-          iconSize: [30, 30],
+          iconAnchor: [size / 2, size / 2],
+          popupAnchor: [0, -(size / 2 + 1)],
+          iconSize: [size, size],
         })
+        const detailLink = isHighlight ? '' : `
+            <a href="/erlebnis/${poi.slug}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">Mehr erfahren →</a>`
         const popup = L.popup({ closeButton: false, className: 'trimosa-popup', maxWidth: 240 }).setContent(`
           <div style="padding:10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
             <span style="display:block;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">${POI_CATEGORIES[poi.category].label}</span>
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:4px">${poi.emoji} ${poi.name}</span>
-            <span style="display:block;font-size:12px;color:#555;line-height:1.45">${poi.text}</span>
+            <span style="display:block;font-size:12px;color:#555;line-height:1.45">${poi.text}</span>${detailLink}
           </div>`)
-        const m = L.marker([poi.lat, poi.lon], { icon }).addTo(map).bindPopup(popup)
+        const m = L.marker([poi.lat, poi.lon], { icon, zIndexOffset: isHighlight ? 500 : 0 }).addTo(map).bindPopup(popup)
         m.on('mouseover', () => m.openPopup())
         poiMarkersRef.current.push({ category: poi.category, marker: m })
       })
@@ -154,6 +163,7 @@ export default function RegionMap({ pois, listings, center, zoom }: Props) {
   return (
     <div>
       {/* Category chips */}
+      {showFilter && (
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
         {([['alle', { label: 'Alles anzeigen', color: '#555' }], ...Object.entries(POI_CATEGORIES)] as [PoiCategory | 'alle', { label: string; color: string }][]).map(([key, meta]) => {
           const isActive = activeCategory === key
@@ -178,9 +188,10 @@ export default function RegionMap({ pois, listings, center, zoom }: Props) {
           )
         })}
       </div>
+      )}
 
       <div style={{ borderRadius: '20px', overflow: 'hidden', border: '2px solid #D8D5CE', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
-        <div ref={containerRef} className="trimosa-searchmap" style={{ width: '100%', height: 'clamp(340px, 55vh, 520px)' }} />
+        <div ref={containerRef} className="trimosa-searchmap" style={{ width: '100%', height: height ?? 'clamp(340px, 55vh, 520px)' }} />
       </div>
       <p style={{ fontSize: '11.5px', color: '#999', margin: '8px 2px 0' }}>
         🏠 = TRIMOSA-Apartments · Marker antippen für Details
