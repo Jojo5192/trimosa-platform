@@ -8,6 +8,7 @@ import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
 import { buildCardRating } from '@/lib/rating'
+import { REGIONS } from '@/lib/regions'
 
 /* ── Refined, muted card gradients ── */
 const CARD_GRADIENTS = [
@@ -39,9 +40,13 @@ const KNOWN_COORDS: Record<string, [number, number]> = {
   'bitburg': [49.9747, 6.5248],
   'wittlich': [49.9862, 6.8917],
   'mosel': [50.0500, 7.0000],
-  'minden': [52.2887, 8.9168],
+  'minden': [49.8456, 6.4776], // Minden an der Sauer (Südeifel)
   'ralingen': [49.8167, 6.5333],
   'sirzenich': [49.7500, 6.6500],
+  'kanzem': [49.6608, 6.5836],
+  'saarburg': [49.6067, 6.5439], // before 'saar' — substring match
+  'konz': [49.7005, 6.5793],
+  'saar': [49.6400, 6.5600],
   'default': [48.1351, 11.5820], // München as fallback
 }
 
@@ -293,7 +298,7 @@ export default async function Home({
     url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app',
     areaServed: {
       '@type': 'Place',
-      name: 'Sirzenich, Trier, Bitburg, Sauertal, Südeifel',
+      name: 'Sirzenich, Trier, Bitburg, Sauertal, Südeifel, Kanzem, Saartal',
     },
   }
 
@@ -327,6 +332,48 @@ export default async function Home({
                 Beliebte Filter
               </p>
               <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} />
+            </div>
+          </section>
+
+          {/* ── Region entry strip (Airbnb-style discovery row) ── */}
+          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(16px, 3vw, 26px) clamp(12px, 4vw, 20px) 0' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
+              <h2 style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', fontWeight: 700, color: '#111', letterSpacing: '-0.2px', margin: 0 }}>
+                Entdecke unsere Regionen
+              </h2>
+              <Link href="/ueber-uns" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                Über TRIMOSA →
+              </Link>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '6px', scrollbarWidth: 'none' }}>
+              {Object.values(REGIONS).map((r) => {
+                const img = (allListings ?? [])
+                  .filter((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
+                  .map((l) => (l.images as string[] | null)?.[0])
+                  .find((i): i is string => !!i)
+                return (
+                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', flex: '1 0 auto',
+                    minWidth: '215px', maxWidth: '340px', padding: '9px 16px 9px 9px', borderRadius: '16px',
+                    background: '#fff', border: '1px solid #EAE7E0',
+                  }}>
+                    <span style={{ position: 'relative', width: '58px', height: '58px', borderRadius: '13px', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #12222E, #1E3A4C)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {img
+                        ? <Image src={img} alt={r.name} fill sizes="58px" style={{ objectFit: 'cover' }} />
+                        : <span style={{ fontSize: '26px' }}>{r.emoji}</span>}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#111', whiteSpace: 'nowrap' }}>{r.name}</span>
+                        {r.comingSoon && !img && (
+                          <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '2.5px 7px', borderRadius: '999px', textTransform: 'uppercase' }}>Bald</span>
+                        )}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '11px', color: '#8A8578', marginTop: '3px', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.claim}</span>
+                    </span>
+                  </Link>
+                )
+              })}
             </div>
           </section>
 
@@ -441,8 +488,8 @@ export default async function Home({
             Ohne Umwege. Direkt gebucht.
           </h2>
           <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 32px', textAlign: 'center' }}>
-            Rund 20 eigene Ferienwohnungen in Sirzenich, Trier, Bitburg und der Südeifel –
-            handverlesen und kuratiert von Johannes, Pascal und Dominik.
+            Rund 20 eigene Ferienwohnungen in Trier, Bitburg, der Südeifel — und bald an der Saar.
+            Handverlesen und kuratiert von Johannes, Pascal und Dominik.
           </p>
 
           {/* CTA */}
@@ -469,6 +516,7 @@ export default async function Home({
               { label: 'Trier', href: '/region/trier' },
               { label: 'Bitburg', href: '/region/bitburg' },
               { label: 'Südeifel', href: '/region/suedeifel' },
+              { label: 'Saartal', href: '/region/saar' },
               { label: 'Impressum', href: '/impressum' },
               { label: 'Datenschutz', href: '/datenschutz' },
               { label: 'AGB', href: '/agb' },
