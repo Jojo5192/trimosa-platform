@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 
 /* ── Types ─────────────────────────────────────────────────── */
 interface HostProfile {
@@ -12,15 +13,6 @@ interface HostProfile {
   location?: string
   member_since?: string
   languages?: string[]
-}
-
-interface HostListing {
-  id: string
-  title: string
-  images?: string[]
-  city?: string
-  location?: string
-  price_per_night?: number
 }
 
 interface AmenityItem { emoji: string; id: string; label: string }
@@ -136,82 +128,22 @@ function Overlay({ onClose, children, title }: { onClose: () => void; children: 
   )
 }
 
-/* ── 1. Host Badge + Overlay ───────────────────────────────── */
+/* ── 1. Host Badge — links to the "Über uns" page ──────────── */
 export function HostBadge({ host }: { host: HostProfile }) {
-  const [open, setOpen] = useState(false)
-  const [listings, setListings] = useState<HostListing[]>([])
-
-  useEffect(() => {
-    if (open && listings.length === 0) {
-      fetch(`/api/host-listings?hostId=${host.id}`)
-        .then(r => r.json())
-        .then(d => setListings(d.listings ?? []))
-        .catch(() => {})
-    }
-  }, [open, host.id, listings.length])
-
   return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}>
-        <div style={{ position: 'relative', width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {host.avatar_url ? (
-            <Image src={host.avatar_url} alt="" fill sizes="32px" style={{ objectFit: 'cover' }} />
-          ) : (
-            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
-          )}
-        </div>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: '13px', color: '#1D1D1F', lineHeight: 1.2 }}>{host.display_name || 'Gastgeber'}</div>
-          <div style={{ fontSize: '10px', color: '#6E6E73' }}>Gastgeber</div>
-        </div>
-      </button>
-
-      {open && (
-        <Overlay onClose={() => setOpen(false)} title="Dein Gastgeber">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-            <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {host.avatar_url ? (
-                <Image src={host.avatar_url} alt="" fill sizes="64px" style={{ objectFit: 'cover' }} />
-              ) : (
-                <span style={{ color: '#fff', fontSize: '24px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
-              )}
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '18px', color: '#1D1D1F' }}>{host.display_name || 'Gastgeber'}</div>
-              {host.location && <div style={{ fontSize: '13px', color: '#6E6E73', marginTop: '2px' }}>📍 {host.location}</div>}
-              {host.member_since && <div style={{ fontSize: '12px', color: '#6E6E73' }}>Mitglied seit {new Date(host.member_since).getFullYear()}</div>}
-            </div>
-          </div>
-
-          {host.bio && <p style={{ fontSize: '14px', lineHeight: 1.7, color: '#6E6E73', margin: '0 0 16px' }}>{host.bio}</p>}
-          {host.languages && host.languages.length > 0 && (
-            <p style={{ fontSize: '13px', color: '#6E6E73', margin: '0 0 20px' }}>🌍 Spricht {host.languages.join(', ')}</p>
-          )}
-
-          {listings.length > 0 && (
-            <>
-              <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px' }}>Weitere Unterkünfte von {host.display_name}</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-                {listings.map(l => (
-                  <a key={l.id} href={`/listing/${l.id}`} target="_blank" rel="noopener" style={{ textDecoration: 'none', borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff' }}>
-                    <div style={{ position: 'relative', aspectRatio: '3/2', background: '#F5F5F7', overflow: 'hidden' }}>
-                      {l.images?.[0] && <Image src={l.images[0]} alt="" fill sizes="200px" style={{ objectFit: 'cover' }} />}
-                    </div>
-                    <div style={{ padding: '10px 12px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#1D1D1F', marginBottom: '2px' }}>{l.title}</div>
-                      <div style={{ fontSize: '11px', color: '#6E6E73' }}>{l.city || l.location}</div>
-                      {l.price_per_night != null && l.price_per_night > 0 && (
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)', marginTop: '4px' }}>ab € {l.price_per_night} / Nacht</div>
-                      )}
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </>
-          )}
-        </Overlay>
-      )}
-    </>
+    <Link href="/ueber-uns" title="Mehr über TRIMOSA erfahren" className="listing-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 16px 8px 10px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', textDecoration: 'none', flexShrink: 0 }}>
+      <div style={{ position: 'relative', width: '34px', height: '34px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {host.avatar_url ? (
+          <Image src={host.avatar_url} alt="" fill sizes="34px" style={{ objectFit: 'cover' }} />
+        ) : (
+          <span style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{host.display_name?.[0]?.toUpperCase() ?? '?'}</span>
+        )}
+      </div>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: '13px', color: '#1D1D1F', lineHeight: 1.2 }}>{host.display_name || 'Gastgeber'}</div>
+        <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--gold-dark)' }}>Über TRIMOSA →</div>
+      </div>
+    </Link>
   )
 }
 
