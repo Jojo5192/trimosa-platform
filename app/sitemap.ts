@@ -16,6 +16,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }))
 
+  const contentEntries: MetadataRoute.Sitemap = ['/region/trier', '/region/bitburg', '/region/suedeifel', '/ueber-uns'].map((path) => ({
+    url: `${siteUrl}${path}`,
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  }))
+
   const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb'].map((path) => ({
     url: `${siteUrl}${path}`,
     changeFrequency: 'yearly',
@@ -29,6 +35,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     ...listingEntries,
+    ...contentEntries,
     ...legalEntries,
   ]
 }
