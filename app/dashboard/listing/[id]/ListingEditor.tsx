@@ -13,7 +13,8 @@ const AMENITY_CATEGORIES = [
       { id: 'wifi',           icon: '📶', label: 'WLAN' },
       { id: 'wifi_fast',      icon: '🚀', label: 'Schnelles WLAN (>100 Mbit/s)' },
       { id: 'tv',             icon: '📺', label: 'TV' },
-      { id: 'smart_tv',       icon: '📡', label: 'Smart-TV / Netflix' },
+      { id: 'smart_tv',       icon: '📡', label: 'Smart-TV' },
+      { id: 'netflix',        icon: '🎬', label: 'Netflix' },
       { id: 'workspace',      icon: '💻', label: 'Arbeitsplatz / Schreibtisch' },
       { id: 'printer',        icon: '🖨️', label: 'Drucker' },
     ],
@@ -271,7 +272,11 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [maxGuests, setMaxGuests] = useState(listing.max_guests ?? 2)
   const [bedrooms, setBedrooms] = useState(listing.bedrooms ?? 1)
   const [bathrooms, setBathrooms] = useState(listing.bathrooms ?? 1)
-  const [amenities, setAmenities] = useState<string[]>(listing.amenities ?? [])
+  const [amenities, setAmenities] = useState<string[]>(
+    // Legacy: the combined "Smart-TV / Netflix" entry was split — old data
+    // migrates to plain Smart-TV (Netflix is no longer offered).
+    (listing.amenities ?? []).map(a => a === 'Smart-TV / Netflix' ? 'Smart-TV' : a)
+  )
   const [coverImage, setCoverImage] = useState<string>(listing.images?.[0] ?? '')
   const [coverUploading, setCoverUploading] = useState(false)
   const [floorPlanUrls, setFloorPlanUrls] = useState<string[]>(
