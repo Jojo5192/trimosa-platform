@@ -197,8 +197,18 @@ export async function sendHostBookingAlert(bookingId: string) {
   if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }
   const { booking, listing, details } = loaded
 
-  const { data: hostData } = await supabaseAdmin.auth.admin.getUserById(listing.host_id)
-  const hostEmail = hostData?.user?.email
+  // Prefer the host's configured notification address (dashboard setting,
+  // e.g. fewo@trimosa.de); fall back to the login email.
+  const { data: hostProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('notification_email')
+    .eq('id', listing.host_id)
+    .maybeSingle()
+  let hostEmail = (hostProfile?.notification_email as string | null)?.trim() || null
+  if (!hostEmail) {
+    const { data: hostData } = await supabaseAdmin.auth.admin.getUserById(listing.host_id)
+    hostEmail = hostData?.user?.email ?? null
+  }
   if (!hostEmail) return { ok: false, error: 'Keine Gastgeber-E-Mail gefunden' }
 
   const { data: guestData } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
