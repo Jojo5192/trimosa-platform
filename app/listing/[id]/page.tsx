@@ -14,7 +14,11 @@ import {
 } from './DetailSections'
 import MobileBookingBar from './MobileBookingBar'
 import ScoreBadge from '@/components/ScoreBadge'
+import RegionMap from '@/components/RegionMap'
+import Link from 'next/link'
+import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
+import { REGIONS } from '@/lib/regions'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -128,6 +132,17 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     petsAllowed: listing.rule_pets_allowed ?? undefined,
   }
 
+  // Region context for the map + teaser (matched via listing location)
+  const region = Object.values(REGIONS).find((r) =>
+    ((listing.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase())
+  )
+  const regionHero = region?.heroSlugs
+    .map((s) => region.pois.find((p) => p.slug === s)?.image?.src)
+    .find((s): s is string => !!s)
+  const mapLat = listing.latitude != null ? Number(listing.latitude) : null
+  const mapLon = listing.longitude != null ? Number(listing.longitude) : null
+  const hasCoords = mapLat != null && mapLon != null && (mapLat !== 0 || mapLon !== 0)
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <script
@@ -138,33 +153,36 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
       <div className="detail-container" style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
-        {/* ── Title ── */}
-        <h1 className="detail-title" style={{ fontSize: '28px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px', letterSpacing: '-0.4px' }}>
-          {listing.title}
-        </h1>
-
-        {/* ── Rating + City + Host badge (aligned bottom) ── */}
-        <div className="detail-meta-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {(() => {
-            const rating = buildCardRating(listing as Record<string, unknown>)
-            return rating ? (
-              <a href="#reviews-section" style={{ textDecoration: 'none', display: 'inline-flex' }} title="Zu den Bewertungen">
-                <ScoreBadge rating={rating} popDirection="down" />
+        {/* ── Title + Score + Address ── */}
+        <div className="detail-meta-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', marginBottom: '22px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '13px', flexWrap: 'wrap', marginBottom: '9px' }}>
+              <h1 className="detail-title" style={{ fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 800, color: '#1D1D1F', margin: 0, letterSpacing: '-0.4px', lineHeight: 1.15 }}>
+                {listing.title}
+              </h1>
+              {(() => {
+                const rating = buildCardRating(listing as Record<string, unknown>)
+                return rating ? (
+                  <a href="#reviews-section" style={{ textDecoration: 'none', display: 'inline-flex' }} title="Zu den Bewertungen">
+                    <ScoreBadge rating={rating} popDirection="down" />
+                  </a>
+                ) : (
+                  <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', cursor: 'pointer' }}>
+                    ★ Neu
+                  </a>
+                )
+              })()}
+            </div>
+            <p style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', margin: 0, fontSize: '14px', color: '#6E6E73', lineHeight: 1.5 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={2} style={{ flexShrink: 0 }}>
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>{listing.address || displayCity}</span>
+              <a href="#lage" style={{ color: 'var(--gold-dark)', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                Auf der Karte ansehen ↓
               </a>
-            ) : (
-              <a href="#reviews-section" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 12px', borderRadius: '999px', backgroundColor: '#FAF5E4', fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', cursor: 'pointer' }}>
-                ★ Neu
-              </a>
-            )
-          })()}
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#6E6E73' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth={2}>
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            {displayCity}
-          </span>
-          {/* Spacer pushes host badge right */}
-          <div style={{ flex: 1 }} />
+            </p>
+          </div>
           {hostProfile && (
             <HostBadge host={{
               id: hostProfile.id,
@@ -216,7 +234,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             {/* Description */}
             <div className="detail-description" style={{ marginBottom: '32px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Über diese Unterkunft</h2>
-              <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0, textAlign: 'justify' }}>
+              <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
                 {listing.description || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
               </p>
             </div>
@@ -261,10 +279,68 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         {/* ── FULL-WIDTH SECTIONS (below two-column layout) ── */}
         <div style={{ paddingBottom: '80px' }}>
 
-          {/* Full-width Map */}
-          <div style={{ marginTop: '40px', marginBottom: '32px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Lage</h2>
-            {listing.address ? (
+          {/* Full-width Map — own Leaflet style (matches the search map),
+              with the region's destinations one zoom-out away */}
+          <div id="lage" style={{ marginTop: '40px', marginBottom: '32px', scrollMarginTop: '96px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '6px' }}>Lage &amp; Umgebung</h2>
+            {region && (
+              <p style={{ fontSize: '13.5px', color: '#6E6E73', margin: '0 0 14px' }}>
+                Die Unterkunft und die schönsten Ausflugsziele in {region.name} auf einer Karte.
+              </p>
+            )}
+            {hasCoords ? (
+              <>
+                <RegionMap
+                  pois={region?.pois ?? []}
+                  listings={[{ id: listing.id, slug: listing.slug ?? undefined, title: listing.title, lat: mapLat!, lon: mapLon! }]}
+                  center={[mapLat!, mapLon!]}
+                  zoom={13}
+                  extraPois={Object.values(REGIONS).filter((r) => r.slug !== region?.slug).flatMap((r) => r.pois)}
+                  height="clamp(320px, 45vh, 420px)"
+                />
+
+                {/* Region teaser — the elegant road into the region content */}
+                {region && (
+                  <Link href={`/region/${region.slug}`} className="listing-card" style={{
+                    display: 'flex', flexWrap: 'wrap', marginTop: '18px', borderRadius: '18px', overflow: 'hidden',
+                    background: 'linear-gradient(135deg, #12222E, #1E3A4C)', textDecoration: 'none',
+                  }}>
+                    {regionHero && (
+                      <div style={{ position: 'relative', flex: '1 1 240px', minHeight: '170px' }}>
+                        <Image src={regionHero} alt={region.name} fill sizes="(max-width: 768px) 100vw, 380px" style={{ objectFit: 'cover' }} />
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, transparent 60%, #16293A)' }} className="hidden md:block" />
+                      </div>
+                    )}
+                    <div style={{ flex: '1.5 1 300px', padding: 'clamp(18px, 3vw, 26px) clamp(18px, 3.5vw, 30px)' }}>
+                      <p style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.11em', textTransform: 'uppercase', margin: '0 0 7px' }}>
+                        Deine Region
+                      </p>
+                      <p style={{ fontSize: 'clamp(17px, 2.5vw, 21px)', fontWeight: 800, color: '#fff', margin: '0 0 5px', letterSpacing: '-0.3px' }}>
+                        {region.emoji} {region.name}
+                      </p>
+                      <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.72)', margin: '0 0 13px', lineHeight: 1.55 }}>
+                        {region.claim}
+                      </p>
+                      <p style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', margin: '0 0 15px' }}>
+                        {region.heroSlugs.slice(0, 3).map((s) => {
+                          const p = region.pois.find((x) => x.slug === s)
+                          return p ? (
+                            <span key={s} style={{ fontSize: '11.5px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', padding: '4px 11px', borderRadius: '999px' }}>
+                              {p.emoji} {p.name}
+                            </span>
+                          ) : null
+                        })}
+                      </p>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 700,
+                        color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)',
+                        padding: '9px 18px', borderRadius: '999px',
+                      }}>Region entdecken →</span>
+                    </div>
+                  </Link>
+                )}
+              </>
+            ) : listing.address ? (
               <div className="detail-map" style={{ borderRadius: '16px', overflow: 'hidden', border: '1px solid #E5E5EA', height: '360px' }}>
                 <iframe
                   title="Karte"
