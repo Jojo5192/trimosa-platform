@@ -58,6 +58,75 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       })
       mapRef.current = map
 
+      // Shared map styles (same block ListingsMap injects on the search page —
+      // identical id, so whichever map loads first wins and the other skips)
+      if (!document.getElementById('trimosa-map-styles')) {
+        const style = document.createElement('style')
+        style.id = 'trimosa-map-styles'
+        style.textContent = `
+          .trimosa-searchmap .leaflet-tile {
+            filter: sepia(0.18) saturate(1.5) contrast(1.22) brightness(0.92);
+          }
+          .trimosa-popup .leaflet-popup-content-wrapper {
+            border-radius: 16px !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.22) !important;
+            border: none !important;
+            background: #fff !important;
+          }
+          .trimosa-popup .leaflet-popup-content {
+            margin: 0 !important;
+            width: 220px !important;
+          }
+          .trimosa-popup a { transition: opacity 0.15s; }
+          .trimosa-popup a:hover { opacity: 0.94; }
+          .trimosa-popup .leaflet-popup-tip-container {
+            display: none !important;
+          }
+          .leaflet-control-zoom {
+            border: none !important;
+            box-shadow: none !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 4px !important;
+          }
+          .leaflet-control-zoom a {
+            width: 32px !important;
+            height: 32px !important;
+            line-height: 32px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            background: #fff !important;
+            color: #333 !important;
+            font-size: 18px !important;
+            font-weight: 400 !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+            text-align: center !important;
+          }
+          .leaflet-control-zoom a:hover {
+            background: #f5f5f5 !important;
+          }
+          .trimosa-marker:hover,
+          .trimosa-marker.trimosa-marker-active {
+            transform: scale(1.18) translateY(-3px) !important;
+          }
+          .trimosa-marker:hover > div:first-child,
+          .trimosa-marker.trimosa-marker-active > div:first-child {
+            box-shadow: 0 8px 28px rgba(0,0,0,0.25), 0 0 0 3px var(--gold) !important;
+          }
+          .leaflet-attribution-flag { display: none !important; }
+          .leaflet-control-attribution {
+            font-size: 9px !important;
+            background: rgba(255,255,255,0.8) !important;
+            color: rgba(0,0,0,0.4) !important;
+            border-radius: 4px !important;
+            padding: 2px 6px !important;
+          }
+        `
+        document.head.appendChild(style)
+      }
+
       L.control.attribution({ position: 'bottomleft', prefix: false })
         .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
         .addTo(map)
@@ -111,7 +180,12 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         })
         const detailLink = isHighlight ? '' : `
             <a href="/erlebnis/${poi.slug}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">Mehr erfahren →</a>`
+        // Photo header served via our own /_next/image proxy (no third-party request)
+        const imgHeader = poi.image
+          ? `<img src="/_next/image?url=${encodeURIComponent(poi.image.src)}&w=640&q=75" alt="" style="display:block;width:100%;height:96px;object-fit:cover"/>`
+          : ''
         const popup = L.popup({ closeButton: false, className: 'trimosa-popup', maxWidth: 240 }).setContent(`
+          ${imgHeader}
           <div style="padding:10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
             <span style="display:block;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">${POI_CATEGORIES[poi.category].label}</span>
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:4px">${poi.emoji} ${poi.name}</span>
