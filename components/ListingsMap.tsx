@@ -93,8 +93,29 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
         maxZoom: 19,
       }).addTo(map)
 
+      // Listings at the exact same address stack invisibly on one point — fan
+      // them out in a small circle (~15 m) so every apartment in the building
+      // is visible and individually hoverable.
+      const byCoord: Record<string, MapListing[]> = {}
+      for (const l of listings) {
+        const key = `${l.lat.toFixed(5)},${l.lon.toFixed(5)}`
+        ;(byCoord[key] ??= []).push(l)
+      }
+      const positioned = listings.map((l) => {
+        const group = byCoord[`${l.lat.toFixed(5)},${l.lon.toFixed(5)}`]
+        if (group.length === 1) return l
+        const i = group.indexOf(l)
+        const angle = (2 * Math.PI * i) / group.length
+        const r = 0.00015 // ≈ 15 m
+        return {
+          ...l,
+          lat: l.lat + r * Math.sin(angle),
+          lon: l.lon + (r * Math.cos(angle)) / Math.cos((l.lat * Math.PI) / 180),
+        }
+      })
+
       // Add markers
-      listings.forEach((listing) => {
+      positioned.forEach((listing) => {
         const displayPrice = listing.totalPrice && listing.totalPrice > 0
           ? listing.totalPrice
           : listing.price
