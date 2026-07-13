@@ -558,7 +558,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
           {/* ── Mobile Search Trigger (hidden on md+) ── */}
           <button
-            className="flex md:hidden"
+            className="flex lg:hidden"
             onClick={() => setMobileSearchOpen(true)}
             style={{
               flex: 1, margin: '0 4px', height: '44px', borderRadius: '999px',
@@ -588,7 +588,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
           </button>
 
           {/* Search Bar — desktop only */}
-          <div className="hidden md:flex" style={{ flex: 1, justifyContent: 'center', minWidth: 0, maxWidth: '700px', margin: '0 auto' }}>
+          <div className="hidden lg:flex" style={{ flex: 1, justifyContent: 'center', minWidth: 0, maxWidth: '700px', margin: '0 auto' }}>
             <form
               onSubmit={handleSubmit}
               style={{
@@ -691,7 +691,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
               {/* ── Anreise ── */}
               <div
-                className="hidden md:flex"
+                className="hidden lg:flex"
                 style={fieldStyle('date', { flex: '1.1', padding: '0 12px', minWidth: 0 })}
                 onClick={() => { setActiveField('date'); setDateSelecting('checkin') }}
               >
@@ -703,7 +703,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
               {/* ── Abreise ── */}
               <div
-                className="hidden md:flex"
+                className="hidden lg:flex"
                 style={fieldStyle('date', { flex: '1.1', padding: '0 12px', minWidth: 0 })}
                 onClick={() => { setActiveField('date'); setDateSelecting('checkout') }}
               >
@@ -715,7 +715,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
               {/* ── Gäste ── */}
               <div
-                className="hidden md:flex"
+                className="hidden lg:flex"
                 style={fieldStyle('guests', { flexShrink: 0, width: compact ? '96px' : '110px', padding: '0 12px' })}
                 onClick={() => setActiveField(activeField === 'guests' ? null : 'guests')}
               >
