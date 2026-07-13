@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
+import KomootEmbed from '@/components/KomootEmbed'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, REGIONS } from '@/lib/regions'
@@ -130,7 +131,13 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         <p style={{ fontSize: '14px', color: '#6B6455', margin: '0 0 16px' }}>
           Sehenswürdigkeiten, Rad- und Wanderziele und Familien-Ausflüge — zusammen mit unseren Apartments auf einer Karte.
         </p>
-        <RegionMap pois={region.pois} listings={mapListings} center={region.center} zoom={region.zoom} />
+        <RegionMap
+          pois={region.pois}
+          listings={mapListings}
+          center={region.center}
+          zoom={region.zoom}
+          extraPois={otherRegions.flatMap((r) => r.pois)}
+        />
 
         {/* ── Destination detail cards (SEO + browsing) ── */}
         <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
@@ -165,6 +172,23 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         <p style={{ fontSize: '11px', color: '#AAA6A0', margin: '10px 2px 0' }}>
           Fotos der Ausflugsziele: Wikimedia Commons — Urheber und Lizenz jeweils auf der Detailseite.
         </p>
+
+        {/* ── Komoot tour inspiration (only when tours are curated) ── */}
+        {region.komootTours && region.komootTours.length > 0 && (
+          <>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '32px 0 6px', letterSpacing: '-0.01em' }}>
+              Radtouren zur Inspiration
+            </h2>
+            <p style={{ fontSize: '13px', color: '#6B6455', margin: '0 0 14px' }}>
+              Handverlesene Touren auf Komoot — Karte, Höhenprofil und GPX zum Nachfahren.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
+              {region.komootTours.map((t) => (
+                <KomootEmbed key={t.embedUrl} title={t.title} embedUrl={t.embedUrl} />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* ── Coming soon ── */}
         {region.comingSoon && (
