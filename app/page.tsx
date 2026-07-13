@@ -7,6 +7,7 @@ import QuickFilters from '@/components/QuickFilters'
 import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
+import { buildCardRating } from '@/lib/rating'
 
 /* ── Refined, muted card gradients ── */
 const CARD_GRADIENTS = [
@@ -50,22 +51,6 @@ function getCoords(location: string): [number, number] {
     if (lower.includes(key)) return coords
   }
   return KNOWN_COORDS['default']
-}
-
-/* Weighted review rating from the synced per-platform score columns. */
-function buildCardRating(l: Record<string, unknown>) {
-  const platforms: { source: string; score: number; count: number }[] = []
-  for (const src of ['airbnb', 'booking', 'google', 'vrbo']) {
-    const score = l[`${src}_score`]
-    const count = l[`${src}_review_count`]
-    if (score != null && count != null && Number(count) > 0) {
-      platforms.push({ source: src, score: Math.round(Number(score) * 10) / 10, count: Number(count) })
-    }
-  }
-  if (platforms.length === 0) return undefined
-  const total = platforms.reduce((s, p) => s + p.score * p.count, 0)
-  const count = platforms.reduce((s, p) => s + p.count, 0)
-  return { overall: Math.round((total / count) * 100) / 100, count, platforms }
 }
 
 function formatShortRange(ci: string, co: string): string {
@@ -461,12 +446,15 @@ export default async function Home({
           </p>
 
           {/* CTA */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
             <Link href="/?view=map" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
             }}>Alle Unterkünfte ansehen →</Link>
+            <Link href="/ueber-uns" style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(245,240,232,0.75)', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
+              Mehr über uns
+            </Link>
           </div>
         </div>
       </section>
@@ -475,8 +463,12 @@ export default async function Home({
       <footer style={{ borderTop: '1px solid #EEEBE4', padding: '24px 20px' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
-          <div style={{ display: 'flex', gap: '20px' }}>
+          <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
             {[
+              { label: 'Über uns', href: '/ueber-uns' },
+              { label: 'Trier', href: '/region/trier' },
+              { label: 'Bitburg', href: '/region/bitburg' },
+              { label: 'Südeifel', href: '/region/suedeifel' },
               { label: 'Impressum', href: '/impressum' },
               { label: 'Datenschutz', href: '/datenschutz' },
               { label: 'AGB', href: '/agb' },
