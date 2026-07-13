@@ -3,8 +3,6 @@ import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
 
-export const config = { api: { bodyParser: false } }
-
 /**
  * POST /api/payments/webhook
  * Stripe sends events here. Set up in Stripe Dashboard:
