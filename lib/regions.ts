@@ -48,6 +48,12 @@ export interface Region {
   zoom: number
   /** Substring matched against listings.location to find the region's apartments */
   locationMatch: string
+  /**
+   * Curated POI slugs whose photos form the region's hero collage (region
+   * page + homepage card, first slug = signature image). Falls back to the
+   * first POIs with an image if a slug has none.
+   */
+  heroSlugs: string[]
   /** Optional "coming soon" teaser shown on the region page */
   comingSoon?: { title: string; text: string }
   /** Emoji used where no photo is available (homepage strip, Saar hero) */
@@ -255,6 +261,11 @@ export const REGIONS: Record<string, Region> = {
     center: [49.756, 6.641],
     zoom: 13,
     locationMatch: 'Trier',
+    heroSlugs: ['porta-nigra', 'hauptmarkt-trier', 'kaiserthermen'],
+    komootTours: [
+      { title: 'Mosel-Weinberge & Römerstadt — Runde ab Trier (45,5 km · ~2:45 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/18050087/embed?profile=1' },
+      { title: 'Moselschleuse & Mosel-Radweg — Runde ab Trier (30,9 km · ~2:00 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43179718/embed?profile=1' },
+    ],
   },
 
   bitburg: {
@@ -407,6 +418,11 @@ export const REGIONS: Record<string, Region> = {
     center: [49.9725, 6.523],
     zoom: 13,
     locationMatch: 'Bitburg',
+    heroSlugs: ['burg-rittersdorf', 'stausee-bitburg', 'villa-otrang'],
+    komootTours: [
+      { title: 'Kyll-Ufer-Radweg & Bitburger Radweg — Runde ab Bitburg (31,7 km · ~2:00 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/17647796/embed?profile=1' },
+      { title: 'Prümtal & Bitburger Radweg — Runde ab Bitburg (37,7 km · ~2:30 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/17648381/embed?profile=1' },
+    ],
   },
 
   suedeifel: {
@@ -579,6 +595,11 @@ export const REGIONS: Record<string, Region> = {
     center: [49.832, 6.415],
     zoom: 12,
     locationMatch: 'Südeifel',
+    heroSlugs: ['schiessentuempel', 'teufelsschlucht', 'burg-vianden'],
+    komootTours: [
+      { title: 'Sauerblick & Echternacher Grenzbrücke — Runde ab Minden (17,3 km · ~1:10 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43179735/embed?profile=1' },
+      { title: 'Ralinger Tunnel & Echternacher See — Runde ab Echternach (23 km · ~1:25 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43160850/embed?profile=1' },
+    ],
   },
 
   saar: {
@@ -728,6 +749,11 @@ export const REGIONS: Record<string, Region> = {
     center: [49.635, 6.55],
     zoom: 11,
     locationMatch: 'Saar',
+    heroSlugs: ['saarschleife', 'saarburg', 'kanzemer-altenberg'],
+    komootTours: [
+      { title: 'Schleuse Kanzem & Stauwehr Schoden — Runde ab Saarburg (21,4 km · ~1:20 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/39581518/embed?profile=1' },
+      { title: 'Stauwehr Schoden & Saar-Altarm — Runde ab Saarburg (23,4 km · ~1:30 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43192448/embed?profile=1' },
+    ],
   },
 }
 
