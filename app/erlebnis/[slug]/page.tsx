@@ -54,6 +54,16 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
 
   const siblings = region.pois.filter((p) => p.slug !== poi.slug)
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Start', item: siteUrl },
+      { '@type': 'ListItem', position: 2, name: region.name, item: `${siteUrl}/region/${region.slug}` },
+      { '@type': 'ListItem', position: 3, name: poi.name, item: `${siteUrl}/erlebnis/${poi.slug}` },
+    ],
+  }
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'TouristAttraction',
@@ -68,6 +78,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <NavBar />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '28px 20px 60px' }}>
