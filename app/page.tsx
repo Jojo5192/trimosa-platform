@@ -347,10 +347,12 @@ export default async function Home({
             </div>
             <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '6px', scrollbarWidth: 'none' }}>
               {Object.values(REGIONS).map((r) => {
-                const img = (allListings ?? [])
+                const ownImg = (allListings ?? [])
                   .filter((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
                   .map((l) => (l.images as string[] | null)?.[0])
                   .find((i): i is string => !!i)
+                // Region without own listings yet → curated destination photo
+                const img = ownImg ?? r.pois.find((p) => p.image)?.image?.src
                 return (
                   <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
                     display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', flex: '1 0 auto',
@@ -365,7 +367,7 @@ export default async function Home({
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                         <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#111', whiteSpace: 'nowrap' }}>{r.name}</span>
-                        {r.comingSoon && !img && (
+                        {r.comingSoon && !ownImg && (
                           <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '2.5px 7px', borderRadius: '999px', textTransform: 'uppercase' }}>Bald</span>
                         )}
                       </span>
