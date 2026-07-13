@@ -48,6 +48,8 @@ interface Props {
   searchCheckin?: string
   searchCheckout?: string
   locations?: string[]
+  /** Open the fullscreen map immediately on mobile (homepage "Karte anzeigen"). */
+  openMapByDefault?: boolean
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -162,9 +164,9 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
 }
 
 /* ── Main component ── */
-export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [] }: Props) {
+export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [], openMapByDefault = false }: Props) {
   const [isMobile, setIsMobile] = useState(false)
-  const [mobileMapOpen, setMobileMapOpen] = useState(false)
+  const [mobileMapOpen, setMobileMapOpen] = useState(openMapByDefault)
   // Hover-sync between the card list and the map markers (both directions).
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -351,11 +353,14 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               <button
                 onClick={() => setMobileMapOpen(false)}
                 style={{
-                  position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)',
-                  padding: '10px 20px', borderRadius: '999px',
+                  // Safe-area offset keeps it above phone browser toolbars /
+                  // home indicator; z above Leaflet's internal panes (max 1000).
+                  position: 'absolute', bottom: 'calc(24px + env(safe-area-inset-bottom))',
+                  left: '50%', transform: 'translateX(-50%)',
+                  padding: '12px 24px', borderRadius: '999px',
                   background: '#1A1814', color: '#fff', border: 'none',
-                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                  zIndex: 201, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                  zIndex: 1100, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
                   display: 'flex', alignItems: 'center', gap: '6px',
                 }}
               >
