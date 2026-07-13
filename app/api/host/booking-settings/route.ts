@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('allow_instant_booking, allow_requests, min_request_nights')
+    .select('allow_instant_booking, allow_requests, min_request_nights, notification_email')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -19,6 +19,7 @@ export async function GET() {
     allow_instant_booking: data?.allow_instant_booking ?? true,
     allow_requests: data?.allow_requests ?? true,
     min_request_nights: data?.min_request_nights ?? 1,
+    notification_email: data?.notification_email ?? '',
   })
 }
 
@@ -33,6 +34,13 @@ export async function PATCH(request: Request) {
   if (typeof body.allow_instant_booking === 'boolean') updates.allow_instant_booking = body.allow_instant_booking
   if (typeof body.allow_requests === 'boolean') updates.allow_requests = body.allow_requests
   if (typeof body.min_request_nights === 'number') updates.min_request_nights = Math.max(1, Math.min(30, body.min_request_nights))
+  if (typeof body.notification_email === 'string') {
+    const mail = body.notification_email.trim().slice(0, 200)
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+      return NextResponse.json({ error: 'Ungültige E-Mail-Adresse' }, { status: 400 })
+    }
+    updates.notification_email = mail || null
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
