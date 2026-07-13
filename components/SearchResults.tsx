@@ -75,8 +75,8 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
       style={{
         display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff',
         border: isHovered ? '1px solid var(--gold)' : '1px solid #EAE7E0',
-        boxShadow: isHovered ? '0 8px 24px rgba(174,141,45,0.18)' : 'none',
-        transform: isHovered ? 'translateY(-2px)' : 'none',
+        boxShadow: isHovered ? '0 0 0 2px var(--gold), 0 14px 32px rgba(174,141,45,0.35)' : 'none',
+        transform: isHovered ? 'translateY(-4px)' : 'none',
         transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
       }}
     >
@@ -168,7 +168,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(openMapByDefault)
   // Hover-sync between the card list and the map markers (both directions).
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  // A marker hover carries ALL listing ids at that address (stacked pins).
+  const [hoveredIds, setHoveredIds] = useState<string[]>([])
 
   // Build query string to pass search dates/guests to detail page
   const linkParams = useMemo(() => {
@@ -250,7 +251,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           </div>
         )
       }
-      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} isHovered={hoveredId === card.id} onHover={setHoveredId} />)
+      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} isHovered={hoveredIds.includes(card.id)} onHover={(id) => setHoveredIds(id ? [id] : [])} />)
     })
     return out
   }
@@ -346,8 +347,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                   listings={mapListings}
                   centerLat={centerLat}
                   centerLon={centerLon}
-                  hoveredId={hoveredId}
-                  onHoverListing={setHoveredId}
+                  hoveredIds={hoveredIds}
+                  onHoverListing={(ids) => setHoveredIds(ids ?? [])}
                 />
               </div>
               <button
@@ -442,8 +443,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
             listings={mapListings}
             centerLat={centerLat}
             centerLon={centerLon}
-            hoveredId={hoveredId}
-            onHoverListing={setHoveredId}
+            hoveredIds={hoveredIds}
+            onHoverListing={(ids) => setHoveredIds(ids ?? [])}
           />
         </div>
       </div>
