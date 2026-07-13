@@ -88,16 +88,24 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
             ))}
           </div>
         ) : (
-          /* No apartment photos yet (e.g. upcoming region) — decorative hero */
-          <div style={{
-            position: 'relative', margin: '22px 0 26px', height: 'clamp(160px, 26vw, 260px)', borderRadius: '18px', overflow: 'hidden',
-            background: 'linear-gradient(135deg, #12222E 0%, #1E3A4C 55%, var(--gold-dark) 130%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <div style={{ display: 'flex', gap: 'clamp(14px, 4vw, 34px)', fontSize: 'clamp(38px, 7vw, 64px)', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))' }}>
-              {region.pois.slice(0, 4).map((p) => <span key={p.slug}>{p.emoji}</span>)}
-            </div>
+          /* No apartment photos yet (e.g. upcoming region) — collage from the
+             region's curated destination photos instead */
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gap: '10px', margin: '22px 0 8px', height: 'clamp(220px, 38vw, 380px)' }}>
+            {region.pois.filter((p) => p.image).slice(0, 3).map((p, i) => (
+              <Link key={p.slug} href={`/erlebnis/${p.slug}`} style={{ position: 'relative', display: 'block', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 ? '1 / 3' : undefined }}>
+                <Image src={p.image!.src} alt={p.name} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
+                <span style={{
+                  position: 'absolute', left: '10px', bottom: '8px', fontSize: '11px', fontWeight: 700, color: '#fff',
+                  background: 'rgba(10,16,22,0.55)', padding: '4px 10px', borderRadius: '999px', backdropFilter: 'blur(6px)',
+                }}>{p.emoji} {p.name}</span>
+              </Link>
+            ))}
           </div>
+        )}
+        {heroImages.length === 0 && (
+          <p style={{ fontSize: '10.5px', color: '#AAA6A0', margin: '0 0 22px' }}>
+            Fotos: Wikimedia Commons — Urheber und Lizenz auf den verlinkten Detailseiten.
+          </p>
         )}
 
         {region.intro.map((p) => (
@@ -124,31 +132,39 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         </p>
         <RegionMap pois={region.pois} listings={mapListings} center={region.center} zoom={region.zoom} />
 
-        {/* ── Destination detail links (SEO + browsing) ── */}
+        {/* ── Destination detail cards (SEO + browsing) ── */}
         <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
           Ausflugsziele im Detail
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
           {region.pois.map((p) => {
             const c = POI_CATEGORIES[p.category].color
             return (
               <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
-                display: 'flex', alignItems: 'center', gap: '11px', textDecoration: 'none',
-                padding: '12px 14px', borderRadius: '13px', background: '#fff', border: '1px solid #EAE7E0',
+                display: 'block', textDecoration: 'none', borderRadius: '14px',
+                background: '#fff', border: '1px solid #EAE7E0', overflow: 'hidden',
               }}>
-                <span style={{
-                  width: '38px', height: '38px', borderRadius: '12px', flexShrink: 0, fontSize: '19px',
-                  background: `${c}14`, border: `1.5px solid ${c}40`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>{p.emoji}</span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.25 }}>{p.name}</span>
-                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '2px' }}>{POI_CATEGORIES[p.category].label} →</span>
-                </span>
+                <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
+                  {p.image
+                    ? <Image src={p.image.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 220px" style={{ objectFit: 'cover' }} />
+                    : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>{p.emoji}</span>}
+                  <span style={{
+                    position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
+                    letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
+                    background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                  }}>{POI_CATEGORIES[p.category].label}</span>
+                </div>
+                <div style={{ padding: '10px 12px 11px' }}>
+                  <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
+                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
+                </div>
               </Link>
             )
           })}
         </div>
+        <p style={{ fontSize: '11px', color: '#AAA6A0', margin: '10px 2px 0' }}>
+          Fotos der Ausflugsziele: Wikimedia Commons — Urheber und Lizenz jeweils auf der Detailseite.
+        </p>
 
         {/* ── Coming soon ── */}
         {region.comingSoon && (
