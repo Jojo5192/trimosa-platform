@@ -52,6 +52,12 @@ export interface Region {
   comingSoon?: { title: string; text: string }
   /** Emoji used where no photo is available (homepage strip, Saar hero) */
   emoji: string
+  /**
+   * Curated Komoot tours (owner pastes the iframe src from Komoot's
+   * "Einbetten" dialog). Shown as click-to-load embeds on the region page —
+   * nothing is requested from komoot.com until the visitor opts in.
+   */
+  komootTours?: { title: string; embedUrl: string }[]
 }
 
 export const POI_CATEGORIES: Record<PoiCategory, { label: string; color: string }> = {
