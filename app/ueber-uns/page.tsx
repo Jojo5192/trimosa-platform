@@ -183,7 +183,9 @@ export default async function UeberUnsPage() {
         <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '0 0 14px', letterSpacing: '-0.01em', textAlign: 'center' }}>Unsere Regionen</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', margin: '0 0 8px' }}>
           {Object.values(REGIONS).map((r) => {
-            const img = r.pois.find((p) => p.image)?.image
+            const img = r.heroSlugs
+              .map((s) => r.pois.find((p) => p.slug === s)?.image)
+              .find((i) => !!i) ?? r.pois.find((p) => p.image)?.image
             return (
               <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{ display: 'block', textDecoration: 'none', background: '#fff', borderRadius: '16px', border: '1px solid #EDE9DE', overflow: 'hidden' }}>
                 {img && (
