@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import BookingBox from './BookingBox'
@@ -33,16 +33,25 @@ function buildListingRating(l: Record<string, unknown>): CardRating | undefined 
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
+// The [id] param accepts both the speaking slug (canonical) and the legacy
+// UUID (old links / internal references) — UUIDs 301-redirect to the slug.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function listingLookup(param: string): { column: 'id' | 'slug'; value: string } {
+  return UUID_RE.test(param) ? { column: 'id', value: param } : { column: 'slug', value: param }
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
+  const lookup = listingLookup(id)
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('title, description, location, city, images, is_active')
-    .eq('id', id)
+    .select('title, description, location, city, images, is_active, slug, id')
+    .eq(lookup.column, lookup.value)
     .single()
 
   if (!listing || listing.is_active === false) return {}
 
+  const canonicalPath = `/listing/${listing.slug ?? listing.id}`
   const city = listing.city || listing.location
   const title = `${listing.title} — Ferienwohnung in ${city}`
   const description = listing.description
@@ -53,11 +62,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return {
     title,
     description,
-    alternates: { canonical: `${siteUrl}/listing/${id}` },
+    alternates: { canonical: `${siteUrl}${canonicalPath}` },
     openGraph: {
       title,
       description,
-      url: `${siteUrl}/listing/${id}`,
+      url: `${siteUrl}${canonicalPath}`,
       images: image ? [{ url: image }] : undefined,
     },
   }
@@ -87,9 +96,20 @@ const fallbackColors = [
 export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string; review?: string }> }) {
   const { id } = await params
   const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm } = await searchParams
-  const { data: listing } = await supabaseAdmin.from('listings').select('*').eq('id', id).single()
+  const lookup = listingLookup(id)
+  const { data: listing } = await supabaseAdmin.from('listings').select('*').eq(lookup.column, lookup.value).single()
 
   if (!listing || listing.is_active === false) notFound()
+
+  // Legacy UUID links → 301 to the speaking URL (query params preserved)
+  if (lookup.column === 'id' && listing.slug) {
+    const qs = new URLSearchParams()
+    if (searchCheckin) qs.set('checkin', searchCheckin)
+    if (searchCheckout) qs.set('checkout', searchCheckout)
+    if (searchGuests) qs.set('guests', searchGuests)
+    if (showReviewForm) qs.set('review', showReviewForm)
+    permanentRedirect(`/listing/${listing.slug}${qs.toString() ? `?${qs}` : ''}`)
+  }
 
   // Fetch host profile (for the host badge; booking settings now live on the listing)
   const { data: hostProfile } = await supabaseAdmin
@@ -112,7 +132,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     '@type': 'VacationRental',
     name: listing.title,
     description: listing.description || undefined,
-    url: `${siteUrl}/listing/${listing.id}`,
+    url: `${siteUrl}/listing/${listing.slug ?? listing.id}`,
     image: allImagesFlat.length > 0 ? allImagesFlat : undefined,
     address: {
       '@type': 'PostalAddress',
