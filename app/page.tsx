@@ -263,6 +263,7 @@ export default async function Home({
       : undefined
     return {
       id,
+      slug: (l.slug as string | null) ?? undefined,
       title: l.title as string,
       location: l.location as string,
       maxGuests: (l.max_guests as number) || 0,
@@ -353,7 +354,7 @@ export default async function Home({
               {cardData.map((card, index) => {
                 const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
                 return (
-                  <Link key={card.id} href={`/listing/${card.id}`} className="listing-card" target="_blank"
+                  <Link key={card.id} href={`/listing/${card.slug ?? card.id}`} className="listing-card" target="_blank"
                     style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
                     <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
                       {card.image
