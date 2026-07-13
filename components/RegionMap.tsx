@@ -27,7 +27,12 @@ interface Props {
   /** POI slug rendered larger, e.g. the destination a detail page is about */
   highlightSlug?: string
   height?: string
+  /** POIs of the neighbouring regions — appear once the user zooms out */
+  extraPois?: Poi[]
 }
+
+/** Neighbouring-region POIs become visible at this zoom level or wider */
+const FOREIGN_MAX_ZOOM = 11
 
 declare global {
   interface Window {
@@ -36,13 +41,27 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const poiMarkersRef = useRef<{ category: PoiCategory; marker: any }[]>([])
+  const poiMarkersRef = useRef<{ category: PoiCategory; marker: any; foreign: boolean }[]>([])
   const [activeCategory, setActiveCategory] = useState<PoiCategory | 'alle'>('alle')
+  const activeCategoryRef = useRef<PoiCategory | 'alle'>('alle')
+
+  // Shared visibility rule: category filter + zoom gate for neighbour POIs
+  const applyVisibility = () => {
+    const map = mapRef.current
+    if (!map) return
+    const zoomNow = map.getZoom()
+    const cat = activeCategoryRef.current
+    for (const { category, marker, foreign } of poiMarkersRef.current) {
+      const show = (cat === 'alle' || category === cat) && (!foreign || zoomNow <= FOREIGN_MAX_ZOOM)
+      if (show && !map.hasLayer(marker)) marker.addTo(map)
+      if (!show && map.hasLayer(marker)) map.removeLayer(marker)
+    }
+  }
 
   useEffect(() => {
     const initMap = () => {
@@ -161,8 +180,9 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         m.on('mouseover', () => m.openPopup())
       })
 
-      // Curated POIs — emoji markers with category ring colour
-      pois.forEach((poi) => {
+      // Curated POIs — emoji markers with category ring colour. Neighbouring
+      // regions' POIs (foreign) only appear once the user zooms out.
+      const addPoi = (poi: Poi, foreign: boolean) => {
         const color = POI_CATEGORIES[poi.category].color
         const isHighlight = poi.slug === highlightSlug
         const size = isHighlight ? 42 : 30
@@ -191,10 +211,17 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:4px">${poi.emoji} ${poi.name}</span>
             <span style="display:block;font-size:12px;color:#555;line-height:1.45">${poi.text}</span>${detailLink}
           </div>`)
-        const m = L.marker([poi.lat, poi.lon], { icon, zIndexOffset: isHighlight ? 500 : 0 }).addTo(map).bindPopup(popup)
+        const m = L.marker([poi.lat, poi.lon], { icon, zIndexOffset: isHighlight ? 500 : 0 }).bindPopup(popup)
+        if (!foreign) m.addTo(map)
         m.on('mouseover', () => m.openPopup())
-        poiMarkersRef.current.push({ category: poi.category, marker: m })
-      })
+        poiMarkersRef.current.push({ category: poi.category, marker: m, foreign })
+      }
+      pois.forEach((p) => addPoi(p, false))
+      ;(extraPois ?? []).forEach((p) => addPoi(p, true))
+
+      // Reveal/hide neighbour POIs as the user zooms
+      map.on('zoomend', applyVisibility)
+      applyVisibility()
     }
 
     if (!document.querySelector('link[href*="leaflet"]')) {
@@ -225,13 +252,9 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
 
   // Category filter: add/remove POI markers without touching the map
   useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-    for (const { category, marker } of poiMarkersRef.current) {
-      const show = activeCategory === 'alle' || category === activeCategory
-      if (show && !map.hasLayer(marker)) marker.addTo(map)
-      if (!show && map.hasLayer(marker)) map.removeLayer(marker)
-    }
+    activeCategoryRef.current = activeCategory
+    applyVisibility()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCategory])
 
   return (
@@ -264,7 +287,9 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       </div>
       )}
 
-      <div style={{ borderRadius: '20px', overflow: 'hidden', border: '2px solid #D8D5CE', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+      {/* position:relative + zIndex:0 traps Leaflet's internal z-indexes (up to
+          ~1000) inside this box so the map never paints over the sticky NavBar */}
+      <div style={{ position: 'relative', zIndex: 0, isolation: 'isolate', borderRadius: '20px', overflow: 'hidden', border: '2px solid #D8D5CE', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
         <div ref={containerRef} className="trimosa-searchmap" style={{ width: '100%', height: height ?? 'clamp(340px, 55vh, 520px)' }} />
       </div>
       <p style={{ fontSize: '11.5px', color: '#999', margin: '8px 2px 0' }}>
