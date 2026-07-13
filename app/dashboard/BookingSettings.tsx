@@ -14,6 +14,7 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
   const [requests, setRequests] = useState(allowRequests)
   const [minNights, setMinNights] = useState(minRequestNights)
   const [notifyEmail, setNotifyEmail] = useState(notificationEmail)
+  const [applyToListings, setApplyToListings] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -29,6 +30,7 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
         allow_requests: requests,
         min_request_nights: minNights,
         notification_email: notifyEmail,
+        apply_to_listings: applyToListings,
       }),
     })
     setSaving(false)
@@ -122,6 +124,22 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
           }}
         />
       </div>
+
+      {/* Apply to existing listings */}
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 0 0', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={applyToListings}
+          onChange={(e) => setApplyToListings(e.target.checked)}
+          style={{ width: 17, height: 17, marginTop: '1px', accentColor: 'var(--gold)', cursor: 'pointer', flexShrink: 0 }}
+        />
+        <span>
+          <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#111' }}>Auch auf alle bestehenden Inserate anwenden</span>
+          <span style={{ display: 'block', fontSize: '12px', color: '#888', marginTop: '2px' }}>
+            Überschreibt Sofortbuchung/Anfragen/Mindestnächte bei jedem deiner Inserate. Ohne Häkchen gelten die Werte nur als Vorgabe für neue Inserate.
+          </span>
+        </span>
+      </label>
 
       {error && (
         <p style={{ fontSize: '12px', color: '#DC2626', margin: '8px 0 0' }}>⚠️ {error}</p>
