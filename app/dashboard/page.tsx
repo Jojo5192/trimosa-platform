@@ -17,7 +17,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('allow_instant_booking, allow_requests, min_request_nights, smoobu_api_key, smoobu_channel_id, markup_pct')
+    .select('allow_instant_booking, allow_requests, min_request_nights, notification_email, smoobu_api_key, smoobu_channel_id, markup_pct')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -161,6 +161,7 @@ export default async function DashboardPage() {
             allowInstant={profile?.allow_instant_booking ?? true}
             allowRequests={profile?.allow_requests ?? true}
             minRequestNights={profile?.min_request_nights ?? 1}
+            notificationEmail={profile?.notification_email ?? ''}
           />
         </section>
 
