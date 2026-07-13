@@ -34,6 +34,9 @@ interface Props {
   /** Render the "Ausflugsziele im Detail" card grid below the map — it
       follows the same category filter as the markers */
   showPoiGrid?: boolean
+  /** 'light' = clean overview (default) · 'voyager' = detailed street map
+      with labels/POIs, for orientation around a single address */
+  tiles?: 'light' | 'voyager'
 }
 
 /** Neighbouring-region POIs become visible at this zoom level or wider */
@@ -46,7 +49,7 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false, tiles = 'light' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -90,6 +93,16 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         style.textContent = `
           .trimosa-searchmap .leaflet-tile {
             filter: sepia(0.18) saturate(1.5) contrast(1.22) brightness(0.92);
+          }
+          /* Voyager (detail maps): own colours already, only gentle deepening */
+          .trimosa-map-voyager .leaflet-tile {
+            filter: saturate(1.12) contrast(1.06) brightness(0.98);
+          }
+          .leaflet-control-scale-line {
+            border-color: rgba(0,0,0,0.35) !important;
+            background: rgba(255,255,255,0.7) !important;
+            color: #444 !important;
+            font-size: 9px !important;
           }
           .trimosa-popup .leaflet-popup-content-wrapper {
             border-radius: 16px !important;
@@ -147,6 +160,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
             border-radius: 4px !important;
             padding: 2px 6px !important;
           }
+          .leaflet-control-attribution a { color: rgba(0,0,0,0.4) !important; }
         `
         document.head.appendChild(style)
       }
@@ -155,10 +169,15 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
         .addTo(map)
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-      }).addTo(map)
+      L.tileLayer(
+        tiles === 'voyager'
+          ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        { subdomains: 'abcd', maxZoom: 19 }
+      ).addTo(map)
+
+      // Metric scale bar helps judging distances around the address
+      L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map)
 
       // TRIMOSA apartments — gold pins linking to the listing
       listings.forEach((l) => {
@@ -295,7 +314,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       {/* position:relative + zIndex:0 traps Leaflet's internal z-indexes (up to
           ~1000) inside this box so the map never paints over the sticky NavBar */}
       <div style={{ position: 'relative', zIndex: 0, isolation: 'isolate', borderRadius: '20px', overflow: 'hidden', border: '2px solid #D8D5CE', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
-        <div ref={containerRef} className="trimosa-searchmap" style={{ width: '100%', height: height ?? 'clamp(340px, 55vh, 520px)' }} />
+        <div ref={containerRef} className={`trimosa-searchmap${tiles === 'voyager' ? ' trimosa-map-voyager' : ''}`} style={{ width: '100%', height: height ?? 'clamp(340px, 55vh, 520px)' }} />
       </div>
       <p style={{ fontSize: '11.5px', color: '#999', margin: '8px 2px 0' }}>
         🏠 = TRIMOSA-Apartments · Marker antippen für Details
