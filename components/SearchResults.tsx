@@ -116,7 +116,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
       </div>
       {/* Score chip straddling the photo edge */}
       {card.rating && (
-        <div style={{ display: 'flex', padding: '0 12px', marginTop: '-14px', position: 'relative', zIndex: 20 }}>
+        <div style={{ display: 'flex', padding: '0 12px', marginTop: '-14px', position: 'relative', zIndex: 2 }}>
           <ScoreBadge rating={card.rating} />
         </div>
       )}
