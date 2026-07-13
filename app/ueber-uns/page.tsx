@@ -14,7 +14,7 @@ export const revalidate = 3600
 export const metadata: Metadata = {
   title: 'Über uns — TRIMOSA Apartments & Homes',
   description:
-    'Drei Freunde, eine Idee: moderne Ferienwohnungen mit regionaler Nähe in Trier, Bitburg und der Südeifel. Lerne TRIMOSA kennen.',
+    'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar. TRI·MO·SA — unser Name ist unsere Heimat. Lerne uns kennen.',
   alternates: { canonical: `${siteUrl}/ueber-uns` },
 }
 
@@ -26,7 +26,7 @@ const FOUNDERS = [
 
 const VALUES = [
   { emoji: '🔑', title: 'Ankommen', text: 'Flexibler Self-Check-in mit elektronischen Türschlössern, klare Infos vorab, keine Wartezeiten. Einfach Schlüsselcode rein und da sein.' },
-  { emoji: '🛋️', title: 'Wohlfühlen', text: 'Frisch renoviert, durchdacht eingerichtet, ehrlich fotografiert. Schnelles WLAN, Netflix, vollwertige Küchen — ein Zuhause auf Zeit, kein Hotelzimmer.' },
+  { emoji: '🛋️', title: 'Wohlfühlen', text: 'Frisch renoviert, durchdacht eingerichtet, ehrlich fotografiert. Schnelles WLAN, Smart-TV, vollwertige Küchen — ein Zuhause auf Zeit, kein Hotelzimmer.' },
   { emoji: '🥾', title: 'Entdecken', text: 'Wir sind hier aufgewachsen: Von der Mosel bis zur Teufelsschlucht geben wir euch unsere Lieblingsorte mit — ohne Umwege über Reiseführer-Floskeln.' },
 ]
 
@@ -87,7 +87,7 @@ export default async function UeberUnsPage() {
         <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(24px, 6vw, 64px)', flexWrap: 'wrap', margin: '0 0 44px', padding: '22px 20px', background: '#fff', borderRadius: '18px', border: '1px solid #EDE9DE' }}>
           {[
             { value: String(apartmentCount), label: 'Apartments' },
-            { value: '3', label: 'Regionen' },
+            { value: String(Object.keys(REGIONS).length), label: 'Regionen' },
             ...(avgScore ? [{ value: `★ ${avgScore}`, label: `${totalCount} Bewertungen` }] : []),
             { value: '100 %', label: 'Direktbuchung' },
           ].map((s) => (
@@ -96,6 +96,35 @@ export default async function UeberUnsPage() {
               <div style={{ fontSize: '12px', color: '#8A8065', fontWeight: 600, marginTop: '2px' }}>{s.label}</div>
             </div>
           ))}
+        </div>
+
+        {/* ── Name story: TRI·MO·SA ── */}
+        <div style={{
+          margin: '0 0 44px', padding: 'clamp(26px, 5vw, 40px) clamp(20px, 4vw, 40px)',
+          background: 'linear-gradient(135deg, #12222E, #1E3A4C)', borderRadius: '22px', textAlign: 'center',
+        }}>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 18px' }}>
+            Unser Name ist unsere Heimat
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'stretch', gap: 'clamp(8px, 2.5vw, 18px)', flexWrap: 'wrap' }}>
+            {[
+              { letters: 'TRI', stands: 'Trier', text: 'Deutschlands älteste Stadt — unser Zuhause und Ausgangspunkt.' },
+              { letters: 'MO', stands: 'Mosel', text: 'Der Fluss, der die Region prägt — Weinberge, Radwege, Lebensgefühl.' },
+              { letters: 'SA', stands: 'Sauer & Saar', text: 'Die wilden Täler — Südeifel, Luxemburg-Grenze und großes Riesling-Terroir.' },
+            ].map((b, i) => (
+              <div key={b.letters} style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2.5vw, 18px)' }}>
+                <div style={{ width: 'clamp(150px, 24vw, 210px)' }}>
+                  <div style={{
+                    fontSize: 'clamp(30px, 6vw, 46px)', fontWeight: 800, letterSpacing: '0.04em', lineHeight: 1,
+                    background: 'linear-gradient(135deg, var(--gold), #E3C878)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+                  }}>{b.letters}</div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', margin: '7px 0 5px' }}>{b.stands}</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.68)', lineHeight: 1.55 }}>{b.text}</div>
+                </div>
+                {i < 2 && <span style={{ fontSize: 'clamp(20px, 4vw, 30px)', color: 'rgba(255,255,255,0.25)', fontWeight: 300 }}>·</span>}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* ── Story ── */}
@@ -110,7 +139,10 @@ export default async function UeberUnsPage() {
             Aus der ersten gemeinsam renovierten Wohnung wurde schnell mehr. Heute betreiben wir als
             TRIMOSA Apartments &amp; Homes eine wachsende Familie von Ferienwohnungen in Trier,
             Bitburg und der Südeifel — und erweitern sie Stück für Stück um{' '}
-            <em>immer neue Orte zum Ankommen, Wohlfühlen und Entdecken</em>.
+            <em>immer neue Orte zum Ankommen, Wohlfühlen und Entdecken</em>. Als Nächstes:
+            vier Apartments im denkmalgeschützten ehemaligen Weingut in{' '}
+            <Link href="/region/saar" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>Kanzem an der Saar</Link>{' '}
+            und eine dritte Wohnung in Minden an der Sauer.
           </p>
           <p style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: 0 }}>
             Dabei bleibt alles in unserer Hand: Wir richten selbst ein, schreiben unsere Texte selbst,
