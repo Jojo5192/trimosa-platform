@@ -494,21 +494,33 @@ export default async function Home({
           <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 14px', textAlign: 'center' }}>
             Ohne Umwege. Direkt gebucht.
           </h2>
-          <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 32px', textAlign: 'center' }}>
+          <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 18px', textAlign: 'center' }}>
             Rund 20 eigene Ferienwohnungen in Trier, Bitburg, der Südeifel — und bald an der Saar.
             Handverlesen und kuratiert von Johannes, Pascal und Dominik.
           </p>
 
+          {/* Name story one-liner */}
+          <p style={{ fontSize: '13px', color: 'rgba(245,240,232,0.75)', margin: '0 auto 30px', textAlign: 'center', maxWidth: '520px', lineHeight: 1.6 }}>
+            <span style={{
+              fontWeight: 800, letterSpacing: '0.04em',
+              background: 'linear-gradient(135deg, var(--gold), #E3C878)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+            }}>TRI·MO·SA</span>
+            {' '}— unser Name ist unsere Heimat: <strong style={{ color: '#F5F0E8' }}>Tri</strong>er,{' '}
+            <strong style={{ color: '#F5F0E8' }}>Mo</strong>sel, <strong style={{ color: '#F5F0E8' }}>Sa</strong>uer &amp; Saar.
+          </p>
+
           {/* CTA */}
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <Link href="/?view=map" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
             }}>Alle Unterkünfte ansehen →</Link>
-            <Link href="/ueber-uns" style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(245,240,232,0.75)', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
-              Mehr über uns
-            </Link>
+            <Link href="/ueber-uns" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
+              padding: '11px 24px', borderRadius: '999px', color: '#F5F0E8',
+              border: '1.5px solid rgba(245,240,232,0.45)', textDecoration: 'none',
+            }}>Lerne uns kennen →</Link>
           </div>
         </div>
       </section>
