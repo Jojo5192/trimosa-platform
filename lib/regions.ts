@@ -125,11 +125,11 @@ export const REGIONS: Record<string, Region> = {
       {
         slug: 'hauptmarkt-trier', name: 'Hauptmarkt', category: 'sehenswert', lat: 49.7573, lon: 6.6413, emoji: '⛲',
         image: {
-          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Trier%2C_Hauptmarkt_und_Kirche_St._Gangolf.jpg/1280px-Trier%2C_Hauptmarkt_und_Kirche_St._Gangolf.jpg',
-          author: 'Dguendel',
-          license: 'CC BY 4.0',
-          licenseUrl: 'https://creativecommons.org/licenses/by/4.0',
-          fileUrl: 'https://commons.wikimedia.org/wiki/File:Trier,_Hauptmarkt_und_Kirche_St._Gangolf.jpg',
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/2018_Trier%2C_Hauptmarkt_2.jpg/1280px-2018_Trier%2C_Hauptmarkt_2.jpg',
+          author: 'Kleon3',
+          license: 'CC BY-SA 4.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:2018_Trier,_Hauptmarkt_2.jpg',
         },
         text: 'Einer der schönsten Marktplätze Deutschlands — Cafés, Marktstände, Fachwerk.',
         long: [
@@ -165,6 +165,66 @@ export const REGIONS: Record<string, Region> = {
         long: [
           'Am Fuß des Petrisbergs liegt das römische Amphitheater, in dem einst bis zu 20.000 Zuschauer Gladiatorenkämpfe verfolgten. Der Kellerbereich unter der Arena — einst Aufzugstechnik für Kulissen und Käfige — ist begehbar.',
           'Im Sommer wird die Arena wieder bespielt: Konzerte und die Antikenfestspiele nutzen die einmalige Kulisse. Und vom Hang darüber habt ihr einen der besten Blicke über Trier — die Weinberge des Petrisbergs beginnen direkt hinter dem Ausgang.',
+        ],
+      },
+      {
+        slug: 'konstantin-basilika', name: 'Konstantin-Basilika', category: 'sehenswert', lat: 49.7532, lon: 6.6437, emoji: '👑',
+        image: {
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Trier-Konstantin-Basilika-04-2013-gje.jpg/1280px-Trier-Konstantin-Basilika-04-2013-gje.jpg',
+          author: 'Gerd Eichmann',
+          license: 'CC BY 4.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by/4.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:Trier-Konstantin-Basilika-04-2013-gje.jpg',
+        },
+        text: 'Der größte erhaltene Einzelraum der Antike — Thronsaal Kaiser Konstantins, heute Kirche.',
+        long: [
+          'Die Konstantin-Basilika war der Thronsaal des römischen Kaisers — ein Raum von 67 Metern Länge und 33 Metern Höhe, ganz ohne Stützen. Kein anderer Einzelraum der Antike hat sich in dieser Größe erhalten; die schiere Dimension sollte Besucher damals wie heute ehrfürchtig machen.',
+          'Heute dient die Basilika als evangelische Kirche und gehört zum UNESCO-Welterbe. Direkt daneben schließt das Kurfürstliche Palais mit seiner Rokoko-Fassade an — der Palastgarten dahinter ist im Sommer das Wohnzimmer der Trierer und der schönste Fußweg zu Kaiserthermen und Amphitheater.',
+        ],
+      },
+      {
+        slug: 'roemerbruecke-trier', name: 'Römerbrücke', category: 'sehenswert', lat: 49.7513, lon: 6.6266, emoji: '🌉',
+        image: {
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/R%C3%B6merbr%C3%BCcke_trier_spiegelt_sich_in_der_mosel.jpg/1280px-R%C3%B6merbr%C3%BCcke_trier_spiegelt_sich_in_der_mosel.jpg',
+          author: 'HPL PICTURES',
+          license: 'CC BY-SA 4.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:R%C3%B6merbr%C3%BCcke_trier_spiegelt_sich_in_der_mosel.jpg',
+        },
+        text: 'Die älteste Brücke Deutschlands — auf römischen Pfeilern aus dem 2. Jahrhundert rollt bis heute der Verkehr.',
+        long: [
+          'Ihre Basaltpfeiler stehen seit dem 2. Jahrhundert in der Mosel: Die Römerbrücke ist die älteste Brücke Deutschlands — und wird bis heute ganz alltäglich befahren. Römische Ingenieurskunst, die fast 1.900 Jahre Hochwasser, Kriege und Verkehr überstanden hat, UNESCO-Welterbe inklusive.',
+          'Am schönsten wirkt die Brücke vom Moselufer aus, wenn sich die Bögen im Wasser spiegeln — besonders zur blauen Stunde. Wer auf dem Mosel-Radweg unterwegs ist, rollt direkt an ihr vorbei.',
+        ],
+      },
+      {
+        slug: 'karl-marx-haus', name: 'Karl-Marx-Haus', category: 'sehenswert', lat: 49.7526, lon: 6.6355, emoji: '📖',
+        image: {
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Karl-Marx-Haus_Trier_01.jpg/1280px-Karl-Marx-Haus_Trier_01.jpg',
+          author: 'FrDr',
+          license: 'CC BY-SA 4.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:Karl-Marx-Haus_Trier_01.jpg',
+        },
+        text: 'Das barocke Geburtshaus von Karl Marx — Museum über Leben und Wirkung des berühmtesten Sohns der Stadt.',
+        long: [
+          'Im barocken Bürgerhaus in der Brückenstraße wurde 1818 Karl Marx geboren — heute ist es ein Museum, das Leben, Werk und die weltweite Wirkungsgeschichte des Philosophen zeigt, modern aufbereitet und kritisch eingeordnet.',
+          'Der Besuch lässt sich perfekt mit der Altstadt verbinden: Hauptmarkt und Dom liegen nur wenige Gehminuten entfernt. Auch wer mit Marx wenig anfangen kann, bekommt hier ein Stück Weltgeschichte im Trierer Maßstab.',
+        ],
+      },
+      {
+        slug: 'mariensaeule-trier', name: 'Mariensäule & Markusberg', category: 'aktiv', lat: 49.7448, lon: 6.6207, emoji: '🌄',
+        image: {
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Mariens%C3%A4ule_Trier.JPG/1280px-Mariens%C3%A4ule_Trier.JPG',
+          author: 'Gerdle Knühl',
+          license: 'CC BY-SA 3.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by-sa/3.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:Mariens%C3%A4ule_Trier.JPG',
+        },
+        text: 'Der Panorama-Spot: 40 Meter hohe Säule auf dem Markusberg mit dem besten Blick über Trier.',
+        long: [
+          'Hoch über dem Moselufer steht auf dem Markusberg die Mariensäule, 1866 errichtet und weithin sichtbar. Zu ihren Füßen liegt der beste kostenlose Aussichtspunkt der Stadt: ganz Trier, das Moseltal und die Weinberge in einem einzigen Blick.',
+          'Der Aufstieg von der Römerbrücke dauert zu Fuß eine gute halbe Stunde durch den Wald — oben belohnt die Aussicht, abends das Lichtermeer der Stadt. Wer es bequem mag, fährt mit dem Auto bis kurz unter die Kuppe.',
         ],
       },
       {
