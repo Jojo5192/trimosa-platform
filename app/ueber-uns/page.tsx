@@ -181,15 +181,28 @@ export default async function UeberUnsPage() {
 
         {/* ── Regions ── */}
         <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '0 0 14px', letterSpacing: '-0.01em', textAlign: 'center' }}>Unsere Regionen</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', margin: '0 0 40px' }}>
-          {Object.values(REGIONS).map((r) => (
-            <Link key={r.slug} href={`/region/${r.slug}`} style={{ display: 'block', textDecoration: 'none', background: '#fff', borderRadius: '16px', border: '1px solid #EDE9DE', padding: '20px', transition: 'box-shadow 0.15s' }}>
-              <p style={{ fontSize: '15px', fontWeight: 700, color: '#1A1400', margin: '0 0 4px' }}>{r.name}</p>
-              <p style={{ fontSize: '13px', color: '#6B6455', margin: '0 0 10px', lineHeight: 1.5 }}>{r.claim}</p>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--gold-dark)' }}>Region entdecken →</span>
-            </Link>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', margin: '0 0 8px' }}>
+          {Object.values(REGIONS).map((r) => {
+            const img = r.pois.find((p) => p.image)?.image
+            return (
+              <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{ display: 'block', textDecoration: 'none', background: '#fff', borderRadius: '16px', border: '1px solid #EDE9DE', overflow: 'hidden' }}>
+                {img && (
+                  <div style={{ position: 'relative', aspectRatio: '16/9' }}>
+                    <Image src={img.src} alt={r.name} fill sizes="(max-width: 768px) 100vw, 220px" style={{ objectFit: 'cover' }} />
+                  </div>
+                )}
+                <div style={{ padding: '16px 18px 18px' }}>
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#1A1400', margin: '0 0 4px' }}>{r.emoji} {r.name}</p>
+                  <p style={{ fontSize: '13px', color: '#6B6455', margin: '0 0 10px', lineHeight: 1.5 }}>{r.claim}</p>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--gold-dark)' }}>Region entdecken →</span>
+                </div>
+              </Link>
+            )
+          })}
         </div>
+        <p style={{ fontSize: '10.5px', color: '#AAA6A0', margin: '0 0 40px', textAlign: 'center' }}>
+          Regionsfotos: Wikimedia Commons — Urheber und Lizenz auf den jeweiligen Erlebnis-Seiten.
+        </p>
 
         {/* ── CTA ── */}
         <div style={{ textAlign: 'center' }}>
