@@ -409,12 +409,14 @@ export default async function Home({
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
               {Object.values(REGIONS).map((r) => {
-                const ownImg = (allListings ?? [])
-                  .filter((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
-                  .map((l) => (l.images as string[] | null)?.[0])
-                  .find((i): i is string => !!i)
-                // Region without own listings yet → curated destination photo
-                const img = ownImg ?? r.pois.find((p) => p.image)?.image?.src
+                const hasListings = (allListings ?? [])
+                  .some((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
+                // Signature photo of the region (first curated hero POI) —
+                // deliberately NOT an apartment shot; those live in the grid above
+                const img = (r.heroSlugs
+                  .map((s) => r.pois.find((p) => p.slug === s)?.image?.src)
+                  .find((s): s is string => !!s))
+                  ?? r.pois.find((p) => p.image)?.image?.src
                 return (
                   <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
                     position: 'relative', display: 'block', textDecoration: 'none',
@@ -423,7 +425,7 @@ export default async function Home({
                   }}>
                     {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
                     <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
-                    {r.comingSoon && !ownImg && (
+                    {r.comingSoon && !hasListings && (
                       <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>Bald</span>
                     )}
                     <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
