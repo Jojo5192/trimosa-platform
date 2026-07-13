@@ -130,7 +130,21 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="10. Anzeige von Gästebewertungen externer Plattformen">
+      <LegalSection heading="10. Eingebettete Radtouren (Komoot)">
+        <LegalP>
+          Auf unseren Regionsseiten bieten wir zur Inspiration ausgewählte Radtouren des Dienstes
+          Komoot (komoot GmbH, Friedrich-Ebert-Straße 28, 14469 Potsdam, Deutschland) an. Diese
+          Inhalte werden datenschutzfreundlich als sogenannte Zwei-Klick-Lösung eingebunden: Beim
+          Aufruf der Seite wird zunächst nur ein lokaler Platzhalter angezeigt und es findet keine
+          Verbindung zu Komoot statt. Erst wenn Sie aktiv auf „Tour laden" klicken, wird die
+          interaktive Tourkarte von komoot.com nachgeladen; dabei wird Ihre IP-Adresse an Komoot
+          übermittelt und Komoot kann eigene Cookies setzen. Rechtsgrundlage ist Ihre Einwilligung
+          durch den Klick (Art. 6 Abs. 1 lit. a DSGVO). Weitere Informationen finden Sie in der
+          Datenschutzerklärung von Komoot.
+        </LegalP>
+      </LegalSection>
+
+      <LegalSection heading="11. Anzeige von Gästebewertungen externer Plattformen">
         <LegalP>
           Auf unseren Unterkunftsseiten zeigen wir Gästebewertungen an, die Gäste öffentlich auf
           Buchungsplattformen (Airbnb, Booking.com, FeWo-direkt/Vrbo) sowie bei Google veröffentlicht
@@ -149,7 +163,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="11. Cookies">
+      <LegalSection heading="12. Cookies">
         <LegalP>
           Wir verwenden ausschließlich technisch notwendige Cookies, die für die Anmeldung und die
           Aufrechterhaltung Ihrer Sitzung erforderlich sind. Diese Cookies benötigen keine
@@ -158,7 +172,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="12. Schutz vor Missbrauch (Rate-Limiting)">
+      <LegalSection heading="13. Schutz vor Missbrauch (Rate-Limiting)">
         <LegalP>
           Zum Schutz vor automatisiertem Missbrauch (z. B. massenhaften Registrierungs- oder
           Buchungsversuchen) speichern wir bei bestimmten Anfragen kurzfristig einen Zählwert in
@@ -168,7 +182,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="13. Speicherdauer">
+      <LegalSection heading="14. Speicherdauer">
         <LegalP>
           Wir speichern personenbezogene Daten nur so lange, wie es für die genannten Zwecke
           erforderlich ist oder gesetzliche Aufbewahrungsfristen (insbesondere handels- und
@@ -177,7 +191,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="14. Ihre Rechte">
+      <LegalSection heading="15. Ihre Rechte">
         <LegalP>
           Sie haben im Rahmen der gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche
           Auskunft über Ihre gespeicherten personenbezogenen Daten (Art. 15 DSGVO), auf Berichtigung
@@ -194,7 +208,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="15. Datenübermittlung in Drittstaaten">
+      <LegalSection heading="16. Datenübermittlung in Drittstaaten">
         <LegalP>
           Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google) können
           personenbezogene Daten in Länder außerhalb der EU/des EWR – insbesondere in die USA –
