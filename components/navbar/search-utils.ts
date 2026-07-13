@@ -33,7 +33,7 @@ export const LOCATION_SUGGESTIONS = [
   { label: 'Luxemburg', sub: 'Luxemburg' },
 ]
 
-export export const DE_MONTHS_SHORT = ['Jan.','Feb.','Mär.','Apr.','Mai','Jun.','Jul.','Aug.','Sep.','Okt.','Nov.','Dez.']
+export const DE_MONTHS_SHORT = ['Jan.','Feb.','Mär.','Apr.','Mai','Jun.','Jul.','Aug.','Sep.','Okt.','Nov.','Dez.']
 export const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 export const DE_DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So']
 
