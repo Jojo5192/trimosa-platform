@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
+import { sendHostBookingAlert } from '@/lib/email'
 
 /**
  * POST /api/payments/webhook
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
         status: newStatus,
       })
       .eq('id', bookingId)
+
+    // Notify the host now that payment is confirmed — requests ask for
+    // accept/decline, instant bookings just inform (fire-and-forget).
+    sendHostBookingAlert(bookingId).catch(err =>
+      console.error('[Webhook] host alert failed (non-fatal):', err)
+    )
 
     // For instant bookings: push to Smoobu immediately
     if (bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id) {
