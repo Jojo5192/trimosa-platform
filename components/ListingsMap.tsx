@@ -23,10 +23,10 @@ interface Props {
   centerLat?: number
   centerLon?: number
   onCenterChange?: (lat: number, lon: number) => void
-  /** Currently hovered listing id (highlights its marker). */
-  hoveredId?: string | null
-  /** Called when a marker is hovered/unhovered, so the list can highlight in sync. */
-  onHoverListing?: (id: string | null) => void
+  /** Currently hovered listing ids (highlights their markers). */
+  hoveredIds?: string[]
+  /** Called on marker hover with all listing ids at that address (or null). */
+  onHoverListing?: (ids: string[] | null) => void
 }
 
 declare global {
@@ -36,7 +36,7 @@ declare global {
   }
 }
 
-export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange, hoveredId, onHoverListing }: Props) {
+export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange, hoveredIds, onHoverListing }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -98,11 +98,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
       // is visible and individually hoverable.
       const byCoord: Record<string, MapListing[]> = {}
       for (const l of listings) {
-        const key = `${l.lat.toFixed(5)},${l.lon.toFixed(5)}`
+        const key = `${l.lat.toFixed(4)},${l.lon.toFixed(4)}`
         ;(byCoord[key] ??= []).push(l)
       }
       const positioned = listings.map((l) => {
-        const group = byCoord[`${l.lat.toFixed(5)},${l.lon.toFixed(5)}`]
+        const group = byCoord[`${l.lat.toFixed(4)},${l.lon.toFixed(4)}`]
         if (group.length === 1) return l
         const i = group.indexOf(l)
         const angle = (2 * Math.PI * i) / group.length
@@ -113,6 +113,12 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           lon: l.lon + (r * Math.cos(angle)) / Math.cos((l.lat * Math.PI) / 180),
         }
       })
+      // All listing ids sharing an address — hovering one pin highlights them all
+      const groupOf: Record<string, string[]> = {}
+      for (const arr of Object.values(byCoord)) {
+        const ids = arr.map((x) => x.id)
+        for (const l of arr) groupOf[l.id] = ids
+      }
 
       // Add markers
       positioned.forEach((listing) => {
@@ -227,7 +233,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           .addTo(map)
           .bindPopup(popup)
 
-        marker.on('mouseover', () => { marker.openPopup(); onHoverRef.current?.(listing.id) })
+        marker.on('mouseover', () => { marker.openPopup(); onHoverRef.current?.(groupOf[listing.id] ?? [listing.id]) })
         marker.on('mouseout', () => { onHoverRef.current?.(null) })
         markersRef.current[listing.id] = marker
       })
@@ -315,11 +321,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           /* Marker hover — direct pointer hover AND synced list hover */
           .trimosa-marker:hover,
           .trimosa-marker.trimosa-marker-active {
-            transform: scale(1.08) translateY(-2px) !important;
+            transform: scale(1.18) translateY(-3px) !important;
           }
           .trimosa-marker:hover > div:first-child,
           .trimosa-marker.trimosa-marker-active > div:first-child {
-            box-shadow: 0 6px 24px rgba(0,0,0,0.18), 0 0 0 2px var(--gold) !important;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.25), 0 0 0 3px var(--gold) !important;
           }
           /* Attribution */
           .leaflet-attribution-flag { display: none !important; }
@@ -362,14 +368,15 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listings.length, centerLat, centerLon, onCenterChange])
 
-  // Highlight the hovered marker (driven by list hover) without touching the map
+  // Highlight the hovered marker(s) (driven by list hover) without touching the map
   useEffect(() => {
     Object.entries(markersRef.current).forEach(([id, marker]) => {
+      const active = hoveredIds?.includes(id) ?? false
       const el = marker.getElement?.()?.querySelector('.trimosa-marker') as HTMLElement | null
-      if (el) el.classList.toggle('trimosa-marker-active', id === hoveredId)
-      marker.setZIndexOffset?.(id === hoveredId ? 1000 : 0)
+      if (el) el.classList.toggle('trimosa-marker-active', active)
+      marker.setZIndexOffset?.(active ? 1000 : 0)
     })
-  }, [hoveredId])
+  }, [hoveredIds])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
