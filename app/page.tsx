@@ -335,50 +335,6 @@ export default async function Home({
             </div>
           </section>
 
-          {/* ── Region entry strip (Airbnb-style discovery row) ── */}
-          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(16px, 3vw, 26px) clamp(12px, 4vw, 20px) 0' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
-              <h2 style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', fontWeight: 700, color: '#111', letterSpacing: '-0.2px', margin: 0 }}>
-                Entdecke unsere Regionen
-              </h2>
-              <Link href="/ueber-uns" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gold-dark)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
-                Über TRIMOSA →
-              </Link>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '6px', scrollbarWidth: 'none' }}>
-              {Object.values(REGIONS).map((r) => {
-                const ownImg = (allListings ?? [])
-                  .filter((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
-                  .map((l) => (l.images as string[] | null)?.[0])
-                  .find((i): i is string => !!i)
-                // Region without own listings yet → curated destination photo
-                const img = ownImg ?? r.pois.find((p) => p.image)?.image?.src
-                return (
-                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
-                    display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', flex: '1 0 auto',
-                    minWidth: '215px', maxWidth: '340px', padding: '9px 16px 9px 9px', borderRadius: '16px',
-                    background: '#fff', border: '1px solid #EAE7E0',
-                  }}>
-                    <span style={{ position: 'relative', width: '58px', height: '58px', borderRadius: '13px', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #12222E, #1E3A4C)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {img
-                        ? <Image src={img} alt={r.name} fill sizes="58px" style={{ objectFit: 'cover' }} />
-                        : <span style={{ fontSize: '26px' }}>{r.emoji}</span>}
-                    </span>
-                    <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                        <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#111', whiteSpace: 'nowrap' }}>{r.name}</span>
-                        {r.comingSoon && !ownImg && (
-                          <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '2.5px 7px', borderRadius: '999px', textTransform: 'uppercase' }}>Bald</span>
-                        )}
-                      </span>
-                      <span style={{ display: 'block', fontSize: '11px', color: '#8A8578', marginTop: '3px', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.claim}</span>
-                    </span>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-
           {/* ── Homepage Listings Grid ── */}
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(14px, 3vw, 24px) clamp(12px, 4vw, 20px) 80px' }}>
             <h1 style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 14px', lineHeight: 1.25 }}>
@@ -429,6 +385,53 @@ export default async function Home({
                       </div>
                       <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
                         {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+                      </p>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* ── Regions discovery (below the apartments — they stay the star) ── */}
+          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 clamp(12px, 4vw, 20px) 56px' }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold-dark)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
+              Mehr als eine Unterkunft
+            </p>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: '#111', letterSpacing: '-0.4px', margin: 0 }}>
+                Entdecke unsere Regionen
+              </h2>
+              <span style={{ fontSize: '12.5px', color: '#8A8578' }}>
+                Ausflugsziele, Karten &amp; Tipps —{' '}
+                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>über TRIMOSA →</Link>
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
+              {Object.values(REGIONS).map((r) => {
+                const ownImg = (allListings ?? [])
+                  .filter((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
+                  .map((l) => (l.images as string[] | null)?.[0])
+                  .find((i): i is string => !!i)
+                // Region without own listings yet → curated destination photo
+                const img = ownImg ?? r.pois.find((p) => p.image)?.image?.src
+                return (
+                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
+                    position: 'relative', display: 'block', textDecoration: 'none',
+                    borderRadius: '16px', overflow: 'hidden', aspectRatio: '16/10',
+                    background: 'linear-gradient(135deg, #12222E, #1E3A4C)',
+                  }}>
+                    {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
+                    <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
+                    {r.comingSoon && !ownImg && (
+                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>Bald</span>
+                    )}
+                    <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
+                      <p style={{ fontSize: '15.5px', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.2px', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
+                        {r.emoji} {r.name}
+                      </p>
+                      <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.82)', margin: '3px 0 0', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
+                        {r.claim}
                       </p>
                     </div>
                   </Link>
