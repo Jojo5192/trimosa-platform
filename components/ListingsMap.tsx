@@ -277,6 +277,16 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           .trimosa-searchmap .leaflet-tile {
             filter: sepia(0.18) saturate(1.5) contrast(1.22) brightness(0.92);
           }
+          /* Voyager (detail maps): own colours already, only gentle deepening */
+          .trimosa-map-voyager .leaflet-tile {
+            filter: saturate(1.12) contrast(1.06) brightness(0.98);
+          }
+          .leaflet-control-scale-line {
+            border-color: rgba(0,0,0,0.35) !important;
+            background: rgba(255,255,255,0.7) !important;
+            color: #444 !important;
+            font-size: 9px !important;
+          }
           /* Popup — crisp white card with full-bleed image header */
           .trimosa-popup .leaflet-popup-content-wrapper {
             border-radius: 16px !important;
