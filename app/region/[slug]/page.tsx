@@ -147,6 +147,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           zoom={region.zoom}
           extraPois={otherRegions.flatMap((r) => r.pois)}
           showPoiGrid
+          tiles="voyager"
         />
 
         {/* ── Komoot tour inspiration (only when tours are curated) ── */}
