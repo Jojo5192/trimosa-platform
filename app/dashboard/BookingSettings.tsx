@@ -6,27 +6,37 @@ interface Props {
   allowInstant: boolean
   allowRequests: boolean
   minRequestNights: number
+  notificationEmail: string
 }
 
-export default function BookingSettings({ allowInstant, allowRequests, minRequestNights }: Props) {
+export default function BookingSettings({ allowInstant, allowRequests, minRequestNights, notificationEmail }: Props) {
   const [instant, setInstant] = useState(allowInstant)
   const [requests, setRequests] = useState(allowRequests)
   const [minNights, setMinNights] = useState(minRequestNights)
+  const [notifyEmail, setNotifyEmail] = useState(notificationEmail)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
 
   async function save() {
     setSaving(true)
-    await fetch('/api/host/booking-settings', {
+    setError('')
+    const res = await fetch('/api/host/booking-settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         allow_instant_booking: instant,
         allow_requests: requests,
         min_request_nights: minNights,
+        notification_email: notifyEmail,
       }),
     })
     setSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setError(d.error ?? 'Speichern fehlgeschlagen')
+      return
+    }
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
   }
@@ -93,6 +103,29 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
           </div>
         )}
       </div>
+
+      {/* Notification email for booking alerts */}
+      <div style={{ padding: '12px 0 2px', borderTop: '1px solid #F0EDE8', marginTop: '4px' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>📨 Benachrichtigungs-E-Mail</p>
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 8px' }}>
+          Neue Anfragen und Buchungen gehen an diese Adresse. Leer lassen = deine Login-E-Mail.
+        </p>
+        <input
+          type="email"
+          value={notifyEmail}
+          onChange={(e) => setNotifyEmail(e.target.value)}
+          placeholder="z. B. fewo@trimosa.de"
+          style={{
+            width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '13px',
+            border: '1.5px solid #E0DDD6', outline: 'none', fontFamily: 'inherit', color: '#111',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {error && (
+        <p style={{ fontSize: '12px', color: '#DC2626', margin: '8px 0 0' }}>⚠️ {error}</p>
+      )}
 
       {!instant && !requests && (
         <div style={{ marginTop: '12px', padding: '10px 14px', background: '#FEF2F2', borderRadius: '10px', border: '1px solid #FECACA' }}>
