@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 
 export interface MapListing {
   id: string
+  slug?: string        // speaking URL segment; falls back to id
   title: string
   lat: number
   lon: number
@@ -214,7 +215,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           maxWidth: 244,
           offset: [0, -6],
         }).setContent(`
-          <a href="/listing/${listing.id}" style="display:block;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:inherit">
+          <a href="/listing/${listing.slug ?? listing.id}" style="display:block;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:inherit">
             ${imageHeader}
             <div style="padding:11px 13px 13px">
               ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}
