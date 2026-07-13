@@ -21,6 +21,7 @@ const CARD_GRADIENTS = [
 
 export interface CardData {
   id: string
+  slug?: string   // speaking URL segment; falls back to id
   title: string
   location: string
   maxGuests: number
@@ -67,7 +68,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
 
   return (
     <Link
-      href={`/listing/${card.id}${linkParams || ''}`}
+      href={`/listing/${card.slug ?? card.id}${linkParams || ''}`}
       className="listing-card"
       target="_blank"
       onMouseEnter={() => onHover?.(card.id)}
@@ -223,6 +224,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   // Map listings (all filtered, sorted by map center)
   const mapListings: MapListing[] = sorted.map(c => ({
     id: c.id,
+    slug: c.slug,
     title: c.title,
     lat: c.lat,
     lon: c.lon,
