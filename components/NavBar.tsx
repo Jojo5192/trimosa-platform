@@ -930,6 +930,11 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                         </MenuItem>
                       )}
 
+                      <MenuItem href="/ueber-uns" onClick={() => setMenuOpen(false)}>
+                        <span style={{ marginRight: '8px' }}>✨</span>
+                        Über TRIMOSA
+                      </MenuItem>
+
                       <div style={{ borderTop: '1px solid #F2F0EC', marginTop: '4px', paddingTop: '4px' }}>
                         <button
                           onClick={() => { supabase.auth.signOut(); setMenuOpen(false) }}
