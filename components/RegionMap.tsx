@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { POI_CATEGORIES, type Poi, type PoiCategory } from '@/lib/regions'
+import type { EmpfehlungView } from '@/lib/empfehlungen'
+import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 
 export interface RegionMapListing {
   id: string
@@ -37,7 +39,12 @@ interface Props {
   /** 'light' = clean overview (default) · 'voyager' = detailed street map
       with labels/POIs, for orientation around a single address */
   tiles?: 'light' | 'voyager'
+  /** Hosts' personal recommendations keyed by Poi.slug (POI grid only) */
+  empfehlungen?: Record<string, EmpfehlungView[]>
 }
+
+/** POI cards shown before "Alle anzeigen" expands the grid */
+const POI_GRID_COLLAPSED = 6
 
 /** Neighbouring-region POIs become visible at this zoom level or wider */
 const FOREIGN_MAX_ZOOM = 11
@@ -49,7 +56,8 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false, tiles = 'light' }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false, tiles = 'light', empfehlungen = {} }: Props) {
+  const [showAllPois, setShowAllPois] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -331,34 +339,58 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
               </span>
             )}
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-            {pois
+          {(() => {
+            // Hosts' recommendations float to the front of the grid
+            const filtered = pois
               .filter((p) => activeCategory === 'alle' || p.category === activeCategory)
-              .map((p) => {
-                const c = POI_CATEGORIES[p.category].color
-                return (
-                  <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
-                    display: 'block', textDecoration: 'none', borderRadius: '14px',
-                    background: '#fff', border: '1px solid #EAE7E0', overflow: 'hidden',
-                  }}>
-                    <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
-                      {p.image
-                        ? <Image src={p.image.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 220px" style={{ objectFit: 'cover' }} />
-                        : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>{p.emoji}</span>}
-                      <span style={{
-                        position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
-                        letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
-                        background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                      }}>{POI_CATEGORIES[p.category].label}</span>
-                    </div>
-                    <div style={{ padding: '10px 12px 11px' }}>
-                      <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
-                      <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
-                    </div>
-                  </Link>
-                )
-              })}
-          </div>
+              .sort((a, b) => (empfehlungen[b.slug]?.length ? 1 : 0) - (empfehlungen[a.slug]?.length ? 1 : 0))
+            const shownPois = showAllPois ? filtered : filtered.slice(0, POI_GRID_COLLAPSED)
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                  {shownPois.map((p) => {
+                    const c = POI_CATEGORIES[p.category].color
+                    const emp = empfehlungen[p.slug]
+                    return (
+                      <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
+                        display: 'block', textDecoration: 'none', borderRadius: '14px',
+                        background: '#fff', overflow: 'hidden',
+                        border: emp ? '1.5px solid var(--gold)' : '1px solid #EAE7E0',
+                        boxShadow: emp ? '0 4px 20px rgba(174,141,45,0.18)' : 'none',
+                      }}>
+                        <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
+                          {p.image
+                            ? <Image src={p.image.src} alt={p.name} fill sizes="(max-width: 768px) 50vw, 220px" style={{ objectFit: 'cover' }} />
+                            : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px' }}>{p.emoji}</span>}
+                          <span style={{
+                            position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
+                            letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
+                            background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                          }}>{POI_CATEGORIES[p.category].label}</span>
+                        </div>
+                        <div style={{ padding: '10px 12px 11px' }}>
+                          <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
+                          {emp && <div style={{ margin: '9px 0 2px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                          <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+                {filtered.length > POI_GRID_COLLAPSED && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px' }}>
+                    <button type="button" onClick={() => setShowAllPois(!showAllPois)} style={{
+                      padding: '10px 24px', borderRadius: '999px', cursor: 'pointer',
+                      border: '1.5px solid var(--gold)', background: '#fff',
+                      color: 'var(--gold-dark)', fontSize: '13px', fontWeight: 700,
+                    }}>
+                      {showAllPois ? '− Weniger anzeigen' : `Alle ${filtered.length} Ausflugsziele anzeigen`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          })()}
           <p style={{ fontSize: '11px', color: '#AAA6A0', margin: '10px 2px 0' }}>
             Fotos der Ausflugsziele: Wikimedia Commons — Urheber und Lizenz jeweils auf der Detailseite.
           </p>
