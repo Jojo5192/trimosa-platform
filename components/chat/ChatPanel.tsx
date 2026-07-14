@@ -455,14 +455,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       <div style={{
         width: fullWidth ? '100%' : 270,
         flexShrink: fullWidth ? undefined : 0,
-        background: '#FAFAF8',
-        borderRight: fullWidth ? 'none' : '1px solid #EDEBE4',
+        background: '#fff',
+        borderRight: fullWidth ? 'none' : '1px solid rgba(60,60,67,0.12)',
         overflowY: 'auto',
         display: 'flex', flexDirection: 'column',
         flex: fullWidth ? 1 : undefined,
       }}>
         {team && (
-          <div style={{ display: 'flex', gap: 6, padding: '10px 10px 8px', overflowX: 'auto', flexShrink: 0, borderBottom: '1px solid #EDEBE4', background: '#FAFAF8', position: 'sticky', top: 0, zIndex: 2 }}>
+          <div style={{ display: 'flex', gap: 6, padding: '10px 12px 8px', overflowX: 'auto', flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)', position: 'sticky', top: 0, zIndex: 2 }}>
             {INBOX_FILTERS.map(f => {
               const count = f.id === 'alle' ? convs.length : convs.filter(c => matchesFilter(c, f.id)).length
               const activeF = inboxFilter === f.id
@@ -506,10 +506,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           return (
             <button key={c.id} onClick={() => selectConv(c)} style={{
               width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-              padding: fullWidth ? '14px 20px' : '12px 14px',
-              borderBottom: '1px solid #EDEBE4',
+              padding: fullWidth ? '13px 16px' : '12px 14px',
+              borderBottom: 'none',
+              boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
               borderLeft: isSel ? '3px solid var(--gold)' : '3px solid transparent',
-              background: isSel ? '#F5EFE2' : 'transparent',
+              background: isSel ? 'rgba(174,141,45,0.08)' : 'transparent',
               display: 'flex', alignItems: 'center', gap: 12,
               transition: 'background .12s',
             }}
@@ -522,7 +523,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <span style={{
                     position: 'absolute', top: -2, right: -2,
                     minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9,
-                    background: 'var(--gold)', border: '2px solid #FAFAF8',
+                    background: 'var(--gold)', border: '2px solid #fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10, fontWeight: 800, color: '#fff',
                   }}>
@@ -579,7 +580,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   ═══════════════════════════════════════════════════════════ */
   function MessagePanel({ showBack = false }: { showBack?: boolean }) {
     if (!active) return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#CCC', background: '#F6F4EF' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#CCC', background: '#fff' }}>
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
@@ -588,14 +589,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     )
 
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#F6F4EF' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}>
         {/* Chat header: back button on mobile; on the page variant the
             desktop thread shows it too (the overlay has it in its own bar) */}
         {(showBack || variant !== 'overlay') && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12,
-            padding: '12px 16px', background: '#fff',
-            borderBottom: '1px solid #EDEBE4', flexShrink: 0,
+            padding: '10px 14px', background: 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
+            borderBottom: '0.5px solid rgba(60,60,67,0.15)', flexShrink: 0,
           }}>
             {showBack && (
             <button
@@ -629,7 +631,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         )}
 
         {/* Message feed */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: '#fff' }}>
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
@@ -680,12 +682,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         borderRadius,
                         background: isMe
                           ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))'
-                          : '#FFFFFF',
-                        color: isMe ? '#fff' : '#1A1814',
-                        fontSize: 15, lineHeight: 1.45,
-                        boxShadow: isMe
-                          ? '0 2px 10px rgba(196,162,53,.28)'
-                          : '0 1px 4px rgba(0,0,0,.09)',
+                          : '#E9E9EB',
+                        color: isMe ? '#fff' : '#111',
+                        fontSize: 15.5, lineHeight: 1.4,
+                        boxShadow: 'none',
                         wordBreak: 'break-word',
                       }}>
                         <span style={{ whiteSpace: 'pre-wrap' }}>
@@ -779,9 +779,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
         {/* Input bar */}
         <div style={{
-          borderTop: '1px solid #E8E4DB', background: '#FFFFFF',
-          padding: '10px 14px',
-          paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+          borderTop: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+          padding: '8px 12px',
+          paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
           display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
           {active && isHost(active) && msgs.length > 0 && (
@@ -924,7 +925,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           position: 'fixed', inset: 0,
           zIndex: 9001,
           display: 'flex', flexDirection: 'column',
-          background: '#FAFAF8',
+          background: '#fff',
           animation: 'cslideup .22s cubic-bezier(.34,1.1,.64,1)',
         }}>
           {/* Mobile header */}
