@@ -17,6 +17,7 @@ import { KULINARIK_KATEGORIEN, type KulinarikKategorie, type KulinarikTipp } fro
 import type { KulinarikRating } from '@/lib/kulinarik-ratings'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface Props {
   tipps: KulinarikTipp[]
@@ -24,6 +25,7 @@ interface Props {
   ratings?: Record<string, KulinarikRating>
   /** Hosts' personal recommendations keyed by tip name */
   empfehlungen?: Record<string, EmpfehlungView[]>
+  lang?: UiLang
 }
 
 /** Cards shown before "Alle anzeigen" expands the grid */
@@ -42,7 +44,7 @@ declare global {
 const mapsLink = (t: KulinarikTipp) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.name}, ${t.ort}`)}`
 
-export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }: Props) {
+export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {}, lang = 'de' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -141,12 +143,12 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
           : ''
         const popupHtml = `${photoHtml}
           <div style="padding:14px 15px 13px;">
-            ${emp ? `<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">💬 Tipp von ${emp.map((x) => x.name).join(' & ')}</div>` : tipp.top ? '<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ Unser Tipp</div>' : ''}
+            ${emp ? `<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">💬 ${t(lang, 'Tipp von')} ${emp.map((x) => x.name).join(' & ')}</div>` : tipp.top ? `<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ ${t(lang, 'Unser Tipp')}</div>` : ''}
             <div style="font-size:14px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:3px;">${tipp.name}</div>
             <div style="font-size:10.5px;font-weight:600;color:${kat.color};margin-bottom:${rating ? 4 : 7}px;">${tipp.art} · <span style="color:rgba(255,255,255,0.55);font-weight:500;">${tipp.ort}</span></div>
-            ${rating ? `<div style="font-size:11px;font-weight:700;color:#E6C15A;margin-bottom:7px;">${fmtRating(rating)} <span style="color:rgba(255,255,255,0.45);font-weight:500;">bei Google</span></div>` : ''}
+            ${rating ? `<div style="font-size:11px;font-weight:700;color:#E6C15A;margin-bottom:7px;">${fmtRating(rating)} <span style="color:rgba(255,255,255,0.45);font-weight:500;">${t(lang, 'bei Google')}</span></div>` : ''}
             <div style="font-size:11.5px;color:rgba(255,255,255,0.72);line-height:1.55;margin-bottom:10px;">${tipp.text}</div>
-            <a href="${mapsLink(tipp)}" target="_blank" rel="noopener nofollow" style="display:inline-block;font-size:11px;font-weight:700;color:#12222E;background:#E6C15A;padding:6px 12px;border-radius:999px;text-decoration:none;">Route in Google Maps ↗</a>
+            <a href="${mapsLink(tipp)}" target="_blank" rel="noopener nofollow" style="display:inline-block;font-size:11px;font-weight:700;color:#12222E;background:#E6C15A;padding:6px 12px;border-radius:999px;text-decoration:none;">${t(lang, 'Route in Google Maps ↗')}</a>
           </div>`
         const m = window.L.marker([tipp.lat, tipp.lon], { icon })
           .bindPopup(popupHtml, { className: 'trimosa-kul-popup', closeButton: false, offset: [0, -6] })
@@ -201,7 +203,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
         {(
           [
-            ['alle', { label: 'Alles anzeigen', color: 'rgba(255,255,255,0.8)', emoji: '✦' }],
+            ['alle', { label: t(lang, 'Alles anzeigen'), color: 'rgba(255,255,255,0.8)', emoji: '✦' }],
             ...present.map((k) => [k, KULINARIK_KATEGORIEN[k]]),
           ] as [KulinarikKategorie | 'alle', { label: string; color: string; emoji: string }][]
         ).map(([key, meta]) => {
@@ -215,7 +217,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
               color: isActive ? (key === 'alle' ? '#fff' : meta.color) : 'rgba(255,255,255,0.65)',
               transition: 'all 0.15s',
             }}>
-              <span style={{ fontSize: '13px' }}>{meta.emoji}</span>{meta.label}
+              <span style={{ fontSize: '13px' }}>{meta.emoji}</span>{t(lang, meta.label)}
             </button>
           )
         })}
@@ -247,7 +249,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
                   position: 'absolute', top: '-9px', right: '14px', zIndex: 2, fontSize: '9.5px', fontWeight: 800,
                   color: '#12222E', background: 'linear-gradient(135deg, #E6C15A, #C9A23B)',
                   padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.06em', textTransform: 'uppercase',
-                }}>★ Unser Tipp</span>
+                }}>★ {t(lang, 'Unser Tipp')}</span>
               )}
               {k.image && (
                 <div style={{ position: 'relative', aspectRatio: '16/9', borderRadius: '11px', overflow: 'hidden', margin: '0 0 12px' }}>
@@ -278,7 +280,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 {ratings[k.name] ? (
                   <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#E6C15A' }}>
-                    {fmtRating(ratings[k.name])} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>bei Google</span>
+                    {fmtRating(ratings[k.name])} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>{t(lang, 'bei Google')}</span>
                   </span>
                 ) : (
                   <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>📍 Auf der Karte zeigen</span>
@@ -301,7 +303,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }:
             border: '1.5px solid rgba(230,193,90,0.5)', background: 'rgba(230,193,90,0.1)',
             color: '#E6C15A', fontSize: '13px', fontWeight: 700, transition: 'background 0.15s',
           }}>
-            {showAll ? '− Weniger anzeigen' : `Alle ${visible.length} Adressen anzeigen`}
+            {showAll ? `− ${t(lang, 'Weniger anzeigen')}` : t(lang, 'Alle {n} Adressen anzeigen', { n: visible.length })}
           </button>
         </div>
       )}
