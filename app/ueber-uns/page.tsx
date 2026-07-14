@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
@@ -193,7 +194,7 @@ export default async function UeberUnsPage() {
                 boxShadow: '0 6px 18px rgba(174,141,45,0.3)',
               }}>{f.initials}</div>
               <p style={{ fontSize: '14px', fontWeight: 700, color: '#1A1400', margin: 0 }}>{f.name}</p>
-              <p style={{ fontSize: '12px', color: '#8A8065', margin: '2px 0 0' }}>{T('Gründer & Gastgeber')}</p>
+              <p style={{ fontSize: '12px', color: '#8A8065', margin: '2px 0 0' }}>{t(lang, 'Gründer & Gastgeber')}</p>
             </div>
           ))}
         </div>
@@ -240,7 +241,7 @@ export default async function UeberUnsPage() {
         <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: 'Impressum', href: '/impressum' }, { label: 'Datenschutz', href: '/datenschutz' }, { label: 'AGB', href: '/agb' }].map((item) => (
+            {[{ label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
