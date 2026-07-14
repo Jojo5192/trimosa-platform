@@ -2,12 +2,13 @@
 
 import { useCallback, useState, useEffect } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface Props {
-  pricePerNight: number
+  pricePerNight: number  lang?: UiLang
 }
 
-export default function MobileBookingBar({ pricePerNight }: Props) {
+export default function MobileBookingBar({ pricePerNight, lang = 'de' }: Props) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
@@ -66,10 +67,10 @@ export default function MobileBookingBar({ pricePerNight }: Props) {
         {pricePerNight > 0 ? (
           <>
             <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
-            <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ Nacht</span>
+            <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ {t(lang, 'Nacht')}</span>
           </>
         ) : (
-          <span style={{ fontSize: '12px', fontWeight: 600, color: '#888' }}>Preis auf Anfrage</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#888' }}>{t(lang, 'Preis auf Anfrage')}</span>
         )}
       </div>
 
@@ -90,7 +91,7 @@ export default function MobileBookingBar({ pricePerNight }: Props) {
           flexShrink: 0,
         }}
       >
-        Reservieren
+        {t(lang, 'Reservieren')}
       </button>
     </div>
   )
