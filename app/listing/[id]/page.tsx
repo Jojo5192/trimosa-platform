@@ -148,9 +148,13 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const displayDescription = tc?.description ?? listing.description
   // Editorial bits without per-listing translations (room keywords, AI guest
   // summary): AI-translated once, cached forever (lib/static-translate)
-  const TR = await makeTr(lang, [
-    ...(lang === 'de' ? [] : roomsRaw.flatMap((r) => r.features ?? [])),
-    ...(lang !== 'de' && listing.guest_summary ? [listing.guest_summary as string] : []),
+  const TR = await makeTr(lang, lang === 'de' ? [] : [
+    ...roomsRaw.flatMap((r) => r.features ?? []),
+    ...(listing.guest_summary ? [listing.guest_summary as string] : []),
+    'Die Unterkunft und die schönsten Ausflugsziele in {r} auf einer Karte.',
+    ...(region ? region.pois.flatMap((pp) => [pp.name, pp.text]) : []),
+    ...(region ? Object.values(REGIONS).filter((r) => r.slug !== region.slug).flatMap((r) => r.pois).flatMap((pp) => [pp.name, pp.text]) : []),
+    ...(region ? [region.claim] : []),
   ])
   const rooms = roomsRaw.map((r) => ({
     ...r,
@@ -342,18 +346,19 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '6px' }}>{t(lang, 'Lage & Umgebung')}</h2>
             {region && (
               <p style={{ fontSize: '13.5px', color: '#6E6E73', margin: '0 0 14px' }}>
-                Die Unterkunft und die schönsten Ausflugsziele in {region.name} auf einer Karte.
+                {TR('Die Unterkunft und die schönsten Ausflugsziele in {r} auf einer Karte.').replace('{r}', region?.name ?? '')}
               </p>
             )}
             {hasCoords ? (
               <>
                 <RegionMap
-                  pois={region?.pois ?? []}
+                  pois={(region?.pois ?? []).map((pp) => ({ ...pp, name: TR(pp.name), text: TR(pp.text) }))}
+                  lang={lang}
                   listings={[{ id: listing.id, slug: listing.slug ?? undefined, title: listing.title, lat: mapLat!, lon: mapLon! }]}
                   center={[mapLat!, mapLon!]}
                   zoom={14}
                   tiles="voyager"
-                  extraPois={Object.values(REGIONS).filter((r) => r.slug !== region?.slug).flatMap((r) => r.pois)}
+                  extraPois={Object.values(REGIONS).filter((r) => r.slug !== region?.slug).flatMap((r) => r.pois).map((pp) => ({ ...pp, name: TR(pp.name), text: TR(pp.text) }))}
                   height="clamp(320px, 45vh, 420px)"
                 />
 
@@ -377,14 +382,14 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                         {region.emoji} {region.name}
                       </p>
                       <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.72)', margin: '0 0 13px', lineHeight: 1.55 }}>
-                        {region.claim}
+                        {TR(region.claim)}
                       </p>
                       <p style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', margin: '0 0 15px' }}>
                         {region.heroSlugs.slice(0, 3).map((s) => {
                           const p = region.pois.find((x) => x.slug === s)
                           return p ? (
                             <span key={s} style={{ fontSize: '11.5px', fontWeight: 600, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', padding: '4px 11px', borderRadius: '999px' }}>
-                              {p.emoji} {p.name}
+                              {p.emoji} {TR(p.name)}
                             </span>
                           ) : null
                         })}
