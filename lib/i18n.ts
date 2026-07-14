@@ -172,8 +172,6 @@ addTranslations({
   '⚡ Sofort buchen': ['⚡ Instant booking', '⚡ Réservation immédiate', '⚡ Direct boeken'],
   '✉ Anfrage stellen': ['✉ Send a request', '✉ Envoyer une demande', '✉ Aanvraag sturen'],
   '✉ Nur Anfragen möglich': ['✉ Requests only', '✉ Uniquement sur demande', '✉ Alleen op aanvraag'],
-  'ab 13 Jahren': ['ages 13 or above', 'à partir de 13 ans', 'vanaf 13 jaar'],
-  'bis 12 Jahre': ['ages 12 or below', 'jusqu’à 12 ans', 't/m 12 jaar'],
   'Preisvorschlag (optional)': ['Price suggestion (optional)', 'Proposition de prix (facultatif)', 'Prijsvoorstel (optioneel)'],
   'Nachricht an den Gastgeber (optional)': ['Message to the host (optional)', 'Message à l’hôte (facultatif)', 'Bericht aan de gastheer (optioneel)'],
   'Deine Anfrage / Nachricht an den Gastgeber': ['Your request / message to the host', 'Votre demande / message à l’hôte', 'Je aanvraag / bericht aan de gastheer'],
