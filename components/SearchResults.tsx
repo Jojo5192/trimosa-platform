@@ -348,6 +348,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
             <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#ECEEF4' }}>
               <div style={{ position: 'absolute', inset: 0 }}>
                 <ListingsMap
+                  lang={lang}
                   listings={mapListings}
                   centerLat={centerLat}
                   centerLon={centerLon}
@@ -444,6 +445,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           position: 'relative',
         }}>
           <ListingsMap
+                  lang={lang}
             listings={mapListings}
             centerLat={centerLat}
             centerLon={centerLon}
