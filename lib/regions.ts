@@ -21,6 +21,21 @@ export interface PoiImage {
   fileUrl: string
 }
 
+export interface KomootTour {
+  title: string
+  embedUrl: string
+}
+
+/** A curated food & drink recommendation, shown in the region's "Essen & Trinken" section. */
+export interface KulinarikTipp {
+  emoji: string
+  name: string
+  /** Short type label shown as a badge, e.g. "Weingut", "Restaurant" */
+  art: string
+  ort: string
+  text: string
+}
+
 export interface Poi {
   slug: string
   name: string
@@ -33,6 +48,8 @@ export interface Poi {
   /** Detail-page paragraphs */
   long: string[]
   image?: PoiImage
+  /** Curated Komoot tours matching this destination (shown on its /erlebnis page) */
+  komootTours?: KomootTour[]
 }
 
 export interface Region {
@@ -63,7 +80,12 @@ export interface Region {
    * "Einbetten" dialog). Shown as click-to-load embeds on the region page —
    * nothing is requested from komoot.com until the visitor opts in.
    */
-  komootTours?: { title: string; embedUrl: string }[]
+  komootTours?: KomootTour[]
+  /**
+   * Curated food & drink recommendations ("Essen & Trinken") — hand-picked by
+   * the hosts, deliberately timeless (no opening hours/prices), never paid.
+   */
+  kulinarik?: KulinarikTipp[]
 }
 
 export const POI_CATEGORIES: Record<PoiCategory, { label: string; color: string }> = {
@@ -244,6 +266,10 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         slug: 'mosel-radweg', name: 'Mosel-Radweg', category: 'aktiv', lat: 49.7669, lon: 6.6277, emoji: '🚴',
+        komootTours: [
+          { title: 'Mosel-Weinberge & Römerstadt — Runde ab Trier (45,5 km · ~2:45 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/18050087/embed?profile=1' },
+          { title: 'Moselschleuse & Mosel-Radweg — Runde ab Trier (30,9 km · ~2:00 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43179718/embed?profile=1' },
+        ],
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/Zurlaubener_Ufer%2C_Trier_%28Germany%29%2C_6_April_2020.jpg/1280px-Zurlaubener_Ufer%2C_Trier_%28Germany%29%2C_6_April_2020.jpg',
           author: 'Cobatfor',
@@ -321,6 +347,14 @@ export const REGIONS: Record<string, Region> = {
     center: [49.756, 6.641],
     zoom: 13,
     locationMatch: 'Trier',
+    kulinarik: [
+      { emoji: '🏛️', name: 'Zum Domstein', art: 'Restaurant', ort: 'Hauptmarkt, Trier',
+        text: 'Institution am Hauptmarkt — neben regionaler Küche gibt es Gerichte nach altrömischen Rezepten, serviert über einem originalen römischen Gewölbekeller.' },
+      { emoji: '🍷', name: 'Weinstube Kesselstatt', art: 'Weinstube', ort: 'An der Liebfrauenkirche, Trier',
+        text: 'Rustikale Weinstube im Schatten des Doms — Rieslinge von Mosel, Saar und Ruwer, dazu Winzervesper und regionale Kleinigkeiten.' },
+      { emoji: '🍇', name: 'Straußwirtschaften in Olewig', art: 'Weinviertel', ort: 'Trier-Olewig',
+        text: 'Das Winzerviertel der Stadt: In der Saison öffnen Weingüter ihre Höfe und schenken den eigenen Wein direkt an den Weinbergen aus.' },
+    ],
     heroSlugs: ['porta-nigra', 'hauptmarkt-trier', 'kaiserthermen'],
     komootTours: [
       { title: 'Mosel-Weinberge & Römerstadt — Runde ab Trier (45,5 km · ~2:45 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/18050087/embed?profile=1' },
@@ -394,6 +428,9 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         slug: 'kylltal-radweg', name: 'Kylltal-Radweg', category: 'aktiv', lat: 50.0392, lon: 6.5911, emoji: '🚴',
+        komootTours: [
+          { title: 'Kyll-Ufer-Radweg & Bitburger Radweg — Runde ab Bitburg (31,7 km · ~2:00 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/17647796/embed?profile=1' },
+        ],
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Kylltal-Radweg%2C_Kyller_Tunnel%2C_Westportal.jpg/1280px-Kylltal-Radweg%2C_Kyller_Tunnel%2C_Westportal.jpg',
           author: 'Zv0486~commonswiki',
@@ -478,6 +515,14 @@ export const REGIONS: Record<string, Region> = {
     center: [49.9725, 6.523],
     zoom: 13,
     locationMatch: 'Bitburg',
+    kulinarik: [
+      { emoji: '🍺', name: 'Bitburger Marken-Erlebniswelt', art: 'Brauerlebnis', ort: 'Bitburg',
+        text: 'Führung durch die Markenwelt der berühmten Brauerei — am Ende wartet ein frisch gezapftes Pils direkt an der Quelle.' },
+      { emoji: '🦌', name: 'Eifeler Landgasthöfe', art: 'Regionalküche', ort: 'Rund um Bitburg',
+        text: 'Deftige Eifeler Küche: Wild aus heimischen Wäldern, Döppekooche und saisonale Gerichte — am schönsten in den Dörfern rund um die Stadt.' },
+      { emoji: '🏞️', name: 'Einkehr am Stausee', art: 'Café & Biergarten', ort: 'Biersdorf am See',
+        text: 'Nach der Runde um den See auf die Terrasse: Kaffee und Kuchen oder ein kühles Bit mit Blick übers Wasser.' },
+    ],
     heroSlugs: ['burg-rittersdorf', 'stausee-bitburg', 'villa-otrang'],
     komootTours: [
       { title: 'Kyll-Ufer-Radweg & Bitburger Radweg — Runde ab Bitburg (31,7 km · ~2:00 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/17647796/embed?profile=1' },
@@ -608,6 +653,10 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         slug: 'sauertal-radweg', name: 'Sauertal-Radweg', category: 'aktiv', lat: 49.8519, lon: 6.3592, emoji: '🚴',
+        komootTours: [
+          { title: 'Sauerblick & Echternacher Grenzbrücke — Runde ab Minden (17,3 km · ~1:10 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43179735/embed?profile=1' },
+          { title: 'Ralinger Tunnel & Echternacher See — Runde ab Echternach (23 km · ~1:25 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43160850/embed?profile=1' },
+        ],
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Sauertalradweg_near_Wintersdorf_2011.JPG/1280px-Sauertalradweg_near_Wintersdorf_2011.JPG',
           author: 'Cobatfor',
@@ -655,6 +704,14 @@ export const REGIONS: Record<string, Region> = {
     center: [49.832, 6.415],
     zoom: 12,
     locationMatch: 'Südeifel',
+    kulinarik: [
+      { emoji: '🍰', name: 'Cafés in Echternach', art: 'Kaffeekultur', ort: 'Echternach (LU)',
+        text: 'Luxemburger Kaffeehaus-Tradition am Marktplatz der Abteistadt — perfekt nach einer Runde auf dem Müllerthal Trail.' },
+      { emoji: '🐟', name: 'Gasthäuser im Sauertal', art: 'Regionalküche', ort: 'Bollendorf & Umgebung',
+        text: 'Forelle, Wild und Eifeler Klassiker — bodenständige Küche in den Gasthäusern entlang der Sauer, oft mit Biergarten am Fluss.' },
+      { emoji: '🇱🇺', name: 'Luxemburger Küche', art: 'Über der Grenze', ort: 'Vianden & Luxemburg-Stadt',
+        text: 'Judd mat Gaardebounen, Gromperekichelcher oder ein Glas Crémant — die luxemburgische Küche verbindet französische Finesse mit deftiger Tradition.' },
+    ],
     heroSlugs: ['schiessentuempel', 'teufelsschlucht', 'burg-vianden'],
     komootTours: [
       { title: 'Sauerblick & Echternacher Grenzbrücke — Runde ab Minden (17,3 km · ~1:10 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43179735/embed?profile=1' },
@@ -732,6 +789,10 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         slug: 'saar-radweg', name: 'Saar-Radweg', category: 'aktiv', lat: 49.6608, lon: 6.5836, emoji: '🚴',
+        komootTours: [
+          { title: 'Schleuse Kanzem & Stauwehr Schoden — Runde ab Saarburg (21,4 km · ~1:20 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/39581518/embed?profile=1' },
+          { title: 'Stauwehr Schoden & Saar-Altarm — Runde ab Saarburg (23,4 km · ~1:30 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/43192448/embed?profile=1' },
+        ],
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Schoden%2C_wijnbouw_bij_de_Stauwehr_foto7_2017-05-29_12.44.jpg/1280px-Schoden%2C_wijnbouw_bij_de_Stauwehr_foto7_2017-05-29_12.44.jpg',
           author: 'Michielverbeek',
@@ -743,6 +804,21 @@ export const REGIONS: Record<string, Region> = {
         long: [
           'Der Saar-Radweg begleitet den Fluss von der Mündung bei Konz durch das Weintal nach Saarburg und weiter Richtung Saarschleife — flach, gut ausgebaut und mit stetig wechselnden Kulissen aus Steillagen, Leinpfaden und Schleusen.',
           'Ab Kanzem seid ihr in einer knappen halben Stunde in Saarburg; sportliche fahren weiter bis Mettlach und nehmen für die Rückfahrt die Bahn. Unterwegs locken Straußwirtschaften direkt an der Strecke.',
+        ],
+      },
+      {
+        slug: 'kanu-saar', name: 'Kanu & SUP auf der Saar', category: 'aktiv', lat: 49.6106, lon: 6.5521, emoji: '🛶',
+        image: {
+          src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Saarburg%2C_Saar_--_2023_--_174144.jpg/1280px-Saarburg%2C_Saar_--_2023_--_174144.jpg',
+          author: 'Dietmar Rabich',
+          license: 'CC BY-SA 4.0',
+          licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+          fileUrl: 'https://commons.wikimedia.org/wiki/File:Saarburg,_Saar_--_2023_--_174144.jpg',
+        },
+        text: 'Paddeln zwischen Weinbergen — der ruhige Flussabschnitt um Saarburg ist ideal für Kanu, Kajak und SUP.',
+        long: [
+          'Zwischen Serrig, Saarburg und Kanzem fließt die Saar ruhig und breit durch das Weintal — beste Bedingungen für Kanu, Kajak und Stand-up-Paddling, auch für Einsteiger und Familien. Verleihstationen in und um Saarburg bringen euch aufs Wasser; von dort gleitet ihr vorbei an Steillagen, Leinpfaden und alten Schleusen.',
+          'Vom Wasser aus zeigt sich das Tal von seiner schönsten Seite: Weinberge spiegeln sich im Fluss, Reiher stehen am Ufer — und in Saarburg lässt sich die Tour mit einem Eis oder einem Glas Riesling am Ufer beschließen. Wer mehr will, kombiniert die Paddelstrecke mit dem Saar-Radweg zu einer Rundtour.',
         ],
       },
       {
@@ -809,6 +885,14 @@ export const REGIONS: Record<string, Region> = {
     center: [49.635, 6.55],
     zoom: 11,
     locationMatch: 'Saar',
+    kulinarik: [
+      { emoji: '🍷', name: 'Weingut Van Volxem', art: 'Weingut & Vinothek', ort: 'Wiltingen',
+        text: 'Saar-Riesling von Weltruf: Die moderne Vinothek hoch über den Weinbergen gehört zu den eindrucksvollsten Genuss-Adressen der Region.' },
+      { emoji: '🍇', name: 'Weingut von Othegraven', art: 'VDP-Weingut', ort: 'Kanzem',
+        text: 'Traditionsgut direkt am Kanzemer Altenberg mit historischem Park — seit 2010 im Besitz von Günther Jauch.' },
+      { emoji: '🥂', name: 'Weinstuben in Saarburg', art: 'Altstadt-Genuss', ort: 'Saarburg',
+        text: 'Rund um den Wasserfall mitten in der Altstadt reihen sich Weinstuben und Cafés — ideal für einen Riesling nach dem Stadtbummel.' },
+    ],
     heroSlugs: ['saarschleife', 'saarburg', 'kanzemer-altenberg'],
     komootTours: [
       { title: 'Schleuse Kanzem & Stauwehr Schoden — Runde ab Saarburg (21,4 km · ~1:20 h)', embedUrl: 'https://www.komoot.com/de-de/smarttour/39581518/embed?profile=1' },
