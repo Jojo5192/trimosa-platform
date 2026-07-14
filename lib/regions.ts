@@ -26,14 +26,32 @@ export interface KomootTour {
   embedUrl: string
 }
 
-/** A curated food & drink recommendation, shown in the region's "Essen & Trinken" section. */
+export type KulinarikKategorie = 'fein' | 'gasthaus' | 'wein' | 'cafe'
+
+export const KULINARIK_KATEGORIEN: Record<KulinarikKategorie, { label: string; color: string; emoji: string }> = {
+  fein:     { label: 'Fine Dining', color: '#E6C15A', emoji: '✨' },
+  gasthaus: { label: 'Restaurants & Gasthäuser', color: '#E8956B', emoji: '🍽️' },
+  wein:     { label: 'Wein & Vinotheken', color: '#D98CA6', emoji: '🍷' },
+  cafe:     { label: 'Cafés & Einkehr', color: '#8FB8E8', emoji: '☕' },
+}
+
+/**
+ * A curated food & drink recommendation ("Essen & Trinken" section, with map).
+ * Selection favours long-established, top-reviewed places; texts stay
+ * timeless (no opening hours, no prices, no hard rating numbers).
+ */
 export interface KulinarikTipp {
   emoji: string
   name: string
-  /** Short type label shown as a badge, e.g. "Weingut", "Restaurant" */
+  /** Fine-grained badge label, e.g. "Weinstube", "Brauerlebnis" */
   art: string
   ort: string
   text: string
+  kategorie: KulinarikKategorie
+  lat: number
+  lon: number
+  /** Hosts' personal favourite — gets the gold "Unser Tipp" badge + bigger marker */
+  top?: boolean
 }
 
 export interface Poi {
@@ -348,12 +366,24 @@ export const REGIONS: Record<string, Region> = {
     zoom: 13,
     locationMatch: 'Trier',
     kulinarik: [
-      { emoji: '🏛️', name: 'Zum Domstein', art: 'Restaurant', ort: 'Hauptmarkt, Trier',
+      { emoji: '✨', name: "BECKER'S", art: 'Fine Dining', ort: 'Trier-Olewig',
+        kategorie: 'fein', lat: 49.742, lon: 6.6679, top: true,
+        text: 'Triers erste Gourmet-Adresse: Fine Dining im Designhotel mitten im Weinort Olewig — langjährig sternedekoriert und im Guide Michelin geführt, dazu Weine vom eigenen Gut.' },
+      { emoji: '🏰', name: 'Schloss Monaise', art: 'Schloss-Restaurant', ort: 'Trier-Euren, an der Mosel',
+        kategorie: 'fein', lat: 49.7173, lon: 6.5997,
+        text: 'Speisen im klassizistischen Schlösschen direkt am Moselufer — feine Küche, große Terrasse unter alten Bäumen, im Guide Michelin empfohlen.' },
+      { emoji: '🏛️', name: 'Zum Domstein', art: 'Römische Küche', ort: 'Hauptmarkt, Trier',
+        kategorie: 'gasthaus', lat: 49.7571, lon: 6.641,
         text: 'Institution am Hauptmarkt — neben regionaler Küche gibt es Gerichte nach altrömischen Rezepten, serviert über einem originalen römischen Gewölbekeller.' },
       { emoji: '🍷', name: 'Weinstube Kesselstatt', art: 'Weinstube', ort: 'An der Liebfrauenkirche, Trier',
+        kategorie: 'wein', lat: 49.7557, lon: 6.6423,
         text: 'Rustikale Weinstube im Schatten des Doms — Rieslinge von Mosel, Saar und Ruwer, dazu Winzervesper und regionale Kleinigkeiten.' },
       { emoji: '🍇', name: 'Straußwirtschaften in Olewig', art: 'Weinviertel', ort: 'Trier-Olewig',
+        kategorie: 'wein', lat: 49.7422, lon: 6.6628,
         text: 'Das Winzerviertel der Stadt: In der Saison öffnen Weingüter ihre Höfe und schenken den eigenen Wein direkt an den Weinbergen aus.' },
+      { emoji: '🍰', name: 'Café Razen', art: 'Konditorei seit 1953', ort: 'Sichelstraße, Trier',
+        kategorie: 'cafe', lat: 49.7578, lon: 6.645,
+        text: 'Konditorei-Institution in dritter Generation: handgemachte Torten, Croissants und eigenes Eis — wenige Schritte vom Hauptmarkt.' },
     ],
     heroSlugs: ['porta-nigra', 'hauptmarkt-trier', 'kaiserthermen'],
     komootTours: [
@@ -516,11 +546,20 @@ export const REGIONS: Record<string, Region> = {
     zoom: 13,
     locationMatch: 'Bitburg',
     kulinarik: [
-      { emoji: '🍺', name: 'Bitburger Marken-Erlebniswelt', art: 'Brauerlebnis', ort: 'Bitburg',
+      { emoji: '🍺', name: 'Zum Simonbräu', art: 'Brauhaus', ort: 'Am Markt, Bitburg',
+        kategorie: 'gasthaus', lat: 49.9739, lon: 6.522, top: true,
+        text: 'Im Stammhaus der Bitburger-Brauerei: regionale Küche mit französischem Einschlag und frisch Gezapftes — mitten in der Stadt.' },
+      { emoji: '🏰', name: 'Schloss Niederweis', art: 'Schloss-Restaurant', ort: 'Niederweis',
+        kategorie: 'fein', lat: 49.8702, lon: 6.4653,
+        text: 'Gehobene Landküche in den historischen Sälen des barocken Schlosses — auf halbem Weg zwischen Bitburg und der Teufelsschlucht.' },
+      { emoji: '🍽️', name: 'Torschänke Dudeldorf', art: 'Gasthaus', ort: 'Dudeldorf',
+        kategorie: 'gasthaus', lat: 49.9738, lon: 6.6364,
+        text: 'Die „gute Stube" des historischen Torbogen-Dorfs Dudeldorf — herzlich, familiär und verlässlich gut, ein Liebling der Region.' },
+      { emoji: '🍻', name: 'Bitburger Marken-Erlebniswelt', art: 'Brauerlebnis', ort: 'Bitburg',
+        kategorie: 'gasthaus', lat: 49.9664, lon: 6.5227,
         text: 'Führung durch die Markenwelt der berühmten Brauerei — am Ende wartet ein frisch gezapftes Pils direkt an der Quelle.' },
-      { emoji: '🦌', name: 'Eifeler Landgasthöfe', art: 'Regionalküche', ort: 'Rund um Bitburg',
-        text: 'Deftige Eifeler Küche: Wild aus heimischen Wäldern, Döppekooche und saisonale Gerichte — am schönsten in den Dörfern rund um die Stadt.' },
       { emoji: '🏞️', name: 'Einkehr am Stausee', art: 'Café & Biergarten', ort: 'Biersdorf am See',
+        kategorie: 'cafe', lat: 49.9931, lon: 6.4429,
         text: 'Nach der Runde um den See auf die Terrasse: Kaffee und Kuchen oder ein kühles Bit mit Blick übers Wasser.' },
     ],
     heroSlugs: ['burg-rittersdorf', 'stausee-bitburg', 'villa-otrang'],
@@ -705,12 +744,21 @@ export const REGIONS: Record<string, Region> = {
     zoom: 12,
     locationMatch: 'Südeifel',
     kulinarik: [
-      { emoji: '🍰', name: 'Cafés in Echternach', art: 'Kaffeekultur', ort: 'Echternach (LU)',
-        text: 'Luxemburger Kaffeehaus-Tradition am Marktplatz der Abteistadt — perfekt nach einer Runde auf dem Müllerthal Trail.' },
+      { emoji: '🇫🇷', name: 'Le Petit Poète', art: 'Bistro am Marktplatz', ort: 'Echternach (LU)',
+        kategorie: 'gasthaus', lat: 49.8126, lon: 6.4208, top: true,
+        text: 'Kleiner Klassiker direkt am Marktplatz der Abteistadt — französisch geprägte Karte und eine der beliebtesten Terrassen der Stadt.' },
+      { emoji: '🍽️', name: 'Aal Eechternoach', art: 'Luxemburgisch-französisch', ort: 'Echternach (LU)',
+        kategorie: 'gasthaus', lat: 49.8129, lon: 6.4203,
+        text: 'Vom deftigen Klassiker bis zum feinen Fischgericht — luxemburgisch-französische Küche mit gutem Ruf bei Einheimischen wie Gästen.' },
+      { emoji: '🥾', name: 'Teufels Küche', art: 'Wander-Einkehr', ort: 'An der Teufelsschlucht, Ernzen',
+        kategorie: 'cafe', lat: 49.8283, lon: 6.4443,
+        text: 'Stärkung direkt am Schluchteingang: Snacks, Kuchen und kalte Getränke — perfekt vor oder nach der Tour durch die Felsen.' },
       { emoji: '🐟', name: 'Gasthäuser im Sauertal', art: 'Regionalküche', ort: 'Bollendorf & Umgebung',
+        kategorie: 'gasthaus', lat: 49.8531, lon: 6.3583,
         text: 'Forelle, Wild und Eifeler Klassiker — bodenständige Küche in den Gasthäusern entlang der Sauer, oft mit Biergarten am Fluss.' },
-      { emoji: '🇱🇺', name: 'Luxemburger Küche', art: 'Über der Grenze', ort: 'Vianden & Luxemburg-Stadt',
-        text: 'Judd mat Gaardebounen, Gromperekichelcher oder ein Glas Crémant — die luxemburgische Küche verbindet französische Finesse mit deftiger Tradition.' },
+      { emoji: '🇱🇺', name: 'Luxemburger Küche in Vianden', art: 'Über der Grenze', ort: 'Vianden (LU)',
+        kategorie: 'gasthaus', lat: 49.9339, lon: 6.2033,
+        text: 'Judd mat Gaardebounen, Gromperekichelcher oder ein Glas Crémant — unterhalb der Burg reihen sich Lokale mit luxemburgischer Tradition.' },
     ],
     heroSlugs: ['schiessentuempel', 'teufelsschlucht', 'burg-vianden'],
     komootTours: [
@@ -886,11 +934,20 @@ export const REGIONS: Record<string, Region> = {
     zoom: 11,
     locationMatch: 'Saar',
     kulinarik: [
+      { emoji: '✨', name: 'Villa Keller', art: 'Gourmet-Restaurant', ort: 'Brückenstraße, Saarburg',
+        kategorie: 'fein', lat: 49.6085, lon: 6.5578, top: true,
+        text: 'Saarburgs erste Adresse: feine Küche in der historischen Villa direkt an der Saar — stilvoll vom Aperitif bis zum Dessert.' },
       { emoji: '🍷', name: 'Weingut Van Volxem', art: 'Weingut & Vinothek', ort: 'Wiltingen',
+        kategorie: 'wein', lat: 49.6427, lon: 6.5788, top: true,
         text: 'Saar-Riesling von Weltruf: Die moderne Vinothek hoch über den Weinbergen gehört zu den eindrucksvollsten Genuss-Adressen der Region.' },
       { emoji: '🍇', name: 'Weingut von Othegraven', art: 'VDP-Weingut', ort: 'Kanzem',
+        kategorie: 'wein', lat: 49.6707, lon: 6.5781,
         text: 'Traditionsgut direkt am Kanzemer Altenberg mit historischem Park — seit 2010 im Besitz von Günther Jauch.' },
-      { emoji: '🥂', name: 'Weinstuben in Saarburg', art: 'Altstadt-Genuss', ort: 'Saarburg',
+      { emoji: '🛏️', name: 'Weinhotel Ayler Kupp', art: 'Weinrestaurant', ort: 'Ayl',
+        kategorie: 'wein', lat: 49.6291, lon: 6.5536,
+        text: 'Restaurant und Weinhotel am Fuß der berühmten Lage Ayler Kupp — saisonale Küche, begleitet von den besten Rieslingen des Dorfs.' },
+      { emoji: '🥂', name: 'Weinstuben in Saarburg', art: 'Altstadt-Genuss', ort: 'Buttermarkt, Saarburg',
+        kategorie: 'wein', lat: 49.6081, lon: 6.5504,
         text: 'Rund um den Wasserfall mitten in der Altstadt reihen sich Weinstuben und Cafés — ideal für einen Riesling nach dem Stadtbummel.' },
     ],
     heroSlugs: ['saarschleife', 'saarburg', 'kanzemer-altenberg'],
