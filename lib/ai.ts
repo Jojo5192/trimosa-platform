@@ -50,6 +50,6 @@ export async function askClaude(system: string, user: string, maxTokens = 1500):
     .map((b: { text: string }) => b.text)
     .join('')
     .trim()
-  if (!text) throw new Error('Leere KI-Antwort.')
+  if (!text) throw new Error(`Leere KI-Antwort (stop_reason: ${data?.stop_reason ?? '?'}).`)
   return text
 }
