@@ -13,8 +13,7 @@ import { t, type UiLang } from '@/lib/i18n'
 export default function MobileSearchSheet({
   q, setQ, checkin, setCheckin, checkout, setCheckout,
   adults, setAdults, kids, setKids, flexDates, setFlexDates,
-  dateSelecting, setDateSelecting, onClose, onSearch,
-, lang = 'de',
+  dateSelecting, setDateSelecting, onClose, onSearch, lang = 'de',
 }: {
   q: string; setQ: (v: string) => void
   checkin: string; setCheckin: (v: string) => void
