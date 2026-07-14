@@ -577,7 +577,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
       </header>
 
       {/* Global chat overlay — rendered outside header to avoid stacking context from backdrop-filter */}
-      {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} />}
+      {user && <ChatOverlay open={chatOpen} onClose={() => setChatOpen(false)} userId={user.id} team={isHost} />}
 
       {(menuOpen || activeField) && (
         <div
