@@ -30,6 +30,7 @@ async function lookupRating(query: string, key: string): Promise<KulinarikRating
   if (hit && hit.expires > Date.now()) return hit.value
 
   let value: KulinarikRating | null = null
+  let failed = false
   try {
     const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
@@ -48,15 +49,17 @@ async function lookupRating(query: string, key: string): Promise<KulinarikRating
         value = { rating: place.rating, count: place.userRatingCount }
       }
     } else {
-      console.error('[kulinarik-ratings] Places search failed:', res.status, query)
+      failed = true
+      console.error('[kulinarik-ratings] Places search failed:', res.status, query, (await res.text().catch(() => '')).slice(0, 200))
     }
   } catch (err) {
+    failed = true
     console.error('[kulinarik-ratings] Places search error:', query, err)
   }
 
-  // Negative results are cached too — a broken query must not re-fire on
-  // every regeneration.
-  cache.set(query, { value, expires: Date.now() + TTL_MS })
+  // Successes AND genuine "no match" results cache for 24 h; transient API
+  // failures only briefly (5 min) so one hiccup can't hide all badges for a day.
+  cache.set(query, { value, expires: Date.now() + (failed ? 5 * 60 * 1000 : TTL_MS) })
   return value
 }
 
