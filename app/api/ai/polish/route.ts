@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { askClaude } from '@/lib/ai'
+import { getPrompt } from '@/lib/prompts'
 
 /**
  * POST /api/ai/polish — writing help for hosts inside the listing editor.
@@ -31,16 +32,6 @@ const FIELD_BRIEFS: Record<string, string> = {
     'KEINEN Entwurf erfinden, antworte dann exakt mit: "Bitte schreibe zuerst deinen eigenen Tipp — ich poliere ihn dann."',
 }
 
-const SYSTEM = `Du bist der Text-Assistent von TRIMOSA Apartments & Homes — Premium-Ferienwohnungen
-in Trier, Bitburg, der Südeifel und an der Saar. Markenton: warm, klar, hochwertig,
-bodenständig — nie marktschreierisch.
-
-EISERNE REGEL: Erfinde NIEMALS Fakten. Keine Ausstattung, Entfernungen, Zahlen oder
-Eigenschaften, die nicht im Ausgangstext oder den Kontext-Fakten stehen. Du darfst
-nur umformulieren, strukturieren und kürzen.
-
-Antworte AUSSCHLIESSLICH mit dem fertigen Text — keine Anführungszeichen drumherum,
-keine Erklärungen, keine Varianten.`
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -86,7 +77,7 @@ AUSGANGSTEXT:
 ${input || '(leer — bitte einen Entwurf allein aus den Kontext-Fakten erstellen)'}`
 
   try {
-    const suggestion = await askClaude(SYSTEM, prompt)
+    const suggestion = await askClaude(await getPrompt('polish_system'), prompt)
     return NextResponse.json({ suggestion })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'KI-Fehler.' }, { status: 502 })
