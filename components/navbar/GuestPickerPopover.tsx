@@ -1,13 +1,16 @@
 'use client'
 
+import { t, type UiLang } from '@/lib/i18n'
+
 /* ─── Guest Picker Popover ────────────────────────────── */
 export default function GuestPickerPopover({
-  adults, children: kids, onChangeAdults, onChangeKids, onClose
+  adults, children: kids, onChangeAdults, onChangeKids, onClose, lang = 'de',
 }: {
   adults: number; children: number
   onChangeAdults: (n: number) => void
   onChangeKids: (n: number) => void
   onClose: () => void
+  lang?: UiLang
 }) {
   function Counter({ label, sub, value, onChange, min = 0 }: { label: string; sub: string; value: number; onChange: (n: number) => void; min?: number }) {
     return (
@@ -59,14 +62,14 @@ export default function GuestPickerPopover({
         zIndex: 100,
       }}
     >
-      <Counter label="Erwachsene" sub="Ab 13 Jahren" value={adults} onChange={onChangeAdults} min={1} />
-      <Counter label="Kinder" sub="2–12 Jahre" value={kids} onChange={onChangeKids} />
+      <Counter label={t(lang, 'Erwachsene')} sub={t(lang, 'Ab 13 Jahren')} value={adults} onChange={onChangeAdults} min={1} />
+      <Counter label={t(lang, 'Kinder')} sub={t(lang, '2–12 Jahre')} value={kids} onChange={onChangeKids} />
       <button
         type="button"
         onClick={onClose}
         style={{ display: 'block', width: '100%', marginTop: '16px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '10px', cursor: 'pointer' }}
       >
-        Fertig
+        {t(lang, 'Fertig')}
       </button>
     </div>
   )
