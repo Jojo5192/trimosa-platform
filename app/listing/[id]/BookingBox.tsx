@@ -16,7 +16,8 @@ interface BookingBoxProps {
   cancellationPolicy?: string
   initialCheckIn?: string
   initialCheckOut?: string
-  initialGuests?: number  lang?: UiLang
+  initialGuests?: number
+  lang?: UiLang
 }
 
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
