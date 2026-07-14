@@ -201,6 +201,17 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           </p>
         )}
 
+        {/* ── Booking CTA right below the apartments (was stranded at the page end) ── */}
+        {regionListings.length > 0 && (
+          <div style={{ marginTop: '18px' }}>
+            <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
+              padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
+              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+            }}>Verfügbarkeit prüfen →</Link>
+          </div>
+        )}
+
         {/* ── Coming soon ── */}
         {region.comingSoon && (
           <div style={{
