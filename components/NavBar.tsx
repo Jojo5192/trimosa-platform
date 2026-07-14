@@ -13,6 +13,8 @@ import { DatePickerPopover } from '@/components/navbar/DatePicker'
 import GuestPickerPopover from '@/components/navbar/GuestPickerPopover'
 import UserMenu from '@/components/navbar/UserMenu'
 import MobileSearchSheet from '@/components/navbar/MobileSearchSheet'
+import LangSwitcher from '@/components/LangSwitcher'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface NavBarProps {
   initialQ?: string
@@ -20,10 +22,11 @@ interface NavBarProps {
   initialCheckin?: string
   initialCheckout?: string
   initialFlex?: boolean
+  lang?: UiLang
 }
 
 /* ─── Main NavBar ─────────────────────────────────────── */
-export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '', initialFlex = false }: NavBarProps) {
+export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '', initialFlex = false, lang = 'de' }: NavBarProps) {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -60,7 +63,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     : LOCATION_SUGGESTIONS.slice(0, 6)
 
   const totalGuests = adults + kids
-  const guestLabel = totalGuests === 1 ? '1 Gast' : `${totalGuests} Gäste`
+  const guestLabel = totalGuests === 1 ? `1 ${t(lang, 'Gast')}` : `${totalGuests} ${t(lang, 'Gäste')}`
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -259,16 +262,16 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             </svg>
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: q ? '#111' : '#555', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {q || 'Wohin?'}
+                {q || t(lang, 'Wohin?')}
               </p>
               <p style={{ margin: 0, fontSize: '11px', color: '#999', lineHeight: 1 }}>
                 {checkin && checkout
-                  ? `${formatDate(checkin)} – ${formatDate(checkout)}${adults + kids > 1 ? ` · ${adults + kids} Gäste` : ''}`
+                  ? `${formatDate(checkin, lang)} – ${formatDate(checkout, lang)}${adults + kids > 1 ? ` · ${adults + kids} ${t(lang, 'Gäste')}` : ''}`
                   : checkin
                     ? `Ab ${formatDate(checkin)}`
                     : adults + kids > 1
-                      ? `${adults + kids} Gäste`
-                      : 'Datum · Gäste'}
+                      ? `${adults + kids} ${t(lang, 'Gäste')}`
+                      : t(lang, 'Datum · Gäste')}
               </p>
             </div>
           </button>
@@ -300,13 +303,13 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 style={fieldStyle('q', { flex: '2', paddingLeft: '20px', paddingRight: '12px', minWidth: 0 })}
                 onClick={() => { setActiveField('q'); setShowSuggestions(true) }}
               >
-                <FieldLabel text="Wohin" />
+                <FieldLabel text={t(lang, 'Wohin')} />
                 <input
                   name="q" type="text" value={q}
                   onChange={(e) => { setQ(e.target.value); setShowSuggestions(true) }}
                   onFocus={() => { setActiveField('q'); setShowSuggestions(true) }}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-                  placeholder={compact && !q ? 'Wohin?' : 'Ort suchen…'}
+                  placeholder={compact && !q ? t(lang, 'Wohin?') : t(lang, 'Ort suchen…')}
                   autoComplete="off"
                   style={{
                     fontSize: '13px',
@@ -381,8 +384,8 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 style={fieldStyle('date', { flex: '1.1', padding: '0 12px', minWidth: 0 })}
                 onClick={() => { setActiveField('date'); setDateSelecting('checkin') }}
               >
-                <FieldLabel text="Anreise" />
-                <FieldValue value={checkin ? formatDate(checkin) : ''} placeholder={compact ? 'Anreise' : 'Datum wählen'} />
+                <FieldLabel text={t(lang, 'Anreise')} />
+                <FieldValue value={checkin ? formatDate(checkin, lang) : ''} placeholder={compact ? t(lang, 'Anreise') : t(lang, 'Datum wählen')} />
               </div>
 
               <Divider />
@@ -393,8 +396,8 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 style={fieldStyle('date', { flex: '1.1', padding: '0 12px', minWidth: 0 })}
                 onClick={() => { setActiveField('date'); setDateSelecting('checkout') }}
               >
-                <FieldLabel text="Abreise" />
-                <FieldValue value={checkout ? formatDate(checkout) : ''} placeholder={compact ? 'Abreise' : 'Datum wählen'} />
+                <FieldLabel text={t(lang, 'Abreise')} />
+                <FieldValue value={checkout ? formatDate(checkout, lang) : ''} placeholder={compact ? t(lang, 'Abreise') : t(lang, 'Datum wählen')} />
               </div>
 
               <Divider />
@@ -405,12 +408,13 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                 style={fieldStyle('guests', { flexShrink: 0, width: compact ? '96px' : '110px', padding: '0 12px' })}
                 onClick={() => setActiveField(activeField === 'guests' ? null : 'guests')}
               >
-                <FieldLabel text="Gäste" />
-                <FieldValue value={totalGuests > 1 || adults > 1 ? guestLabel : ''} placeholder={compact ? 'Gäste' : 'Hinzufügen'} />
+                <FieldLabel text={t(lang, 'Gäste')} />
+                <FieldValue value={totalGuests > 1 || adults > 1 ? guestLabel : ''} placeholder={compact ? t(lang, 'Gäste') : t(lang, 'Hinzufügen')} />
 
                 {/* Guest Picker Popover */}
                 {activeField === 'guests' && (
                   <GuestPickerPopover
+                    lang={lang}
                     adults={adults}
                     children={kids}
                     onChangeAdults={setAdults}
@@ -431,6 +435,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   onClose={() => setActiveField(null)}
                   flexDates={flexDates}
                   onToggleFlex={setFlexDates}
+                  lang={lang}
                 />
               )}
 
@@ -478,6 +483,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
           {/* ── Right: Menu ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <LangSwitcher lang={lang} compact={compact} />
             {user ? (
               <>
                 {/* Chat icon + Meine Reisen — nur auf Desktop sichtbar */}
@@ -525,11 +531,12 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
                       </svg>
                     )}
-                    {!compact && (isHost ? 'Dashboard' : 'Meine Reisen')}
+                    {!compact && (isHost ? 'Dashboard' : t(lang, 'Meine Reisen'))}
                   </Link>
                 </div>
 
                 <UserMenu
+                  lang={lang}
                   user={user}
                   isHost={isHost}
                   avatarUrl={avatarUrl}
@@ -550,13 +557,13 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F2F0EC' }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
                   >
-                    Anmelden
+                    {t(lang, 'Anmelden')}
                   </Link>
                   <Link
                     href="/register"
                     style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
                   >
-                    Registrieren
+                    {t(lang, 'Registrieren')}
                   </Link>
                 </div>
                 {/* Mobile: nur kompakter Anmelden-Button */}
@@ -599,6 +606,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
       {/* Mobile/Tablet full-screen search sheet */}
       {mobileSearchOpen && (
         <MobileSearchSheet
+          lang={lang}
           q={q} setQ={setQ}
           checkin={checkin} setCheckin={setCheckin}
           checkout={checkout} setCheckout={setCheckout}
