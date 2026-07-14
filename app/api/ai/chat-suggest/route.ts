@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const allowed = await checkRateLimit(`ai-chat:${user.id}`, 30, 3600)
   if (!allowed) return NextResponse.json({ error: 'Zu viele KI-Anfragen — bitte kurz warten.' }, { status: 429 })
 
-  const { conversationId, bookingId } = await request.json()
+  const { conversationId, bookingId, instruction, currentDraft } = await request.json()
   if (typeof conversationId !== 'string' && typeof bookingId !== 'string') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
@@ -146,7 +146,14 @@ ${knowledge}
 ` : ''}BISHERIGER VERLAUF (älteste zuerst):
 ${history}
 
-Entwirf jetzt die nächste Antwort des GASTGEBERS auf die letzte Gast-Nachricht.`
+${typeof currentDraft === 'string' && currentDraft.trim() && typeof instruction === 'string' && instruction.trim()
+  ? `AKTUELLER ENTWURF DES GASTGEBERS:
+${currentDraft.slice(0, 2000)}
+
+ANWEISUNG DES GASTGEBERS: ${instruction.slice(0, 500)}
+
+Überarbeite den Entwurf gemäß der Anweisung (Verlauf + Wissensbasis beachten).`
+  : 'Entwirf jetzt die nächste Antwort des GASTGEBERS auf die letzte Gast-Nachricht.'}`
 
   try {
     const suggestion = await askClaude(system, prompt, 500)
