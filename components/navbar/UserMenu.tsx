@@ -3,14 +3,16 @@
 import Image from 'next/image'
 import type { User } from '@supabase/supabase-js'
 import MenuItem from './MenuItem'
+import { t, type UiLang } from '@/lib/i18n'
 
 /**
  * Avatar button + dropdown menu (extracted from NavBar.tsx).
  * Open state stays in NavBar so the shared backdrop can close it.
  */
-export default function UserMenu({ user, isHost, avatarUrl, initials, open, onToggle, onClose, onLogout }: {
+export default function UserMenu({ user, isHost, avatarUrl, initials, open, onToggle, onClose, onLogout, lang = 'de' }: {
   user: User
   isHost: boolean
+  lang?: UiLang
   avatarUrl: string | null
   initials: string
   open: boolean
@@ -81,13 +83,13 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
           {!isHost && (
             <>
               <div style={{ padding: '8px 18px 4px' }}>
-                <p style={{ fontSize: '10px', fontWeight: 700, color: '#BBB', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Mein Bereich</p>
+                <p style={{ fontSize: '10px', fontWeight: 700, color: '#BBB', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{t(lang, 'Mein Bereich')}</p>
               </div>
               {[
-                { href: '/guest',               icon: '🏡', label: 'Meine Reisen' },
-                { href: '/guest/chat',          icon: '💬', label: 'Nachrichten' },
-                { href: '/guest/profile',       icon: '👤', label: 'Profil bearbeiten' },
-                { href: '/guest/notifications', icon: '🔔', label: 'Benachrichtigungen' },
+                { href: '/guest',               icon: '🏡', label: t(lang, 'Meine Reisen') },
+                { href: '/guest/chat',          icon: '💬', label: t(lang, 'Nachrichten') },
+                { href: '/guest/profile',       icon: '👤', label: t(lang, 'Profil bearbeiten') },
+                { href: '/guest/notifications', icon: '🔔', label: t(lang, 'Benachrichtigungen') },
               ].map(({ href, icon, label }) => (
                 <MenuItem key={href} href={href} onClick={onClose}>
                   <span style={{ marginRight: '8px', fontSize: '13px' }}>{icon}</span>
@@ -107,7 +109,7 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
 
           <MenuItem href="/ueber-uns" onClick={onClose}>
             <span style={{ marginRight: '8px' }}>✨</span>
-            Über TRIMOSA
+            {t(lang, 'Über TRIMOSA')}
           </MenuItem>
 
           <div style={{ borderTop: '1px solid #F2F0EC', marginTop: '4px', paddingTop: '4px' }}>
@@ -117,7 +119,7 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F7F5F2' }}
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
             >
-              Abmelden
+              {t(lang, 'Abmelden')}
             </button>
           </div>
         </div>
