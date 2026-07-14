@@ -14,7 +14,7 @@ import GuestPickerPopover from '@/components/navbar/GuestPickerPopover'
 import UserMenu from '@/components/navbar/UserMenu'
 import MobileSearchSheet from '@/components/navbar/MobileSearchSheet'
 import LangSwitcher from '@/components/LangSwitcher'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 interface NavBarProps {
   initialQ?: string
@@ -26,8 +26,16 @@ interface NavBarProps {
 }
 
 /* ─── Main NavBar ─────────────────────────────────────── */
-export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '', initialFlex = false, lang = 'de' }: NavBarProps) {
+export default function NavBar({ initialQ = '', initialGuests = '', initialCheckin = '', initialCheckout = '', initialFlex = false, lang: langProp = 'de' }: NavBarProps) {
   const router = useRouter()
+  // Pages that don't pass `lang` (guide pages, login, legal …) still get the
+  // visitor's cookie choice — read client-side after mount (no hydration risk).
+  const [lang, setLang] = useState<UiLang>(langProp)
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1]) && m[1] !== lang) setLang(m[1])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [user, setUser] = useState<User | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [compact, setCompact] = useState(false)
