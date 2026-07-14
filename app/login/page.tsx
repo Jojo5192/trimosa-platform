@@ -5,6 +5,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import OAuthButtons from '@/components/OAuthButtons'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -81,9 +82,14 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1D1D1F', marginBottom: '7px' }}>
-                Passwort
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '7px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: '#1D1D1F' }}>
+                  Passwort
+                </label>
+                <Link href="/passwort-vergessen" style={{ fontSize: '12.5px', color: 'var(--gold-dark)', fontWeight: 600, textDecoration: 'none' }}>
+                  Passwort vergessen?
+                </Link>
+              </div>
               <input
                 type="password"
                 value={password}
@@ -117,6 +123,8 @@ export default function LoginPage() {
           >
             {loading ? 'Anmeldung läuft…' : 'Anmelden'}
           </button>
+
+          <OAuthButtons />
 
           <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '24px' }}>
             Noch kein Konto?{' '}
