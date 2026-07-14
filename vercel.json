@@ -7,6 +7,10 @@
     {
       "path": "/api/ai/knowledge",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/push/poll",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
