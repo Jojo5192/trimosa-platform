@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
+import { translateIncoming } from '@/lib/translate'
 
 // ── Smoobu sync helper ───────────────────────────────────────
 async function syncSmoobuMessages(
@@ -163,7 +164,19 @@ export async function GET(req: NextRequest) {
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
 
-    return NextResponse.json(messages ?? [])
+    // Translate untranslated guest-side messages to German once (cached)
+    let out = messages ?? []
+    const guestSide = out.filter((m) =>
+      conv && m.sender_id !== conv.host_id && !m.lang && (m.content ?? '').trim().length > 0)
+    if (guestSide.length > 0) {
+      const map = await translateIncoming(guestSide.slice(0, 25).map((m) => ({ id: m.id, text: m.content })))
+      out = out.map((m) => {
+        const t = map.get(m.id)
+        return t ? { ...m, lang: t.lang, content_de: t.german } : m
+      })
+    }
+
+    return NextResponse.json(out)
   }
 
   // All conversations for this user (as host or guest)
@@ -226,7 +239,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 })
 
   const body = await req.json()
-  const { conversationId, content, listingId, hostId, guestName, listingTitle } = body
+  const { conversationId, content, contentDe, lang, listingId, hostId, guestName, listingTitle } = body
 
   if (!content?.trim()) return NextResponse.json({ error: 'Kein Inhalt' }, { status: 400 })
 
@@ -267,7 +280,11 @@ export async function POST(req: NextRequest) {
   // Insert message
   const { data: message, error: msgErr } = await supabaseAdmin
     .from('messages')
-    .insert({ conversation_id: convId, sender_id: user.id, content: content.trim() })
+    .insert({
+      conversation_id: convId, sender_id: user.id, content: content.trim(),
+      content_de: typeof contentDe === 'string' && contentDe.trim() ? contentDe.trim() : null,
+      lang: typeof lang === 'string' && /^[a-z]{2}$/.test(lang) ? lang : null,
+    })
     .select('*')
     .single()
 
