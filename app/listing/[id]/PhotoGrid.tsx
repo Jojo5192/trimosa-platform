@@ -11,7 +11,8 @@ interface Props {
   listingTitle: string
   pricePerNight: number
   mainGradient: React.CSSProperties
-  fallbackColors: string[]  lang?: UiLang
+  fallbackColors: string[]
+  lang?: UiLang
 }
 
 export default function PhotoGrid({
