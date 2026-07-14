@@ -555,7 +555,7 @@ export default function BookingBox({
       <div style={{ marginTop: '12px' }}>
         {mode === 'instant' ? (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
-            Sofortige Bestätigung · Keine versteckten Gebühren
+            {t(lang, 'Sofortige Bestätigung · Keine versteckten Gebühren')}
           </p>
         ) : (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
