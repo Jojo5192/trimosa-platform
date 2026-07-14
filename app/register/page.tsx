@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import OAuthButtons from '@/components/OAuthButtons'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 type AccountType = 'person' | 'business'
 
@@ -38,6 +39,11 @@ const inp: React.CSSProperties = {
 
 /* ── Hauptkomponente ── */
 export default function RegisterPage() {
+  const [lang, setLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setLang(m[1])
+  }, [])
   const router = useRouter()
 
   const [accountType, setAccountType] = useState<AccountType>('person')
@@ -70,22 +76,22 @@ export default function RegisterPage() {
 
     // Client-seitige Validierung
     if (accountType === 'person' && (!firstName.trim() || !lastName.trim())) {
-      setError('Bitte Vor- und Nachname eingeben.'); setLoading(false); return
+      setError(t(lang, 'Bitte Vor- und Nachname eingeben.')); setLoading(false); return
     }
     if (accountType === 'business' && !companyName.trim()) {
-      setError('Bitte Firmennamen eingeben.'); setLoading(false); return
+      setError(t(lang, 'Bitte Firmennamen eingeben.')); setLoading(false); return
     }
     if (!street.trim() || !zip.trim() || !city.trim()) {
-      setError('Bitte vollständige Adresse angeben.'); setLoading(false); return
+      setError(t(lang, 'Bitte vollständige Adresse angeben.')); setLoading(false); return
     }
     if (!phone.trim()) {
-      setError('Bitte Telefonnummer angeben.'); setLoading(false); return
+      setError(t(lang, 'Bitte Telefonnummer angeben.')); setLoading(false); return
     }
     if (!email.trim() || !password) {
-      setError('Bitte E-Mail und Passwort eingeben.'); setLoading(false); return
+      setError(t(lang, 'Bitte E-Mail und Passwort eingeben.')); setLoading(false); return
     }
     if (password.length < 6) {
-      setError('Passwort muss mindestens 6 Zeichen lang sein.'); setLoading(false); return
+      setError(t(lang, 'Passwort muss mindestens 6 Zeichen lang sein.')); setLoading(false); return
     }
 
     // 1. User + Profil anlegen (Server-Route mit Admin-Rechten)
@@ -111,7 +117,7 @@ export default function RegisterPage() {
 
     const data = await res.json()
     if (!res.ok) {
-      setError(data.error || 'Registrierung fehlgeschlagen.')
+      setError(data.error || t(lang, 'Registrierung fehlgeschlagen.'))
       setLoading(false)
       return
     }
@@ -123,7 +129,7 @@ export default function RegisterPage() {
     })
 
     if (loginErr) {
-      setError('Konto erstellt — bitte jetzt anmelden.')
+      setError(t(lang, 'Konto erstellt — bitte jetzt anmelden.'))
       router.push('/login')
       return
     }
@@ -140,7 +146,7 @@ export default function RegisterPage() {
         <div className="text-center">
           <Image src="/logo.png" alt="TRIMOSA" width={240} height={54}
             className="h-12 w-auto object-contain brightness-0 invert opacity-90 mb-8" />
-          <p className="text-white/80 text-lg leading-relaxed max-w-xs">Auszeiten, die bleiben.</p>
+          <p className="text-white/80 text-lg leading-relaxed max-w-xs">{t(lang, 'Auszeiten, die bleiben.')}</p>
           <div style={{ marginTop: '48px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
             {[
               { icon: '🔒', text: 'Daten werden sicher übertragen' },
@@ -166,17 +172,17 @@ export default function RegisterPage() {
           </div>
 
           <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#1D1D1F', marginBottom: '4px', letterSpacing: '-0.5px' }}>
-            Konto erstellen
+            {t(lang, 'Konto erstellen')}
           </h1>
           <p style={{ fontSize: '14px', color: '#6E6E73', marginBottom: '32px' }}>
-            Kostenlos · alle Angaben werden nur einmalig abgefragt
+            {t(lang, 'Kostenlos · alle Angaben werden nur einmalig abgefragt')}
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
             {/* ── 1. Kontotyp ── */}
             <div>
-              <SectionLabel>Kontotyp</SectionLabel>
+              <SectionLabel>{t(lang, 'Kontotyp')}</SectionLabel>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 {([
                   { value: 'person'   as AccountType, emoji: '👤', title: 'Privatperson', sub: 'Privatkonto' },
@@ -203,10 +209,10 @@ export default function RegisterPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {accountType === 'person' ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <Field label="Vorname *">
+                    <Field label={`${t(lang, 'Vorname')} *`}>
                       <input style={inp} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" autoComplete="given-name" />
                     </Field>
-                    <Field label="Nachname *">
+                    <Field label={`${t(lang, 'Nachname')} *`}>
                       <input style={inp} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Mustermann" autoComplete="family-name" />
                     </Field>
                   </div>
@@ -225,9 +231,9 @@ export default function RegisterPage() {
 
             {/* ── 3. Anzeigename ── */}
             <div>
-              <SectionLabel>Öffentlicher Anzeigename</SectionLabel>
+              <SectionLabel>{t(lang, 'Öffentlicher Anzeigename')}</SectionLabel>
               <Field
-                label="Anzeigename"
+                label={t(lang, 'Anzeigename')}
                 hint="Wird im Chat und bei Bewertungen angezeigt. Dein richtiger Name / deine Firma bleibt intern und wird nur für Buchungen und Rechnungen verwendet."
               >
                 <input
@@ -242,20 +248,20 @@ export default function RegisterPage() {
 
             {/* ── 4. Adresse ── */}
             <div>
-              <SectionLabel>Adresse</SectionLabel>
+              <SectionLabel>{t(lang, 'Adresse')}</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Field label="Straße und Hausnummer *">
+                <Field label={`${t(lang, 'Straße & Hausnummer')} *`}>
                   <input style={inp} value={street} onChange={e => setStreet(e.target.value)} placeholder="Musterstraße 1" autoComplete="street-address" />
                 </Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '10px' }}>
-                  <Field label="PLZ *">
+                  <Field label={`${t(lang, 'PLZ')} *`}>
                     <input style={inp} value={zip} onChange={e => setZip(e.target.value)} placeholder="10115" autoComplete="postal-code" />
                   </Field>
-                  <Field label="Stadt *">
+                  <Field label={`${t(lang, 'Ort')} *`}>
                     <input style={inp} value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" autoComplete="address-level2" />
                   </Field>
                 </div>
-                <Field label="Land">
+                <Field label={t(lang, 'Land')}>
                   <input style={inp} value={country} onChange={e => setCountry(e.target.value)} placeholder="Deutschland" autoComplete="country-name" />
                 </Field>
               </div>
@@ -263,20 +269,20 @@ export default function RegisterPage() {
 
             {/* ── 4b. Telefon ── */}
             <div>
-              <SectionLabel>Kontakt</SectionLabel>
-              <Field label="Telefonnummer *" hint="Wird für Buchungen benötigt und an den Gastgeber weitergegeben.">
+              <SectionLabel>{t(lang, 'Kontakt')}</SectionLabel>
+              <Field label={`${t(lang, 'Telefon')} *`} hint={t(lang, 'Wird für Buchungen benötigt und an den Gastgeber weitergegeben.')}>
                 <input type="tel" style={inp} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49 170 1234567" autoComplete="tel" />
               </Field>
             </div>
 
             {/* ── 6. Zugangsdaten ── */}
             <div>
-              <SectionLabel>Zugangsdaten</SectionLabel>
+              <SectionLabel>{t(lang, 'Zugangsdaten')}</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Field label="E-Mail *">
+                <Field label={`${t(lang, 'E-Mail')} *`}>
                   <input type="email" style={inp} value={email} onChange={e => setEmail(e.target.value)} placeholder="deine@email.de" autoComplete="email" />
                 </Field>
-                <Field label="Passwort *" hint="Mindestens 6 Zeichen">
+                <Field label={`${t(lang, 'Passwort')} *`} hint={t(lang, 'Mindestens 6 Zeichen')}>
                   <input type="password" style={inp} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
                 </Field>
               </div>
@@ -303,14 +309,14 @@ export default function RegisterPage() {
                 boxShadow: '0 4px 20px rgba(168,136,42,0.35)',
               }}
             >
-              {loading ? 'Konto wird erstellt…' : 'Konto erstellen →'}
+              {loading ? t(lang, 'Konto wird erstellt…') : `${t(lang, 'Konto erstellen')} →`}
             </button>
 
             <OAuthButtons />
 
             <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '-8px', paddingBottom: '16px' }}>
-              Bereits ein Konto?{' '}
-              <Link href="/login" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>Anmelden</Link>
+              {t(lang, 'Bereits ein Konto?')}{' '}
+              <Link href="/login" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>{t(lang, 'Anmelden')}</Link>
             </p>
           </div>
         </div>
