@@ -24,6 +24,11 @@ const FIELD_BRIEFS: Record<string, string> = {
     'Formuliere die Check-in-Hinweise als klare Schritt-für-Schritt-Anleitung in Du-Form, kurz und eindeutig.',
   important_notes:
     'Formuliere die wichtigen Hinweise klar und freundlich, das Wichtigste zuerst.',
+  empfehlung:
+    'Poliere den persönlichen Tipp des Gastgebers für ein Ausflugsziel/Restaurant: 1–2 Sätze, ' +
+    'direkt und authentisch (wie ein Freund, der einen Geheimtipp gibt), Du-Form erlaubt. ' +
+    'Die persönliche Erfahrung MUSS aus dem Ausgangstext stammen — bei leerem Text darfst du ' +
+    'KEINEN Entwurf erfinden, antworte dann exakt mit: "Bitte schreibe zuerst deinen eigenen Tipp — ich poliere ihn dann."',
 }
 
 const SYSTEM = `Du bist der Text-Assistent von TRIMOSA Apartments & Homes — Premium-Ferienwohnungen
