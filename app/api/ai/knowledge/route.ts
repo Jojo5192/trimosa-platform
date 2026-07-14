@@ -142,5 +142,43 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ resolved: out })
   }
+  if (action === 'bookings-backfill') {
+    // One-off: import Smoobu reservations (recent past + future) into the
+    // bookings table so external guests (Airbnb/Booking) appear as inbox
+    // threads. Cancelled reservations and calendar blocks are skipped; the
+    // no-overlap EXCLUDE constraint tolerates duplicates by skipping them.
+    const { listReservations } = await import('@/lib/smoobu')
+    const { data: listings } = await supabaseAdmin
+      .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
+    const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
+    const { data: existingRows } = await supabaseAdmin
+      .from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null)
+    const existing = new Set((existingRows ?? []).map((b) => Number(b.smoobu_reservation_id)))
+
+    const from = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 10)
+    const to = new Date(Date.now() + 540 * 86400_000).toISOString().slice(0, 10)
+    let imported = 0, skipped = 0, failed = 0
+    for (let p = 1; p <= 40; p++) {
+      const { reservations, hasMore } = await listReservations(from, to, p)
+      for (const r of reservations) {
+        if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id)) { skipped++; continue }
+        const { error } = await supabaseAdmin.from('bookings').insert({
+          smoobu_reservation_id: r.id,
+          listing_id: r.apartmentId != null ? bySmoobuId.get(r.apartmentId) ?? null : null,
+          guest_name: r.guestName,
+          check_in: r.arrival,
+          check_out: r.departure,
+          total_price: Math.round(r.price ?? 0),
+          status: 'confirmed',
+          channel: r.channelName ?? 'Smoobu',
+          source: 'smoobu_backfill',
+        })
+        if (error) { failed++; console.error('[bookings-backfill]', r.id, error.message) }
+        else { imported++; existing.add(r.id) }
+      }
+      if (!hasMore) break
+    }
+    return NextResponse.json({ imported, skipped, failed })
+  }
   return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
 }
