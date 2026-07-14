@@ -26,7 +26,9 @@ export async function GET(request: Request) {
   // Vercel cron calls arrive with "Authorization: Bearer ${CRON_SECRET}"
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && request.headers.get('authorization') === `Bearer ${cronSecret}`) {
-    const results = await refreshChatKnowledge()
+    // Daily cron with a 6-day freshness window: each doc is re-distilled
+    // roughly weekly, and the time budget spreads the work across days.
+    const results = await refreshChatKnowledge(144)
     return NextResponse.json({ cron: true, results })
   }
 
