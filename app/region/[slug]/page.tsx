@@ -84,8 +84,8 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
     region.claim, ...region.intro,
     ...region.highlights.flatMap((h) => [h.title, h.text]),
     ...(region.comingSoon ? [region.comingSoon.title, region.comingSoon.text] : []),
-    ...region.pois.flatMap((pp) => [pp.name, pp.short]),
-    ...allExtraPois.flatMap((pp) => [pp.name, pp.short]),
+    ...region.pois.flatMap((pp) => [pp.name, pp.text]),
+    ...allExtraPois.flatMap((pp) => [pp.name, pp.text]),
     ...(region.kulinarik ?? []).flatMap((k) => [k.art, k.text]),
     ...(region.komootTours ?? []).map((k) => k.title),
     'Karte & Ausflüge', 'Radtouren', 'Essen & Trinken', 'Start', 'Ferienwohnungen',
@@ -101,8 +101,8 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
     'Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.',
     'Weitere Regionen:', 'Über uns',
   ])
-  const trPois = region.pois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))
-  const trExtraPois = allExtraPois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))
+  const trPois = region.pois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))
+  const trExtraPois = allExtraPois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))
   const trKulinarik = (region.kulinarik ?? []).map((k) => ({ ...k, art: T(k.art), text: T(k.text) }))
   const trTours = (region.komootTours ?? []).map((k) => ({ ...k, title: T(k.title) }))
 
