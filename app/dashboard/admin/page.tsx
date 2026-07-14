@@ -5,6 +5,7 @@ import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
 import AdminUsersClient from './AdminUsersClient'
 import KnowledgeAdmin from './KnowledgeAdmin'
+import PromptStudio from './PromptStudio'
 
 export default async function AdminPage() {
   const supabase = await createSupabaseServerClient()
@@ -36,6 +37,8 @@ export default async function AdminPage() {
         <AdminUsersClient />
 
         <KnowledgeAdmin />
+
+        <PromptStudio />
       </div>
     </main>
   )
