@@ -14,6 +14,7 @@ interface Conversation {
   guestStatus?: 'current' | 'upcoming' | 'past' | null
   lastPreview?: string | null
   lastSender?: 'guest' | 'host' | null
+  guestLang?: string | null
 }
 
 type InboxFilter = 'alle' | 'unbeantwortet' | 'ungelesen' | 'vorort' | 'kommend'
@@ -254,6 +255,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
         platform: t.platform, guestStatus: t.guestStatus,
         lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
+        guestLang: t.guestLang ?? null,
       }))
       setConvs(data)
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
@@ -312,6 +314,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     }).finally(() => setLoading(false))
   }, [open, getConvs, initialConvId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Thread switch: the composer belongs to ONE conversation — reset it */
+  useEffect(() => {
+    setDraft('')
+    setPendingSend(null)
+    setInstruction('')
+    setShowOriginal({})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id])
+
   useEffect(() => {
     if (timer.current) clearInterval(timer.current)
     if (!open || !active) return
@@ -321,6 +332,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }, [open, active, getMsgs])
 
   useEffect(() => { if (!open && timer.current) clearInterval(timer.current) }, [open])
+
+  /* Auto-draft: when a team member opens a thread whose LAST message is from
+     the guest, the ✨ suggestion is generated proactively (once per thread &
+     session) — the reply is ready before you even ask. Never auto-sent. */
+  const autoSuggested = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!team || !active || msgs.length === 0 || aiBusy) return
+    const last = msgs[msgs.length - 1]
+    if (last.sender_id === userId) return
+    if (draft.trim() || pendingSend || autoSuggested.current.has(active.id)) return
+    autoSuggested.current.add(active.id)
+    suggestReply()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs, active?.id, team])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
@@ -528,8 +553,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   {c.listing_title ?? '—'}
                   {fmtDateRange(c.check_in, c.check_out) && <span style={{ color: '#B5A97F' }}> · {fmtDateRange(c.check_in, c.check_out)}</span>}
                 </div>
-                {(c.platform || c.guestStatus) && (
-                  <div style={{ marginTop: 4 }}><ThreadBadges c={c} /></div>
+                {(c.platform || c.guestStatus || (c.guestLang && c.guestLang !== 'de')) && (
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <ThreadBadges c={c} />
+                    {c.guestLang && c.guestLang !== 'de' && (
+                      <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 12 }}>{flag(c.guestLang)}</span>
+                    )}
+                  </div>
                 )}
               </div>
               {fullWidth && (
@@ -788,6 +818,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             onFocus={e => { e.target.style.borderColor = 'var(--gold)' }}
             onBlur={e => { e.target.style.borderColor = '#E0DCD2' }}
           />
+          {draft.trim().length > 0 && (
+            <button
+              onClick={() => { setDraft(''); setInstruction('') }}
+              title="Entwurf verwerfen"
+              style={{
+                width: 42, height: 42, borderRadius: '50%', border: '1px solid #E8E4DB', flexShrink: 0,
+                background: '#FAF9F6', color: '#B0A99A', cursor: 'pointer', fontSize: 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >✕</button>
+          )}
           <button
             onClick={send}
             disabled={busy || !draft.trim()}
