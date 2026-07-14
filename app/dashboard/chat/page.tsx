@@ -2,7 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
-import ChatClient from './ChatClient'
+import ChatPanel from '@/components/chat/ChatPanel'
 
 export default async function ChatPage({
   searchParams,
@@ -20,7 +20,7 @@ export default async function ChatPage({
     <main style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <NavBar />
       <DashboardNav />
-      <ChatClient userId={user.id} initialConvId={initialConvId} />
+      <ChatPanel variant="page" userId={user.id} initialConvId={initialConvId} />
     </main>
   )
 }
