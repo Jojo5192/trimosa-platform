@@ -12,6 +12,7 @@ import Image from 'next/image'
 import { POI_CATEGORIES, type Poi, type PoiCategory } from '@/lib/regions'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
+import { t, type UiLang } from '@/lib/i18n'
 
 export interface RegionMapListing {
   id: string
@@ -41,6 +42,7 @@ interface Props {
   tiles?: 'light' | 'voyager'
   /** Hosts' personal recommendations keyed by Poi.slug (POI grid only) */
   empfehlungen?: Record<string, EmpfehlungView[]>
+  lang?: UiLang
 }
 
 /** POI cards shown before "Alle anzeigen" expands the grid */
@@ -56,7 +58,7 @@ declare global {
   }
 }
 
-export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false, tiles = 'light', empfehlungen = {} }: Props) {
+export default function RegionMap({ pois, listings, center, zoom, showFilter = true, highlightSlug, height, extraPois, showPoiGrid = false, tiles = 'light', empfehlungen = {}, lang = 'de' }: Props) {
   const [showAllPois, setShowAllPois] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,7 +233,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
           iconSize: [size, size],
         })
         const detailLink = isHighlight ? '' : `
-            <a href="/erlebnis/${poi.slug}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">Mehr erfahren →</a>`
+            <a href="/erlebnis/${poi.slug}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">${t(lang, 'Mehr erfahren →')}</a>`
         // Photo header served via our own /_next/image proxy (no third-party request)
         const imgHeader = poi.image
           ? `<img src="/_next/image?url=${encodeURIComponent(poi.image.src)}&w=640&q=75" alt="" style="display:block;width:100%;height:96px;object-fit:cover"/>`
@@ -239,7 +241,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         const popup = L.popup({ closeButton: false, className: 'trimosa-popup', maxWidth: 240 }).setContent(`
           ${imgHeader}
           <div style="padding:10px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-            <span style="display:block;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">${POI_CATEGORIES[poi.category].label}</span>
+            <span style="display:block;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">${t(lang, POI_CATEGORIES[poi.category].label)}</span>
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:4px">${poi.emoji} ${poi.name}</span>
             <span style="display:block;font-size:12px;color:#555;line-height:1.45">${poi.text}</span>${detailLink}
           </div>`)
@@ -294,7 +296,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       {/* Category chips */}
       {showFilter && (
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-        {([['alle', { label: 'Alles anzeigen', color: '#555' }], ...Object.entries(POI_CATEGORIES)] as [PoiCategory | 'alle', { label: string; color: string }][]).map(([key, meta]) => {
+        {([['alle', { label: t(lang, 'Alles anzeigen'), color: '#555' }], ...Object.entries(POI_CATEGORIES)] as [PoiCategory | 'alle', { label: string; color: string }][]).map(([key, meta]) => {
           const isActive = activeCategory === key
           return (
             <button
@@ -312,7 +314,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
               }}
             >
               {key !== 'alle' && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: meta.color }} />}
-              {meta.label}
+              {t(lang, meta.label)}
             </button>
           )
         })}
@@ -332,10 +334,10 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
       {showPoiGrid && (
         <>
           <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '28px 0 12px', letterSpacing: '-0.01em' }}>
-            Ausflugsziele im Detail
+            {t(lang, 'Ausflugsziele im Detail')}
             {activeCategory !== 'alle' && (
               <span style={{ fontSize: '12px', fontWeight: 600, color: POI_CATEGORIES[activeCategory].color, marginLeft: '10px' }}>
-                {POI_CATEGORIES[activeCategory].label}
+                {t(lang, POI_CATEGORIES[activeCategory].label)}
               </span>
             )}
           </h2>
@@ -366,12 +368,12 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                             position: 'absolute', top: '8px', left: '8px', fontSize: '9.5px', fontWeight: 800,
                             letterSpacing: '0.05em', textTransform: 'uppercase', color: '#fff',
                             background: c, padding: '3px 8px', borderRadius: '999px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                          }}>{POI_CATEGORIES[p.category].label}</span>
+                          }}>{t(lang, POI_CATEGORIES[p.category].label)}</span>
                         </div>
                         <div style={{ padding: '10px 12px 11px' }}>
                           <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
                           {emp && <div style={{ margin: '9px 0 2px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
-                          <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>Mehr erfahren →</span>
+                          <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>{t(lang, 'Mehr erfahren →')}</span>
                         </div>
                       </Link>
                     )
@@ -384,7 +386,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                       border: '1.5px solid var(--gold)', background: '#fff',
                       color: 'var(--gold-dark)', fontSize: '13px', fontWeight: 700,
                     }}>
-                      {showAllPois ? '− Weniger anzeigen' : `Alle ${filtered.length} Ausflugsziele anzeigen`}
+                      {showAllPois ? `− ${t(lang, 'Weniger anzeigen')}` : t(lang, 'Alle {n} Ausflugsziele anzeigen', { n: filtered.length })}
                     </button>
                   </div>
                 )}
