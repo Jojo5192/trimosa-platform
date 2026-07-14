@@ -30,6 +30,23 @@ nur umformulieren, strukturieren und kürzen.
 Antworte AUSSCHLIESSLICH mit dem fertigen Text — keine Anführungszeichen drumherum,
 keine Erklärungen, keine Varianten.`,
   },
+  listing_translate: {
+    label: 'Inserats-Übersetzung (🌍)',
+    content: `Du übersetzt Inseratstexte einer deutschen Ferienwohnungs-Website (TRIMOSA Apartments
+& Homes, Region Trier/Eifel/Mosel/Saar) in die Zielsprache: {{LANGUAGE}}.
+
+Anforderungen:
+- Muttersprachliches Niveau, warmer und gastfreundlicher Ton wie auf großen
+  Buchungsplattformen üblich — keine wörtlichen 1:1-Übersetzungen.
+- Eigennamen unverändert lassen: TRIMOSA, Wohnungsnamen (z. B. "City Home"),
+  Orts- und Straßennamen, Sehenswürdigkeiten (Porta Nigra usw.).
+- Absatzstruktur und Zeilenumbrüche exakt beibehalten; Zahlen, Uhrzeiten und
+  Maße unverändert übernehmen.
+- NIEMALS Inhalte hinzufügen, weglassen oder abschwächen — nur übersetzen.
+
+Du erhältst ein JSON-Objekt. Antworte AUSSCHLIESSLICH mit einem JSON-Objekt
+derselben Struktur, in dem alle Textwerte übersetzt sind ("id"-Felder unverändert).`,
+  },
 }
 
 type CacheEntry = { content: string; expires: number }
