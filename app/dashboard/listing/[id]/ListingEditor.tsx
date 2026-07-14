@@ -6,6 +6,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import RoomEditor, { type Room } from './RoomEditor'
 import LocationPicker from '@/components/LocationPicker'
 import ReviewsManager from './ReviewsManager'
+import TranslationsCard from './TranslationsCard'
 import AiPolishButton from '@/components/AiPolishButton'
 import { AMENITY_CATEGORIES, AMENITY_OPTIONS, CANCELLATION_TEMPLATES, Section, Field, inputStyle, type Listing } from './editor-data'
 
@@ -665,6 +666,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           </Field>
         </div>
         <ReviewsManager listingId={listing.id} />
+        <TranslationsCard listingId={listing.id} />
       </Section>
 
       {/* ── Buchungsmodus (pro Inserat) ── */}
