@@ -10,6 +10,7 @@ interface KnowledgeDoc { scope: string; title: string; sources: number; updatedA
 
 export default function KnowledgeAdmin() {
   const [archiveCount, setArchiveCount] = useState<number | null>(null)
+  const [hostCount, setHostCount] = useState<number | null>(null)
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
   const [importing, setImporting] = useState(false)
   const [importLog, setImportLog] = useState('')
@@ -21,6 +22,7 @@ export default function KnowledgeAdmin() {
     if (res.ok) {
       const data = await res.json()
       setArchiveCount(data.archiveCount)
+      setHostCount(data.hostCount ?? null)
       setDocs(data.documents ?? [])
     }
   }, [])
@@ -106,7 +108,7 @@ export default function KnowledgeAdmin() {
       {refreshLog && <p style={{ fontSize: '12px', color: '#555', margin: '0 0 12px' }}>{refreshLog}</p>}
 
       <p style={{ fontSize: '12px', color: '#999', margin: '0 0 8px' }}>
-        Archiv: {archiveCount ?? '…'} Nachrichten
+        Archiv: {archiveCount ?? '…'} Nachrichten{hostCount != null ? ` — davon ${hostCount} Gastgeber-Antworten` : ''}
       </p>
       {docs.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
