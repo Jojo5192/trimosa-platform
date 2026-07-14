@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
+import AiPolishButton from '@/components/AiPolishButton'
 
 export interface KatalogItem { key: string; label: string; sub?: string }
 export interface KatalogGruppe {
@@ -158,6 +159,10 @@ export default function EmpfehlungenClient({ gruppen }: { gruppen: KatalogGruppe
                     fontFamily: 'inherit', outline: 'none', background: '#FAFAF8',
                   }}
                 />
+                {draft.trim().length > 0 && (
+                  <AiPolishButton field="empfehlung" text={draft} onAccept={setDraft}
+                    context={{ Eintrag: item.label, Kategorie: TYPE_META[type].label }} />
+                )}
                 {error && <p style={{ fontSize: '12px', color: '#DC2626', margin: '6px 0 0' }}>{error}</p>}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '9px', alignItems: 'center' }}>
                   <button type="button" onClick={() => save(type, item.key)} disabled={busy || draft.trim().length === 0} style={{
