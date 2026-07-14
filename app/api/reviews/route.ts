@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient as createServerClient } from '@/lib/supabase-server'
+import { makeTr } from '@/lib/static-translate'
+import { isUiLang } from '@/lib/i18n'
 
 /* GET /api/reviews?listingId=xxx&limit=10&offset=0&source=airbnb */
 export async function GET(req: NextRequest) {
@@ -23,6 +25,17 @@ export async function GET(req: NextRequest) {
   const { data: reviews, count, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Visitor language: translate the review texts (AI, cached forever per text)
+  const langParam = req.nextUrl.searchParams.get('lang')
+  if (isUiLang(langParam) && langParam !== 'de' && reviews?.length) {
+    try {
+      const T = await makeTr(langParam, reviews.map((r) => r.comment))
+      for (const r of reviews) if (r.comment) r.comment = T(r.comment)
+    } catch (err) {
+      console.error('[reviews] translate failed:', err)
+    }
+  }
 
   // Aggregate stats — prefer the synced per-platform scores stored on the
   // listing (authoritative; e.g. Google reports its full rating/count while
