@@ -157,7 +157,9 @@ Regeln:
     .join('\n\n')
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
-  return askClaude(system, user, 1400)
+  // Generous token budget: the model reasons internally over 150 Q&A pairs
+  // before writing — a tight cap ends the request inside the thinking phase.
+  return askClaude(system, user, 8000)
 }
 
 export async function refreshChatKnowledge(): Promise<{ scope: string; sources: number; status: string }[]> {
