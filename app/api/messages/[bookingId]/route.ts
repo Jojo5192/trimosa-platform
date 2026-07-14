@@ -36,8 +36,14 @@ export async function GET(
   const isGuest = booking.guest_id === user.id
   if (!isHost && !isGuest) return NextResponse.json({ error: 'Kein Zugriff' }, { status: 403 })
 
-  // If connected to Smoobu, pull fresh messages and sync them
-  if (booking.smoobu_reservation_id) {
+  // If connected to Smoobu, pull fresh messages and sync them — throttled to
+  // once per 30s per booking (the panel polls every 5s; without a cooldown
+  // every poll pays a full Smoobu roundtrip and the chat feels sluggish)
+  const g = globalThis as typeof globalThis & { __bookingSyncCache?: Map<string, number> }
+  const syncCache = (g.__bookingSyncCache ??= new Map<string, number>())
+  const lastSync = syncCache.get(bookingId) ?? 0
+  if (booking.smoobu_reservation_id && Date.now() - lastSync >= 30_000) {
+    syncCache.set(bookingId, Date.now())
     try {
       const smoobuMessages = await getReservationMessages(Number(booking.smoobu_reservation_id))
       const ids = smoobuMessages.map((sm) => String(sm.id))
@@ -52,7 +58,7 @@ export async function GET(
         const { error } = await supabaseAdmin.from('messages').insert({
           booking_id: bookingId,
           smoobu_message_id: String(sm.id),
-          sender_type: ['1', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
+          sender_type: ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
           content: sm.message.trim(),
           created_at: sm.date || undefined,
         })
