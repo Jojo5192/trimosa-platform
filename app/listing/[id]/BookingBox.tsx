@@ -342,7 +342,7 @@ export default function BookingBox({
       {/* Only instant label if no requests */}
       {allowInstant && !allowRequests && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '14px', fontSize: '12px', fontWeight: 600, color: '#16A34A', background: '#F0FDF4', padding: '4px 10px', borderRadius: '99px' }}>
-          ⚡ Sofortbuchung verfügbar
+          {t(lang, '⚡ Sofortbuchung verfügbar')}
         </div>
       )}
 
@@ -544,9 +544,9 @@ export default function BookingBox({
         }}
       >
         {submitting
-          ? 'Wird verarbeitet…'
-          : !checkIn ? 'Anreisedatum wählen'
-          : !checkOut ? 'Abreisedatum wählen'
+          ? t(lang, 'Wird verarbeitet…')
+          : !checkIn ? t(lang, 'Anreisedatum wählen')
+          : !checkOut ? t(lang, 'Abreisedatum wählen')
           : mode === 'instant' ? t(lang, '⚡ Jetzt buchen')
           : t(lang, '✉ Anfrage senden')}
       </button>
