@@ -19,31 +19,57 @@ export async function POST(request: Request) {
   const allowed = await checkRateLimit(`ai-chat:${user.id}`, 30, 3600)
   if (!allowed) return NextResponse.json({ error: 'Zu viele KI-Anfragen — bitte kurz warten.' }, { status: 429 })
 
-  const { conversationId } = await request.json()
-  if (typeof conversationId !== 'string') {
+  const { conversationId, bookingId } = await request.json()
+  if (typeof conversationId !== 'string' && typeof bookingId !== 'string') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
 
-  const { data: conv } = await supabaseAdmin
-    .from('conversations')
-    .select('id, host_id, guest_id, listing_id')
-    .eq('id', conversationId)
-    .maybeSingle()
-  if (!conv) return NextResponse.json({ error: 'Konversation nicht gefunden.' }, { status: 404 })
-
   const { data: profile } = await supabaseAdmin
-    .from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-  if (conv.host_id !== user.id && !profile?.is_admin) {
-    return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+    .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
+  const isTeam = !!profile?.is_admin || !!profile?.is_host || !!profile?.is_staff
+
+  // Two thread sources share this endpoint: platform conversations and
+  // Smoobu booking threads (unified inbox). Normalise to conv shape.
+  let conv: { id: string; host_id: string; guest_id: string | null; listing_id: string | null }
+  if (typeof bookingId === 'string') {
+    if (!isTeam) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('id, guest_id, listing_id, listings(host_id)')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden.' }, { status: 404 })
+    const l = (Array.isArray(booking.listings) ? booking.listings[0] : booking.listings) as { host_id: string } | null
+    conv = { id: booking.id, host_id: l?.host_id ?? user.id, guest_id: booking.guest_id, listing_id: booking.listing_id }
+  } else {
+    const { data: found } = await supabaseAdmin
+      .from('conversations')
+      .select('id, host_id, guest_id, listing_id')
+      .eq('id', conversationId)
+      .maybeSingle()
+    if (!found) return NextResponse.json({ error: 'Konversation nicht gefunden.' }, { status: 404 })
+    if (found.host_id !== user.id && !isTeam) {
+      return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+    }
+    conv = found
   }
 
+  const historyQuery = typeof bookingId === 'string'
+    ? supabaseAdmin
+        .from('messages')
+        .select('sender_id, sender_type, content, created_at')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(12)
+    : supabaseAdmin
+        .from('messages')
+        .select('sender_id, sender_type, content, created_at')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(12)
+
   const [{ data: messages }, { data: listing }, knowledgeDoc] = await Promise.all([
-    supabaseAdmin
-      .from('messages')
-      .select('sender_id, content, created_at')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: false })
-      .limit(12),
+    historyQuery,
     conv.listing_id
       ? supabaseAdmin.from('listings').select('title, location, check_in_time, check_out_time').eq('id', conv.listing_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -52,7 +78,12 @@ export async function POST(request: Request) {
 
   const history = (messages ?? [])
     .reverse()
-    .map((m) => `${m.sender_id === conv.host_id ? 'GASTGEBER' : 'GAST'}: ${m.content.slice(0, 600)}`)
+    .map((m) => {
+      const fromHost = m.sender_type
+        ? m.sender_type !== 'guest'
+        : m.sender_id === conv.host_id
+      return `${fromHost ? 'GASTGEBER' : 'GAST'}: ${m.content.slice(0, 600)}`
+    })
     .join('\n')
   if (!history) return NextResponse.json({ error: 'Noch keine Nachrichten.' }, { status: 400 })
 
