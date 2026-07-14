@@ -64,5 +64,39 @@ export async function POST(request: Request) {
     const results = await refreshChatKnowledge()
     return NextResponse.json({ results })
   }
+  if (action === 'places-test') {
+    // Diagnosis for the Kulinarik rating badges: runs both Places calls for
+    // one query and returns every intermediate result (admin-only).
+    const key = process.env.GOOGLE_PLACES_API_KEY
+    if (!key) return NextResponse.json({ step: 'env', error: 'GOOGLE_PLACES_API_KEY fehlt' })
+    const query = 'Zum Domstein Hauptmarkt Trier'
+    const search = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'places.id,places.displayName' },
+      body: JSON.stringify({ textQuery: query, languageCode: 'de' }),
+      cache: 'no-store',
+    })
+    const searchBody = await search.text()
+    let placeId: string | undefined
+    try { placeId = JSON.parse(searchBody)?.places?.[0]?.id } catch { /* keep raw body */ }
+    let detailStatus: number | null = null
+    let detailBody = ''
+    if (placeId) {
+      const detail = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=de`, {
+        headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+        cache: 'no-store',
+      })
+      detailStatus = detail.status
+      detailBody = (await detail.text()).slice(0, 400)
+    }
+    return NextResponse.json({
+      query,
+      searchStatus: search.status,
+      searchBody: searchBody.slice(0, 400),
+      placeId: placeId ?? null,
+      detailStatus,
+      detailBody,
+    })
+  }
   return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
 }
