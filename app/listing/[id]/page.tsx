@@ -19,6 +19,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
+import { TRANSLATION_LANGS, TRANSLATION_LANG_META, type TranslationEntry } from '@/lib/listing-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -29,29 +30,51 @@ function listingLookup(param: string): { column: 'id' | 'slug'; value: string } 
   return UUID_RE.test(param) ? { column: 'id', value: param } : { column: 'slug', value: param }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+const FEWO_WORD: Record<string, string> = {
+  de: 'Ferienwohnung in',
+  en: 'Holiday apartment in',
+  fr: 'Appartement de vacances à',
+  nl: 'Vakantieappartement in',
+}
+
+export async function generateMetadata({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ lang?: string }> }): Promise<Metadata> {
   const { id } = await params
+  const { lang: langParam } = await searchParams
   const lookup = listingLookup(id)
   const { data: listing } = await supabaseAdmin
     .from('listings')
-    .select('title, description, location, city, images, is_active, slug, id')
+    .select('title, description, location, city, images, is_active, slug, id, translations')
     .eq(lookup.column, lookup.value)
     .single()
 
   if (!listing || listing.is_active === false) return {}
 
   const canonicalPath = `/listing/${listing.slug ?? listing.id}`
+  const tr = (listing.translations ?? {}) as Record<string, TranslationEntry>
+  const availableLangs = TRANSLATION_LANGS.filter((l) => tr[l]?.title)
+  const activeLang = availableLangs.find((l) => l === langParam) ?? null
+  const t = activeLang ? tr[activeLang] : null
+
   const city = listing.city || listing.location
-  const title = `${listing.title} — Ferienwohnung in ${city}`
-  const description = listing.description
-    ? listing.description.slice(0, 155)
-    : `${listing.title} in ${city} — buche direkt bei TRIMOSA, ohne Vermittler.`
+  const baseTitle = t?.title ?? listing.title
+  const baseDescription = t?.description ?? listing.description
+  const title = `${baseTitle} — ${FEWO_WORD[activeLang ?? 'de']} ${city}`
+  const description = baseDescription
+    ? baseDescription.slice(0, 155)
+    : `${baseTitle} in ${city} — buche direkt bei TRIMOSA, ohne Vermittler.`
   const image = listing.images?.[0]
 
   return {
     title,
     description,
-    alternates: { canonical: `${siteUrl}${canonicalPath}` },
+    alternates: {
+      canonical: activeLang ? `${siteUrl}${canonicalPath}?lang=${activeLang}` : `${siteUrl}${canonicalPath}`,
+      languages: availableLangs.length > 0 ? {
+        de: `${siteUrl}${canonicalPath}`,
+        ...Object.fromEntries(availableLangs.map((l) => [l, `${siteUrl}${canonicalPath}?lang=${l}`])),
+        'x-default': `${siteUrl}${canonicalPath}`,
+      } : undefined,
+    },
     openGraph: {
       title,
       description,
@@ -82,9 +105,9 @@ const fallbackColors = [
   'linear-gradient(135deg, #DDD6FE, #A78BFA)',
 ]
 
-export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string; review?: string }> }) {
+export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ checkin?: string; checkout?: string; guests?: string; review?: string; lang?: string }> }) {
   const { id } = await params
-  const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm } = await searchParams
+  const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm, lang: langParam } = await searchParams
   const lookup = listingLookup(id)
   const { data: listing } = await supabaseAdmin.from('listings').select('*').eq(lookup.column, lookup.value).single()
 
@@ -108,7 +131,29 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     .maybeSingle()
 
   const images: string[] = listing.images ?? []
-  const rooms: { id: string; name: string; description?: string; features?: string[]; images: string[] }[] = listing.rooms ?? []
+  const roomsRaw: { id: string; name: string; description?: string; features?: string[]; images: string[] }[] = listing.rooms ?? []
+
+  // Language layer: German is canonical; EN/FR/NL come from listings.translations (AI, editor-managed)
+  const tr = (listing.translations ?? {}) as Record<string, TranslationEntry>
+  const availableLangs = TRANSLATION_LANGS.filter((l) => tr[l]?.title)
+  const activeLang = availableLangs.find((l) => l === langParam) ?? null
+  const t = activeLang ? tr[activeLang] : null
+  const displayTitle = t?.title ?? listing.title
+  const displayDescription = t?.description ?? listing.description
+  const rooms = roomsRaw.map((r) => ({
+    ...r,
+    name: t?.rooms?.[r.id]?.name ?? r.name,
+    description: t?.rooms?.[r.id]?.description ?? r.description,
+  }))
+  const langHref = (l: string | null) => {
+    const q = new URLSearchParams()
+    if (searchCheckin) q.set('checkin', searchCheckin)
+    if (searchCheckout) q.set('checkout', searchCheckout)
+    if (searchGuests) q.set('guests', searchGuests)
+    if (l) q.set('lang', l)
+    const str = q.toString()
+    return `/listing/${listing.slug ?? listing.id}${str ? `?${str}` : ''}`
+  }
   const amenities: string[] = listing.amenities ?? []
   const mainGradient = getGradientStyle(listing.location ?? '', listing.title ?? '')
   const allImagesFlat = images.length > 0 ? images : rooms.flatMap(r => r.images)
@@ -158,7 +203,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           <div style={{ flex: '1 1 320px', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '13px', flexWrap: 'wrap', marginBottom: '9px' }}>
               <h1 className="detail-title" style={{ fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 800, color: '#1D1D1F', margin: 0, letterSpacing: '-0.4px', lineHeight: 1.15 }}>
-                {listing.title}
+                {displayTitle}
               </h1>
               {(() => {
                 const rating = buildCardRating(listing as Record<string, unknown>)
@@ -182,6 +227,28 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                 Auf der Karte ansehen ↓
               </a>
             </p>
+            {availableLangs.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                <span aria-hidden style={{ fontSize: '13px' }}>🌐</span>
+                {([null, ...availableLangs] as (string | null)[]).map((l) => {
+                  const isActive = l === activeLang
+                  return (
+                    <Link key={l ?? 'de'} href={langHref(l)} style={{
+                      padding: '4px 11px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
+                      textDecoration: 'none',
+                      border: isActive ? '1px solid var(--gold)' : '1px solid #E5E5EA',
+                      background: isActive ? '#FAF5E4' : '#fff',
+                      color: isActive ? 'var(--gold-dark)' : '#6E6E73',
+                    }}>
+                      {l === null ? 'Deutsch' : TRANSLATION_LANG_META[l as 'en' | 'fr' | 'nl'].native}
+                    </Link>
+                  )
+                })}
+                {activeLang && (
+                  <span style={{ fontSize: '11px', color: '#98938A' }}>· automatisch übersetzt</span>
+                )}
+              </div>
+            )}
           </div>
           {hostProfile && (
             <HostBadge host={{
@@ -200,7 +267,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         <PhotoGrid
           rooms={rooms}
           allImages={allImagesFlat}
-          listingTitle={listing.title}
+          listingTitle={displayTitle}
           pricePerNight={listing.price_per_night}
           mainGradient={mainGradient}
           fallbackColors={fallbackColors}
@@ -235,7 +302,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             <div className="detail-description" style={{ marginBottom: '32px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Über diese Unterkunft</h2>
               <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-                {listing.description || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
+                {displayDescription || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
               </p>
             </div>
 
