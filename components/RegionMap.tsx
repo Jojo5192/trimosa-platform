@@ -372,7 +372,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                         </div>
                         <div style={{ padding: '10px 12px 11px' }}>
                           <span style={{ display: 'block', fontSize: '13.5px', fontWeight: 700, color: '#1A1400', lineHeight: 1.3 }}>{p.emoji} {p.name}</span>
-                          {emp && <div style={{ margin: '9px 0 2px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                          {emp && <div style={{ margin: '9px 0 2px' }}><EmpfehlungBubble empfehlungen={emp} lang={lang} /></div>}
                           <span style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: c, marginTop: '3px' }}>{t(lang, 'Mehr erfahren →')}</span>
                         </div>
                       </Link>
