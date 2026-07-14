@@ -22,6 +22,7 @@ import { REGIONS } from '@/lib/regions'
 import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translate'
 import { t, isUiLang, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
+import { makeTr } from '@/lib/static-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -145,10 +146,17 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const tc = activeLang ? tr[activeLang] : null
   const displayTitle = tc?.title ?? listing.title
   const displayDescription = tc?.description ?? listing.description
+  // Editorial bits without per-listing translations (room keywords, AI guest
+  // summary): AI-translated once, cached forever (lib/static-translate)
+  const TR = await makeTr(lang, [
+    ...(lang === 'de' ? [] : roomsRaw.flatMap((r) => r.features ?? [])),
+    ...(lang !== 'de' && listing.guest_summary ? [listing.guest_summary as string] : []),
+  ])
   const rooms = roomsRaw.map((r) => ({
     ...r,
     name: tc?.rooms?.[r.id]?.name ?? r.name,
     description: tc?.rooms?.[r.id]?.description ?? r.description,
+    features: (r.features ?? []).map((f) => TR(f)),
   }))
   const amenities: string[] = listing.amenities ?? []
   const mainGradient = getGradientStyle(listing.location ?? '', listing.title ?? '')
@@ -466,7 +474,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                 {t(lang, '💬 Das sagen unsere Gäste')}
               </p>
               <p style={{ fontSize: '14.5px', lineHeight: 1.7, color: '#3A3427', margin: '0 0 8px' }}>
-                {listing.guest_summary}
+                {TR(listing.guest_summary)}
               </p>
               <p style={{ fontSize: '10.5px', color: '#A89968', margin: 0 }}>
                 {t(lang, 'Automatisch zusammengefasst aus echten Gästebewertungen — die Originale stehen darunter.')}
