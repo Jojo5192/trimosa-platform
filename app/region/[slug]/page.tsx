@@ -10,6 +10,7 @@ import KulinarikMap from '@/components/KulinarikMap'
 import { getKulinarikRatings } from '@/lib/kulinarik-ratings'
 import { getEmpfehlungen } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
+import SectionNav from '@/components/SectionNav'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
@@ -150,21 +151,8 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           ))}
         </div>
 
-        {/* ── Sticky section navigation (page has grown into a full travel guide) ── */}
-        <nav style={{
-          position: 'sticky', top: '88px', zIndex: 30,
-          margin: '0 -20px', padding: '10px 20px',
-          background: 'rgba(245,245,247,0.92)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-          display: 'flex', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-        }}>
-          {sections.map((sec) => (
-            <a key={sec.id} href={`#${sec.id}`} style={{
-              flexShrink: 0, padding: '8px 15px', borderRadius: '999px', textDecoration: 'none',
-              fontSize: '12.5px', fontWeight: 700, color: '#3A3427',
-              background: '#fff', border: '1px solid #E5E1D6', boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            }}>{sec.label}</a>
-          ))}
-        </nav>
+        {/* ── Sticky section navigation with scroll-spy ── */}
+        <SectionNav sections={sections} />
 
         {/* ── Apartments first — the guide below is the added value ── */}
         <h2 id="apartments" style={{ scrollMarginTop: '150px', fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '30px 0 16px', letterSpacing: '-0.01em' }}>
@@ -288,13 +276,8 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           </div>
         )}
 
-        {/* ── CTA + cross links ── */}
+        {/* ── Cross links (the booking CTA lives up at the apartments) ── */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px', marginTop: '36px' }}>
-          <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
-            padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
-          }}>Verfügbarkeit prüfen →</Link>
           <span style={{ fontSize: '13px', color: '#8A8065' }}>
             Weitere Regionen:{' '}
             {otherRegions.map((r, i) => (
