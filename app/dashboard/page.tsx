@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
-import BookingActions from './BookingActions'
 import SmoobuConnect from './SmoobuConnect'
 import BookingSettings from './BookingSettings'
 
@@ -106,53 +105,6 @@ export default async function DashboardPage() {
             </div>
           ))}
         </div>
-
-        {/* Offene Buchungsanfragen */}
-        {pendingBookings.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-base font-bold tracking-tight mb-3" style={{ color: '#1D1D1F' }}>Offene Anfragen</h2>
-            <div className="space-y-2">
-              {pendingBookings.map((booking) => (
-                <div key={booking.id} className="bg-white rounded-xl p-4 flex items-center justify-between gap-4 shadow-sm"
-                  style={{ border: '1px solid #E8D9A0' }}>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate" style={{ color: '#1D1D1F' }}>
-                      {(booking.listings as { title: string })?.title}
-                    </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#6E6E73' }}>
-                      {booking.check_in} → {booking.check_out} · € {booking.total_price}
-                    </p>
-                  </div>
-                  <BookingActions bookingId={booking.id} />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Bestätigte Buchungen */}
-        {confirmedBookings.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-base font-bold tracking-tight mb-3" style={{ color: '#1D1D1F' }}>Bestätigte Buchungen</h2>
-            <div className="space-y-2">
-              {confirmedBookings.map((booking) => (
-                <div key={booking.id} className="bg-white rounded-xl p-4 shadow-sm"
-                  style={{ border: '1px solid #D1FAE5' }}>
-                  <p className="font-semibold text-sm" style={{ color: '#1D1D1F' }}>
-                    {(booking.listings as { title: string })?.title}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#6E6E73' }}>
-                    {booking.check_in} → {booking.check_out} · € {booking.total_price}
-                  </p>
-                  <span className="inline-block mt-2 text-xs font-medium px-2.5 py-0.5 rounded-full"
-                    style={{ backgroundColor: '#DCFCE7', color: '#16A34A' }}>
-                    Bestätigt
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Booking Settings */}
         <section className="mb-8">
