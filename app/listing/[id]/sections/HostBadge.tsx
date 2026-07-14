@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface HostProfile {
   id: string
@@ -20,7 +21,7 @@ const TEAM = [
   { name: 'Dominik', initials: 'DP' },
 ]
 
-export function HostBadge({ host }: { host: HostProfile }) {
+export function HostBadge({ host, lang = 'de' }: { host: HostProfile; lang?: UiLang }) {
   return (
     <Link href="/ueber-uns" title="Mehr über TRIMOSA erfahren" className="listing-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 16px 8px 10px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', textDecoration: 'none', flexShrink: 0 }}>
       {/* Overlapping avatar stack: uploaded avatar for the primary host,
@@ -44,7 +45,7 @@ export function HostBadge({ host }: { host: HostProfile }) {
       </div>
       <div>
         <div style={{ fontWeight: 600, fontSize: '13px', color: '#1D1D1F', lineHeight: 1.2 }}>Johannes, Pascal &amp; Dominik</div>
-        <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--gold-dark)' }}>Deine Gastgeber · Über TRIMOSA →</div>
+        <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--gold-dark)' }}>{t(lang, 'Deine Gastgeber · Über TRIMOSA →')}</div>
       </div>
     </Link>
   )
