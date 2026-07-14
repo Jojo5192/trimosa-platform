@@ -1,5 +1,7 @@
 'use client'
 
+import { t, type UiLang } from '@/lib/i18n'
+
 
 /* ── 5. House Rules Display (structured Airbnb-style) ──────── */
 interface HouseRules {
@@ -14,27 +16,27 @@ interface HouseRules {
   additional_rules?: string
 }
 
-export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText }: {
-  rules: HouseRules; checkIn?: string; checkOut?: string; legacyText?: string
+export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText, lang = 'de' }: {
+  rules: HouseRules; checkIn?: string; checkOut?: string; legacyText?: string; lang?: UiLang
 }) {
   const hasStructured = rules.pets_allowed !== undefined || rules.quiet_hours || rules.max_guests || rules.additional_rules
   if (!hasStructured && !legacyText) return null
 
   const items: { emoji: string; label: string; value: string }[] = []
-  if (rules.max_guests) items.push({ emoji: '👥', label: 'Maximale Gästeanzahl', value: `${rules.max_guests} Gäste` })
-  if (checkIn) items.push({ emoji: '🕐', label: 'Check-in', value: `ab ${checkIn} Uhr` })
-  if (checkOut) items.push({ emoji: '🕐', label: 'Check-out', value: `bis ${checkOut} Uhr` })
-  items.push({ emoji: '🐾', label: 'Haustiere', value: rules.pets_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
-  items.push({ emoji: '🎉', label: 'Veranstaltungen', value: rules.events_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
-  items.push({ emoji: '🚬', label: 'Rauchen', value: rules.smoking_allowed ? 'Erlaubt' : 'Nicht erlaubt' })
-  items.push({ emoji: '📸', label: 'Kommerzielles Fotografieren', value: rules.commercial_photo ? 'Erlaubt' : 'Nicht erlaubt' })
+  if (rules.max_guests) items.push({ emoji: '👥', label: t(lang, 'Maximale Gästeanzahl'), value: t(lang, '{n} Gäste', { n: rules.max_guests }) })
+  if (checkIn) items.push({ emoji: '🕐', label: 'Check-in', value: t(lang, 'ab {t} Uhr', { t: checkIn }) })
+  if (checkOut) items.push({ emoji: '🕐', label: 'Check-out', value: t(lang, 'bis {t} Uhr', { t: checkOut }) })
+  items.push({ emoji: '🐾', label: t(lang, 'Haustiere'), value: rules.pets_allowed ? t(lang, 'Erlaubt') : t(lang, 'Nicht erlaubt') })
+  items.push({ emoji: '🎉', label: t(lang, 'Veranstaltungen'), value: rules.events_allowed ? t(lang, 'Erlaubt') : t(lang, 'Nicht erlaubt') })
+  items.push({ emoji: '🚬', label: t(lang, 'Rauchen'), value: rules.smoking_allowed ? t(lang, 'Erlaubt') : t(lang, 'Nicht erlaubt') })
+  items.push({ emoji: '📸', label: t(lang, 'Kommerzielles Fotografieren'), value: rules.commercial_photo ? t(lang, 'Erlaubt') : t(lang, 'Nicht erlaubt') })
   if (rules.quiet_hours) {
-    items.push({ emoji: '🤫', label: 'Ruhezeiten', value: `${rules.quiet_start ?? '22:00'} – ${rules.quiet_end ?? '07:00'}` })
+    items.push({ emoji: '🤫', label: t(lang, 'Ruhezeiten'), value: `${rules.quiet_start ?? '22:00'} – ${rules.quiet_end ?? '07:00'}` })
   }
 
   return (
     <div style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>Hausregeln</h2>
+      <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>{t(lang, 'Hausregeln')}</h2>
       {hasStructured ? (
         <div>
           {items.map((item, i) => (
@@ -53,7 +55,7 @@ export function HouseRulesDisplay({ rules, checkIn, checkOut, legacyText }: {
           ))}
           {rules.additional_rules && (
             <div style={{ paddingTop: '10px', marginTop: '6px', borderTop: '1px solid #F0EEE8' }}>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: '#999', marginBottom: '4px' }}>Zusätzliche Regeln</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: '#999', marginBottom: '4px' }}>{t(lang, 'Zusätzliche Regeln')}</div>
               <p style={{ fontSize: '13px', lineHeight: 1.6, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
                 {rules.additional_rules}
               </p>
