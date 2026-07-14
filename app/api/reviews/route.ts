@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
   const langParam = req.nextUrl.searchParams.get('lang')
   if (isUiLang(langParam) && langParam !== 'de' && reviews?.length) {
     try {
-      const T = await makeTr(langParam, reviews.map((r) => r.comment))
-      for (const r of reviews) if (r.comment) r.comment = T(r.comment)
+      const T = await makeTr(langParam, reviews.map((r) => r.review_text))
+      for (const r of reviews) if (r.review_text) r.review_text = T(r.review_text)
     } catch (err) {
       console.error('[reviews] translate failed:', err)
     }
