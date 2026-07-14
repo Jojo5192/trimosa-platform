@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendMessageToGuest, getReservationMessages } from '@/lib/smoobu'
+import { translateIncoming } from '@/lib/translate'
 
 /**
  * GET /api/messages/[bookingId]
@@ -78,7 +79,18 @@ export async function GET(
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true })
 
-  return NextResponse.json({ messages: messages ?? [] })
+  // Translate new guest messages to German once (cached in lang/content_de)
+  let out = messages ?? []
+  const untranslated = out.filter((m) => m.sender_type === 'guest' && !m.lang && (m.content ?? '').trim().length > 0)
+  if (untranslated.length > 0) {
+    const map = await translateIncoming(untranslated.slice(0, 25).map((m) => ({ id: m.id, text: m.content })))
+    out = out.map((m) => {
+      const t = map.get(m.id)
+      return t ? { ...m, lang: t.lang, content_de: t.german } : m
+    })
+  }
+
+  return NextResponse.json({ messages: out })
 }
 
 /**
@@ -96,7 +108,7 @@ export async function POST(
 
   if (!user) return NextResponse.json({ error: 'Nicht eingeloggt' }, { status: 401 })
 
-  const { content } = await request.json()
+  const { content, contentDe, lang } = await request.json()
   if (!content?.trim()) return NextResponse.json({ error: 'Nachricht leer' }, { status: 400 })
 
   const { data: booking } = await supabaseAdmin
@@ -126,6 +138,10 @@ export async function POST(
       sender_type: senderType,
       sender_id: user.id,
       content: content.trim(),
+      // Outgoing translation flow: content = sent (guest-language) version,
+      // content_de = the team's German original, lang = sent language
+      content_de: typeof contentDe === 'string' && contentDe.trim() ? contentDe.trim() : null,
+      lang: typeof lang === 'string' && /^[a-z]{2}$/.test(lang) ? lang : null,
     })
     .select('*')
     .single()
