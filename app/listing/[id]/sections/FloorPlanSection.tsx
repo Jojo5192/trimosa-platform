@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Overlay from './Overlay'
 
 /* ── 3. Floor Plan Section (multiple with labels) + Overlay ── */
