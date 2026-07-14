@@ -139,8 +139,9 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
 /* ── main ── */
 interface Props {
   userId: string
-  /** 'overlay' = fixed modal (NavBar), 'page' = inline card (chat pages) */
-  variant: 'overlay' | 'page'
+  /** 'overlay' = fixed modal (NavBar) · 'page' = inline card (chat pages)
+      · 'app' = full-bleed PWA shell (/team — nothing but chat) */
+  variant: 'overlay' | 'page' | 'app'
   /** overlay only */
   open?: boolean
   onClose?: () => void
@@ -238,6 +239,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }, [])
 
   /* ── data fetching ── */
+  const CACHE_KEY = team ? 'trimosa-inbox-v1' : 'trimosa-chats-v1'
   const getConvs = useCallback(async () => {
     if (team) {
       const r = await fetch('/api/chat/inbox')
@@ -254,6 +256,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
       }))
       setConvs(data)
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
       return data
     }
     const r = await fetch('/api/chat')
@@ -289,7 +292,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   useEffect(() => {
     if (!open) return
-    setLoading(true)
+    // Instant paint from the local cache — the fresh list replaces it silently
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (cached && convs.length === 0) setConvs(JSON.parse(cached))
+    } catch { /* ignore */ }
+    setLoading(convs.length === 0 && !localStorage.getItem(CACHE_KEY))
     getConvs().then(data => {
       if (!data || data.length === 0 || active) return
       // Deep link (?conv= from notification emails) wins; otherwise desktop
@@ -552,7 +560,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#F6F4EF' }}>
         {/* Chat header: back button on mobile; on the page variant the
             desktop thread shows it too (the overlay has it in its own bar) */}
-        {(showBack || variant === 'page') && (
+        {(showBack || variant !== 'overlay') && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12,
             padding: '12px 16px', background: '#fff',
@@ -804,16 +812,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   /* ═══════════════════════════════════════════════════════════
      RENDER — 'page': inline card (chat pages) · 'overlay': fixed modal
   ═══════════════════════════════════════════════════════════ */
-  if (variant === 'page') {
+  if (variant === 'page' || variant === 'app') {
+    const isApp = variant === 'app'
     return (
       <div style={{
-        maxWidth: '1100px', margin: '0 auto',
-        padding: isMobile ? '10px 10px 16px' : '20px 20px 32px',
-        height: 'calc(100vh - 130px)',
+        maxWidth: isApp ? undefined : '1100px', margin: '0 auto',
+        padding: isApp ? 0 : isMobile ? '10px 10px 16px' : '20px 20px 32px',
+        height: isApp ? '100dvh' : 'calc(100vh - 130px)',
         display: 'flex', flexDirection: 'column',
       }}>
-        {/* Page header */}
-        <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Page header (hidden in app shell — nothing but chat) */}
+        <div style={{ marginBottom: '12px', display: isApp ? 'none' : 'flex', alignItems: 'center', gap: '10px' }}>
           {isMobile && mobileView === 'chat' ? null : (
             <div>
               <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
@@ -834,7 +843,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {/* Card */}
         <div style={{
           flex: 1, display: 'flex', minHeight: 0,
-          background: '#fff', borderRadius: '18px',
+          background: '#fff', borderRadius: isApp ? 0 : '18px',
           border: '1px solid #E8E4DC',
           boxShadow: '0 2px 20px rgba(0,0,0,0.06)',
           overflow: 'hidden',
