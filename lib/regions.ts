@@ -59,6 +59,12 @@ export interface KulinarikTipp {
    * "Straußwirtschaften in Olewig") stay without a rating badge.
    */
   googleQuery?: string
+  /**
+   * Curated Google place id — lets the rating lookup skip the quota-heavy
+   * text search entirely (details call only). Resolved once via the admin
+   * places-resolve diagnosis and pasted here.
+   */
+  googlePlaceId?: string
   /** Optional Wikimedia Commons photo (license-checked, proxied via next/image) */
   image?: PoiImage
 }
