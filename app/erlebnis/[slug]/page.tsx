@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
+import KomootEmbed from '@/components/KomootEmbed'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, allPois, findPoi } from '@/lib/regions'
@@ -156,6 +157,23 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
           height="clamp(300px, 45vh, 440px)"
           extraPois={allPois().filter(({ region: r }) => r.slug !== region.slug).map(({ poi: p }) => p)}
         />
+
+        {/* ── Matching Komoot tours (only when curated for this POI) ── */}
+        {poi.komootTours && poi.komootTours.length > 0 && (
+          <>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '36px 0 6px', letterSpacing: '-0.01em' }}>
+              Passende Touren
+            </h2>
+            <p style={{ fontSize: '13.5px', color: '#6B6455', margin: '0 0 14px' }}>
+              Handverlesene Komoot-Touren zu diesem Ziel — Karte, Höhenprofil und GPX zum Nachfahren.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
+              {poi.komootTours.map((t) => (
+                <KomootEmbed key={t.embedUrl} title={t.title} embedUrl={t.embedUrl} />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* ── Nearby apartments ── */}
         {regionListings.length > 0 && (
