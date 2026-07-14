@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'TRIMOSA Team-Chat',
     short_name: 'TRIMOSA',
     description: 'Gäste-Kommunikation von TRIMOSA Apartments & Homes',
-    start_url: '/dashboard/chat',
+    start_url: '/team',
     display: 'standalone',
     background_color: '#F5F5F7',
     theme_color: '#12222E',
