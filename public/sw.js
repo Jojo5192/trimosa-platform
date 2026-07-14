@@ -7,14 +7,14 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icon.png',
       badge: '/icon.png',
-      data: { url: data.url || '/dashboard/chat' },
+      data: { url: data.url || '/team' },
     })
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/dashboard/chat'
+  const url = (event.notification.data && event.notification.data.url) || '/team'
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const client of list) {
