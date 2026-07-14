@@ -51,15 +51,57 @@ export async function GET(
         ? await supabaseAdmin.from('messages').select('smoobu_message_id').in('smoobu_message_id', ids)
         : { data: [] }
       const known = new Set((already ?? []).map((m) => m.smoobu_message_id))
+      // Web-app sent messages without a claimed Smoobu id (older sends /
+      // Smoobu send response without id): adopt them instead of re-importing,
+      // and heal rows that were already duplicated by earlier syncs.
+      const { data: unclaimed } = await supabaseAdmin
+        .from('messages')
+        .select('id, content, created_at')
+        .eq('booking_id', bookingId)
+        .eq('sender_type', 'host')
+        .is('smoobu_message_id', null)
+      const unclaimedByContent = new Map<string, { id: string; created_at: string }[]>()
+      for (const r of unclaimed ?? []) {
+        const k = (r.content ?? '').trim()
+        if (!unclaimedByContent.has(k)) unclaimedByContent.set(k, [])
+        unclaimedByContent.get(k)!.push(r)
+      }
+      const takeUnclaimed = (content: string) => {
+        const list = unclaimedByContent.get(content)
+        if (!list?.length) return null
+        // don't touch rows younger than 90s — their own Smoobu copy may still be in flight
+        const idx = list.findIndex((r) => Date.now() - new Date(r.created_at).getTime() > 90_000)
+        if (idx === -1) return null
+        return list.splice(idx, 1)[0]
+      }
       for (const sm of smoobuMessages) {
-        if (!sm.message?.trim() || known.has(String(sm.id))) continue
+        if (!sm.message?.trim()) continue
+        const content = sm.message.trim()
+        const fromHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
+        if (known.has(String(sm.id))) {
+          // already imported — if an unclaimed local twin exists, it IS the
+          // duplicate the team sees: remove it (self-healing)
+          if (fromHost) {
+            const twin = takeUnclaimed(content)
+            if (twin) await supabaseAdmin.from('messages').delete().eq('id', twin.id)
+          }
+          continue
+        }
+        if (fromHost) {
+          const twin = takeUnclaimed(content)
+          if (twin) {
+            // our own web-app message came back from Smoobu → claim, don't duplicate
+            await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
+            continue
+          }
+        }
         // insert (not upsert): the partial unique index on smoobu_message_id
         // doesn't match ON CONFLICT without its predicate
         const { error } = await supabaseAdmin.from('messages').insert({
           booking_id: bookingId,
           smoobu_message_id: String(sm.id),
-          sender_type: ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
-          content: sm.message.trim(),
+          sender_type: fromHost ? 'host' : 'guest',
+          content,
           created_at: sm.date || undefined,
         })
         if (error) console.error('[Messages] insert failed:', error.message)
@@ -154,10 +196,15 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
 
-  // Push to Smoobu (only host messages — we send to guest via Smoobu)
+  // Push to Smoobu (only host messages — we send to guest via Smoobu).
+  // Store the returned Smoobu message id on our row: the next sync would
+  // otherwise re-import our own message as a "new" one → duplicate bubble.
   if (isHost && booking.smoobu_reservation_id) {
     try {
-      await sendMessageToGuest(Number(booking.smoobu_reservation_id), content.trim())
+      const smoobuMsgId = await sendMessageToGuest(Number(booking.smoobu_reservation_id), content.trim())
+      if (smoobuMsgId != null && msg?.id) {
+        await supabaseAdmin.from('messages').update({ smoobu_message_id: String(smoobuMsgId) }).eq('id', msg.id)
+      }
     } catch (err) {
       console.error('[Messages] Smoobu push failed:', err)
     }
