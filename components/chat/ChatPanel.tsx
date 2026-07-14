@@ -82,6 +82,23 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [msgs, setMsgs]         = useState<Message[]>([])
   const [draft, setDraft]       = useState('')
   const [busy, setBusy]         = useState(false)
+  const [aiBusy, setAiBusy]     = useState(false)
+
+  // "✨" reply suggestion (hosts only) — lands in the composer as an editable
+  // draft, never auto-sent. History is loaded server-side by the API.
+  async function suggestReply() {
+    if (!active || aiBusy) return
+    setAiBusy(true)
+    try {
+      const res = await fetch('/api/ai/chat-suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: active.id }),
+      })
+      const data = await res.json()
+      if (res.ok && data.suggestion) setDraft(data.suggestion)
+    } catch { /* silent — composer stays untouched */ }
+    finally { setAiBusy(false) }
+  }
   const [loading, setLoading]   = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
@@ -398,6 +415,22 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
           display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
+          {active && isHost(active) && msgs.length > 0 && (
+            <button
+              onClick={suggestReply}
+              disabled={aiBusy}
+              title="Antwort von Claude vorschlagen lassen"
+              style={{
+                width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
+                border: '1.5px solid #E8D9A0', background: '#FDFAF0',
+                cursor: aiBusy ? 'wait' : 'pointer', fontSize: 17,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: aiBusy ? 0.5 : 1, transition: 'opacity .15s',
+              }}
+            >
+              {aiBusy ? '⏳' : '✨'}
+            </button>
+          )}
           <textarea
             ref={taRef}
             value={draft}
