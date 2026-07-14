@@ -20,7 +20,7 @@ export default async function ChatPage({
     <main style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <NavBar />
       <DashboardNav />
-      <ChatPanel variant="page" userId={user.id} initialConvId={initialConvId} />
+      <ChatPanel variant="page" userId={user.id} initialConvId={initialConvId} team />
     </main>
   )
 }
