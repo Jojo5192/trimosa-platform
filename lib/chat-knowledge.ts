@@ -162,12 +162,35 @@ Regeln:
   return askClaude(system, user, 8000)
 }
 
-export async function refreshChatKnowledge(): Promise<{ scope: string; sources: number; status: string }[]> {
+/**
+ * Re-distils the knowledge documents. Self-healing across runs: documents
+ * fresher than maxAgeHours are skipped, the stalest come first, and a time
+ * budget stops before the platform's 300s function limit — whatever is left
+ * over simply becomes first in line on the next run (daily cron / button).
+ */
+export async function refreshChatKnowledge(maxAgeHours = 20): Promise<{ scope: string; sources: number; status: string }[]> {
+  const startedAt = Date.now()
+  const TIME_BUDGET_MS = 240_000
   const results: { scope: string; sources: number; status: string }[] = []
-  const { data: listings } = await supabaseAdmin
-    .from('listings').select('id, title').eq('is_active', true)
+  const [{ data: listings }, { data: docs }] = await Promise.all([
+    supabaseAdmin.from('listings').select('id, title').eq('is_active', true),
+    supabaseAdmin.from('chat_knowledge').select('listing_id, updated_at').eq('scope', 'listing'),
+  ])
+  const docAge = new Map<string, number>((docs ?? []).map((d) => [d.listing_id as string, Date.parse(d.updated_at)]))
+  const cutoff = Date.now() - maxAgeHours * 3600_000
 
-  for (const listing of listings ?? []) {
+  const queue = (listings ?? [])
+    .filter((l) => (docAge.get(l.id) ?? 0) < cutoff)
+    .sort((a, b) => (docAge.get(a.id) ?? 0) - (docAge.get(b.id) ?? 0))
+  for (const l of (listings ?? []).filter((x) => (docAge.get(x.id) ?? 0) >= cutoff)) {
+    results.push({ scope: l.title, sources: 0, status: 'aktuell (übersprungen)' })
+  }
+
+  for (const listing of queue) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      results.push({ scope: listing.title, sources: 0, status: 'vertagt (Zeitbudget) — läuft beim nächsten Lauf' })
+      continue
+    }
     const pairs = await collectHostReplies(listing.id)
     if (pairs.length < 5) {
       results.push({ scope: listing.title, sources: pairs.length, status: 'übersprungen (zu wenig Material)' })
