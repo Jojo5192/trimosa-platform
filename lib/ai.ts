@@ -6,9 +6,22 @@
 
 const MODEL = 'claude-sonnet-5'
 
+/**
+ * Text truncation (slice) can cut emoji surrogate pairs in half — a lone
+ * surrogate makes the JSON body invalid and the API rejects it with 400
+ * ("no low surrogate in string"). Strip lone halves before sending.
+ */
+function stripLoneSurrogates(s: string): string {
+  return s
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+}
+
 export async function askClaude(system: string, user: string, maxTokens = 1500): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY ist nicht konfiguriert.')
+  system = stripLoneSurrogates(system)
+  user = stripLoneSurrogates(user)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
