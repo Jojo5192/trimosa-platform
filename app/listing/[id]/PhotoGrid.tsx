@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import PhotoViewer, { type Room } from '@/components/PhotoViewer'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface Props {
   rooms: Room[]
@@ -10,7 +11,7 @@ interface Props {
   listingTitle: string
   pricePerNight: number
   mainGradient: React.CSSProperties
-  fallbackColors: string[]
+  fallbackColors: string[]  lang?: UiLang
 }
 
 export default function PhotoGrid({
@@ -20,6 +21,7 @@ export default function PhotoGrid({
   pricePerNight,
   mainGradient,
   fallbackColors,
+  lang = 'de',
 }: Props) {
   const [viewerOpen, setViewerOpen] = useState(false)
 
@@ -123,7 +125,7 @@ export default function PhotoGrid({
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <path d="M21 15l-5-5L5 21"/>
             </svg>
-            Alle Fotos ({totalPhotos})
+            {t(lang, 'Alle Fotos')} ({totalPhotos})
           </div>
         )}
       </div>
