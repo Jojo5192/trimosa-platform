@@ -8,6 +8,46 @@ interface Conversation {
   listing_title: string | null; last_message_at: string; unread: number
   guest_avatar_url: string | null; host_avatar_url: string | null
   check_in: string | null; check_out: string | null
+  /** unified inbox (team mode): thread source + badge data */
+  kind?: 'direct' | 'booking'
+  platform?: string
+  guestStatus?: 'current' | 'upcoming' | 'past' | null
+}
+
+/* ── Badges (platform + guest status), team inbox only ── */
+const PLATFORM_COLORS: Record<string, string> = {
+  TRIMOSA: '#A8862F', Airbnb: '#FF5A5F', 'Booking.com': '#003580', Booking: '#003580',
+  'FeWo-direkt': '#245ABC', Vrbo: '#245ABC', Smoobu: '#5A6B7B',
+}
+function statusInfo(c: Conversation): { dot: string; label: string } | null {
+  if (!c.guestStatus) return null
+  if (c.guestStatus === 'current') return { dot: '#22C55E', label: 'Vor Ort' }
+  if (c.guestStatus === 'upcoming') {
+    const days = c.check_in ? Math.ceil((new Date(c.check_in).getTime() - Date.now()) / 86400000) : null
+    return { dot: '#3B82F6', label: days != null && days >= 0 ? `Anreise in ${days} Tg.` : 'Kommend' }
+  }
+  return { dot: '#9CA3AF', label: 'Ehemalig' }
+}
+function ThreadBadges({ c, size = 10 }: { c: Conversation; size?: number }) {
+  if (!c.platform && !c.guestStatus) return null
+  const st = statusInfo(c)
+  const pc = c.platform ? (PLATFORM_COLORS[c.platform] ?? '#5A6B7B') : null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {c.platform && pc && (
+        <span style={{
+          fontSize: size, fontWeight: 800, color: '#fff', background: pc,
+          padding: '2px 7px', borderRadius: 999, letterSpacing: '0.02em', whiteSpace: 'nowrap',
+        }}>{c.platform}</span>
+      )}
+      {st && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: size, fontWeight: 600, color: '#777', whiteSpace: 'nowrap' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.dot, display: 'inline-block' }} />
+          {st.label}
+        </span>
+      )}
+    </span>
+  )
 }
 interface Message {
   id: string; conversation_id: string; sender_id: string
@@ -74,9 +114,11 @@ interface Props {
   onClose?: () => void
   /** page only: pre-select a conversation (?conv= deep link from emails) */
   initialConvId?: string | null
+  /** team mode: unified inbox (all guests incl. Airbnb/Booking via Smoobu) */
+  team?: boolean
 }
 
-export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId }: Props) {
+export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
   const [active, setActive]     = useState<Conversation | null>(null)
   const [msgs, setMsgs]         = useState<Message[]>([])
@@ -92,7 +134,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     try {
       const res = await fetch('/api/ai/chat-suggest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: active.id }),
+        body: JSON.stringify(active.kind === 'booking' ? { bookingId: active.id } : { conversationId: active.id }),
       })
       const data = await res.json()
       if (res.ok && data.suggestion) setDraft(data.suggestion)
@@ -122,20 +164,51 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   /* ── data fetching ── */
   const getConvs = useCallback(async () => {
+    if (team) {
+      const r = await fetch('/api/chat/inbox')
+      if (!r.ok) return null
+      const { threads } = await r.json()
+      const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => ({
+        id: t.id, kind: t.kind, guest_id: '', host_id: userId,
+        guest_name: t.guestName, host_name: null,
+        listing_title: t.listingTitle, last_message_at: t.lastMessageAt,
+        unread: t.unread ?? 0,
+        guest_avatar_url: t.guestAvatar ?? null, host_avatar_url: null,
+        check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
+        platform: t.platform, guestStatus: t.guestStatus,
+      }))
+      setConvs(data)
+      return data
+    }
     const r = await fetch('/api/chat')
     if (!r.ok) return null
     const data: Conversation[] = await r.json()
     setConvs(data)
     return data
-  }, [])
+  }, [team, userId])
 
-  const getMsgs = useCallback(async (id: string) => {
+  const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking') => {
+    if (kind === 'booking') {
+      const r = await fetch(`/api/messages/${id}`)
+      if (r.ok) {
+        const { messages } = await r.json()
+        // Map booking messages (sender_type guest/host/system) onto the
+        // shared shape: everything from our side renders as "me".
+        setMsgs((messages ?? []).map((m: Record<string, unknown>) => ({
+          id: m.id, conversation_id: id,
+          sender_id: m.sender_type === 'guest' ? 'guest' : userId,
+          content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
+        })))
+        setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
+      }
+      return
+    }
     const r = await fetch(`/api/chat?conversationId=${id}`)
     if (r.ok) {
       setMsgs(await r.json())
       setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
     }
-  }, [])
+  }, [userId])
 
   useEffect(() => {
     if (!open) return
@@ -157,8 +230,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   useEffect(() => {
     if (timer.current) clearInterval(timer.current)
     if (!open || !active) return
-    getMsgs(active.id)
-    timer.current = setInterval(() => getMsgs(active.id), 5000)
+    getMsgs(active.id, active.kind)
+    timer.current = setInterval(() => getMsgs(active.id, active.kind), 5000)
     return () => { if (timer.current) clearInterval(timer.current) }
   }, [open, active, getMsgs])
 
@@ -185,11 +258,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   async function send() {
     if (!draft.trim() || !active || busy) return
     setBusy(true)
-    const r = await fetch('/api/chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: active.id, content: draft }),
-    })
-    if (r.ok) { setDraft(''); await getMsgs(active.id); getConvs() }
+    const r = active.kind === 'booking'
+      ? await fetch(`/api/messages/${active.id}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: draft }),
+        })
+      : await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: active.id, content: draft }),
+        })
+    if (r.ok) { setDraft(''); await getMsgs(active.id, active.kind); getConvs() }
     setBusy(false)
   }
 
@@ -270,7 +348,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 </div>
                 <div style={{ fontSize: fullWidth ? 13 : 11, color: c.unread ? '#5A4A1A' : '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 500 : 400 }}>
                   {c.listing_title ?? '—'}
+                  {fmtDateRange(c.check_in, c.check_out) && <span style={{ color: '#B5A97F' }}> · {fmtDateRange(c.check_in, c.check_out)}</span>}
                 </div>
+                {(c.platform || c.guestStatus) && (
+                  <div style={{ marginTop: 4 }}><ThreadBadges c={c} /></div>
+                )}
               </div>
               {fullWidth && (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CCC" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -327,6 +409,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
               </div>
             </div>
+            {(active.platform || active.guestStatus) && (
+              <div style={{ flexShrink: 0 }}><ThreadBadges c={active} size={10.5} /></div>
+            )}
           </div>
         )}
 
