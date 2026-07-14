@@ -6,6 +6,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import RoomEditor, { type Room } from './RoomEditor'
 import LocationPicker from '@/components/LocationPicker'
 import ReviewsManager from './ReviewsManager'
+import AiPolishButton from './AiPolishButton'
 import { AMENITY_CATEGORIES, AMENITY_OPTIONS, CANCELLATION_TEMPLATES, Section, Field, inputStyle, type Listing } from './editor-data'
 
 
@@ -339,6 +340,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       <Section title="Grunddaten">
         <Field label="Titel">
           <input style={inputStyle} value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Alpenchalet mit Panoramablick" />
+          <AiPolishButton field="title" text={title} onAccept={setTitle}
+            context={{ Ort: location, Stadt: city, Gäste: maxGuests, Schlafzimmer: bedrooms, Beschreibung: description.slice(0, 400) }} />
         </Field>
         <Field label="Beschreibung" hint="Erzähl von der Atmosphäre, der Lage, was besonders ist.">
           <textarea
@@ -348,6 +351,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             placeholder="Beschreibe deine Unterkunft…"
             rows={5}
           />
+          <AiPolishButton field="description" text={description} onAccept={setDescription}
+            context={{ Titel: title, Ort: location, Stadt: city, Gäste: maxGuests, Schlafzimmer: bedrooms, Badezimmer: bathrooms, Ausstattung: amenities.join(', ') }} />
         </Field>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Field label="Ort / Region" hint="z.B. Schliersee, Bayern">
@@ -625,6 +630,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             placeholder="z.B. Schlüsselkasten Code, Anfahrtsbeschreibung…"
             rows={4}
           />
+          <AiPolishButton field="checkin_instructions" text={checkinInstructions} onAccept={setCheckinInstructions}
+            context={{ Titel: title, Ort: location }} />
         </Field>
         <Field label="Wichtige Hinweise für Gäste">
           <textarea
@@ -634,6 +641,8 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
             placeholder="z.B. Parkmöglichkeiten, WLAN-Passwort…"
             rows={4}
           />
+          <AiPolishButton field="important_notes" text={importantNotes} onAccept={setImportantNotes}
+            context={{ Titel: title, Ort: location }} />
         </Field>
       </Section>
 
