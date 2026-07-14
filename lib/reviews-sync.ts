@@ -584,8 +584,7 @@ Bewertungstexten, nichts erfinden, keine Übertreibungen, keine Superlative, die
 in den Texten stehen. Keine Anführungszeichen, keine Einleitung wie "Die Gäste sagen" —
 beginne direkt, z. B. "Gäste loben immer wieder …". Antworte NUR mit der Zusammenfassung.`
 
-  const user = texts.map((t, i) => `${i + 1}. ${t.slice(0, 500)}`).join('
-')
+  const user = texts.map((t, i) => `${i + 1}. ${t.slice(0, 500)}`).join('\n')
   const summary = await askClaude(system, user, 400)
 
   const { error: writeError } = await supabaseAdmin
