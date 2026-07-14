@@ -313,6 +313,51 @@ export interface SmoobuMessage {
 }
 
 /**
+ * Lists Smoobu reservations (arrival-date window, paginated) — used by the
+ * chat-knowledge backfill to walk through the message history of past years.
+ * Returns a defensive, normalised shape; hasMore signals further pages.
+ */
+export async function listReservations(
+  fromIso: string,
+  toIso: string,
+  page: number,
+  pageSize = 25,
+  apiKey?: string,
+): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null }[]; hasMore: boolean }> {
+  const params = new URLSearchParams({
+    from: fromIso,
+    to: toIso,
+    page: String(page),
+    pageSize: String(pageSize),
+    showCancellation: 'true',
+  })
+  const res = await fetch(`${SMOOBU_BASE}/reservations?${params}`, {
+    headers: smoobuHeaders(apiKey),
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    console.error('[Smoobu] listReservations failed', res.status)
+    return { reservations: [], hasMore: false }
+  }
+  const data = await res.json()
+  const rows: unknown[] = Array.isArray(data?.bookings) ? data.bookings
+    : Array.isArray(data?.result) ? data.result
+    : Array.isArray(data) ? data
+    : []
+  const pageCount = Number(data?.page_count ?? data?.pageCount ?? 0)
+  const reservations = rows.map((r) => {
+    const obj = r as Record<string, unknown>
+    const apartment = obj.apartment as Record<string, unknown> | undefined
+    return {
+      id: Number(obj.id),
+      apartmentId: apartment?.id != null ? Number(apartment.id) : null,
+      arrival: typeof obj.arrival === 'string' ? obj.arrival : null,
+    }
+  }).filter((r) => Number.isFinite(r.id))
+  return { reservations, hasMore: pageCount > page }
+}
+
+/**
  * Fetches all messages for a Smoobu reservation.
  * Pass apiKey to use the host's own Smoobu account credentials.
  */
