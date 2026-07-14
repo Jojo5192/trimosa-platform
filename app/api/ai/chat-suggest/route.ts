@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { askClaude } from '@/lib/ai'
 import { getChatKnowledge } from '@/lib/chat-knowledge'
+import { getPrompt } from '@/lib/prompts'
 
 /**
  * POST /api/ai/chat-suggest { conversationId } — drafts a host reply to the
@@ -119,14 +120,7 @@ export async function POST(request: Request) {
     general.length ? `— Allgemein / andere Wohnungen:\n${general.map((t) => `• ${t}`).join('\n')}` : '',
   ].filter(Boolean).join('\n')
 
-  const system = `Du hilfst dem Gastgeber von TRIMOSA Apartments & Homes (Premium-Ferienwohnungen,
-Region Trier/Bitburg/Südeifel/Saar), eine Antwort an einen Gast zu entwerfen.
-
-Regeln:
-- Antworte als der Gastgeber, freundlich und persönlich, Du-Form, Deutsch (außer der Gast schreibt in einer anderen Sprache — dann in dessen Sprache).
-- Kurz und natürlich (2–5 Sätze), wie eine echte Chat-Nachricht — keine Briefform, keine Grußformeln wie "Mit freundlichen Grüßen".
-- EISERNE REGEL: Sage nur zu, was aus dem Verlauf oder den Unterkunfts-Fakten sicher hervorgeht. Bei allem Unbekannten (Preise, Verfügbarkeit, Sonderwünsche): freundlich ankündigen, dass du es prüfst, oder eine Rückfrage stellen — niemals raten oder zusagen.
-- Antworte NUR mit dem Nachrichtenentwurf, ohne Erklärungen.`
+  const system = await getPrompt('chat_suggest')
 
   const facts = listing
     ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}`
