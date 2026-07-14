@@ -12,6 +12,7 @@ import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, allPois, findPoi } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
@@ -72,7 +73,10 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
 
   const regionListings = listings ?? []
   const empfehlungen = await getEmpfehlungen()
-  const poiEmp = empfehlungen.poi[poi.slug]
+  const TE = await makeTr(lang, lang === 'de' ? [] : [
+    ...[...Object.values(empfehlungen.poi), ...Object.values(empfehlungen.tour)].flat().map((e) => e.comment),
+  ])
+  const poiEmp = (empfehlungen.poi[poi.slug] ?? []).map((e) => ({ ...e, comment: TE(e.comment) }))
   const mapListings: RegionMapListing[] = regionListings
     .filter((l) => l.latitude != null && l.longitude != null)
     .map((l) => ({ id: l.id, slug: l.slug ?? undefined, title: l.title, lat: Number(l.latitude), lon: Number(l.longitude) }))
@@ -165,7 +169,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
         ))}
 
         {/* ── Hosts' personal recommendation ── */}
-        {poiEmp && poiEmp.length > 0 && (
+        {poiEmp.length > 0 && (
           <div style={{
             maxWidth: '720px', margin: '24px 0 8px', borderRadius: '18px', padding: '18px 20px 16px',
             background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
@@ -174,7 +178,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
             <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 12px' }}>
               {T('💬 Persönliche Empfehlung deiner Gastgeber')}
             </p>
-            <EmpfehlungBubble empfehlungen={poiEmp} />
+            <EmpfehlungBubble empfehlungen={poiEmp} lang={lang} />
           </div>
         )}
 
@@ -208,10 +212,11 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
               {poi.komootTours.map((t) => {
-                const emp = empfehlungen.tour[t.embedUrl]
+                const empRaw = empfehlungen.tour[t.embedUrl]
+                const emp = empRaw ? empRaw.map((e) => ({ ...e, comment: TE(e.comment) })) : undefined
                 return (
                   <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
-                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} lang={lang} /></div>}
                     <KomootEmbed title={T(t.title)} embedUrl={t.embedUrl} lang={lang} />
                   </div>
                 )
@@ -289,7 +294,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
         <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: T('Über uns'), href: '/ueber-uns' }, { label: 'Impressum', href: '/impressum' }, { label: 'Datenschutz', href: '/datenschutz' }, { label: 'AGB', href: '/agb' }].map((item) => (
+            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
