@@ -6,6 +6,7 @@
  * explicitly opts in. Keeps the page free of third-party requests by default.
  */
 import { useState } from 'react'
+import { t, type UiLang } from '@/lib/i18n'
 
 interface Props {
   title: string
