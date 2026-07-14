@@ -213,7 +213,7 @@ export const REGIONS: Record<string, Region> = {
         ],
       },
       {
-        slug: 'mariensaeule-trier', name: 'Mariensäule & Markusberg', category: 'aktiv', lat: 49.7448, lon: 6.6207, emoji: '🌄',
+        slug: 'mariensaeule-trier', name: 'Mariensäule & Markusberg', category: 'aktiv', lat: 49.7602, lon: 6.6199, emoji: '🌄',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Mariens%C3%A4ule_Trier.JPG/1280px-Mariens%C3%A4ule_Trier.JPG',
           author: 'Gerdle Knühl',
@@ -288,7 +288,7 @@ export const REGIONS: Record<string, Region> = {
         ],
       },
       {
-        slug: 'weisshauswald', name: 'Weisshauswald & Wildgehege', category: 'familie', lat: 49.7455, lon: 6.6122, emoji: '🌳',
+        slug: 'weisshauswald', name: 'Weisshauswald & Wildgehege', category: 'familie', lat: 49.7687, lon: 6.6341, emoji: '🌳',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Trier_Villa_Wei%C3%9Fhaus_BW_2013-07-19_12-25-40.jpg/1280px-Trier_Villa_Wei%C3%9Fhaus_BW_2013-07-19_12-25-40.jpg',
           author: 'Berthold Werner',
