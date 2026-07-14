@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
+import { sendPushToTeam } from '@/lib/push'
 
 // ── Smoobu sync helper ───────────────────────────────────────
 async function syncSmoobuMessages(
@@ -295,6 +296,19 @@ export async function POST(req: NextRequest) {
     .from('conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', convId)
+
+  // Guest wrote via the website → buzz the team (fire-and-forget)
+  {
+    const { data: convMeta } = await supabaseAdmin
+      .from('conversations').select('host_id, guest_name, listing_title').eq('id', convId).maybeSingle()
+    if (convMeta && convMeta.host_id !== user.id) {
+      sendPushToTeam(
+        `💬 ${convMeta.guest_name ?? 'Gast'}${convMeta.listing_title ? ` · ${convMeta.listing_title}` : ''}`,
+        content.trim(),
+        '/dashboard/chat',
+      ).catch((e) => console.error('[push] chat trigger:', e))
+    }
+  }
 
   // Forward to Smoobu if host is sending and booking has smoobu_reservation_id
   try {
