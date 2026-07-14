@@ -39,17 +39,23 @@ export async function GET(
   if (booking.smoobu_reservation_id) {
     try {
       const smoobuMessages = await getReservationMessages(Number(booking.smoobu_reservation_id))
+      const ids = smoobuMessages.map((sm) => String(sm.id))
+      const { data: already } = ids.length
+        ? await supabaseAdmin.from('messages').select('smoobu_message_id').in('smoobu_message_id', ids)
+        : { data: [] }
+      const known = new Set((already ?? []).map((m) => m.smoobu_message_id))
       for (const sm of smoobuMessages) {
-        await supabaseAdmin.from('messages').upsert(
-          {
-            booking_id: bookingId,
-            smoobu_message_id: String(sm.id),
-            sender_type: ['1', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
-            content: sm.message,
-            created_at: sm.date,
-          },
-          { onConflict: 'smoobu_message_id', ignoreDuplicates: true },
-        )
+        if (!sm.message?.trim() || known.has(String(sm.id))) continue
+        // insert (not upsert): the partial unique index on smoobu_message_id
+        // doesn't match ON CONFLICT without its predicate
+        const { error } = await supabaseAdmin.from('messages').insert({
+          booking_id: bookingId,
+          smoobu_message_id: String(sm.id),
+          sender_type: ['1', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
+          content: sm.message.trim(),
+          created_at: sm.date || undefined,
+        })
+        if (error) console.error('[Messages] insert failed:', error.message)
       }
     } catch (err) {
       console.error('[Messages] Smoobu sync failed:', err)
