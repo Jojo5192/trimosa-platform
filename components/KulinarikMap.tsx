@@ -12,6 +12,7 @@
  * (unpkg CDN, shared window.L).
  */
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import { KULINARIK_KATEGORIEN, type KulinarikKategorie, type KulinarikTipp } from '@/lib/regions'
 import type { KulinarikRating } from '@/lib/kulinarik-ratings'
 
@@ -119,7 +120,12 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
             font-size:${tipp.top ? 19 : 15}px;">${tipp.emoji}</div>`,
         })
         const rating = ratings[tipp.name]
-        const popupHtml = `
+        // Photo header through our own /_next/image proxy (visitor's browser
+        // never talks to upload.wikimedia.org — same pattern as RegionMap)
+        const photoHtml = tipp.image
+          ? `<div style="height:92px;overflow:hidden;"><img src="/_next/image?url=${encodeURIComponent(tipp.image.src)}&w=256&q=75" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"/></div>`
+          : ''
+        const popupHtml = `${photoHtml}
           <div style="padding:14px 15px 13px;">
             ${tipp.top ? '<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ Unser Tipp</div>' : ''}
             <div style="font-size:14px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:3px;">${tipp.name}</div>
@@ -221,10 +227,20 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
             }}>
               {k.top && (
                 <span style={{
-                  position: 'absolute', top: '-9px', right: '14px', fontSize: '9.5px', fontWeight: 800,
+                  position: 'absolute', top: '-9px', right: '14px', zIndex: 2, fontSize: '9.5px', fontWeight: 800,
                   color: '#12222E', background: 'linear-gradient(135deg, #E6C15A, #C9A23B)',
                   padding: '3px 10px', borderRadius: '999px', letterSpacing: '0.06em', textTransform: 'uppercase',
                 }}>★ Unser Tipp</span>
+              )}
+              {k.image && (
+                <div style={{ position: 'relative', aspectRatio: '16/9', borderRadius: '11px', overflow: 'hidden', margin: '0 0 12px' }}>
+                  <Image src={k.image.src} alt={k.name} fill sizes="(max-width: 768px) 90vw, 300px" style={{ objectFit: 'cover' }} />
+                  <a href={k.image.fileUrl} target="_blank" rel="noopener nofollow" onClick={(e) => e.stopPropagation()} style={{
+                    position: 'absolute', right: '6px', bottom: '6px', fontSize: '8.5px', color: 'rgba(255,255,255,0.85)',
+                    background: 'rgba(10,16,22,0.6)', padding: '2px 8px', borderRadius: '999px', textDecoration: 'none',
+                    maxWidth: '85%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>📷 {k.image.author} · {k.image.license}</a>
+                </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '9px' }}>
                 <span style={{
