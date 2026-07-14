@@ -48,7 +48,3 @@ export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels
     </div>
   )
 }
-
-/* ── 4. Occupancy Calendar — 2 months, clickable → BookingBox ─ */
-const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
-const DE_DAYS_SHORT = ['Mo','Di','Mi','Do','Fr','Sa','So']
