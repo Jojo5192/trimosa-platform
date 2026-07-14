@@ -40,7 +40,7 @@ export async function GET(
           {
             booking_id: bookingId,
             smoobu_message_id: String(sm.id),
-            sender_type: sm.sender === 'host' ? 'host' : 'guest',
+            sender_type: ['owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase()) ? 'host' : 'guest',
             content: sm.message,
             created_at: sm.date,
           },
