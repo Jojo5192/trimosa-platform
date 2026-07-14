@@ -8,6 +8,8 @@ import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
 import KulinarikMap from '@/components/KulinarikMap'
 import { getKulinarikRatings } from '@/lib/kulinarik-ratings'
+import { getEmpfehlungen } from '@/lib/empfehlungen'
+import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
@@ -64,8 +66,18 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
 
   const otherRegions = Object.values(REGIONS).filter((r) => r.slug !== region.slug)
 
-  // Live Google ratings for the Kulinarik places (server-side, cached 24 h)
-  const kulinarikRatings = region.kulinarik ? await getKulinarikRatings(region.kulinarik) : {}
+  // Live Google ratings + hosts' personal recommendations (both server-side)
+  const [kulinarikRatings, empfehlungen] = await Promise.all([
+    region.kulinarik ? getKulinarikRatings(region.kulinarik) : Promise.resolve({}),
+    getEmpfehlungen(),
+  ])
+
+  const sections = [
+    { id: 'apartments', label: '🏠 Apartments' },
+    { id: 'entdecken', label: '🗺️ Karte & Ausflüge' },
+    ...(region.komootTours && region.komootTours.length > 0 ? [{ id: 'touren', label: '🚴 Radtouren' }] : []),
+    ...(region.kulinarik && region.kulinarik.length > 0 ? [{ id: 'kulinarik', label: '🍷 Essen & Trinken' }] : []),
+  ]
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -138,76 +150,24 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           ))}
         </div>
 
-        {/* ── Interactive experience map ── */}
-        <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '0 0 6px', letterSpacing: '-0.01em' }}>
-          Entdecken: {region.name} interaktiv
-        </h2>
-        <p style={{ fontSize: '14px', color: '#6B6455', margin: '0 0 16px' }}>
-          Sehenswürdigkeiten, Rad- und Wanderziele und Familien-Ausflüge — zusammen mit unseren Apartments auf einer Karte.
-        </p>
-        <RegionMap
-          pois={region.pois}
-          listings={mapListings}
-          center={region.center}
-          zoom={region.zoom}
-          extraPois={otherRegions.flatMap((r) => r.pois)}
-          showPoiGrid
-          tiles="voyager"
-        />
+        {/* ── Sticky section navigation (page has grown into a full travel guide) ── */}
+        <nav style={{
+          position: 'sticky', top: '88px', zIndex: 30,
+          margin: '0 -20px', padding: '10px 20px',
+          background: 'rgba(245,245,247,0.92)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+          display: 'flex', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+        }}>
+          {sections.map((sec) => (
+            <a key={sec.id} href={`#${sec.id}`} style={{
+              flexShrink: 0, padding: '8px 15px', borderRadius: '999px', textDecoration: 'none',
+              fontSize: '12.5px', fontWeight: 700, color: '#3A3427',
+              background: '#fff', border: '1px solid #E5E1D6', boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            }}>{sec.label}</a>
+          ))}
+        </nav>
 
-        {/* ── Komoot tour inspiration (only when tours are curated) ── */}
-        {region.komootTours && region.komootTours.length > 0 && (
-          <>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '32px 0 6px', letterSpacing: '-0.01em' }}>
-              Radtouren zur Inspiration
-            </h2>
-            <p style={{ fontSize: '13px', color: '#6B6455', margin: '0 0 14px' }}>
-              Handverlesene Touren auf Komoot — Karte, Höhenprofil und GPX zum Nachfahren.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
-              {region.komootTours.map((t) => (
-                <KomootEmbed key={t.embedUrl} title={t.title} embedUrl={t.embedUrl} />
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* ── Kulinarik ("Essen & Trinken") — deliberately styled apart from the POI world ── */}
-        {region.kulinarik && region.kulinarik.length > 0 && (
-          <div style={{
-            marginTop: '44px', borderRadius: '22px', padding: 'clamp(22px, 4vw, 34px)',
-            background: 'linear-gradient(150deg, #12222E 0%, #1A303F 55%, #23404F 100%)',
-          }}>
-            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
-              Essen &amp; Trinken
-            </p>
-            <h2 style={{ fontSize: 'clamp(20px, 3.5vw, 26px)', fontWeight: 800, color: '#fff', letterSpacing: '-0.01em', margin: '0 0 6px' }}>
-              Genuss in {region.name}
-            </h2>
-            <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.65)', margin: '0 0 20px', maxWidth: '620px', lineHeight: 1.6 }}>
-              Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.
-            </p>
-            <KulinarikMap tipps={region.kulinarik} ratings={kulinarikRatings} />
-          </div>
-        )}
-
-        {/* ── Coming soon ── */}
-        {region.comingSoon && (
-          <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: '16px', marginTop: '36px',
-            background: 'linear-gradient(135deg, #12222E, #1E3A4C)', borderRadius: '18px', padding: '22px 24px',
-          }}>
-            <span style={{ fontSize: '30px', lineHeight: 1 }}>🔨</span>
-            <div>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 5px' }}>In Arbeit</p>
-              <p style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: '0 0 6px', lineHeight: 1.3 }}>{region.comingSoon.title}</p>
-              <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.75)', margin: 0, lineHeight: 1.6 }}>{region.comingSoon.text}</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Listings ── */}
-        <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '44px 0 16px', letterSpacing: '-0.01em' }}>
+        {/* ── Apartments first — the guide below is the added value ── */}
+        <h2 id="apartments" style={{ scrollMarginTop: '150px', fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '30px 0 16px', letterSpacing: '-0.01em' }}>
           Unsere Apartments in {region.name}
         </h2>
         {regionListings.length > 0 ? (
@@ -236,9 +196,85 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         ) : (
           <p style={{ fontSize: '14px', color: '#6B6455' }}>
             {region.comingSoon
-              ? 'Die ersten Apartments entstehen gerade (siehe oben) — bis dahin findet ihr unsere Wohnungen in den Nachbarregionen.'
+              ? 'Die ersten Apartments entstehen gerade (siehe unten) — bis dahin findet ihr unsere Wohnungen in den Nachbarregionen.'
               : 'Aktuell sind hier keine Apartments verfügbar — schau bald wieder vorbei.'}
           </p>
+        )}
+
+        {/* ── Coming soon ── */}
+        {region.comingSoon && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: '16px', marginTop: '22px',
+            background: 'linear-gradient(135deg, #12222E, #1E3A4C)', borderRadius: '18px', padding: '22px 24px',
+          }}>
+            <span style={{ fontSize: '30px', lineHeight: 1 }}>🔨</span>
+            <div>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 5px' }}>In Arbeit</p>
+              <p style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: '0 0 6px', lineHeight: 1.3 }}>{region.comingSoon.title}</p>
+              <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.75)', margin: 0, lineHeight: 1.6 }}>{region.comingSoon.text}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Interactive experience map ── */}
+        <h2 id="entdecken" style={{ scrollMarginTop: '150px', fontSize: '22px', fontWeight: 700, color: '#1A1400', margin: '44px 0 6px', letterSpacing: '-0.01em' }}>
+          Entdecken: {region.name} interaktiv
+        </h2>
+        <p style={{ fontSize: '14px', color: '#6B6455', margin: '0 0 16px' }}>
+          Sehenswürdigkeiten, Rad- und Wanderziele und Familien-Ausflüge — zusammen mit unseren Apartments auf einer Karte.
+        </p>
+        <RegionMap
+          pois={region.pois}
+          listings={mapListings}
+          center={region.center}
+          zoom={region.zoom}
+          extraPois={otherRegions.flatMap((r) => r.pois)}
+          showPoiGrid
+          tiles="voyager"
+          empfehlungen={empfehlungen.poi}
+        />
+
+        {/* ── Komoot tour inspiration (only when tours are curated) ── */}
+        {region.komootTours && region.komootTours.length > 0 && (
+          <>
+            <h2 id="touren" style={{ scrollMarginTop: '150px', fontSize: '18px', fontWeight: 700, color: '#1A1400', margin: '32px 0 6px', letterSpacing: '-0.01em' }}>
+              Radtouren zur Inspiration
+            </h2>
+            <p style={{ fontSize: '13px', color: '#6B6455', margin: '0 0 14px' }}>
+              Handverlesene Touren auf Komoot — Karte, Höhenprofil und GPX zum Nachfahren.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
+              {region.komootTours.map((t) => {
+                const emp = empfehlungen.tour[t.embedUrl]
+                return (
+                  <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
+                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                    <KomootEmbed title={t.title} embedUrl={t.embedUrl} />
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ── Kulinarik ("Essen & Trinken") — deliberately styled apart from the POI world ── */}
+        {region.kulinarik && region.kulinarik.length > 0 && (
+          <div id="kulinarik" style={{
+            scrollMarginTop: '150px',
+            marginTop: '44px', borderRadius: '22px', padding: 'clamp(22px, 4vw, 34px)',
+            background: 'linear-gradient(150deg, #12222E 0%, #1A303F 55%, #23404F 100%)',
+          }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
+              Essen &amp; Trinken
+            </p>
+            <h2 style={{ fontSize: 'clamp(20px, 3.5vw, 26px)', fontWeight: 800, color: '#fff', letterSpacing: '-0.01em', margin: '0 0 6px' }}>
+              Genuss in {region.name}
+            </h2>
+            <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.65)', margin: '0 0 20px', maxWidth: '620px', lineHeight: 1.6 }}>
+              Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.
+            </p>
+            <KulinarikMap tipps={region.kulinarik} ratings={kulinarikRatings} empfehlungen={empfehlungen.kulinarik} />
+          </div>
         )}
 
         {/* ── CTA + cross links ── */}
