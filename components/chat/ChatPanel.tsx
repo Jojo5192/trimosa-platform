@@ -52,7 +52,21 @@ function ThreadBadges({ c, size = 10 }: { c: Conversation; size?: number }) {
 interface Message {
   id: string; conversation_id: string; sender_id: string
   content: string; read_at: string | null; created_at: string
+  /** translation layer: detected/sent language + German version */
+  lang?: string | null
+  content_de?: string | null
 }
+
+const FLAGS: Record<string, string> = {
+  de: '🇩🇪', en: '🇬🇧', nl: '🇳🇱', fr: '🇫🇷', es: '🇪🇸', it: '🇮🇹', pl: '🇵🇱',
+  da: '🇩🇰', pt: '🇵🇹', ru: '🇷🇺', cs: '🇨🇿', sv: '🇸🇪', tr: '🇹🇷', lb: '🇱🇺',
+}
+const LANG_LABEL: Record<string, string> = {
+  de: 'Deutsch', en: 'Englisch', nl: 'Niederländisch', fr: 'Französisch', es: 'Spanisch',
+  it: 'Italienisch', pl: 'Polnisch', da: 'Dänisch', pt: 'Portugiesisch', ru: 'Russisch',
+  cs: 'Tschechisch', sv: 'Schwedisch', tr: 'Türkisch', lb: 'Luxemburgisch',
+}
+const flag = (l?: string | null) => (l ? FLAGS[l] ?? '🌐' : '🌐')
 
 /* ── helpers ── */
 function ava(name: string) {
@@ -143,6 +157,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }
   const [loading, setLoading]   = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({})
+  const [pendingSend, setPendingSend] = useState<{ original: string; translated: string; lang: string } | null>(null)
+  const [translating, setTranslating] = useState(false)
+  const [instruction, setInstruction] = useState('')
+  const [refining, setRefining] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const bottomRef     = useRef<HTMLDivElement>(null)
@@ -198,6 +217,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           id: m.id, conversation_id: id,
           sender_id: m.sender_type === 'guest' ? 'guest' : userId,
           content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
+          lang: m.lang ?? null, content_de: m.content_de ?? null,
         })))
         setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
       }
@@ -254,21 +274,72 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (isMobile) setMobileView('chat')
   }
 
-  /* ── send ── */
-  async function send() {
-    if (!draft.trim() || !active || busy) return
+  /* ── guest language of the active thread (latest detected guest message) ── */
+  const guestLang = (() => {
+    if (!team || !active) return null
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.sender_id !== userId && m.lang) return m.lang
+    }
+    return null
+  })()
+  const needsTranslation = team && guestLang != null && guestLang !== 'de'
+
+  /* ── refine the draft with an instruction (two-step AI workshop) ── */
+  async function refineDraft() {
+    if (!active || !draft.trim() || !instruction.trim() || refining) return
+    setRefining(true)
+    try {
+      const res = await fetch('/api/ai/chat-suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(active.kind === 'booking' ? { bookingId: active.id } : { conversationId: active.id }),
+          instruction, currentDraft: draft,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.suggestion) { setDraft(data.suggestion); setInstruction('') }
+    } catch { /* draft stays */ }
+    finally { setRefining(false) }
+  }
+
+  /* ── send (with translation preview when the guest speaks another language) ── */
+  async function reallySend(content: string, contentDe?: string, lang?: string) {
+    if (!active) return
     setBusy(true)
-    const r = active.kind === 'booking'
-      ? await fetch(`/api/messages/${active.id}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: draft }),
-        })
-      : await fetch('/api/chat', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: active.id, content: draft }),
-        })
-    if (r.ok) { setDraft(''); await getMsgs(active.id, active.kind); getConvs() }
+    const payload = active.kind === 'booking'
+      ? { content, ...(contentDe ? { contentDe, lang } : {}) }
+      : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
+    const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (r.ok) { setDraft(''); setPendingSend(null); await getMsgs(active.id, active.kind); getConvs() }
     setBusy(false)
+  }
+
+  async function send() {
+    if (!draft.trim() || !active || busy || translating) return
+    if (needsTranslation && guestLang) {
+      // Step 1: translate + show the preview — nothing is sent yet
+      setTranslating(true)
+      try {
+        const res = await fetch('/api/ai/translate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: draft, targetLang: guestLang }),
+        })
+        const data = await res.json()
+        if (res.ok && data.translation) {
+          setPendingSend({ original: draft, translated: data.translation, lang: guestLang })
+        } else {
+          // Translation down → offer sending the German original via preview
+          setPendingSend({ original: draft, translated: draft, lang: 'de' })
+        }
+      } finally { setTranslating(false) }
+      return
+    }
+    await reallySend(draft)
   }
 
   if (!open) return null
@@ -409,8 +480,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
               </div>
             </div>
-            {(active.platform || active.guestStatus) && (
-              <div style={{ flexShrink: 0 }}><ThreadBadges c={active} size={10.5} /></div>
+            {(active.platform || active.guestStatus || guestLang) && (
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {guestLang && guestLang !== 'de' && (
+                  <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}`} style={{ fontSize: 15 }}>{flag(guestLang)}</span>
+                )}
+                <ThreadBadges c={active} size={10.5} />
+              </div>
             )}
           </div>
         )}
@@ -475,8 +551,26 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                           : '0 1px 4px rgba(0,0,0,.09)',
                         wordBreak: 'break-word',
                       }}>
-                        <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                        <span style={{ whiteSpace: 'pre-wrap' }}>
+                          {team && msg.content_de && !showOriginal[msg.id] ? msg.content_de : msg.content}
+                        </span>
                       </div>
+                      {team && msg.lang && msg.lang !== 'de' && msg.content_de && (
+                        <button
+                          type="button"
+                          onClick={() => setShowOriginal(so => ({ ...so, [msg.id]: !so[msg.id] }))}
+                          style={{
+                            border: 'none', background: 'none', cursor: 'pointer', padding: '0 3px',
+                            fontSize: 10.5, color: '#9A8F6E', fontWeight: 600,
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                          }}
+                        >
+                          {flag(msg.lang)} {isMe
+                            ? `gesendet auf ${LANG_LABEL[msg.lang] ?? msg.lang}`
+                            : `Original: ${LANG_LABEL[msg.lang] ?? msg.lang}`}
+                          {' · '}{showOriginal[msg.id] ? 'Übersetzung zeigen' : (isMe ? 'Gesendetes zeigen' : 'Original zeigen')}
+                        </button>
+                      )}
 
                       {isLast && (
                         <span style={{ fontSize: 10.5, color: '#AAA', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
@@ -492,6 +586,59 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           ))}
           <div ref={bottomRef} />
         </div>
+
+        {/* Translation send preview — nothing goes out until confirmed */}
+        {pendingSend && (
+          <div style={{ borderTop: '1px solid #E8E4DB', background: '#FDFAF0', padding: '12px 14px', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 7px' }}>
+              {flag(pendingSend.lang)} Wird auf {LANG_LABEL[pendingSend.lang] ?? pendingSend.lang} gesendet — bitte prüfen
+            </p>
+            <textarea
+              value={pendingSend.translated}
+              onChange={e => setPendingSend(ps => ps ? { ...ps, translated: e.target.value } : ps)}
+              rows={3}
+              style={{
+                width: '100%', boxSizing: 'border-box', resize: 'vertical', outline: 'none',
+                border: '1.5px solid #E6C15A', borderRadius: 12, padding: '9px 12px',
+                fontSize: 14, lineHeight: 1.5, fontFamily: 'inherit', background: '#fff', color: '#1A1814',
+              }}
+            />
+            <p style={{ fontSize: 11, color: '#9A8F6E', margin: '6px 0 8px' }}>🇩🇪 Dein Original: {pendingSend.original.slice(0, 160)}{pendingSend.original.length > 160 ? '…' : ''}</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => reallySend(pendingSend.translated, pendingSend.lang !== 'de' ? pendingSend.original : undefined, pendingSend.lang !== 'de' ? pendingSend.lang : undefined)} disabled={busy} style={{
+                padding: '8px 20px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 13, fontWeight: 700,
+              }}>{busy ? 'Sendet…' : 'Jetzt senden'}</button>
+              <button onClick={() => setPendingSend(null)} style={{
+                padding: '8px 14px', borderRadius: 999, border: '1px solid #E0DCD2', background: '#fff',
+                color: '#777', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}>Zurück zum Entwurf</button>
+            </div>
+          </div>
+        )}
+
+        {/* AI instruction field (two-step workshop): refine the current draft */}
+        {team && draft.trim().length > 0 && !pendingSend && (
+          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, flexShrink: 0 }}>✏️</span>
+            <input
+              value={instruction}
+              onChange={e => setInstruction(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
+              placeholder="Anweisung an Claude… (z. B. „kürzer“ oder „biete Late-Checkout an“) — 🎤 über die Tastatur diktierbar"
+              style={{
+                flex: 1, border: '1px solid #EBE5D5', borderRadius: 999, padding: '7px 14px',
+                fontSize: 12.5, outline: 'none', background: '#fff', color: '#1A1814', fontFamily: 'inherit',
+              }}
+            />
+            <button onClick={refineDraft} disabled={refining || !instruction.trim()} style={{
+              padding: '7px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+              background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#EDE9E0',
+              color: instruction.trim() && !refining ? '#fff' : '#BBB',
+              fontSize: 12, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
+            }}>{refining ? '⏳' : 'Anpassen'}</button>
+          </div>
+        )}
 
         {/* Input bar */}
         <div style={{
@@ -521,7 +668,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="Nachricht schreiben…"
+            placeholder={needsTranslation ? `Auf Deutsch schreiben — wird auf ${LANG_LABEL[guestLang!] ?? guestLang} ${flag(guestLang)} übersetzt…` : 'Nachricht schreiben…'}
             rows={1}
             style={{
               flex: 1, resize: 'none', outline: 'none',
