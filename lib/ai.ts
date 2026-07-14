@@ -28,7 +28,7 @@ export async function askClaude(system: string, user: string, maxTokens = 1500):
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     console.error('[ai] Claude API error:', res.status, detail.slice(0, 300))
-    throw new Error(`KI-Anfrage fehlgeschlagen (${res.status}).`)
+    throw new Error(`KI-Anfrage fehlgeschlagen (${res.status}): ${detail.slice(0, 180)}`)
   }
 
   const data = await res.json()
