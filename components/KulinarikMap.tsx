@@ -276,7 +276,7 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {}, l
                 </div>
               </div>
               <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.72)', margin: '0 0 10px', lineHeight: 1.6 }}>{k.text}</p>
-              {emp && <div style={{ margin: '0 0 12px' }}><EmpfehlungBubble empfehlungen={emp} dark /></div>}
+              {emp && <div style={{ margin: '0 0 12px' }}><EmpfehlungBubble empfehlungen={emp} dark lang={lang} /></div>}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 {ratings[k.name] ? (
                   <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#E6C15A' }}>
