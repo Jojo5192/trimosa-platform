@@ -8,6 +8,7 @@ type Msg = { type: 'ok' | 'error'; text: string }
 export default function AdminUsersClient() {
   const [admins, setAdmins] = useState<Person[]>([])
   const [hosts, setHosts] = useState<Person[]>([])
+  const [staff, setStaff] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -17,6 +18,7 @@ export default function AdminUsersClient() {
     if (res.ok) {
       setAdmins(json.admins ?? [])
       setHosts(json.hosts ?? [])
+      setStaff(json.staff ?? [])
     }
     setLoading(false)
   }, [])
@@ -45,6 +47,16 @@ export default function AdminUsersClient() {
         loading={loading}
         onChanged={load}
       />
+      <RoleSection
+        flag="is_staff"
+        title="Team-Mitglieder (Chat)"
+        addLabel="Zum Team hinzufügen"
+        grantedMsg="ist jetzt Team-Mitglied und kann alle Gäste-Chats sehen und beantworten."
+        revokedMsg="ist kein Team-Mitglied mehr."
+        people={staff}
+        loading={loading}
+        onChanged={load}
+      />
     </div>
   )
 }
@@ -52,7 +64,7 @@ export default function AdminUsersClient() {
 function RoleSection({
   flag, title, addLabel, grantedMsg, revokedMsg, people, loading, onChanged,
 }: {
-  flag: 'is_admin' | 'is_host'
+  flag: 'is_admin' | 'is_host' | 'is_staff'
   title: string
   addLabel: string
   grantedMsg: string
