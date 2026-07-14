@@ -27,7 +27,11 @@ export async function GET(
   if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden' }, { status: 404 })
 
   const listing = booking.listings as unknown as { host_id: string } | null
-  const isHost = listing?.host_id === user.id
+  // Team access: the listing's host plus every admin/host/staff member —
+  // the unified inbox lets the whole team answer guests.
+  const { data: me } = await supabaseAdmin
+    .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
+  const isHost = listing?.host_id === user.id || !!me?.is_admin || !!me?.is_host || !!me?.is_staff
   const isGuest = booking.guest_id === user.id
   if (!isHost && !isGuest) return NextResponse.json({ error: 'Kein Zugriff' }, { status: 403 })
 
@@ -50,6 +54,16 @@ export async function GET(
     } catch (err) {
       console.error('[Messages] Smoobu sync failed:', err)
     }
+  }
+
+  // Reading as team marks guest messages as read (inbox unread counter)
+  if (isHost) {
+    await supabaseAdmin
+      .from('messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('booking_id', bookingId)
+      .eq('sender_type', 'guest')
+      .is('read_at', null)
   }
 
   const { data: messages } = await supabaseAdmin
@@ -88,7 +102,11 @@ export async function POST(
   if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden' }, { status: 404 })
 
   const listing = booking.listings as unknown as { host_id: string } | null
-  const isHost = listing?.host_id === user.id
+  // Team access: the listing's host plus every admin/host/staff member —
+  // the unified inbox lets the whole team answer guests.
+  const { data: me } = await supabaseAdmin
+    .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
+  const isHost = listing?.host_id === user.id || !!me?.is_admin || !!me?.is_host || !!me?.is_staff
   const isGuest = booking.guest_id === user.id
   if (!isHost && !isGuest) return NextResponse.json({ error: 'Kein Zugriff' }, { status: 403 })
 
