@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { t, type UiLang } from '@/lib/i18n'
 
 /* ── 6. Reviews Section (aggregated from all platforms) ──── */
 
@@ -30,7 +31,7 @@ interface ReviewsAggregate {
   sources: Record<string, { avg: number; count: number }>
 }
 
-export function ReviewsSection({ listingId, showReviewForm = false }: { listingId: string; showReviewForm?: boolean }) {
+export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' }: { listingId: string; showReviewForm?: boolean; lang?: UiLang }) {
   const [data, setData] = useState<ReviewsAggregate | null>(null)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
@@ -101,8 +102,8 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
   if (loading) {
     return (
       <div id="reviews-section" style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Bewertungen</h2>
-        <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>Laden…</div>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>{t(lang, 'Bewertungen')}</h2>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>{t(lang, 'Laden…')}</div>
       </div>
     )
   }
@@ -110,11 +111,11 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
   if (!data?.overall) {
     return (
       <div id="reviews-section" style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Bewertungen</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>{t(lang, 'Bewertungen')}</h2>
         <div style={{ padding: '32px', textAlign: 'center' }}>
           <div style={{ fontSize: '40px', marginBottom: '8px' }}>⭐</div>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: '#1D1D1F', margin: '0 0 4px' }}>Noch keine Bewertungen</p>
-          <p style={{ fontSize: '13px', color: '#6E6E73', margin: 0 }}>Bewertungen werden nach dem ersten Aufenthalt angezeigt.</p>
+          <p style={{ fontSize: '15px', fontWeight: 600, color: '#1D1D1F', margin: '0 0 4px' }}>{t(lang, 'Noch keine Bewertungen')}</p>
+          <p style={{ fontSize: '13px', color: '#6E6E73', margin: 0 }}>{t(lang, 'Bewertungen werden nach dem ersten Aufenthalt angezeigt.')}</p>
         </div>
       </div>
     )
@@ -122,7 +123,7 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
 
   return (
     <div id="reviews-section" style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Bewertungen</h2>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>{t(lang, 'Bewertungen')}</h2>
 
       {/* ── Aggregate Score Panel ── */}
       <div style={{
@@ -309,7 +310,7 @@ export function ReviewsSection({ listingId, showReviewForm = false }: { listingI
 
               {/* Verified badge */}
               {review.verified && (
-                <div style={{ marginTop: '8px', fontSize: '11px', color: '#16A34A', fontWeight: 600 }}>✓ Verifizierter Aufenthalt</div>
+                <div style={{ marginTop: '8px', fontSize: '11px', color: '#16A34A', fontWeight: 600 }}>{t(lang, '✓ Verifizierter Aufenthalt')}</div>
               )}
             </div>
           )
