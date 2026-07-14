@@ -15,12 +15,19 @@ import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { KULINARIK_KATEGORIEN, type KulinarikKategorie, type KulinarikTipp } from '@/lib/regions'
 import type { KulinarikRating } from '@/lib/kulinarik-ratings'
+import type { EmpfehlungView } from '@/lib/empfehlungen'
+import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 
 interface Props {
   tipps: KulinarikTipp[]
   /** Live Google ratings keyed by tip name (fetched server-side) */
   ratings?: Record<string, KulinarikRating>
+  /** Hosts' personal recommendations keyed by tip name */
+  empfehlungen?: Record<string, EmpfehlungView[]>
 }
+
+/** Cards shown before "Alle anzeigen" expands the grid */
+const COLLAPSED_COUNT = 6
 
 const fmtRating = (r: KulinarikRating) =>
   `★ ${r.rating.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} (${r.count.toLocaleString('de-DE')})`
@@ -35,15 +42,21 @@ declare global {
 const mapsLink = (t: KulinarikTipp) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.name}, ${t.ort}`)}`
 
-export default function KulinarikMap({ tipps, ratings = {} }: Props) {
+export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {} }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<{ tipp: KulinarikTipp; marker: any }[]>([])
   const [activeKat, setActiveKat] = useState<KulinarikKategorie | 'alle'>('alle')
+  const [showAll, setShowAll] = useState(false)
 
-  const visible = tipps.filter((t) => activeKat === 'alle' || t.kategorie === activeKat)
+  // Grid order: hosts' recommendations first, then "Unser Tipp", then the rest
+  // (stable within each group — the curated order in regions.ts is kept)
+  const weight = (t: KulinarikTipp) => ((empfehlungen[t.name]?.length ? 2 : 0) + (t.top ? 1 : 0))
+  const sorted = [...tipps].sort((a, b) => weight(b) - weight(a))
+  const visible = sorted.filter((t) => activeKat === 'alle' || t.kategorie === activeKat)
+  const shown = showAll ? visible : visible.slice(0, COLLAPSED_COUNT)
 
   // Categories actually present in this region (chips only for those)
   const present = (Object.keys(KULINARIK_KATEGORIEN) as KulinarikKategorie[])
@@ -120,6 +133,7 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
             font-size:${tipp.top ? 19 : 15}px;">${tipp.emoji}</div>`,
         })
         const rating = ratings[tipp.name]
+        const emp = empfehlungen[tipp.name]
         // Photo header through our own /_next/image proxy (visitor's browser
         // never talks to upload.wikimedia.org — same pattern as RegionMap)
         const photoHtml = tipp.image
@@ -127,7 +141,7 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
           : ''
         const popupHtml = `${photoHtml}
           <div style="padding:14px 15px 13px;">
-            ${tipp.top ? '<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ Unser Tipp</div>' : ''}
+            ${emp ? `<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">💬 Tipp von ${emp.map((x) => x.name).join(' & ')}</div>` : tipp.top ? '<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ Unser Tipp</div>' : ''}
             <div style="font-size:14px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:3px;">${tipp.name}</div>
             <div style="font-size:10.5px;font-weight:600;color:${kat.color};margin-bottom:${rating ? 4 : 7}px;">${tipp.art} · <span style="color:rgba(255,255,255,0.55);font-weight:500;">${tipp.ort}</span></div>
             ${rating ? `<div style="font-size:11px;font-weight:700;color:#E6C15A;margin-bottom:7px;">${fmtRating(rating)} <span style="color:rgba(255,255,255,0.45);font-weight:500;">bei Google</span></div>` : ''}
@@ -217,11 +231,14 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
 
       {/* Card grid (follows the filter; click flies the map to the place) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '12px' }}>
-        {visible.map((k) => {
+        {shown.map((k) => {
           const kat = KULINARIK_KATEGORIEN[k.kategorie]
+          const emp = empfehlungen[k.name]
           return (
             <div key={k.name} onClick={() => flyTo(k)} style={{
-              background: 'rgba(255,255,255,0.06)', border: k.top ? '1px solid rgba(230,193,90,0.5)' : '1px solid rgba(255,255,255,0.12)',
+              background: emp ? 'rgba(230,193,90,0.08)' : 'rgba(255,255,255,0.06)',
+              border: emp ? '1.5px solid #E6C15A' : k.top ? '1px solid rgba(230,193,90,0.5)' : '1px solid rgba(255,255,255,0.12)',
+              boxShadow: emp ? '0 0 22px rgba(230,193,90,0.18)' : 'none',
               borderRadius: '16px', padding: '16px 17px 15px', backdropFilter: 'blur(4px)',
               cursor: 'pointer', transition: 'background 0.15s', position: 'relative',
             }}>
@@ -257,6 +274,7 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
                 </div>
               </div>
               <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.72)', margin: '0 0 10px', lineHeight: 1.6 }}>{k.text}</p>
+              {emp && <div style={{ margin: '0 0 12px' }}><EmpfehlungBubble empfehlungen={emp} dark /></div>}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 {ratings[k.name] ? (
                   <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#E6C15A' }}>
@@ -274,6 +292,19 @@ export default function KulinarikMap({ tipps, ratings = {} }: Props) {
           )
         })}
       </div>
+
+      {/* Expand/collapse for long lists */}
+      {visible.length > COLLAPSED_COUNT && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+          <button type="button" onClick={() => setShowAll(!showAll)} style={{
+            padding: '10px 24px', borderRadius: '999px', cursor: 'pointer',
+            border: '1.5px solid rgba(230,193,90,0.5)', background: 'rgba(230,193,90,0.1)',
+            color: '#E6C15A', fontSize: '13px', fontWeight: 700, transition: 'background 0.15s',
+          }}>
+            {showAll ? '− Weniger anzeigen' : `Alle ${visible.length} Adressen anzeigen`}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
