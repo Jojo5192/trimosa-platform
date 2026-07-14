@@ -25,56 +25,59 @@ const TTL_MS = 24 * 60 * 60 * 1000
 const g = globalThis as typeof globalThis & { __kulinarikRatingCache?: Map<string, CacheEntry> }
 const cache = (g.__kulinarikRatingCache ??= new Map<string, CacheEntry>())
 
-async function lookupRating(query: string, key: string): Promise<KulinarikRating | null> {
-  const hit = cache.get(query)
+async function fetchDetails(placeId: string, key: string): Promise<{ value: KulinarikRating | null; failTtl: number }> {
+  const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=de`, {
+    headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    console.error('[kulinarik-ratings] details failed:', res.status, placeId, (await res.text().catch(() => '')).slice(0, 200))
+    // Quota exhaustion (429) resets at midnight PT — retrying sooner only burns
+    // more quota. Other errors: retry after 5 min.
+    return { value: null, failTtl: res.status === 429 ? 6 * 60 * 60 * 1000 : 5 * 60 * 1000 }
+  }
+  const place = await res.json()
+  if (typeof place?.rating === 'number' && typeof place?.userRatingCount === 'number' && place.userRatingCount > 0) {
+    return { value: { rating: place.rating, count: place.userRatingCount }, failTtl: 0 }
+  }
+  return { value: null, failTtl: 0 }
+}
+
+async function lookupRating(query: string, placeId: string | undefined, key: string): Promise<KulinarikRating | null> {
+  const cacheKey = placeId ?? query
+  const hit = cache.get(cacheKey)
   if (hit && hit.expires > Date.now()) return hit.value
 
   let value: KulinarikRating | null = null
-  let failed = false
+  let failTtl = 0
   try {
-    // Two steps, both on endpoints proven to work with this key (the review
-    // sync uses the same place-details call): 1) resolve the place id via
-    // text search with the minimal id-only field mask, 2) fetch the rating
-    // via GET place details.
-    const searchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': key,
-        'X-Goog-FieldMask': 'places.id',
-      },
-      body: JSON.stringify({ textQuery: query, languageCode: 'de' }),
-      cache: 'no-store',
-    })
-    if (!searchRes.ok) {
-      failed = true
-      console.error('[kulinarik-ratings] searchText failed:', searchRes.status, query, (await searchRes.text().catch(() => '')).slice(0, 300))
-    } else {
-      const placeId: string | undefined = (await searchRes.json())?.places?.[0]?.id
-      if (placeId) {
-        const detailRes = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=de`, {
-          headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'rating,userRatingCount' },
-          cache: 'no-store',
-        })
-        if (!detailRes.ok) {
-          failed = true
-          console.error('[kulinarik-ratings] details failed:', detailRes.status, query, (await detailRes.text().catch(() => '')).slice(0, 300))
-        } else {
-          const place = await detailRes.json()
-          if (typeof place?.rating === 'number' && typeof place?.userRatingCount === 'number' && place.userRatingCount > 0) {
-            value = { rating: place.rating, count: place.userRatingCount }
-          }
-        }
+    let id = placeId
+    if (!id) {
+      // Fallback only (entries without a curated place id): one text search.
+      const searchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'places.id' },
+        body: JSON.stringify({ textQuery: query, languageCode: 'de' }),
+        cache: 'no-store',
+      })
+      if (!searchRes.ok) {
+        console.error('[kulinarik-ratings] searchText failed:', searchRes.status, query, (await searchRes.text().catch(() => '')).slice(0, 200))
+        failTtl = searchRes.status === 429 ? 6 * 60 * 60 * 1000 : 5 * 60 * 1000
+      } else {
+        id = (await searchRes.json())?.places?.[0]?.id
       }
     }
+    if (id) {
+      const res = await fetchDetails(id, key)
+      value = res.value
+      failTtl = res.failTtl
+    }
   } catch (err) {
-    failed = true
+    failTtl = 5 * 60 * 1000
     console.error('[kulinarik-ratings] lookup error:', query, err)
   }
 
-  // Successes AND genuine "no match" results cache for 24 h; transient API
-  // failures only briefly (5 min) so one hiccup can't hide all badges for a day.
-  cache.set(query, { value, expires: Date.now() + (failed ? 5 * 60 * 1000 : TTL_MS) })
+  cache.set(cacheKey, { value, expires: Date.now() + (failTtl || TTL_MS) })
   return value
 }
 
@@ -88,7 +91,7 @@ export async function getKulinarikRatings(tipps: KulinarikTipp[]): Promise<Recor
 
   const withQuery = tipps.filter((t): t is KulinarikTipp & { googleQuery: string } => !!t.googleQuery)
   const results = await Promise.all(
-    withQuery.map(async (t) => [t.name, await lookupRating(t.googleQuery, key)] as const)
+    withQuery.map(async (t) => [t.name, await lookupRating(t.googleQuery, t.googlePlaceId, key)] as const)
   )
 
   const map: Record<string, KulinarikRating> = {}
