@@ -81,7 +81,10 @@ async function lookupRating(query: string, key: string): Promise<KulinarikRating
 /** Ratings keyed by tip name. Empty when no API key is configured. */
 export async function getKulinarikRatings(tipps: KulinarikTipp[]): Promise<Record<string, KulinarikRating>> {
   const key = process.env.GOOGLE_PLACES_API_KEY
-  if (!key) return {}
+  if (!key) {
+    console.error('[kulinarik-ratings] GOOGLE_PLACES_API_KEY fehlt in dieser Umgebung')
+    return {}
+  }
 
   const withQuery = tipps.filter((t): t is KulinarikTipp & { googleQuery: string } => !!t.googleQuery)
   const results = await Promise.all(
@@ -92,5 +95,6 @@ export async function getKulinarikRatings(tipps: KulinarikTipp[]): Promise<Recor
   for (const [name, rating] of results) {
     if (rating) map[name] = rating
   }
+  console.log(`[kulinarik-ratings] ${Object.keys(map).length}/${withQuery.length} Ratings aufgelöst`)
   return map
 }
