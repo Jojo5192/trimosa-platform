@@ -17,6 +17,7 @@
  * Missing env vars simply skip that source (reported in diagnostics).
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { revalidatePath } from 'next/cache'
 import { askClaude } from '@/lib/ai'
 import { createHash } from 'crypto'
 
@@ -592,5 +593,8 @@ beginne direkt, z. B. "Gäste loben immer wieder …". Antworte NUR mit der Zusa
     .update({ guest_summary: summary, guest_summary_updated_at: new Date().toISOString() })
     .eq('id', listingId)
   if (writeError) throw new Error('Summary speichern: ' + writeError.message)
+  // The listing detail page caches its parameter-less render — refresh it so
+  // the new summary shows up immediately.
+  try { revalidatePath('/listing/[id]', 'page') } catch { /* outside request scope */ }
   return 'ok'
 }
