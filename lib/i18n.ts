@@ -199,6 +199,10 @@ addTranslations({
   'Bitte': ['Please', 'Veuillez', 'Gelieve'],
   'um zu buchen.': ['to book.', 'pour réserver.', 'om te boeken.'],
   'Reservieren': ['Reserve', 'Réserver', 'Reserveren'],
+  '⚡ Sofortbuchung verfügbar': ['⚡ Instant booking available', '⚡ Réservation immédiate disponible', '⚡ Direct boeken mogelijk'],
+  'Wird verarbeitet…': ['Processing…', 'Traitement…', 'Verwerken…'],
+  'Anreisedatum wählen': ['Select check-in date', 'Choisir la date d’arrivée', 'Kies aankomstdatum'],
+  'Abreisedatum wählen': ['Select check-out date', 'Choisir la date de départ', 'Kies vertrekdatum'],
   /* Sektionen Detailseite */
   'Ausstattung': ['Amenities', 'Équipements', 'Voorzieningen'],
   'Alle {n} Ausstattungsmerkmale anzeigen': ['Show all {n} amenities', 'Afficher les {n} équipements', 'Alle {n} voorzieningen tonen'],
