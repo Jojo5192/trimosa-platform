@@ -5,6 +5,7 @@ import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
 import { t, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
+import { makeTr } from '@/lib/static-translate'
 import QuickFilters from '@/components/QuickFilters'
 import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
@@ -159,6 +160,7 @@ export default async function Home({
 }) {
   const { q, guests, checkin, checkout, view, flex } = await searchParams
   const lang = await getUiLang()
+  const T = await makeTr(lang, lang === 'de' ? [] : Object.values(REGIONS).map((r) => r.claim))
   const guestsNum = guests ? parseInt(guests) : undefined
 
   // Calculate nights for total price display
@@ -438,7 +440,7 @@ export default async function Home({
                         {r.emoji} {r.name}
                       </p>
                       <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.82)', margin: '3px 0 0', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
-                        {r.claim}
+                        {T(r.claim)}
                       </p>
                     </div>
                   </Link>
