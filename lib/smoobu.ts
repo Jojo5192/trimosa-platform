@@ -323,7 +323,7 @@ export async function listReservations(
   page: number,
   pageSize = 25,
   apiKey?: string,
-): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null }[]; hasMore: boolean }> {
+): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean }> {
   const params = new URLSearchParams({
     from: fromIso,
     to: toIso,
@@ -348,10 +348,17 @@ export async function listReservations(
   const reservations = rows.map((r) => {
     const obj = r as Record<string, unknown>
     const apartment = obj.apartment as Record<string, unknown> | undefined
+    const channel = obj.channel as Record<string, unknown> | undefined
     return {
       id: Number(obj.id),
       apartmentId: apartment?.id != null ? Number(apartment.id) : null,
       arrival: typeof obj.arrival === 'string' ? obj.arrival : null,
+      departure: typeof obj.departure === 'string' ? obj.departure : null,
+      guestName: typeof obj['guest-name'] === 'string' ? (obj['guest-name'] as string) : null,
+      channelName: typeof channel?.name === 'string' ? (channel.name as string) : null,
+      price: typeof obj.price === 'number' ? obj.price : null,
+      cancelled: String(obj.type ?? '').toLowerCase().includes('cancel'),
+      blocked: obj['is-blocked-booking'] === true,
     }
   }).filter((r) => Number.isFinite(r.id))
   return { reservations, hasMore: pageCount > page }
