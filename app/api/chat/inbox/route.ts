@@ -81,13 +81,15 @@ export async function GET() {
   const { data: bMsgs } = bookingIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('booking_id, created_at, sender_type, read_at, content, content_de')
+        .select('booking_id, created_at, sender_type, read_at, content, content_de, lang')
         .in('booking_id', bookingIds)
         .order('created_at', { ascending: false })
         .limit(800)
     : { data: [] }
+  const bLang: Record<string, string> = {}
   for (const m of bMsgs ?? []) {
     if (!m.booking_id) continue
+    if (!bLang[m.booking_id] && m.sender_type === 'guest' && m.lang) bLang[m.booking_id] = m.lang
     if (!lastLive[m.booking_id]) {
       lastLive[m.booking_id] = {
         at: m.created_at,
@@ -127,13 +129,15 @@ export async function GET() {
   const { data: dMsgs } = convIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('conversation_id, created_at, sender_id, content, content_de')
+        .select('conversation_id, created_at, sender_id, content, content_de, lang')
         .in('conversation_id', convIds)
         .order('created_at', { ascending: false })
         .limit(400)
     : { data: [] }
   const lastDirect: Record<string, { preview: string; senderId: string | null }> = {}
+  const dLang: Record<string, string> = {}
   for (const m of dMsgs ?? []) {
+    if (m.conversation_id && m.lang && !dLang[m.conversation_id]) dLang[m.conversation_id] = m.lang
     if (m.conversation_id && !lastDirect[m.conversation_id]) {
       lastDirect[m.conversation_id] = {
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
@@ -159,6 +163,7 @@ export async function GET() {
       lastMessageAt: c.last_message_at,
       lastPreview: last?.preview ?? null,
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
+      guestLang: dLang[c.id] ?? null,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -181,6 +186,7 @@ export async function GET() {
         lastMessageAt: last?.at ?? null,
         lastPreview: last?.preview ?? null,
         lastSender: last?.sender ?? null,
+        guestLang: bLang[b.id] ?? null,
         unread: bUnread[b.id] ?? 0,
       }
     })
