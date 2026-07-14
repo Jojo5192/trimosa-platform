@@ -8,11 +8,13 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { CalendarMonth } from './DatePicker'
 import { LOCATION_SUGGESTIONS, formatDate } from './search-utils'
+import { t, type UiLang } from '@/lib/i18n'
 
 export default function MobileSearchSheet({
   q, setQ, checkin, setCheckin, checkout, setCheckout,
   adults, setAdults, kids, setKids, flexDates, setFlexDates,
   dateSelecting, setDateSelecting, onClose, onSearch,
+, lang = 'de',
 }: {
   q: string; setQ: (v: string) => void
   checkin: string; setCheckin: (v: string) => void
@@ -23,6 +25,7 @@ export default function MobileSearchSheet({
   dateSelecting: 'checkin' | 'checkout'; setDateSelecting: (v: 'checkin' | 'checkout') => void
   onClose: () => void
   onSearch: () => void
+  lang?: UiLang
 }) {
   const [mobileDateOpen, setMobileDateOpen] = useState(false)
   const [mobileCalMonth, setMobileCalMonth] = useState(() => new Date())
@@ -42,7 +45,7 @@ export default function MobileSearchSheet({
       borderBottom: '1px solid #F0EEE8',
       position: 'sticky', top: 0, zIndex: 10,
     }}>
-      <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>Suche</span>
+      <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>{t(lang, 'Suche')}</span>
       <button
         onClick={onClose}
         style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #E0DDD6', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#555' }}
@@ -54,12 +57,12 @@ export default function MobileSearchSheet({
 
       {/* Wohin */}
       <div style={{ backgroundColor: '#fff', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-        <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px' }}>Wohin</p>
+        <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px' }}>{t(lang, 'Wohin')}</p>
         <input
           type="text"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Ort oder Region suchen…"
+          placeholder={t(lang, 'Ort oder Region suchen…')}
           autoFocus
           style={{ width: '100%', fontSize: '15px', fontWeight: 500, color: '#111', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit' }}
         />
@@ -99,9 +102,9 @@ export default function MobileSearchSheet({
             onClick={() => { setDateSelecting('checkin'); setMobileDateOpen(true) }}
             style={{ padding: '16px 18px', textAlign: 'left', background: dateSelecting === 'checkin' && mobileDateOpen ? '#FAFAFA' : '#fff', border: 'none', cursor: 'pointer', borderRight: '1px solid #F0EEE8' }}
           >
-            <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>Anreise</p>
+            <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>{t(lang, 'Anreise')}</p>
             <p style={{ fontSize: '14px', fontWeight: checkin ? 600 : 400, color: checkin ? '#111' : '#BBB', margin: 0 }}>
-              {checkin ? formatDate(checkin) : 'Datum'}
+              {checkin ? formatDate(checkin, lang) : t(lang, 'Datum')}
             </p>
           </button>
           <button
@@ -109,9 +112,9 @@ export default function MobileSearchSheet({
             onClick={() => { setDateSelecting('checkout'); setMobileDateOpen(true) }}
             style={{ padding: '16px 18px', textAlign: 'left', background: dateSelecting === 'checkout' && mobileDateOpen ? '#FAFAFA' : '#fff', border: 'none', cursor: 'pointer' }}
           >
-            <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>Abreise</p>
+            <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>{t(lang, 'Abreise')}</p>
             <p style={{ fontSize: '14px', fontWeight: checkout ? 600 : 400, color: checkout ? '#111' : '#BBB', margin: 0 }}>
-              {checkout ? formatDate(checkout) : 'Datum'}
+              {checkout ? formatDate(checkout, lang) : t(lang, 'Datum')}
             </p>
           </button>
         </div>
@@ -127,12 +130,12 @@ export default function MobileSearchSheet({
                 }
               }} style={{ width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
               <span style={{ fontSize: '12px', color: '#999' }}>
-                {dateSelecting === 'checkin' ? 'Anreise wählen' : 'Abreise wählen'}
+                {dateSelecting === 'checkin' ? t(lang, 'Anreise wählen') : t(lang, 'Abreise wählen')}
               </span>
               <button type="button" onClick={() => setMobileCalMonth(new Date(mobileCalMonth.getFullYear(), mobileCalMonth.getMonth() + 1, 1))} style={{ width: '30px', height: '30px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '8px' }}>
-              <button type="button" onClick={() => setMobileDateOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--gold)', fontWeight: 600, padding: 0 }}>Fertig</button>
+              <button type="button" onClick={() => setMobileDateOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--gold)', fontWeight: 600, padding: 0 }}>{t(lang, 'Fertig')}</button>
             </div>
             {(() => {
               const y0 = mobileCalMonth.getFullYear(), m0 = mobileCalMonth.getMonth()
@@ -146,13 +149,13 @@ export default function MobileSearchSheet({
                 }
               }
               return <>
-                <CalendarMonth year={y0} month={m0} checkin={checkin} checkout={checkout} selecting={dateSelecting} onSelect={handleMobileSelect} />
+                <CalendarMonth year={y0} month={m0} checkin={checkin} checkout={checkout} selecting={dateSelecting} onSelect={handleMobileSelect} lang={lang} />
                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F0EEE8' }}>
-                  <CalendarMonth year={y1} month={m1} checkin={checkin} checkout={checkout} selecting={dateSelecting} onSelect={handleMobileSelect} />
+                  <CalendarMonth year={y1} month={m1} checkin={checkin} checkout={checkout} selecting={dateSelecting} onSelect={handleMobileSelect} lang={lang} />
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F0EEE8', cursor: 'pointer', fontSize: '13px', color: '#333', fontWeight: 500 }}>
                   <input type="checkbox" checked={flexDates} onChange={e => setFlexDates(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--gold)' }} />
-                  An-/Abreise ± 3 Tage flexibel
+                  {t(lang, 'An-/Abreise ± 3 Tage flexibel')}
                 </label>
               </>
             })()}
@@ -162,10 +165,10 @@ export default function MobileSearchSheet({
 
       {/* Gäste */}
       <div style={{ backgroundColor: '#fff', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-        <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 14px' }}>Gäste</p>
+        <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 14px' }}>{t(lang, 'Gäste')}</p>
         {[
-          { label: 'Erwachsene', sub: 'Ab 13 Jahren', val: adults, set: setAdults, min: 1 },
-          { label: 'Kinder', sub: '2–12 Jahre', val: kids, set: setKids, min: 0 },
+          { label: t(lang, 'Erwachsene'), sub: t(lang, 'Ab 13 Jahren'), val: adults, set: setAdults, min: 1 },
+          { label: t(lang, 'Kinder'), sub: t(lang, '2–12 Jahre'), val: kids, set: setKids, min: 0 },
         ].map(({ label, sub, val, set, min }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div>
@@ -195,7 +198,7 @@ export default function MobileSearchSheet({
         onClick={() => { setQ(''); setCheckin(''); setCheckout(''); setAdults(1); setKids(0) }}
         style={{ flex: '0 0 auto', padding: '14px 18px', borderRadius: '999px', border: '1.5px solid #E0DDD6', background: '#fff', color: '#444', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}
       >
-        Zurücksetzen
+        {t(lang, 'Zurücksetzen')}
       </button>
       <button
         type="button"
@@ -205,7 +208,7 @@ export default function MobileSearchSheet({
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        Suchen
+        {t(lang, 'Suchen')}
       </button>
     </div>
   </div>
