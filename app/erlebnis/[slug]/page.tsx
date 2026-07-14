@@ -7,6 +7,8 @@ import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
 import ScoreBadge from '@/components/ScoreBadge'
+import { getEmpfehlungen } from '@/lib/empfehlungen'
+import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, allPois, findPoi } from '@/lib/regions'
 
@@ -49,6 +51,8 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
     .order('created_at', { ascending: false })
 
   const regionListings = listings ?? []
+  const empfehlungen = await getEmpfehlungen()
+  const poiEmp = empfehlungen.poi[poi.slug]
   const mapListings: RegionMapListing[] = regionListings
     .filter((l) => l.latitude != null && l.longitude != null)
     .map((l) => ({ id: l.id, slug: l.slug ?? undefined, title: l.title, lat: Number(l.latitude), lon: Number(l.longitude) }))
@@ -140,6 +144,20 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
           <p key={p.slice(0, 24)} style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: '0 0 14px', maxWidth: '720px' }}>{p}</p>
         ))}
 
+        {/* ── Hosts' personal recommendation ── */}
+        {poiEmp && poiEmp.length > 0 && (
+          <div style={{
+            maxWidth: '720px', margin: '24px 0 8px', borderRadius: '18px', padding: '18px 20px 16px',
+            background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+            boxShadow: '0 6px 24px rgba(174,141,45,0.14)',
+          }}>
+            <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 12px' }}>
+              💬 Persönliche Empfehlung deiner Gastgeber
+            </p>
+            <EmpfehlungBubble empfehlungen={poiEmp} />
+          </div>
+        )}
+
         {/* ── Map ── */}
         <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '34px 0 6px', letterSpacing: '-0.01em' }}>
           Lage & Umgebung
@@ -168,9 +186,15 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
               Handverlesene Komoot-Touren zu diesem Ziel — Karte, Höhenprofil und GPX zum Nachfahren.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
-              {poi.komootTours.map((t) => (
-                <KomootEmbed key={t.embedUrl} title={t.title} embedUrl={t.embedUrl} />
-              ))}
+              {poi.komootTours.map((t) => {
+                const emp = empfehlungen.tour[t.embedUrl]
+                return (
+                  <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
+                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                    <KomootEmbed title={t.title} embedUrl={t.embedUrl} />
+                  </div>
+                )
+              })}
             </div>
           </>
         )}
