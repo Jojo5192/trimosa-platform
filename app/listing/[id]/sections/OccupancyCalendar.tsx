@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { t, MONTHS, type UiLang } from '@/lib/i18n'
 
 /* ── 4. Occupancy Calendar — 2 months, clickable → BookingBox ─ */
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
@@ -10,12 +11,13 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
-function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, onClickDay }: {
+function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, onClickDay, lang = 'de' }: {
   year: number; month: number
   rates: Record<string, { available: number }>
   todayStr: string
   checkIn: string; checkOut: string
   onClickDay: (iso: string) => void
+  lang?: UiLang
 }) {
   const firstDow = new Date(year, month, 1).getDay()
   const leadBlanks = firstDow === 0 ? 6 : firstDow - 1
@@ -24,7 +26,7 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
   return (
     <div>
       <div style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: '#1D1D1F', marginBottom: '10px' }}>
-        {DE_MONTHS[month]} {year}
+        {(lang === 'de' ? DE_MONTHS : MONTHS[lang])[month]} {year}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', marginBottom: '3px' }}>
         {DE_DAYS_SHORT.map(d => (
@@ -71,7 +73,7 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
   )
 }
 
-export function OccupancyCalendar({ listingId }: { listingId: string }) {
+export function OccupancyCalendar({ listingId, lang = 'de' }: { listingId: string; lang?: UiLang }) {
   const [viewDate, setViewDate] = useState(new Date())
   const [rates, setRates] = useState<Record<string, { available: number }>>({})
   const [loading, setLoading] = useState(true)
@@ -123,28 +125,30 @@ export function OccupancyCalendar({ listingId }: { listingId: string }) {
 
   return (
     <div id="occupancy-calendar" style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>Belegungskalender</h2>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>{t(lang, 'Belegungskalender')}</h2>
       <div>
         {/* Month navigation */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <button type="button" onClick={prev} style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73' }}>‹</button>
           <span style={{ fontSize: '12px', color: '#999' }}>
-            {selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}
+            {selecting === 'in' ? t(lang, 'Anreise wählen') : t(lang, 'Abreise wählen')}
           </span>
           <button type="button" onClick={next} style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #E5E5EA', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#6E6E73' }}>›</button>
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>Laden…</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '13px' }}>{t(lang, 'Laden…')}</div>
         ) : (
           <div className="detail-calendar-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <CalendarMonthGrid
+              lang={lang}
               year={viewDate.getFullYear()} month={viewDate.getMonth()}
               rates={rates} todayStr={todayStr}
               checkIn={checkIn} checkOut={checkOut}
               onClickDay={handleClickDay}
             />
             <CalendarMonthGrid
+              lang={lang}
               year={month2.getFullYear()} month={month2.getMonth()}
               rates={rates} todayStr={todayStr}
               checkIn={checkIn} checkOut={checkOut}
