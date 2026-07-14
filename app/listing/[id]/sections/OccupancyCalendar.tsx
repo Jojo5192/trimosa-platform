@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
+/* ── 4. Occupancy Calendar — 2 months, clickable → BookingBox ─ */
+const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const DE_DAYS_SHORT = ['Mo','Di','Mi','Do','Fr','Sa','So']
+
 function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
