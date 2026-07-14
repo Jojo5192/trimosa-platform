@@ -7,6 +7,7 @@ import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
 import KulinarikMap from '@/components/KulinarikMap'
+import { getKulinarikRatings } from '@/lib/kulinarik-ratings'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
@@ -62,6 +63,9 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
   }
 
   const otherRegions = Object.values(REGIONS).filter((r) => r.slug !== region.slug)
+
+  // Live Google ratings for the Kulinarik places (server-side, cached 24 h)
+  const kulinarikRatings = region.kulinarik ? await getKulinarikRatings(region.kulinarik) : {}
 
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -183,7 +187,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
             <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.65)', margin: '0 0 20px', maxWidth: '620px', lineHeight: 1.6 }}>
               Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.
             </p>
-            <KulinarikMap tipps={region.kulinarik} />
+            <KulinarikMap tipps={region.kulinarik} ratings={kulinarikRatings} />
           </div>
         )}
 
