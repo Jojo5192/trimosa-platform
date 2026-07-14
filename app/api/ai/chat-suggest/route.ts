@@ -1,0 +1,83 @@
+import { NextResponse } from 'next/server'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { askClaude } from '@/lib/ai'
+
+/**
+ * POST /api/ai/chat-suggest { conversationId } — drafts a host reply to the
+ * guest's latest message. Only the conversation's host (or an admin) may ask;
+ * the history is loaded server-side, never trusted from the client. The
+ * suggestion lands in the composer as an editable draft — never auto-sent.
+ */
+export async function POST(request: Request) {
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Nicht angemeldet.' }, { status: 401 })
+
+  const allowed = await checkRateLimit(`ai-chat:${user.id}`, 30, 3600)
+  if (!allowed) return NextResponse.json({ error: 'Zu viele KI-Anfragen — bitte kurz warten.' }, { status: 429 })
+
+  const { conversationId } = await request.json()
+  if (typeof conversationId !== 'string') {
+    return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
+  }
+
+  const { data: conv } = await supabaseAdmin
+    .from('conversations')
+    .select('id, host_id, guest_id, listing_id')
+    .eq('id', conversationId)
+    .maybeSingle()
+  if (!conv) return NextResponse.json({ error: 'Konversation nicht gefunden.' }, { status: 404 })
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  if (conv.host_id !== user.id && !profile?.is_admin) {
+    return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  }
+
+  const [{ data: messages }, { data: listing }] = await Promise.all([
+    supabaseAdmin
+      .from('messages')
+      .select('sender_id, content, created_at')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(12),
+    conv.listing_id
+      ? supabaseAdmin.from('listings').select('title, location, check_in_time, check_out_time').eq('id', conv.listing_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const history = (messages ?? [])
+    .reverse()
+    .map((m) => `${m.sender_id === conv.host_id ? 'GASTGEBER' : 'GAST'}: ${m.content.slice(0, 600)}`)
+    .join('\n')
+  if (!history) return NextResponse.json({ error: 'Noch keine Nachrichten.' }, { status: 400 })
+
+  const system = `Du hilfst dem Gastgeber von TRIMOSA Apartments & Homes (Premium-Ferienwohnungen,
+Region Trier/Bitburg/Südeifel/Saar), eine Antwort an einen Gast zu entwerfen.
+
+Regeln:
+- Antworte als der Gastgeber, freundlich und persönlich, Du-Form, Deutsch (außer der Gast schreibt in einer anderen Sprache — dann in dessen Sprache).
+- Kurz und natürlich (2–5 Sätze), wie eine echte Chat-Nachricht — keine Briefform, keine Grußformeln wie "Mit freundlichen Grüßen".
+- EISERNE REGEL: Sage nur zu, was aus dem Verlauf oder den Unterkunfts-Fakten sicher hervorgeht. Bei allem Unbekannten (Preise, Verfügbarkeit, Sonderwünsche): freundlich ankündigen, dass du es prüfst, oder eine Rückfrage stellen — niemals raten oder zusagen.
+- Antworte NUR mit dem Nachrichtenentwurf, ohne Erklärungen.`
+
+  const facts = listing
+    ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}`
+    : 'Unterkunft: unbekannt'
+
+  const prompt = `${facts}
+
+BISHERIGER VERLAUF (älteste zuerst):
+${history}
+
+Entwirf jetzt die nächste Antwort des GASTGEBERS auf die letzte Gast-Nachricht.`
+
+  try {
+    const suggestion = await askClaude(system, prompt, 500)
+    return NextResponse.json({ suggestion })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'KI-Fehler.' }, { status: 502 })
+  }
+}
