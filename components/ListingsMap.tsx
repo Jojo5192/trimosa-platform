@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { t, type UiLang } from '@/lib/i18n'
 
 export interface MapListing {
   id: string
