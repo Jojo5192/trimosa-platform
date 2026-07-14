@@ -50,8 +50,8 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
   const siblingsAll = region.pois
   const T = await makeTr(lang, lang === 'de' ? [] : [
     poi.name, poi.text, ...poi.long,
-    ...siblingsAll.flatMap((pp) => [pp.name, pp.short]),
-    ...foreignPois.flatMap((pp) => [pp.name, pp.short]),
+    ...siblingsAll.flatMap((pp) => [pp.name, pp.text]),
+    ...foreignPois.flatMap((pp) => [pp.name, pp.text]),
     ...(poi.komootTours ?? []).map((k) => k.title),
     category.label, 'Start',
     '💬 Persönliche Empfehlung deiner Gastgeber',
@@ -186,14 +186,14 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
           {T('{p} zusammen mit weiteren Ausflugszielen und unseren Apartments in {r}.').replace('{p}', T(poi.name)).replace('{r}', region.name)}
         </p>
         <RegionMap
-          pois={region.pois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))}
+          pois={region.pois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))}
           listings={mapListings}
           center={[poi.lat, poi.lon]}
           zoom={12}
           showFilter={false}
           highlightSlug={poi.slug}
           height="clamp(300px, 45vh, 440px)"
-          extraPois={foreignPois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))}
+          extraPois={foreignPois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))}
           lang={lang}
         />
 
