@@ -11,11 +11,14 @@ import { getEmpfehlungen } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, allPois, findPoi } from '@/lib/regions'
+import { getUiLang } from '@/lib/i18n-server'
+import { makeTr } from '@/lib/static-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
 // Re-render at most hourly so listing photos and scores stay fresh
 export const revalidate = 3600
+export const maxDuration = 120
 
 export function generateStaticParams() {
   return allPois().map(({ poi }) => ({ slug: poi.slug }))
@@ -42,6 +45,23 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
   if (!hit) notFound()
   const { region, poi } = hit
   const category = POI_CATEGORIES[poi.category]
+  const lang = await getUiLang()
+  const foreignPois = allPois().filter(({ region: r }) => r.slug !== region.slug).map(({ poi: p }) => p)
+  const siblingsAll = region.pois
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    poi.name, poi.text, ...poi.long,
+    ...siblingsAll.flatMap((pp) => [pp.name, pp.short]),
+    ...foreignPois.flatMap((pp) => [pp.name, pp.short]),
+    ...(poi.komootTours ?? []).map((k) => k.title),
+    category.label, 'Start',
+    '💬 Persönliche Empfehlung deiner Gastgeber',
+    'Lage & Umgebung',
+    '{p} zusammen mit weiteren Ausflugszielen und unseren Apartments in {r}.',
+    'Passende Touren',
+    'Handverlesene Komoot-Touren zu diesem Ziel — Karte, Höhenprofil und GPX zum Nachfahren.',
+    'Übernachten in der Nähe', 'Gäste', 'Schlafzimmer',
+    'Mehr entdecken in {r}', 'Zur Region {r} →', 'Verfügbarkeit prüfen', 'Über uns',
+  ])
 
   const { data: listings } = await supabaseAdmin
     .from('listings')
@@ -84,17 +104,17 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
     <div style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
-      <NavBar />
+      <NavBar lang={lang} />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '28px 20px 60px' }}>
 
         {/* ── Breadcrumb ── */}
         <p style={{ fontSize: '12.5px', color: '#8A8065', margin: '0 0 18px' }}>
-          <Link href="/" style={{ color: '#8A8065', textDecoration: 'none' }}>Start</Link>
+          <Link href="/" style={{ color: '#8A8065', textDecoration: 'none' }}>{T('Start')}</Link>
           {' · '}
           <Link href={`/region/${region.slug}`} style={{ color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>{region.name}</Link>
           {' · '}
-          <span style={{ color: '#3A3427', fontWeight: 600 }}>{poi.name}</span>
+          <span style={{ color: '#3A3427', fontWeight: 600 }}>{T(poi.name)}</span>
         </p>
 
         {/* ── Hero photo (Wikimedia Commons, proxied through next/image) ── */}
@@ -129,19 +149,19 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
               color: category.color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px',
             }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: category.color }} />
-              {category.label} · {region.name}
+              {T(category.label)} · {region.name}
             </span>
             <h1 style={{ fontSize: 'clamp(24px, 4.5vw, 36px)', fontWeight: 800, color: '#1A1400', letterSpacing: '-0.02em', margin: 0, lineHeight: 1.12 }}>
-              {poi.name}
+              {T(poi.name)}
             </h1>
           </div>
         </div>
 
         <p style={{ fontSize: '16.5px', lineHeight: 1.65, color: '#3A3427', fontWeight: 600, margin: '0 0 18px', maxWidth: '720px' }}>
-          {poi.text}
+          {T(poi.text)}
         </p>
         {poi.long.map((p) => (
-          <p key={p.slice(0, 24)} style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: '0 0 14px', maxWidth: '720px' }}>{p}</p>
+          <p key={p.slice(0, 24)} style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: '0 0 14px', maxWidth: '720px' }}>{T(p)}</p>
         ))}
 
         {/* ── Hosts' personal recommendation ── */}
@@ -152,7 +172,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
             boxShadow: '0 6px 24px rgba(174,141,45,0.14)',
           }}>
             <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 12px' }}>
-              💬 Persönliche Empfehlung deiner Gastgeber
+              {T('💬 Persönliche Empfehlung deiner Gastgeber')}
             </p>
             <EmpfehlungBubble empfehlungen={poiEmp} />
           </div>
@@ -160,30 +180,31 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
 
         {/* ── Map ── */}
         <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '34px 0 6px', letterSpacing: '-0.01em' }}>
-          Lage & Umgebung
+          {T('Lage & Umgebung')}
         </h2>
         <p style={{ fontSize: '13.5px', color: '#6B6455', margin: '0 0 14px' }}>
-          {poi.name} zusammen mit weiteren Ausflugszielen und unseren Apartments in {region.name}.
+          {T('{p} zusammen mit weiteren Ausflugszielen und unseren Apartments in {r}.').replace('{p}', T(poi.name)).replace('{r}', region.name)}
         </p>
         <RegionMap
-          pois={region.pois}
+          pois={region.pois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))}
           listings={mapListings}
           center={[poi.lat, poi.lon]}
           zoom={12}
           showFilter={false}
           highlightSlug={poi.slug}
           height="clamp(300px, 45vh, 440px)"
-          extraPois={allPois().filter(({ region: r }) => r.slug !== region.slug).map(({ poi: p }) => p)}
+          extraPois={foreignPois.map((pp) => ({ ...pp, name: T(pp.name), short: T(pp.short) }))}
+          lang={lang}
         />
 
         {/* ── Matching Komoot tours (only when curated for this POI) ── */}
         {poi.komootTours && poi.komootTours.length > 0 && (
           <>
             <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '36px 0 6px', letterSpacing: '-0.01em' }}>
-              Passende Touren
+              {T('Passende Touren')}
             </h2>
             <p style={{ fontSize: '13.5px', color: '#6B6455', margin: '0 0 14px' }}>
-              Handverlesene Komoot-Touren zu diesem Ziel — Karte, Höhenprofil und GPX zum Nachfahren.
+              {T('Handverlesene Komoot-Touren zu diesem Ziel — Karte, Höhenprofil und GPX zum Nachfahren.')}
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
               {poi.komootTours.map((t) => {
@@ -191,7 +212,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
                 return (
                   <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
                     {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
-                    <KomootEmbed title={t.title} embedUrl={t.embedUrl} />
+                    <KomootEmbed title={T(t.title)} embedUrl={t.embedUrl} lang={lang} />
                   </div>
                 )
               })}
@@ -203,7 +224,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
         {regionListings.length > 0 && (
           <>
             <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '40px 0 14px', letterSpacing: '-0.01em' }}>
-              Übernachten in der Nähe
+              {T('Übernachten in der Nähe')}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '16px' }}>
               {regionListings.map((l) => {
@@ -221,7 +242,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
                     )}
                     <div style={{ padding: rating ? '7px 13px 13px' : '11px 13px 13px' }}>
                       <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3 }}>{l.title}</h3>
-                      <p style={{ fontSize: '11.5px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{l.max_guests} Gäste · {l.bedrooms} Schlafzimmer</p>
+                      <p style={{ fontSize: '11.5px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>{l.max_guests} {T('Gäste')} · {l.bedrooms} {T('Schlafzimmer')}</p>
                     </div>
                   </Link>
                 )
@@ -232,7 +253,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
 
         {/* ── More destinations in the region ── */}
         <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1A1400', margin: '40px 0 14px', letterSpacing: '-0.01em' }}>
-          Mehr entdecken in {region.name}
+          {T('Mehr entdecken in {r}').replace('{r}', region.name)}
         </h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
           {siblings.map((p) => {
@@ -244,7 +265,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
                 border: '1px solid #E8E4DA', fontSize: '13px', fontWeight: 600, color: '#3A3427',
                 boxShadow: `inset 3px 0 0 ${c}`,
               }}>
-                <span style={{ fontSize: '15px' }}>{p.emoji}</span>{p.name}
+                <span style={{ fontSize: '15px' }}>{p.emoji}</span>{T(p.name)}
               </Link>
             )
           })}
@@ -256,9 +277,9 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
             display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
             padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
             background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
-          }}>Zur Region {region.name} →</Link>
+          }}>{T('Zur Region {r} →').replace('{r}', region.name)}</Link>
           <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--gold-dark)', textDecoration: 'none' }}>
-            Verfügbarkeit prüfen
+            {T('Verfügbarkeit prüfen')}
           </Link>
         </div>
       </div>
@@ -268,7 +289,7 @@ export default async function ErlebnisPage({ params }: { params: Promise<{ slug:
         <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: 'Über uns', href: '/ueber-uns' }, { label: 'Impressum', href: '/impressum' }, { label: 'Datenschutz', href: '/datenschutz' }, { label: 'AGB', href: '/agb' }].map((item) => (
+            {[{ label: T('Über uns'), href: '/ueber-uns' }, { label: 'Impressum', href: '/impressum' }, { label: 'Datenschutz', href: '/datenschutz' }, { label: 'AGB', href: '/agb' }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
