@@ -47,12 +47,11 @@ export async function backfillSmoobuMessages(page: number): Promise<{
     const rows = messages
       .filter((m) => (m.message ?? '').trim().length > 0)
       .map((m) => {
-        // Verified against production data (smoobu-test): `type` is NUMERIC —
-        // "1" = message TO the guest (host/system side, the replies we want),
-        // "2" = message TO the host (guest messages + booking notifications).
-        // `sender` is empty/just a name. String values kept as fallback.
+        // Verified against production data (UI check with a real welcome mail):
+        // type "2" = message TO the guest (sent by us — the replies we want),
+        // type "1" = message FROM the guest. String values kept as fallback.
         const t = String(m.type ?? '').toLowerCase()
-        const isHost = t === '1' || t === 'owner' || t === 'outgoing' || t === 'host'
+        const isHost = t === '2' || t === 'owner' || t === 'outgoing' || t === 'host'
         // E-mail templates arrive as HTML-ish text with whitespace debris
         const cleaned = m.message.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').replace(/\n{2,}/g, '\n').trim()
         return {
