@@ -305,7 +305,7 @@ export async function POST(req: NextRequest) {
       sendPushToTeam(
         `💬 ${convMeta.guest_name ?? 'Gast'}${convMeta.listing_title ? ` · ${convMeta.listing_title}` : ''}`,
         content.trim(),
-        '/dashboard/chat',
+        '/team',
       ).catch((e) => console.error('[push] chat trigger:', e))
     }
   }
