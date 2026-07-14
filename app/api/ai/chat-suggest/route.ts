@@ -54,6 +54,38 @@ export async function POST(request: Request) {
     .join('\n')
   if (!history) return NextResponse.json({ error: 'Noch keine Nachrichten.' }, { status: 400 })
 
+  // "Learning" from past conversations: the host's own earlier replies are the
+  // best source for tone AND facts (key-box codes policy, parking, Wi-Fi…).
+  // Same-apartment replies first, then general ones from other conversations.
+  const { data: past } = await supabaseAdmin
+    .from('messages')
+    .select('content, conversation_id, conversations!inner(listing_id)')
+    .eq('sender_id', conv.host_id)
+    .neq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(120)
+
+  const seen = new Set<string>()
+  const sameListing: string[] = []
+  const general: string[] = []
+  for (const m of past ?? []) {
+    const text = (m.content ?? '').trim()
+    if (text.length < 30) continue
+    const norm = text.toLowerCase().replace(/\s+/g, ' ').slice(0, 80)
+    if (seen.has(norm)) continue
+    seen.add(norm)
+    const rel = (Array.isArray(m.conversations) ? m.conversations[0] : m.conversations) as { listing_id: string | null } | null
+    if (conv.listing_id && rel?.listing_id === conv.listing_id) {
+      if (sameListing.length < 15) sameListing.push(text.slice(0, 400))
+    } else if (general.length < 10) {
+      general.push(text.slice(0, 400))
+    }
+  }
+  const knowledge = [
+    sameListing.length ? `— Zu DIESER Wohnung:\n${sameListing.map((t) => `• ${t}`).join('\n')}` : '',
+    general.length ? `— Allgemein / andere Wohnungen:\n${general.map((t) => `• ${t}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n')
+
   const system = `Du hilfst dem Gastgeber von TRIMOSA Apartments & Homes (Premium-Ferienwohnungen,
 Region Trier/Bitburg/Südeifel/Saar), eine Antwort an einen Gast zu entwerfen.
 
@@ -69,7 +101,12 @@ Regeln:
 
   const prompt = `${facts}
 
-BISHERIGER VERLAUF (älteste zuerst):
+${knowledge ? `FRÜHERE ECHTE ANTWORTEN DES GASTGEBERS (beste Quelle für Ton UND Fakten —
+Infos daraus darfst du übernehmen, wenn sie zur aktuellen Frage passen; Antworten zu
+DIESER Wohnung haben Vorrang vor allgemeinen):
+${knowledge}
+
+` : ''}BISHERIGER VERLAUF (älteste zuerst):
 ${history}
 
 Entwirf jetzt die nächste Antwort des GASTGEBERS auf die letzte Gast-Nachricht.`
