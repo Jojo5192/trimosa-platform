@@ -17,6 +17,7 @@
  * Missing env vars simply skip that source (reported in diagnostics).
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { askClaude } from '@/lib/ai'
 import { createHash } from 'crypto'
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -539,5 +540,50 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     .update({ reviews_synced_at: new Date().toISOString() })
     .eq('id', listing.id)
 
+  // Refresh the AI guest summary from the (possibly just updated) review texts.
+  // Fire-and-forget style but awaited so the cron result reflects reality —
+  // failures never break the sync itself.
+  await updateGuestSummary(listing.id).catch((err) =>
+    console.error('[reviews-sync] guest summary failed:', err)
+  )
+
   return results
+}
+
+/**
+ * "Das sagen unsere Gäste" — 2–3 warm sentences summarising what guests
+ * praise, generated ONLY from imported review texts (no invented facts).
+ * Written to listings.guest_summary; skipped below 5 usable texts.
+ */
+export async function updateGuestSummary(listingId: string): Promise<void> {
+  if (!process.env.ANTHROPIC_API_KEY) return
+
+  const { data: reviews } = await supabaseAdmin
+    .from('reviews')
+    .select('review_text, rating, source')
+    .eq('listing_id', listingId)
+    .not('review_text', 'is', null)
+    .order('review_date', { ascending: false })
+    .limit(60)
+
+  const texts = (reviews ?? [])
+    .map((r) => (r.review_text ?? '').trim())
+    .filter((t) => t.length >= 20)
+  if (texts.length < 5) return
+
+  const system = `Du fasst Gästebewertungen für eine TRIMOSA-Ferienwohnung zusammen.
+Schreibe 2–3 warme, konkrete Sätze auf Deutsch darüber, was Gäste an dieser Wohnung
+am häufigsten loben (z. B. Sauberkeit, Lage, Ausstattung, Gastgeber) — NUR aus den
+Bewertungstexten, nichts erfinden, keine Übertreibungen, keine Superlative, die nicht
+in den Texten stehen. Keine Anführungszeichen, keine Einleitung wie "Die Gäste sagen" —
+beginne direkt, z. B. "Gäste loben immer wieder …". Antworte NUR mit der Zusammenfassung.`
+
+  const user = texts.map((t, i) => `${i + 1}. ${t.slice(0, 500)}`).join('
+')
+  const summary = await askClaude(system, user, 400)
+
+  await supabaseAdmin
+    .from('listings')
+    .update({ guest_summary: summary, guest_summary_updated_at: new Date().toISOString() })
+    .eq('id', listingId)
 }
