@@ -2,15 +2,17 @@
 
 import { useState } from 'react'
 import { DE_MONTHS, DE_DAYS, dateToIso, formatDate, getDaysInMonth, getFirstDayOfMonth } from './search-utils'
+import { t, MONTHS, DAYS_SHORT, type UiLang } from '@/lib/i18n'
 
 /* ─── Mini calendar ─────────────────────────────────────── */
 export function CalendarMonth({
   year, month, checkin, checkout, selecting,
-  onSelect,
+  onSelect, lang = 'de',
 }: {
   year: number; month: number
   checkin: string; checkout: string; selecting: 'checkin' | 'checkout'
   onSelect: (iso: string) => void
+  lang?: UiLang
 }) {
   const today = dateToIso(new Date())
   const days = getDaysInMonth(year, month)
@@ -22,10 +24,10 @@ export function CalendarMonth({
   return (
     <div style={{ minWidth: '252px' }}>
       <p style={{ textAlign: 'center', fontWeight: 600, fontSize: '13px', color: '#111', marginBottom: '12px' }}>
-        {DE_MONTHS[month]} {year}
+        {(lang === 'de' ? DE_MONTHS : MONTHS[lang])[month]} {year}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
-        {DE_DAYS.map(d => (
+        {(lang === 'de' ? DE_DAYS : DAYS_SHORT[lang]).map(d => (
           <div key={d} style={{ textAlign: 'center', fontSize: '11px', color: '#999', fontWeight: 600, paddingBottom: '4px' }}>{d}</div>
         ))}
         {cells.map((day, i) => {
@@ -76,7 +78,7 @@ export function CalendarMonth({
 
 /* ─── Date Picker Popover ─────────────────────────────── */
 export function DatePickerPopover({
-  checkin, checkout, selecting, onSelectCheckin, onSelectCheckout, onClose, flexDates, onToggleFlex
+  checkin, checkout, selecting, onSelectCheckin, onSelectCheckout, onClose, flexDates, onToggleFlex, lang = 'de',
 }: {
   checkin: string; checkout: string; selecting: 'checkin' | 'checkout'
   onSelectCheckin: (iso: string) => void
@@ -84,6 +86,7 @@ export function DatePickerPopover({
   onClose: () => void
   flexDates: boolean
   onToggleFlex: (v: boolean) => void
+  lang?: UiLang
 }) {
   const now = new Date()
   const [viewYear, setViewYear] = useState(now.getFullYear())
@@ -135,7 +138,7 @@ export function DatePickerPopover({
               color: selecting === f ? '#fff' : '#111',
             } as React.CSSProperties}
           >
-            {f === 'checkin' ? (checkin ? formatDate(checkin) : 'Anreise') : (checkout ? formatDate(checkout) : 'Abreise')}
+            {f === 'checkin' ? (checkin ? formatDate(checkin, lang) : t(lang, 'Anreise')) : (checkout ? formatDate(checkout, lang) : t(lang, 'Abreise'))}
           </div>
         ))}
       </div>
@@ -151,7 +154,7 @@ export function DatePickerPopover({
             >‹</button>
             <span />
           </div>
-          <CalendarMonth year={viewYear} month={viewMonth} checkin={checkin} checkout={checkout} selecting={selecting} onSelect={handleSelect} />
+          <CalendarMonth year={viewYear} month={viewMonth} checkin={checkin} checkout={checkout} selecting={selecting} onSelect={handleSelect} lang={lang} />
         </div>
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -162,7 +165,7 @@ export function DatePickerPopover({
               style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >›</button>
           </div>
-          <CalendarMonth year={nextYear} month={nextMonth} checkin={checkin} checkout={checkout} selecting={selecting} onSelect={handleSelect} />
+          <CalendarMonth year={nextYear} month={nextMonth} checkin={checkin} checkout={checkout} selecting={selecting} onSelect={handleSelect} lang={lang} />
         </div>
       </div>
 
@@ -175,7 +178,7 @@ export function DatePickerPopover({
             onChange={e => onToggleFlex(e.target.checked)}
             style={{ width: 16, height: 16, accentColor: 'var(--gold)', cursor: 'pointer' }}
           />
-          An-/Abreise ± 3 Tage flexibel
+          {t(lang, 'An-/Abreise ± 3 Tage flexibel')}
         </label>
         {checkin && checkout && (
           <button
@@ -183,7 +186,7 @@ export function DatePickerPopover({
             onClick={onClose}
             style={{ fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer', flexShrink: 0 }}
           >
-            Übernehmen
+            {t(lang, 'Übernehmen')}
           </button>
         )}
       </div>
