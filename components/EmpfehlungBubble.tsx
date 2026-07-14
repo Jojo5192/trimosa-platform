@@ -6,6 +6,7 @@
  */
 import Image from 'next/image'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
+import { t, type UiLang } from '@/lib/i18n'
 
 function Face({ e, size = 30 }: { e: EmpfehlungView; size?: number }) {
   return (
@@ -23,7 +24,7 @@ function Face({ e, size = 30 }: { e: EmpfehlungView; size?: number }) {
   )
 }
 
-export default function EmpfehlungBubble({ empfehlungen, dark = false }: { empfehlungen: EmpfehlungView[]; dark?: boolean }) {
+export default function EmpfehlungBubble({ empfehlungen, dark = false, lang = 'de' }: { empfehlungen: EmpfehlungView[]; dark?: boolean; lang?: UiLang }) {
   if (!empfehlungen || empfehlungen.length === 0) return null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -40,7 +41,7 @@ export default function EmpfehlungBubble({ empfehlungen, dark = false }: { empfe
               fontSize: '10px', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase',
               color: dark ? '#E6C15A' : 'var(--gold-dark)', margin: '0 0 3px',
             }}>
-              {e.name} empfiehlt
+              {e.name} {t(lang, 'empfiehlt')}
             </p>
             <p style={{
               fontSize: '12.5px', fontStyle: 'italic', lineHeight: 1.55, margin: 0,
