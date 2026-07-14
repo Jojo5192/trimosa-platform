@@ -5,6 +5,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import OAuthButtons from '@/components/OAuthButtons'
 
 type AccountType = 'person' | 'business'
 
@@ -304,6 +305,8 @@ export default function RegisterPage() {
             >
               {loading ? 'Konto wird erstellt…' : 'Konto erstellen →'}
             </button>
+
+            <OAuthButtons />
 
             <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '-8px', paddingBottom: '16px' }}>
               Bereits ein Konto?{' '}
