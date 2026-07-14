@@ -63,7 +63,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [bookingUrl, setBookingUrl] = useState(listing.booking_url ?? '')
   const [vrboUrl, setVrboUrl] = useState(listing.vrbo_url ?? '')
   const [googlePlaceId, setGooglePlaceId] = useState(listing.google_place_id ?? '')
-  const [revyoosId, setRevyoosId] = useState(listing.revyoos_property_id ?? '')
 
   // Reviews management
 
@@ -210,7 +209,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           booking_url: bookingUrl,
           vrbo_url: vrboUrl,
           google_place_id: googlePlaceId,
-          revyoos_property_id: revyoosId,
           is_active: isActive,
         }),
       })
@@ -664,14 +662,6 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           </Field>
           <Field label="Google Place ID">
             <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
-          </Field>
-        </div>
-        <div style={{ marginBottom: '20px' }}>
-          <Field label="Revyoos Property ID (optional)">
-            <input value={revyoosId} onChange={e => setRevyoosId(e.target.value)} placeholder="z.B. abc123 oder Embed-Code einfügen" style={inputStyle} />
-            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
-              Falls du Revyoos nutzt: Property-ID oder den kompletten Embed-Code hier einfügen. Das Revyoos-Widget wird dann automatisch auf der Detailseite angezeigt.
-            </p>
           </Field>
         </div>
         <ReviewsManager listingId={listing.id} />
