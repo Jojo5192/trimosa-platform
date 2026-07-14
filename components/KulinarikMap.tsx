@@ -13,10 +13,16 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { KULINARIK_KATEGORIEN, type KulinarikKategorie, type KulinarikTipp } from '@/lib/regions'
+import type { KulinarikRating } from '@/lib/kulinarik-ratings'
 
 interface Props {
   tipps: KulinarikTipp[]
+  /** Live Google ratings keyed by tip name (fetched server-side) */
+  ratings?: Record<string, KulinarikRating>
 }
+
+const fmtRating = (r: KulinarikRating) =>
+  `★ ${r.rating.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} (${r.count.toLocaleString('de-DE')})`
 
 declare global {
   interface Window {
@@ -28,7 +34,7 @@ declare global {
 const mapsLink = (t: KulinarikTipp) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.name}, ${t.ort}`)}`
 
-export default function KulinarikMap({ tipps }: Props) {
+export default function KulinarikMap({ tipps, ratings = {} }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -112,11 +118,13 @@ export default function KulinarikMap({ tipps }: Props) {
             border:2.5px solid #fff;${ring}display:flex;align-items:center;justify-content:center;
             font-size:${tipp.top ? 19 : 15}px;">${tipp.emoji}</div>`,
         })
+        const rating = ratings[tipp.name]
         const popupHtml = `
           <div style="padding:14px 15px 13px;">
             ${tipp.top ? '<div style="font-size:9.5px;font-weight:700;color:#E6C15A;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;">★ Unser Tipp</div>' : ''}
             <div style="font-size:14px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:3px;">${tipp.name}</div>
-            <div style="font-size:10.5px;font-weight:600;color:${kat.color};margin-bottom:7px;">${tipp.art} · <span style="color:rgba(255,255,255,0.55);font-weight:500;">${tipp.ort}</span></div>
+            <div style="font-size:10.5px;font-weight:600;color:${kat.color};margin-bottom:${rating ? 4 : 7}px;">${tipp.art} · <span style="color:rgba(255,255,255,0.55);font-weight:500;">${tipp.ort}</span></div>
+            ${rating ? `<div style="font-size:11px;font-weight:700;color:#E6C15A;margin-bottom:7px;">${fmtRating(rating)} <span style="color:rgba(255,255,255,0.45);font-weight:500;">bei Google</span></div>` : ''}
             <div style="font-size:11.5px;color:rgba(255,255,255,0.72);line-height:1.55;margin-bottom:10px;">${tipp.text}</div>
             <a href="${mapsLink(tipp)}" target="_blank" rel="noopener nofollow" style="display:inline-block;font-size:11px;font-weight:700;color:#12222E;background:#E6C15A;padding:6px 12px;border-radius:999px;text-decoration:none;">Route in Google Maps ↗</a>
           </div>`
@@ -234,7 +242,13 @@ export default function KulinarikMap({ tipps }: Props) {
               </div>
               <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.72)', margin: '0 0 10px', lineHeight: 1.6 }}>{k.text}</p>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>📍 Auf der Karte zeigen</span>
+                {ratings[k.name] ? (
+                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#E6C15A' }}>
+                    {fmtRating(ratings[k.name])} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>bei Google</span>
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>📍 Auf der Karte zeigen</span>
+                )}
                 <a href={mapsLink(k)} target="_blank" rel="noopener nofollow" onClick={(e) => e.stopPropagation()}
                   style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', textDecoration: 'none' }}>
                   Route ↗
