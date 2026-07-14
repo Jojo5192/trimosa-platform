@@ -18,7 +18,7 @@ async function requireAdmin() {
   return { user }
 }
 
-async function listByFlag(flag: 'is_admin' | 'is_host') {
+async function listByFlag(flag: 'is_admin' | 'is_host' | 'is_staff') {
   const { data: rows } = await supabaseAdmin
     .from('profiles')
     .select(`id, display_name, ${flag}`)
@@ -37,8 +37,8 @@ export async function GET() {
   const { error } = await requireAdmin()
   if (error) return error
 
-  const [admins, hosts] = await Promise.all([listByFlag('is_admin'), listByFlag('is_host')])
-  return NextResponse.json({ admins, hosts })
+  const [admins, hosts, staff] = await Promise.all([listByFlag('is_admin'), listByFlag('is_host'), listByFlag('is_staff')])
+  return NextResponse.json({ admins, hosts, staff })
 }
 
 /**
@@ -54,9 +54,10 @@ export async function PATCH(req: NextRequest) {
   const email: string | undefined = body.email
   const hasAdmin = typeof body.is_admin === 'boolean'
   const hasHost = typeof body.is_host === 'boolean'
+  const hasStaff = typeof body.is_staff === 'boolean'
 
-  if (!email || (!hasAdmin && !hasHost)) {
-    return NextResponse.json({ error: 'email und is_admin oder is_host (boolean) sind erforderlich.' }, { status: 400 })
+  if (!email || (!hasAdmin && !hasHost && !hasStaff)) {
+    return NextResponse.json({ error: 'email und is_admin, is_host oder is_staff (boolean) sind erforderlich.' }, { status: 400 })
   }
 
   // auth.users isn't queryable via PostgREST — resolve the id through a
@@ -108,6 +109,15 @@ export async function PATCH(req: NextRequest) {
     await supabaseAdmin.auth.admin.updateUserById(target.id, {
       user_metadata: { ...(current.user?.user_metadata ?? {}), role: body.is_host ? 'host' : 'guest' },
     })
+  }
+
+  // ── Staff flag (team chat access, no host/admin rights) ────
+  if (hasStaff) {
+    const { error: e } = await supabaseAdmin
+      .from('profiles')
+      .update({ is_staff: body.is_staff })
+      .eq('id', target.id)
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
