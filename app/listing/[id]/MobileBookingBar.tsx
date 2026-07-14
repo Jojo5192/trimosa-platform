@@ -5,7 +5,8 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { t, type UiLang } from '@/lib/i18n'
 
 interface Props {
-  pricePerNight: number  lang?: UiLang
+  pricePerNight: number
+  lang?: UiLang
 }
 
 export default function MobileBookingBar({ pricePerNight, lang = 'de' }: Props) {
