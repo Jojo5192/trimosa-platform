@@ -208,7 +208,6 @@ export interface Listing {
   booking_url?: string
   vrbo_url?: string
   google_place_id?: string
-  revyoos_property_id?: string
 }
 
 export const CANCELLATION_TEMPLATES = [
