@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { askClaude } from '@/lib/ai'
+import { getChatKnowledge } from '@/lib/chat-knowledge'
 
 /**
  * POST /api/ai/chat-suggest { conversationId } — drafts a host reply to the
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   }
 
-  const [{ data: messages }, { data: listing }] = await Promise.all([
+  const [{ data: messages }, { data: listing }, knowledgeDoc] = await Promise.all([
     supabaseAdmin
       .from('messages')
       .select('sender_id, content, created_at')
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     conv.listing_id
       ? supabaseAdmin.from('listings').select('title, location, check_in_time, check_out_time').eq('id', conv.listing_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    getChatKnowledge(conv.listing_id ?? null).catch(() => ''),
   ])
 
   const history = (messages ?? [])
@@ -101,7 +103,11 @@ Regeln:
 
   const prompt = `${facts}
 
-${knowledge ? `FRÜHERE ECHTE ANTWORTEN DES GASTGEBERS (beste Quelle für Ton UND Fakten —
+${knowledgeDoc ? `WISSENSBASIS (destilliert aus den echten Gast-Konversationen der letzten Jahre —
+verlässlichste Faktenquelle):
+${knowledgeDoc}
+
+` : ''}${knowledge ? `FRÜHERE ECHTE ANTWORTEN DES GASTGEBERS (beste Quelle für Ton UND Fakten —
 Infos daraus darfst du übernehmen, wenn sie zur aktuellen Frage passen; Antworten zu
 DIESER Wohnung haben Vorrang vor allgemeinen):
 ${knowledge}
