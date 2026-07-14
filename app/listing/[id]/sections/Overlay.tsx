@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 /* ── Overlay backdrop ──────────────────────────────────────── */
 export default function Overlay({ onClose, children, title }: { onClose: () => void; children: ReactNode; title: string }) {
