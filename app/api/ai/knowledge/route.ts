@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { backfillSmoobuMessages, refreshChatKnowledge } from '@/lib/chat-knowledge'
+import { REGIONS } from '@/lib/regions'
 
 /**
  * Chat knowledge base management.
@@ -97,6 +98,47 @@ export async function POST(request: Request) {
       detailStatus,
       detailBody,
     })
+  }
+  if (action === 'smoobu-test') {
+    // X-ray one real reservation's messages: shows the raw normalised fields
+    // (type/sender) so the host/guest detection can be matched exactly.
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('smoobu_reservation_id')
+      .not('smoobu_reservation_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!booking?.smoobu_reservation_id) return NextResponse.json({ error: 'Keine Smoobu-Buchung gefunden.' })
+    const { getReservationMessages } = await import('@/lib/smoobu')
+    const msgs = await getReservationMessages(Number(booking.smoobu_reservation_id))
+    return NextResponse.json({
+      reservation: booking.smoobu_reservation_id,
+      count: msgs.length,
+      sample: msgs.slice(0, 8).map((m) => ({ type: m.type, sender: m.sender, subject: m.subject, content: m.message.slice(0, 60) })),
+    })
+  }
+  if (action === 'places-resolve') {
+    // Resolve ALL kulinarik googleQuery entries to place ids (run once when
+    // quota is available; result gets pasted into regions.ts as googlePlaceId).
+    const key = process.env.GOOGLE_PLACES_API_KEY
+    if (!key) return NextResponse.json({ error: 'GOOGLE_PLACES_API_KEY fehlt' })
+    const out: Record<string, string | null> = {}
+    for (const region of Object.values(REGIONS)) {
+      for (const k of region.kulinarik ?? []) {
+        if (!k.googleQuery || k.googlePlaceId) continue
+        const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'places.id,places.displayName' },
+          body: JSON.stringify({ textQuery: k.googleQuery, languageCode: 'de' }),
+          cache: 'no-store',
+        })
+        if (!res.ok) return NextResponse.json({ error: `HTTP ${res.status} bei „${k.name}“`, teilergebnis: out })
+        const place = (await res.json())?.places?.[0]
+        out[k.name] = place ? `${place.id} (${place.displayName?.text ?? '?'})` : null
+      }
+    }
+    return NextResponse.json({ resolved: out })
   }
   return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
 }
