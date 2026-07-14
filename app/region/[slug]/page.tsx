@@ -15,6 +15,7 @@ import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
@@ -100,11 +101,16 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
     'Genuss in {r}',
     'Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.',
     'Weitere Regionen:', 'Über uns',
+    ...[...Object.values(empfehlungen.poi), ...Object.values(empfehlungen.kulinarik), ...Object.values(empfehlungen.tour)].flat().map((e) => e.comment),
   ])
   const trPois = region.pois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))
   const trExtraPois = allExtraPois.map((pp) => ({ ...pp, name: T(pp.name), text: T(pp.text) }))
   const trKulinarik = (region.kulinarik ?? []).map((k) => ({ ...k, art: T(k.art), text: T(k.text) }))
   const trTours = (region.komootTours ?? []).map((k) => ({ ...k, title: T(k.title) }))
+  function trEmp<E extends { comment: string }>(m: Record<string, E[]>): Record<string, E[]> {
+    return Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.map((e) => ({ ...e, comment: T(e.comment) }))]))
+  }
+  const trEmpfehlungen = { poi: trEmp(empfehlungen.poi), kulinarik: trEmp(empfehlungen.kulinarik), tour: trEmp(empfehlungen.tour) }
 
   const sections = [
     { id: 'apartments', label: '🏠 Apartments' },
@@ -264,7 +270,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
           showPoiGrid
           lang={lang}
           tiles="voyager"
-          empfehlungen={empfehlungen.poi}
+          empfehlungen={trEmpfehlungen.poi}
         />
 
         {/* ── Komoot tour inspiration (only when tours are curated) ── */}
@@ -278,10 +284,10 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
               {trTours.map((t) => {
-                const emp = empfehlungen.tour[t.embedUrl]
+                const emp = trEmpfehlungen.tour[t.embedUrl]
                 return (
                   <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
-                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} /></div>}
+                    {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} lang={lang} /></div>}
                     <KomootEmbed title={t.title} embedUrl={t.embedUrl} lang={lang} />
                   </div>
                 )
@@ -306,7 +312,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
             <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.65)', margin: '0 0 20px', maxWidth: '620px', lineHeight: 1.6 }}>
               {T('Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.')}
             </p>
-            <KulinarikMap tipps={trKulinarik} ratings={kulinarikRatings} empfehlungen={empfehlungen.kulinarik} lang={lang} />
+            <KulinarikMap tipps={trKulinarik} ratings={kulinarikRatings} empfehlungen={trEmpfehlungen.kulinarik} lang={lang} />
           </div>
         )}
 
@@ -329,7 +335,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: T('Über uns'), href: '/ueber-uns' }, { label: 'Impressum', href: '/impressum' }, { label: 'Datenschutz', href: '/datenschutz' }, { label: 'AGB', href: '/agb' }].map((item) => (
+            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
