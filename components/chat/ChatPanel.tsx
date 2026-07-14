@@ -324,7 +324,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
-    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 96) + 'px'
+    const maxH = Math.max(160, Math.round(window.innerHeight * 0.4))
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px'
   }, [draft])
   useEffect(() => {
     if (variant !== 'overlay' || !onClose) return
@@ -782,7 +783,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               borderRadius: 22, padding: '10px 16px',
               fontSize: 16, lineHeight: 1.45, fontFamily: 'inherit',
               background: '#FAF9F6', color: '#1A1814',
-              maxHeight: 96, overflowY: 'auto', transition: 'border-color .15s',
+              maxHeight: '40dvh', overflowY: 'auto', transition: 'border-color .15s',
             }}
             onFocus={e => { e.target.style.borderColor = 'var(--gold)' }}
             onBlur={e => { e.target.style.borderColor = '#E0DCD2' }}
