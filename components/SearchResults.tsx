@@ -6,6 +6,7 @@ import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
 import QuickFilters from './QuickFilters'
 import ScoreBadge, { type CardRating } from './ScoreBadge'
+import { t, type UiLang } from '@/lib/i18n'
 
 /* ── Card gradient palette (mirrors page.tsx) ── */
 const CARD_GRADIENTS = [
@@ -51,6 +52,7 @@ interface Props {
   locations?: string[]
   /** Open the fullscreen map immediately on mobile (homepage "Karte anzeigen"). */
   openMapByDefault?: boolean
+  lang?: UiLang
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -97,7 +99,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
         {card.unavailable && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
             <span style={{ fontSize: '11px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', backdropFilter: 'blur(4px)' }}>
-              Nicht verfügbar
+              {t(lang, 'Nicht verfügbar')}
             </span>
           </div>
         )}
@@ -132,13 +134,13 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
                 €{showTotal ? card.totalPrice : card.pricePerNight}
               </span>
               <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>
-                {showTotal ? `${card.nights} Nächte` : '/Nacht'}
+                {showTotal ? `${card.nights} ${t(lang, 'Nächte')}` : t(lang, '/Nacht')}
               </span>
             </div>
           )}
         </div>
         <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
-          {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+          {card.maxGuests} {t(lang, 'Gäste')} · {card.bedrooms} {t(lang, 'Schlafzimmer')}
         </p>
         {card.flexNote && (
           <div style={{ marginTop: '7px' }}>
@@ -146,7 +148,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
               ...(card.unavailable
                 ? { backgroundColor: '#FBF3E3', color: '#8A6D1E', border: '1px solid #F0E0A0' }
                 : { backgroundColor: '#EAF3EC', color: '#2D6A1E', border: '1px solid #CDE6D2' }) }}>
-              📅 {card.unavailable ? 'Alternativ frei' : 'Frei'}: {card.flexNote}
+              📅 {card.unavailable ? t(lang, 'Alternativ frei') : t(lang, 'Frei')}: {card.flexNote}
             </span>
           </div>
         )}
@@ -165,7 +167,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { 
 }
 
 /* ── Main component ── */
-export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [], openMapByDefault = false }: Props) {
+export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [], openMapByDefault = false, lang = 'de' }: Props) {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(openMapByDefault)
   // Hover-sync between the card list and the map markers (both directions).
@@ -248,7 +250,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       if (showGroupDivider && i === firstUnmatchedIdx) {
         out.push(
           <div key="group-divider" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 2px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#888', whiteSpace: 'nowrap' }}>Weitere Ergebnisse in der Nähe</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#888', whiteSpace: 'nowrap' }}>{t(lang, 'Weitere Ergebnisse in der Nähe')}</span>
             <span style={{ flex: 1, height: '1px', background: '#E4E0D8' }} />
           </div>
         )
@@ -273,8 +275,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     }}>
      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
       <h1 style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
-        {sorted.length} Treffer{searchQuery ? <> · <span style={{ color: 'var(--gold)' }}>„{searchQuery}"</span></> : ''}
-        {searchGuests ? ` · ${searchGuests}+ Gäste` : ''}
+        {sorted.length} {t(lang, 'Treffer')}{searchQuery ? <> · <span style={{ color: 'var(--gold)' }}>„{searchQuery}"</span></> : ''}
+        {searchGuests ? ` · ${searchGuests}+ ${t(lang, 'Gäste')}` : ''}
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
         <Link href="/" style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
@@ -312,8 +314,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           ) : (
             <div style={{ textAlign: 'center', padding: '50px 20px', borderRadius: '16px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
-              <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Keine Unterkünfte gefunden</p>
-              <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Versuche andere Filter oder einen anderen Ort.</p>
+              <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>{t(lang, 'Keine Unterkünfte gefunden')}</p>
+              <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>{t(lang, 'Versuche andere Filter oder einen anderen Ort.')}</p>
               <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
                 Suche zurücksetzen
               </Link>
@@ -337,7 +339,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
             <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
           </svg>
-          Karte
+          {t(lang, 'Karte')}
         </button>
 
         {/* Mobile map fullscreen overlay */}
@@ -371,7 +373,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                   <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
                   <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
                 </svg>
-                Liste
+                {t(lang, 'Liste')}
               </button>
             </div>
           </>
@@ -411,8 +413,8 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           ) : (
             <div style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
-              <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Keine Unterkünfte gefunden</p>
-              <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Versuche andere Filter oder einen anderen Ort.</p>
+              <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>{t(lang, 'Keine Unterkünfte gefunden')}</p>
+              <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>{t(lang, 'Versuche andere Filter oder einen anderen Ort.')}</p>
               <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
                 Suche zurücksetzen
               </Link>
