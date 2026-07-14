@@ -280,7 +280,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
         <Link href="/" style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
-          ✕ Zurücksetzen
+          ✕ {t(lang, 'Zurücksetzen')}
         </Link>
       </div>
      </div>
