@@ -47,20 +47,25 @@ export async function backfillSmoobuMessages(page: number): Promise<{
     const rows = messages
       .filter((m) => (m.message ?? '').trim().length > 0)
       .map((m) => {
-        // Smoobu's sender lives in `type` (senderType "owner"/"guest" or
-        // direction "outgoing"/"incoming") — `sender` is just the NAME.
+        // Verified against production data (smoobu-test): `type` is NUMERIC —
+        // "1" = message TO the guest (host/system side, the replies we want),
+        // "2" = message TO the host (guest messages + booking notifications).
+        // `sender` is empty/just a name. String values kept as fallback.
         const t = String(m.type ?? '').toLowerCase()
-        const isHost = t === 'owner' || t === 'outgoing' || t === 'host'
+        const isHost = t === '1' || t === 'owner' || t === 'outgoing' || t === 'host'
+        // E-mail templates arrive as HTML-ish text with whitespace debris
+        const cleaned = m.message.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').replace(/\n{2,}/g, '\n').trim()
         return {
           smoobu_reservation_id: resv.id,
           smoobu_message_id: `${resv.id}_${m.id}`,
           apartment_id: resv.apartmentId,
           listing_id: listingId,
           sender_type: isHost ? 'host' : 'guest',
-          content: m.message.trim().slice(0, 4000),
+          content: cleaned.slice(0, 4000),
           sent_at: m.date || null,
         }
       })
+      .filter((r) => r.content.length > 0)
     if (rows.length > 0) {
       // Full upsert (no ignoreDuplicates) so a re-import CORRECTS existing rows
       const { error, count } = await supabaseAdmin
