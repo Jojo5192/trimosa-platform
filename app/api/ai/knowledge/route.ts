@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { refreshStaleTranslations } from '@/lib/listing-translate'
 import { backfillSmoobuMessages, refreshChatKnowledge } from '@/lib/chat-knowledge'
 import { REGIONS } from '@/lib/regions'
 import { PROMPT_DEFAULTS, getPrompt, invalidatePromptCache } from '@/lib/prompts'
@@ -31,7 +32,10 @@ export async function GET(request: Request) {
     // Daily cron with a 6-day freshness window: each doc is re-distilled
     // roughly weekly, and the time budget spreads the work across days.
     const results = await refreshChatKnowledge(144)
-    return NextResponse.json({ cron: true, results })
+    // Piggyback: re-translate listings whose German texts changed (budgeted).
+    let translations: unknown = null
+    try { translations = await refreshStaleTranslations(2) } catch (err) { console.error('[cron] translations:', err) }
+    return NextResponse.json({ cron: true, results, translations })
   }
 
   const user = await requireAdmin()
