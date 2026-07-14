@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import ChatClient from '@/app/dashboard/chat/ChatClient'
+import ChatPanel from '@/components/chat/ChatPanel'
 
 export default async function GuestChatPage({
   searchParams,
@@ -14,5 +14,5 @@ export default async function GuestChatPage({
   const params = await searchParams
   const initialConvId = params.conv ?? null
 
-  return <ChatClient userId={user.id} initialConvId={initialConvId} />
+  return <ChatPanel variant="page" userId={user.id} initialConvId={initialConvId} />
 }
