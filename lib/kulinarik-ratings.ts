@@ -32,29 +32,44 @@ async function lookupRating(query: string, key: string): Promise<KulinarikRating
   let value: KulinarikRating | null = null
   let failed = false
   try {
-    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    // Two steps, both on endpoints proven to work with this key (the review
+    // sync uses the same place-details call): 1) resolve the place id via
+    // text search with the minimal id-only field mask, 2) fetch the rating
+    // via GET place details.
+    const searchRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': key,
-        'X-Goog-FieldMask': 'places.rating,places.userRatingCount',
+        'X-Goog-FieldMask': 'places.id',
       },
-      body: JSON.stringify({ textQuery: query, languageCode: 'de', maxResultCount: 1 }),
+      body: JSON.stringify({ textQuery: query, languageCode: 'de' }),
       cache: 'no-store',
     })
-    if (res.ok) {
-      const data = await res.json()
-      const place = data?.places?.[0]
-      if (typeof place?.rating === 'number' && typeof place?.userRatingCount === 'number' && place.userRatingCount > 0) {
-        value = { rating: place.rating, count: place.userRatingCount }
-      }
-    } else {
+    if (!searchRes.ok) {
       failed = true
-      console.error('[kulinarik-ratings] Places search failed:', res.status, query, (await res.text().catch(() => '')).slice(0, 200))
+      console.error('[kulinarik-ratings] searchText failed:', searchRes.status, query, (await searchRes.text().catch(() => '')).slice(0, 300))
+    } else {
+      const placeId: string | undefined = (await searchRes.json())?.places?.[0]?.id
+      if (placeId) {
+        const detailRes = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=de`, {
+          headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+          cache: 'no-store',
+        })
+        if (!detailRes.ok) {
+          failed = true
+          console.error('[kulinarik-ratings] details failed:', detailRes.status, query, (await detailRes.text().catch(() => '')).slice(0, 300))
+        } else {
+          const place = await detailRes.json()
+          if (typeof place?.rating === 'number' && typeof place?.userRatingCount === 'number' && place.userRatingCount > 0) {
+            value = { rating: place.rating, count: place.userRatingCount }
+          }
+        }
+      }
     }
   } catch (err) {
     failed = true
-    console.error('[kulinarik-ratings] Places search error:', query, err)
+    console.error('[kulinarik-ratings] lookup error:', query, err)
   }
 
   // Successes AND genuine "no match" results cache for 24 h; transient API
