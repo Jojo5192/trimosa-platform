@@ -150,8 +150,13 @@ Regeln:
   Prozedere beschreiben (z. B. "Code kommt am Anreisetag per Nachricht").
 - Bei widersprüchlichen Antworten gilt die neueste (spätere Einträge sind neuer).
 - Maximal ~600 Wörter. Antworte NUR mit dem Dokument.`
-  // Newest first in the list — cap the volume, Claude weighs later entries as newer
-  const user = pairs.slice(0, 220).map((p, i) => `[${i + 1}]\n${p}`).join('\n\n')
+  // Cap the volume and strip control characters (old mail templates can
+  // carry \u0000 etc., which the API rejects with 400)
+  const user = pairs.slice(0, 150)
+    .map((p, i) => `[${i + 1}]\n${p}`)
+    .join('\n\n')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
   return askClaude(system, user, 1400)
 }
 
