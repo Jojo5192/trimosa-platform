@@ -64,24 +64,57 @@ export async function GET() {
   for (const r of unreadRows ?? []) unread[r.conversation_id] = (unread[r.conversation_id] ?? 0) + 1
   const guestProfile = new Map((avatars ?? []).map((p) => [p.id, p]))
 
-  // Booking threads: last message + unread from the booking-message world
+  // Booking threads: last message + unread from the booking-message world.
+  // Live messages only exist once a thread was opened — for everything else
+  // the Smoobu ARCHIVE (backfilled history) provides the true last-message
+  // time, preview and sender.
   const bookingRows = (bookings ?? []).filter((b) => {
     const convs = b.conversations as { id: string }[] | { id: string } | null
     return !convs || (Array.isArray(convs) && convs.length === 0)
   })
   const bookingIds = bookingRows.map((b) => b.id)
+  const smoobuIds = bookingRows.map((b) => Number(b.smoobu_reservation_id)).filter(Number.isFinite)
+
+  type Last = { at: string; preview: string; sender: 'guest' | 'host' }
+  const lastLive: Record<string, Last> = {}
+  const bUnread: Record<string, number> = {}
   const { data: bMsgs } = bookingIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('booking_id, created_at, sender_type, read_at')
+        .select('booking_id, created_at, sender_type, read_at, content, content_de')
         .in('booking_id', bookingIds)
+        .order('created_at', { ascending: false })
+        .limit(800)
     : { data: [] }
-  const lastMsg: Record<string, string> = {}
-  const bUnread: Record<string, number> = {}
   for (const m of bMsgs ?? []) {
     if (!m.booking_id) continue
-    if (!lastMsg[m.booking_id] || m.created_at > lastMsg[m.booking_id]) lastMsg[m.booking_id] = m.created_at
+    if (!lastLive[m.booking_id]) {
+      lastLive[m.booking_id] = {
+        at: m.created_at,
+        preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
+        sender: m.sender_type === 'guest' ? 'guest' : 'host',
+      }
+    }
     if (m.sender_type === 'guest' && !m.read_at) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
+  }
+
+  const lastArchive: Record<number, Last> = {}
+  const { data: aMsgs } = smoobuIds.length
+    ? await supabaseAdmin
+        .from('smoobu_message_archive')
+        .select('smoobu_reservation_id, sent_at, sender_type, content')
+        .in('smoobu_reservation_id', smoobuIds)
+        .order('sent_at', { ascending: false })
+        .limit(2000)
+    : { data: [] }
+  for (const m of aMsgs ?? []) {
+    if (!lastArchive[m.smoobu_reservation_id] && m.sent_at) {
+      lastArchive[m.smoobu_reservation_id] = {
+        at: m.sent_at,
+        preview: (m.content || '').replace(/\s+/g, ' ').slice(0, 90),
+        sender: m.sender_type === 'guest' ? 'guest' : 'host',
+      }
+    }
   }
 
   function guestStatus(checkIn: string | null, checkOut: string | null): 'current' | 'upcoming' | 'past' | null {
@@ -91,9 +124,28 @@ export async function GET() {
     return 'past'
   }
 
+  const { data: dMsgs } = convIds.length
+    ? await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, created_at, sender_id, content, content_de')
+        .in('conversation_id', convIds)
+        .order('created_at', { ascending: false })
+        .limit(400)
+    : { data: [] }
+  const lastDirect: Record<string, { preview: string; senderId: string | null }> = {}
+  for (const m of dMsgs ?? []) {
+    if (m.conversation_id && !lastDirect[m.conversation_id]) {
+      lastDirect[m.conversation_id] = {
+        preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
+        senderId: m.sender_id ?? null,
+      }
+    }
+  }
+
   const directThreads = (conversations ?? []).map((c) => {
     const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string } | null
     const gp = guestProfile.get(c.guest_id)
+    const last = lastDirect[c.id]
     return {
       kind: 'direct' as const,
       id: c.id,
@@ -105,29 +157,41 @@ export async function GET() {
       checkOut: b?.check_out ?? null,
       guestStatus: guestStatus(b?.check_in ?? null, b?.check_out ?? null),
       lastMessageAt: c.last_message_at,
+      lastPreview: last?.preview ?? null,
+      lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
       unread: unread[c.id] ?? 0,
     }
   })
 
   const bookingThreads = bookingRows
     // Only meaningful threads: has messages OR guest is current/upcoming
-    .filter((b) => lastMsg[b.id] || guestStatus(b.check_in, b.check_out) !== 'past')
-    .map((b) => ({
-      kind: 'booking' as const,
-      id: b.id,
-      guestName: b.guest_name || 'Gast',
-      guestAvatar: null,
-      listingTitle: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? null,
-      platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
-      checkIn: b.check_in,
-      checkOut: b.check_out,
-      guestStatus: guestStatus(b.check_in, b.check_out),
-      lastMessageAt: lastMsg[b.id] ?? b.created_at,
-      unread: bUnread[b.id] ?? 0,
-    }))
+    .filter((b) => lastLive[b.id] || lastArchive[Number(b.smoobu_reservation_id)] || guestStatus(b.check_in, b.check_out) !== 'past')
+    .map((b) => {
+      const last = lastLive[b.id] ?? lastArchive[Number(b.smoobu_reservation_id)] ?? null
+      return {
+        kind: 'booking' as const,
+        id: b.id,
+        guestName: b.guest_name || 'Gast',
+        guestAvatar: null,
+        listingTitle: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? null,
+        platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
+        checkIn: b.check_in,
+        checkOut: b.check_out,
+        guestStatus: guestStatus(b.check_in, b.check_out),
+        lastMessageAt: last?.at ?? null,
+        lastPreview: last?.preview ?? null,
+        lastSender: last?.sender ?? null,
+        unread: bUnread[b.id] ?? 0,
+      }
+    })
 
-  const threads = [...directThreads, ...bookingThreads]
+  // Threads WITH messages sort by recency; the rest (no chat yet) follow,
+  // nearest arrival first — that's the natural priority order for the team.
+  const withMsg = [...directThreads, ...bookingThreads].filter((t) => t.lastMessageAt)
     .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
+  const withoutMsg = [...directThreads, ...bookingThreads].filter((t) => !t.lastMessageAt)
+    .sort((a, b) => (a.checkIn ?? '9999').localeCompare(b.checkIn ?? '9999'))
+  const threads = [...withMsg, ...withoutMsg]
 
   return NextResponse.json({ userId: user.id, threads })
 }
