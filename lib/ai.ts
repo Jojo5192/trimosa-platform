@@ -5,6 +5,7 @@
  */
 
 const MODEL = 'claude-sonnet-5'
+export const FAST_MODEL = 'claude-haiku-4-5-20251001'
 
 /**
  * Text truncation (slice) can cut emoji surrogate pairs in half — a lone
@@ -17,7 +18,7 @@ function stripLoneSurrogates(s: string): string {
     .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
 }
 
-export async function askClaude(system: string, user: string, maxTokens = 1500): Promise<string> {
+export async function askClaude(system: string, user: string, maxTokens = 1500, model: string = MODEL): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY ist nicht konfiguriert.')
   system = stripLoneSurrogates(system)
@@ -31,7 +32,7 @@ export async function askClaude(system: string, user: string, maxTokens = 1500):
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: user }],
