@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import type { SmoobuRateMap } from '@/lib/smoobu'
+import { t, MONTHS, DAYS_SHORT, type UiLang } from '@/lib/i18n'
 
 interface BookingBoxProps {
   listingId: string
@@ -15,7 +16,7 @@ interface BookingBoxProps {
   cancellationPolicy?: string
   initialCheckIn?: string
   initialCheckOut?: string
-  initialGuests?: number
+  initialGuests?: number  lang?: UiLang
 }
 
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
@@ -38,13 +39,14 @@ const POLICY_LABELS: Record<string, string> = {
 /* ── Mini calendar ─────────────────────────────────────────── */
 function CalendarMonth({
   year, month, rates, checkIn, checkOut, selecting,
-  onSelectDate, minDate,
+  onSelectDate, minDate, lang = 'de',
 }: {
   year: number; month: number
   rates: SmoobuRateMap
   checkIn: string; checkOut: string; selecting: 'in' | 'out'
   onSelectDate: (iso: string) => void
   minDate: string
+  lang?: UiLang
 }) {
   const firstDow = new Date(year, month, 1).getDay()
   const leadBlanks = firstDow === 0 ? 6 : firstDow - 1
@@ -64,10 +66,10 @@ function CalendarMonth({
   return (
     <div>
       <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', textAlign: 'center', marginBottom: '10px' }}>
-        {DE_MONTHS[month]} {year}
+        {(lang === 'de' ? DE_MONTHS : MONTHS[lang])[month]} {year}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
-        {DE_DAYS_SHORT.map(d => (
+        {(lang === 'de' ? DE_DAYS_SHORT : DAYS_SHORT[lang]).map(d => (
           <div key={d} style={{ textAlign: 'center', fontSize: '10px', fontWeight: 600, color: '#999', padding: '2px 0' }}>{d}</div>
         ))}
       </div>
@@ -117,6 +119,7 @@ export default function BookingBox({
   initialCheckIn,
   initialCheckOut,
   initialGuests,
+  lang = 'de',
 }: BookingBoxProps) {
   const router = useRouter()
 
@@ -199,8 +202,8 @@ export default function BookingBox({
   function formatDate(iso: string) {
     if (!iso) return ''
     const [, m, d] = iso.split('-')
-    const months = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
-    return `${parseInt(d)}. ${months[parseInt(m)-1]}`
+    const months = lang === 'de' ? ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'] : MONTHS[lang]
+    return lang === 'en' ? `${months[parseInt(m)-1].slice(0,3)} ${parseInt(d)}` : `${parseInt(d)}. ${months[parseInt(m)-1].slice(0,4)}`
   }
 
   function calcNights() {
@@ -300,7 +303,7 @@ export default function BookingBox({
         ) : hasBothDates && displayPrice ? (
           <>
             <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {displayPrice}</span>
-            <span style={{ fontSize: '13px', color: '#999' }}>/ {nights} {nights === 1 ? 'Nacht' : 'Nächte'}</span>
+            <span style={{ fontSize: '13px', color: '#999' }}>/ {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
           </>
         ) : pricePerNight > 0 ? (
           <>
@@ -308,14 +311,14 @@ export default function BookingBox({
             <span style={{ fontSize: '13px', color: '#999' }}>/ Nacht</span>
           </>
         ) : (
-          <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>Zeitraum eingeben für Preisangabe</span>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>{t(lang, 'Zeitraum eingeben für Preisangabe')}</span>
         )}
       </div>
 
       {/* Mode Toggle */}
       {allowInstant && allowRequests && (
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', padding: '4px', background: '#F5F3EF', borderRadius: '12px' }}>
-          {([['instant', '⚡ Sofort buchen'], ['request', '✉ Anfrage stellen']] as const).map(([m, label]) => (
+          {([['instant', t(lang, '⚡ Sofort buchen')], ['request', t(lang, '✉ Anfrage stellen')]] as const).map(([m, label]) => (
             <button
               key={m}
               type="button"
@@ -345,7 +348,7 @@ export default function BookingBox({
       {/* Only requests label */}
       {!allowInstant && allowRequests && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '14px', fontSize: '12px', fontWeight: 600, color: '#92400E', background: '#FFF7ED', padding: '4px 10px', borderRadius: '99px' }}>
-          ✉ Nur Anfragen möglich
+          {t(lang, '✉ Nur Anfragen möglich')}
         </div>
       )}
 
@@ -356,15 +359,15 @@ export default function BookingBox({
       >
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: calendarOpen ? '1px solid #F0EEE8' : 'none' }}>
           <div style={{ padding: '12px 14px', borderRight: '1px solid #F0EEE8', background: selecting === 'in' && calendarOpen ? '#FAFAFA' : '#fff' }}>
-            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 3px' }}>Anreise</p>
+            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 3px' }}>{t(lang, 'Anreise')}</p>
             <p style={{ fontSize: '13px', fontWeight: checkIn ? 600 : 400, color: checkIn ? '#111' : '#BBB', margin: 0 }}>
-              {checkIn ? formatDate(checkIn) : 'Datum wählen'}
+              {checkIn ? formatDate(checkIn) : t(lang, 'Datum wählen')}
             </p>
           </div>
           <div style={{ padding: '12px 14px', background: selecting === 'out' && calendarOpen ? '#FAFAFA' : '#fff' }}>
-            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 3px' }}>Abreise</p>
+            <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 3px' }}>{t(lang, 'Abreise')}</p>
             <p style={{ fontSize: '13px', fontWeight: checkOut ? 600 : 400, color: checkOut ? '#111' : '#BBB', margin: 0 }}>
-              {checkOut ? formatDate(checkOut) : 'Datum wählen'}
+              {checkOut ? formatDate(checkOut) : t(lang, 'Datum wählen')}
             </p>
           </div>
         </div>
@@ -376,15 +379,15 @@ export default function BookingBox({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <button type="button" onClick={() => setCalMonth(m => addMonths(m, -1))}
               style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}>‹</button>
-            <span style={{ fontSize: '12px', color: '#888' }}>{selecting === 'in' ? 'Anreise wählen' : 'Abreise wählen'}</span>
+            <span style={{ fontSize: '12px', color: '#888' }}>{selecting === 'in' ? t(lang, 'Anreise wählen') : t(lang, 'Abreise wählen')}</span>
             <button type="button" onClick={() => setCalMonth(m => addMonths(m, 1))}
               style={{ background: 'none', border: '1px solid #E0DDD6', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', fontSize: '14px' }}>›</button>
           </div>
           <div className="detail-bb-cal-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            <CalendarMonth year={calMonth.getFullYear()} month={calMonth.getMonth()}
+            <CalendarMonth lang={lang} year={calMonth.getFullYear()} month={calMonth.getMonth()}
               rates={rates} checkIn={checkIn} checkOut={checkOut}
               selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate} />
-            <CalendarMonth year={addMonths(calMonth,1).getFullYear()} month={addMonths(calMonth,1).getMonth()}
+            <CalendarMonth lang={lang} year={addMonths(calMonth,1).getFullYear()} month={addMonths(calMonth,1).getMonth()}
               rates={rates} checkIn={checkIn} checkOut={checkOut}
               selecting={selecting} onSelectDate={handleSelectDate} minDate={minDate} />
           </div>
@@ -401,10 +404,10 @@ export default function BookingBox({
 
       {/* Guests */}
       <div style={{ borderRadius: '14px', border: '1.5px solid #E0DDD6', padding: '12px 14px', marginBottom: '12px' }}>
-        <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 10px' }}>Gäste</p>
+        <p style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', color: '#AAA', textTransform: 'uppercase', margin: '0 0 10px' }}>{t(lang, 'Gäste')}</p>
         {[
-          { label: 'Erwachsene', sub: 'ab 13 Jahren', val: adults, set: setAdults, min: 1, max: 16 },
-          { label: 'Kinder', sub: 'bis 12 Jahre', val: children, set: setChildren, min: 0, max: 10 },
+          { label: t(lang, 'Erwachsene'), sub: t(lang, 'ab 13 Jahren'), val: adults, set: setAdults, min: 1, max: 16 },
+          { label: t(lang, 'Kinder'), sub: t(lang, 'bis 12 Jahre'), val: children, set: setChildren, min: 0, max: 10 },
         ].map(({ label, sub, val, set, min, max }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <div>
@@ -430,7 +433,7 @@ export default function BookingBox({
       {mode === 'request' && (
         <div style={{ marginBottom: '12px' }}>
           <p style={{ fontSize: '11px', fontWeight: 700, color: '#888', letterSpacing: '0.05em', textTransform: 'uppercase', margin: '0 0 6px' }}>
-            Preisvorschlag (optional)
+            {t(lang, 'Preisvorschlag (optional)')}
           </p>
           <div style={{ position: 'relative' }}>
             <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#888' }}>€</span>
@@ -454,7 +457,7 @@ export default function BookingBox({
       <textarea
         value={message}
         onChange={e => setMessage(e.target.value)}
-        placeholder={mode === 'instant' ? 'Nachricht an den Gastgeber (optional)' : 'Deine Anfrage / Nachricht an den Gastgeber'}
+        placeholder={mode === 'instant' ? t(lang, 'Nachricht an den Gastgeber (optional)') : t(lang, 'Deine Anfrage / Nachricht an den Gastgeber')}
         rows={2}
         style={{ ...inputStyle, resize: 'none', marginBottom: '12px' }}
       />
@@ -463,19 +466,19 @@ export default function BookingBox({
       {hasBothDates && nights > 0 && (
         <div style={{ padding: '12px 0', borderTop: '1px solid #F0EEE8', borderBottom: '1px solid #F0EEE8', marginBottom: '12px' }}>
           {availability?.minStayViolation && (
-            <p style={{ fontSize: '11px', color: '#E67E22', marginBottom: '6px' }}>⚠ Mindestaufenthalt nicht erfüllt.</p>
+            <p style={{ fontSize: '11px', color: '#E67E22', marginBottom: '6px' }}>{t(lang, '⚠ Mindestaufenthalt nicht erfüllt.')}</p>
           )}
           {mode === 'request' && nights < minRequestNights && (
             <p style={{ fontSize: '11px', color: '#E67E22', marginBottom: '6px' }}>
-              ⚠ Anfragen erst ab {minRequestNights} Nächten möglich.
+              {t(lang, '⚠ Anfragen erst ab {n} Nächten möglich.', { n: minRequestNights })}
             </p>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#555', marginBottom: '4px' }}>
-            <span>€ {pricePerNight} × {nights} {nights === 1 ? 'Nacht' : 'Nächte'}</span>
+            <span>€ {pricePerNight} × {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
             <span>≈ € {displayPrice ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 700, color: '#111' }}>
-            <span>Gesamt</span>
+            <span>{t(lang, 'Gesamt')}</span>
             <span>€ {displayPrice ?? '—'}</span>
           </div>
         </div>
@@ -485,7 +488,7 @@ export default function BookingBox({
       {mode === 'request' && (
         <div style={{ marginBottom: '12px', padding: '10px 14px', background: '#FFF7ED', borderRadius: '10px', border: '1px solid #FED7AA' }}>
           <p style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.5 }}>
-            ⚠️ <strong>Wichtig:</strong> Der Zeitraum wird erst nach Bestätigung durch den Gastgeber blockiert. Bis dahin können andere Gäste den selben Zeitraum buchen.
+            ⚠️ <strong>{t(lang, 'Wichtig:')}</strong> {t(lang, 'Der Zeitraum wird erst nach Bestätigung durch den Gastgeber blockiert. Bis dahin können andere Gäste den selben Zeitraum buchen.')}
           </p>
         </div>
       )}
@@ -494,34 +497,34 @@ export default function BookingBox({
       {status === 'success' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: '12px' }}>
           <p style={{ fontSize: '13px', fontWeight: 600, color: '#16A34A', margin: 0 }}>
-            {mode === 'instant' ? '✓ Buchung erfolgreich!' : '✓ Anfrage gesendet!'}
+            {mode === 'instant' ? t(lang, '✓ Buchung erfolgreich!') : t(lang, '✓ Anfrage gesendet!')}
           </p>
-          <p style={{ fontSize: '11px', color: '#22C55E', margin: '2px 0 0' }}>Du wirst weitergeleitet…</p>
+          <p style={{ fontSize: '11px', color: '#22C55E', margin: '2px 0 0' }}>{t(lang, 'Du wirst weitergeleitet…')}</p>
         </div>
       )}
       {status === 'unavailable' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '12px' }}>
-          <p style={{ fontSize: '13px', fontWeight: 600, color: '#DC2626', margin: 0 }}>Diese Daten sind leider nicht verfügbar.</p>
-          <p style={{ fontSize: '11px', color: '#EF4444', margin: '2px 0 0' }}>Bitte wähle andere Reisedaten.</p>
+          <p style={{ fontSize: '13px', fontWeight: 600, color: '#DC2626', margin: 0 }}>{t(lang, 'Diese Daten sind leider nicht verfügbar.')}</p>
+          <p style={{ fontSize: '11px', color: '#EF4444', margin: '2px 0 0' }}>{t(lang, 'Bitte wähle andere Reisedaten.')}</p>
         </div>
       )}
       {status === 'error' && (
-        <p style={{ fontSize: '12px', color: '#DC2626', marginBottom: '12px' }}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</p>
+        <p style={{ fontSize: '12px', color: '#DC2626', marginBottom: '12px' }}>{t(lang, 'Etwas ist schiefgelaufen. Bitte erneut versuchen.')}</p>
       )}
       {status === 'not-logged-in' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
           <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
-            Bitte <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>anmelden</a> um zu buchen.
+            {t(lang, 'Bitte')} <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>{t(lang, 'anmelden')}</a> {t(lang, 'um zu buchen.')}
           </p>
         </div>
       )}
       {status === 'profile-incomplete' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
-          <p style={{ fontSize: '13px', color: '#92400E', margin: '0 0 6px', fontWeight: 700 }}>Profil unvollständig</p>
+          <p style={{ fontSize: '13px', color: '#92400E', margin: '0 0 6px', fontWeight: 700 }}>{t(lang, 'Profil unvollständig')}</p>
           <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 8px' }}>
-            Bitte ergänze Vor- und Nachname sowie deine Adresse, um buchen zu können.
+            {t(lang, 'Bitte ergänze Vor- und Nachname sowie deine Adresse, um buchen zu können.')}
           </p>
-          <a href="/guest/profile" style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', textDecoration: 'underline' }}>Profil vervollständigen →</a>
+          <a href="/guest/profile" style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', textDecoration: 'underline' }}>{t(lang, 'Profil vervollständigen →')}</a>
         </div>
       )}
 
@@ -543,8 +546,8 @@ export default function BookingBox({
           ? 'Wird verarbeitet…'
           : !checkIn ? 'Anreisedatum wählen'
           : !checkOut ? 'Abreisedatum wählen'
-          : mode === 'instant' ? '⚡ Jetzt buchen'
-          : '✉ Anfrage senden'}
+          : mode === 'instant' ? t(lang, '⚡ Jetzt buchen')
+          : t(lang, '✉ Anfrage senden')}
       </button>
 
       {/* Footer info */}
@@ -560,7 +563,7 @@ export default function BookingBox({
         )}
         {cancellationPolicy && POLICY_LABELS[cancellationPolicy] && (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#AAA', margin: 0 }}>
-            🛡 {POLICY_LABELS[cancellationPolicy]}
+            🛡 {t(lang, POLICY_LABELS[cancellationPolicy])}
           </p>
         )}
       </div>
