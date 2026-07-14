@@ -12,6 +12,24 @@ interface Conversation {
   kind?: 'direct' | 'booking'
   platform?: string
   guestStatus?: 'current' | 'upcoming' | 'past' | null
+  lastPreview?: string | null
+  lastSender?: 'guest' | 'host' | null
+}
+
+type InboxFilter = 'alle' | 'unbeantwortet' | 'ungelesen' | 'vorort' | 'kommend'
+const INBOX_FILTERS: { id: InboxFilter; label: string }[] = [
+  { id: 'alle', label: 'Alle' },
+  { id: 'unbeantwortet', label: 'Unbeantwortet' },
+  { id: 'ungelesen', label: 'Ungelesen' },
+  { id: 'vorort', label: 'Vor Ort' },
+  { id: 'kommend', label: 'Kommend' },
+]
+function matchesFilter(c: Conversation, f: InboxFilter): boolean {
+  if (f === 'unbeantwortet') return c.lastSender === 'guest'
+  if (f === 'ungelesen') return c.unread > 0
+  if (f === 'vorort') return c.guestStatus === 'current'
+  if (f === 'kommend') return c.guestStatus === 'upcoming'
+  return true
 }
 
 /* ── Badges (platform + guest status), team inbox only ── */
@@ -158,6 +176,44 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [loading, setLoading]   = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({})
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('alle')
+  const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
+
+  /* ── PWA push: register SW + reflect subscription state (team only) ── */
+  useEffect(() => {
+    if (!team || typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
+    navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+      const sub = await reg.pushManager.getSubscription()
+      setPushState(sub ? 'on' : 'off')
+    }).catch(() => setPushState('unsupported'))
+  }, [team])
+
+  async function togglePush() {
+    if (pushState === 'unsupported') return
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) {
+        await fetch('/api/push', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) })
+        await existing.unsubscribe()
+        setPushState('off')
+        return
+      }
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') return
+      const keyRes = await fetch('/api/push')
+      const { publicKey, error } = await keyRes.json()
+      if (!publicKey) { alert(error ?? 'Push ist noch nicht konfiguriert.'); return }
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey })
+      const res = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) })
+      setPushState(res.ok ? 'on' : 'off')
+    } catch (e) {
+      // iOS Safari outside an installed PWA cannot subscribe
+      alert('Push konnte nicht aktiviert werden. Auf dem iPhone: Seite über „Teilen → Zum Home-Bildschirm" installieren und dort erneut versuchen.')
+      console.error('[push] subscribe failed:', e)
+    }
+  }
   const [pendingSend, setPendingSend] = useState<{ original: string; translated: string; lang: string } | null>(null)
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
@@ -195,6 +251,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         guest_avatar_url: t.guestAvatar ?? null, host_avatar_url: null,
         check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
         platform: t.platform, guestStatus: t.guestStatus,
+        lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
       }))
       setConvs(data)
       return data
@@ -359,6 +416,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
      CONVERSATION LIST (shared between mobile list view + desktop sidebar)
   ═══════════════════════════════════════════════════════════ */
   function ConvList({ fullWidth = false }: { fullWidth?: boolean }) {
+    const filtered = team ? convs.filter(c => matchesFilter(c, inboxFilter)) : convs
     return (
       <div style={{
         width: fullWidth ? '100%' : 270,
@@ -369,10 +427,38 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         display: 'flex', flexDirection: 'column',
         flex: fullWidth ? 1 : undefined,
       }}>
+        {team && (
+          <div style={{ display: 'flex', gap: 6, padding: '10px 10px 8px', overflowX: 'auto', flexShrink: 0, borderBottom: '1px solid #EDEBE4', background: '#FAFAF8', position: 'sticky', top: 0, zIndex: 2 }}>
+            {INBOX_FILTERS.map(f => {
+              const count = f.id === 'alle' ? convs.length : convs.filter(c => matchesFilter(c, f.id)).length
+              const activeF = inboxFilter === f.id
+              if (f.id !== 'alle' && count === 0 && !activeF) return null
+              return (
+                <button key={f.id} onClick={() => setInboxFilter(f.id)} style={{
+                  flexShrink: 0, padding: '5px 11px', borderRadius: 999, cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 700,
+                  border: activeF ? '1px solid transparent' : '1px solid #E5E1D6',
+                  background: activeF ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#fff',
+                  color: activeF ? '#fff' : '#6B6455',
+                }}>
+                  {f.label}{count > 0 && f.id !== 'alle' ? ` ${count}` : ''}
+                </button>
+              )
+            })}
+            {pushState !== 'unsupported' && pushState !== 'unknown' && (
+              <button onClick={togglePush} title={pushState === 'on' ? 'Push-Mitteilungen aktiv — tippen zum Deaktivieren' : 'Push-Mitteilungen aktivieren'} style={{
+                flexShrink: 0, marginLeft: 'auto', width: 28, height: 28, borderRadius: '50%',
+                border: '1px solid #E5E1D6', background: pushState === 'on' ? '#FAF5E4' : '#fff',
+                cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: pushState === 'on' ? 1 : 0.55,
+              }}>{pushState === 'on' ? '🔔' : '🔕'}</button>
+            )}
+          </div>
+        )}
         {loading && (
           <div style={{ padding: 32, textAlign: 'center', color: '#999', fontSize: 13 }}>Lädt…</div>
         )}
-        {!loading && convs.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <div style={{ padding: '64px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>Keine Nachrichten</div>
@@ -381,7 +467,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </div>
           </div>
         )}
-        {convs.map(c => {
+        {filtered.map(c => {
           const isSel = !isMobile && active?.id === c.id
           return (
             <button key={c.id} onClick={() => selectConv(c)} style={{
@@ -415,9 +501,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <span style={{ fontSize: fullWidth ? 15 : 13, fontWeight: c.unread ? 700 : 500, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: fullWidth ? 200 : 130 }}>
                     {partner(c)}
                   </span>
-                  <span style={{ fontSize: 11, color: '#AAA', flexShrink: 0, marginLeft: 8 }}>{fmtTime(c.last_message_at)}</span>
+                  <span style={{ fontSize: 11, color: '#AAA', flexShrink: 0, marginLeft: 8 }}>
+                    {c.last_message_at
+                      ? fmtTime(c.last_message_at)
+                      : c.check_in
+                        ? `ab ${new Date(c.check_in).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
+                        : ''}
+                  </span>
                 </div>
-                <div style={{ fontSize: fullWidth ? 13 : 11, color: c.unread ? '#5A4A1A' : '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 500 : 400 }}>
+                {c.lastPreview && (
+                  <div style={{ fontSize: fullWidth ? 12.5 : 11.5, color: c.unread ? '#3A3427' : '#8A857B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 600 : 400, marginBottom: 2 }}>
+                    {c.lastSender === 'host' && <span style={{ color: '#B5A97F' }}>Du: </span>}
+                    {c.lastPreview}
+                  </div>
+                )}
+                <div style={{ fontSize: fullWidth ? 12 : 10.5, color: '#A9A499', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {c.listing_title ?? '—'}
                   {fmtDateRange(c.check_in, c.check_out) && <span style={{ color: '#B5A97F' }}> · {fmtDateRange(c.check_in, c.check_out)}</span>}
                 </div>
