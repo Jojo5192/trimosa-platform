@@ -47,7 +47,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
   // Initial load
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/reviews?listingId=${listingId}&limit=${LIMIT}&offset=0`)
+    fetch(`/api/reviews?listingId=${listingId}&limit=${LIMIT}&offset=0&lang=${lang}`)
       .then(r => r.json())
       .then((d: ReviewsAggregate) => {
         setData(d)
@@ -61,7 +61,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
   function loadMore() {
     const params = new URLSearchParams({ listingId, limit: String(LIMIT), offset: String(offset) })
     if (filterSource) params.set('source', filterSource)
-    fetch(`/api/reviews?${params}`)
+    fetch(`/api/reviews?${params}&lang=${lang}`)
       .then(r => r.json())
       .then((d: ReviewsAggregate) => {
         setAllReviews(prev => [...prev, ...d.reviews])
@@ -74,7 +74,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
     setOffset(0)
     const params = new URLSearchParams({ listingId, limit: String(LIMIT), offset: '0' })
     if (source) params.set('source', source)
-    fetch(`/api/reviews?${params}`)
+    fetch(`/api/reviews?${params}&lang=${lang}`)
       .then(r => r.json())
       .then((d: ReviewsAggregate) => {
         setAllReviews(d.reviews)
@@ -180,7 +180,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
       {/* ── Guest Review Form ── */}
       {guestFormOpen && submitStatus !== 'success' && (
         <div style={{ padding: '20px', borderRadius: '14px', background: '#FAF5E4', border: '1px solid #E8D9A0', marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px' }}>⭐ Deine Bewertung</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1D1D1F', margin: '0 0 12px' }}>{t(lang, '⭐ Deine Bewertung')}</h3>
           <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
             {[1, 2, 3, 4, 5].map(star => (
               <button key={star} type="button" onClick={() => setGuestRating(star)}
@@ -204,8 +204,8 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
             rows={4}
             style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #E0DDD6', fontSize: '13px', resize: 'none', marginBottom: '10px', boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }}
           />
-          {submitStatus === 'error' && <p style={{ fontSize: '12px', color: '#DC2626', margin: '0 0 8px' }}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</p>}
-          {submitStatus === 'no-booking' && <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 8px' }}>Du musst einen abgeschlossenen Aufenthalt haben, um bewerten zu können.</p>}
+          {submitStatus === 'error' && <p style={{ fontSize: '12px', color: '#DC2626', margin: '0 0 8px' }}>{t(lang, 'Etwas ist schiefgelaufen. Bitte erneut versuchen.')}</p>}
+          {submitStatus === 'no-booking' && <p style={{ fontSize: '12px', color: '#92400E', margin: '0 0 8px' }}>{t(lang, 'Du musst einen abgeschlossenen Aufenthalt haben, um bewerten zu können.')}</p>}
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               type="button"
@@ -252,8 +252,8 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
       )}
       {submitStatus === 'success' && (
         <div style={{ padding: '20px', borderRadius: '14px', background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: '20px', textAlign: 'center' }}>
-          <p style={{ fontSize: '15px', fontWeight: 600, color: '#16A34A', margin: '0 0 4px' }}>✓ Vielen Dank für deine Bewertung!</p>
-          <p style={{ fontSize: '13px', color: '#22C55E', margin: 0 }}>Deine Bewertung wird jetzt angezeigt.</p>
+          <p style={{ fontSize: '15px', fontWeight: 600, color: '#16A34A', margin: '0 0 4px' }}>{t(lang, '✓ Vielen Dank für deine Bewertung!')}</p>
+          <p style={{ fontSize: '13px', color: '#22C55E', margin: 0 }}>{t(lang, 'Deine Bewertung wird jetzt angezeigt.')}</p>
         </div>
       )}
 
@@ -329,7 +329,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
             cursor: 'pointer', width: '100%',
           }}
         >
-          Mehr laden
+          {t(lang, 'Mehr laden')}
         </button>
       )}
 
