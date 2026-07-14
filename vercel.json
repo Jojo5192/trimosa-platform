@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/ai/knowledge",
-      "schedule": "0 5 * * 1"
+      "schedule": "30 4 * * *"
     }
   ]
 }
