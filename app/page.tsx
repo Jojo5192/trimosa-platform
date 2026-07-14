@@ -3,6 +3,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData } from '@/components/SearchResults'
+import { t, type UiLang } from '@/lib/i18n'
+import { getUiLang } from '@/lib/i18n-server'
 import QuickFilters from '@/components/QuickFilters'
 import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
@@ -86,6 +88,7 @@ function rankListings(
   listings: Record<string, unknown>[],
   query: string | undefined,
   guestsFilter: number | undefined,
+  lang: UiLang = 'de',
 ): ScoredListing[] {
   const searchCoords = query ? getCoords(query) : null
   const qLower = query?.toLowerCase() ?? ''
@@ -108,7 +111,7 @@ function rankListings(
         const matchedWords = words.filter(w => loc.includes(w) || title.includes(w))
         score += matchedWords.length * 30
         if (matchedWords.length === 0) {
-          issues.push('Anderer Ort')
+          issues.push(t(lang, 'Anderer Ort'))
         }
       }
     }
@@ -128,7 +131,7 @@ function rankListings(
         score += 40
       } else {
         score += 10
-        issues.push(`Max. ${maxGuests} Gäste`)
+        issues.push(`Max. ${maxGuests} ${t(lang, 'Gäste')}`)
       }
     }
 
@@ -155,6 +158,7 @@ export default async function Home({
   searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string; flex?: string }>
 }) {
   const { q, guests, checkin, checkout, view, flex } = await searchParams
+  const lang = await getUiLang()
   const guestsNum = guests ? parseInt(guests) : undefined
 
   // Calculate nights for total price display
@@ -175,7 +179,7 @@ export default async function Home({
   // Map view can also be opened straight from the homepage (?view=map) without
   // any active filter — then we show all active listings on the map.
   const showResults = hasSearch || view === 'map'
-  const ranked = hasSearch ? rankListings(filtered, q, guestsNum) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] as string[], matched: true }))
+  const ranked = hasSearch ? rankListings(filtered, q, guestsNum, lang) : filtered.map(l => ({ listing: l, score: 0, distanceKm: null, issues: [] as string[], matched: true }))
 
   // Top location names for the quick-filter pills (shared by homepage + search view)
   const locationCounts: Record<string, number> = {}
@@ -308,7 +312,7 @@ export default async function Home({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
       />
-      <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} initialFlex={!!flex} />
+      <NavBar initialQ={q} initialGuests={guests} initialCheckin={checkin} initialCheckout={checkout} initialFlex={!!flex} lang={lang} />
 
       {showResults ? (
         /* ── Full-viewport split: listings + map ── */
@@ -322,6 +326,7 @@ export default async function Home({
           searchCheckout={checkout}
           locations={topLocations}
           openMapByDefault={view === 'map'}
+          lang={lang}
         />
       ) : (
         <>
@@ -329,16 +334,16 @@ export default async function Home({
           <section className="filter-section" style={{ backgroundColor: '#fff', borderBottom: '1px solid #E4E2EC', padding: '12px 20px 11px' }}>
             <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
               <p className="filter-label">
-                Beliebte Filter
+                {t(lang, 'Beliebte Filter')}
               </p>
-              <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} />
+              <QuickFilters locations={topLocations} activeQ={q} activeGuests={guests} checkin={checkin} checkout={checkout} lang={lang} />
             </div>
           </section>
 
           {/* ── Homepage Listings Grid ── */}
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(14px, 3vw, 24px) clamp(12px, 4vw, 20px) 80px' }}>
             <h1 style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 14px', lineHeight: 1.25 }}>
-              Finde dein <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Premium-Apartment</span> für die perfekte Auszeit.
+              {t(lang, 'Finde dein')} <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t(lang, 'Premium-Apartment')}</span> {t(lang, 'für die perfekte Auszeit.')}
             </h1>
             <div className="homepage-grid">
               {cardData.map((card, index) => {
@@ -354,7 +359,7 @@ export default async function Home({
                       {card.unavailable && (
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
                           <span style={{ fontSize: '11px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px', backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', backdropFilter: 'blur(4px)' }}>
-                            Nicht verfügbar
+                            {t(lang, 'Nicht verfügbar')}
                           </span>
                         </div>
                       )}
@@ -378,13 +383,13 @@ export default async function Home({
                               €{card.totalPrice > 0 ? card.totalPrice : card.pricePerNight}
                             </span>
                             <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>
-                              {card.totalPrice > 0 ? `${card.nights} Nächte` : '/Nacht'}
+                              {card.totalPrice > 0 ? `${card.nights} ${t(lang, 'Nächte')}` : t(lang, '/Nacht')}
                             </span>
                           </div>
                         )}
                       </div>
                       <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1 }}>
-                        {card.maxGuests} Gäste · {card.bedrooms} Schlafzimmer
+                        {card.maxGuests} {t(lang, 'Gäste')} · {card.bedrooms} {t(lang, 'Schlafzimmer')}
                       </p>
                     </div>
                   </Link>
@@ -396,15 +401,15 @@ export default async function Home({
           {/* ── Regions discovery (below the apartments — they stay the star) ── */}
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 clamp(12px, 4vw, 20px) 56px' }}>
             <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold-dark)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
-              Mehr als eine Unterkunft
+              {t(lang, 'Mehr als eine Unterkunft')}
             </p>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
               <h2 style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: '#111', letterSpacing: '-0.4px', margin: 0 }}>
-                Entdecke unsere Regionen
+                {t(lang, 'Entdecke unsere Regionen')}
               </h2>
               <span style={{ fontSize: '12.5px', color: '#8A8578' }}>
-                Ausflugsziele, Karten &amp; Tipps —{' '}
-                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>über TRIMOSA →</Link>
+                {t(lang, 'Ausflugsziele, Karten & Tipps —')}{' '}
+                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{t(lang, 'über TRIMOSA →')}</Link>
               </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
@@ -426,7 +431,7 @@ export default async function Home({
                     {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
                     <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
                     {r.comingSoon && !hasListings && (
-                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>Bald</span>
+                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t(lang, 'Bald')}</span>
                     )}
                     <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
                       <p style={{ fontSize: '15.5px', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.2px', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
@@ -443,7 +448,7 @@ export default async function Home({
           </section>
 
           {/* Floating map-view toggle — booking-site style, bottom center */}
-          <Link href="/?view=map" aria-label="Karte anzeigen" style={{
+          <Link href="/?view=map" aria-label={t(lang, 'Karte anzeigen')} style={{
             position: 'fixed', bottom: '26px', left: '50%', transform: 'translateX(-50%)',
             zIndex: 50, display: 'inline-flex', alignItems: 'center', gap: '8px',
             padding: '12px 22px', borderRadius: '999px',
@@ -454,7 +459,7 @@ export default async function Home({
               <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
               <line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
             </svg>
-            Karte anzeigen
+            {t(lang, 'Karte anzeigen')}
           </Link>
         </>
       )}
@@ -463,13 +468,13 @@ export default async function Home({
       <section style={{ backgroundColor: '#fff', borderTop: '1px solid #EEEBE4', padding: '56px 20px' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#111', textAlign: 'center', marginBottom: '32px', letterSpacing: '-0.3px' }}>
-            So einfach geht&apos;s
+            {t(lang, 'So einfach geht’s')}
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {[
-              { n: '01', title: 'Entdecken', desc: 'Stöbere durch handverlesene Premium-Apartments in den schönsten Regionen.', accent: '#0C9AAB' },
-              { n: '02', title: 'Buchen', desc: 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.', accent: 'var(--gold)' },
-              { n: '03', title: 'Ankommen', desc: 'Schlüssel rein, Koffer ab — und einfach da sein. Kein Schnickschnack, kein Stress.', accent: '#4A8A60' },
+              { n: '01', title: t(lang, 'Entdecken'), desc: t(lang, 'Stöbere durch handverlesene Premium-Apartments in den schönsten Regionen.'), accent: '#0C9AAB' },
+              { n: '02', title: t(lang, 'Buchen'), desc: t(lang, 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.'), accent: 'var(--gold)' },
+              { n: '03', title: t(lang, 'Ankommen'), desc: t(lang, 'Schlüssel rein, Koffer ab — und einfach da sein. Kein Schnickschnack, kein Stress.'), accent: '#4A8A60' },
             ].map((item) => (
               <div key={item.n} style={{ padding: '24px', borderRadius: '16px', border: '1px solid #EEEBE4', backgroundColor: '#FAFAF8' }}>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: item.accent, letterSpacing: '0.1em', marginBottom: '12px' }}>
@@ -490,13 +495,13 @@ export default async function Home({
           background: 'linear-gradient(135deg, #12222E 0%, #172A22 100%)',
           padding: 'clamp(34px, 6vw, 52px) clamp(22px, 5vw, 48px)',
         }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', margin: '0 0 12px', textAlign: 'center' }}>DIREKT BEI TRIMOSA</p>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.12em', margin: '0 0 12px', textAlign: 'center' }}>{t(lang, 'DIREKT BEI TRIMOSA')}</p>
           <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.5px', margin: '0 0 14px', textAlign: 'center' }}>
-            Ohne Umwege. Direkt gebucht.
+            {t(lang, 'Ohne Umwege. Direkt gebucht.')}
           </h2>
           <p style={{ fontSize: '14px', color: 'rgba(245,240,232,0.6)', lineHeight: 1.65, maxWidth: '560px', margin: '0 auto 18px', textAlign: 'center' }}>
-            Rund 20 eigene Ferienwohnungen in Trier, Bitburg, der Südeifel — und bald an der Saar.
-            Handverlesen und kuratiert von Johannes, Pascal und Dominik.
+            {t(lang, 'Rund 20 eigene Ferienwohnungen in Trier, Bitburg, der Südeifel — und bald an der Saar.')}{' '}
+            {t(lang, 'Handverlesen und kuratiert von Johannes, Pascal und Dominik.')}
           </p>
 
           {/* Name story one-liner */}
@@ -505,7 +510,7 @@ export default async function Home({
               fontWeight: 800, letterSpacing: '0.04em',
               background: 'linear-gradient(135deg, var(--gold), #E3C878)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
             }}>TRI·MO·SA</span>
-            {' '}— unser Name ist unsere Heimat: <strong style={{ color: '#F5F0E8' }}>Tri</strong>er,{' '}
+            {' '}{t(lang, '— unser Name ist unsere Heimat:')} <strong style={{ color: '#F5F0E8' }}>Tri</strong>er,{' '}
             <strong style={{ color: '#F5F0E8' }}>Mo</strong>sel, <strong style={{ color: '#F5F0E8' }}>Sa</strong>uer &amp; Saar.
           </p>
 
@@ -515,12 +520,12 @@ export default async function Home({
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
-            }}>Alle Unterkünfte ansehen →</Link>
+            }}>{t(lang, 'Alle Unterkünfte ansehen →')}</Link>
             <Link href="/ueber-uns" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '11px 24px', borderRadius: '999px', color: '#F5F0E8',
               border: '1.5px solid rgba(245,240,232,0.45)', textDecoration: 'none',
-            }}>Lerne uns kennen →</Link>
+            }}>{t(lang, 'Lerne uns kennen →')}</Link>
           </div>
         </div>
       </section>
