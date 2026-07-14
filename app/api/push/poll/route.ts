@@ -44,6 +44,23 @@ export async function GET(request: Request) {
       for (const sm of msgs) {
         if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
         const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
+        if (isHost) {
+          // Web-app sent message coming back from Smoobu: claim the local
+          // row instead of importing a duplicate (see messages/[bookingId])
+          const { data: twin } = await supabaseAdmin
+            .from('messages')
+            .select('id')
+            .eq('booking_id', b.id)
+            .eq('sender_type', 'host')
+            .is('smoobu_message_id', null)
+            .eq('content', sm.message.trim())
+            .limit(1)
+            .maybeSingle()
+          if (twin) {
+            await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
+            continue
+          }
+        }
         const { error } = await supabaseAdmin.from('messages').insert({
           booking_id: b.id,
           smoobu_message_id: String(sm.id),
