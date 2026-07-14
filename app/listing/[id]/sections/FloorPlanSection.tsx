@@ -2,15 +2,16 @@
 
 import { useState } from 'react'
 import Overlay from './Overlay'
+import { t, type UiLang } from '@/lib/i18n'
 
 /* ── 3. Floor Plan Section (multiple with labels) + Overlay ── */
-export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels?: string[] }) {
+export function FloorPlanSection({ urls, labels = [], lang = 'de' }: { urls: string[]; labels?: string[]; lang?: UiLang }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   if (urls.length === 0) return null
   return (
     <div style={{ marginBottom: '32px' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>
-        {urls.length === 1 ? 'Grundriss' : 'Grundrisse'}
+        {urls.length === 1 ? t(lang, 'Grundriss') : t(lang, 'Grundrisse')}
       </h2>
       <div className="detail-floorplan-grid" style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
         {urls.map((url, i) => (
@@ -30,7 +31,7 @@ export function FloorPlanSection({ urls, labels = [] }: { urls: string[]; labels
       </div>
 
       {openIdx !== null && (
-        <Overlay onClose={() => setOpenIdx(null)} title={labels[openIdx] || (urls.length === 1 ? 'Grundriss' : `Grundriss ${openIdx + 1}`)}>
+        <Overlay onClose={() => setOpenIdx(null)} title={labels[openIdx] || (urls.length === 1 ? t(lang, 'Grundriss') : `${t(lang, 'Grundriss')} ${openIdx + 1}`)}>
           {/* eslint-disable-next-line @next/next/no-img-element -- natural sizing, low SEO value */}
           <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
           {urls.length > 1 && (
