@@ -28,6 +28,7 @@ interface Props {
   hoveredIds?: string[]
   /** Called on marker hover with all listing ids at that address (or null). */
   onHoverListing?: (ids: string[] | null) => void
+  lang?: UiLang
 }
 
 declare global {
@@ -37,7 +38,7 @@ declare global {
   }
 }
 
-export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange, hoveredIds, onHoverListing }: Props) {
+export default function ListingsMap({ listings, centerLat, centerLon, onCenterChange, hoveredIds, onHoverListing, lang = 'de' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
@@ -213,7 +214,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
             ? `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
                <span style="font-size:11px;color:#888;margin-left:3px">gesamt · ${listing.nights} Nächte</span>`
             : `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
-               <span style="font-size:11px;color:#888;margin-left:3px">/Nacht</span>`
+               <span style="font-size:11px;color:#888;margin-left:3px">${t(lang, '/Nacht')}</span>`
           : `<span style="font-size:12px;font-weight:500;color:#888">Preis auf Anfrage</span>`
 
         const imageHeader = listing.image
@@ -233,11 +234,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
             <div style="padding:11px 13px 13px">
               ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}
               <p style="font-size:13.5px;font-weight:600;color:#111;margin:0 0 4px;line-height:1.3">${listing.title}</p>
-              ${listing.maxGuests ? `<p style="font-size:11.5px;color:#888;margin:0 0 6px;line-height:1">Bis zu ${listing.maxGuests} Gäste</p>` : '<div style="height:4px"></div>'}
-              ${listing.flexNote ? `<p style="display:inline-block;font-size:10.5px;font-weight:600;border-radius:999px;padding:2px 8px;margin:0 0 8px;line-height:1.3;${listing.unavailable ? 'color:#8A6D1E;background:#FBF3E3;border:1px solid #F0E0A0' : 'color:#2D6A1E;background:#EAF3EC;border:1px solid #CDE6D2'}">📅 ${listing.unavailable ? 'Alternativ frei' : 'Frei'}: ${listing.flexNote}</p>` : ''}
+              ${listing.maxGuests ? `<p style="font-size:11.5px;color:#888;margin:0 0 6px;line-height:1">${t(lang, 'Bis zu {n} Gäste', { n: listing.maxGuests })}</p>` : '<div style="height:4px"></div>'}
+              ${listing.flexNote ? `<p style="display:inline-block;font-size:10.5px;font-weight:600;border-radius:999px;padding:2px 8px;margin:0 0 8px;line-height:1.3;${listing.unavailable ? 'color:#8A6D1E;background:#FBF3E3;border:1px solid #F0E0A0' : 'color:#2D6A1E;background:#EAF3EC;border:1px solid #CDE6D2'}">📅 ${listing.unavailable ? t(lang, 'Alternativ frei') : t(lang, 'Frei')}: ${listing.flexNote}</p>` : ''}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span style="line-height:1">${priceBlock}</span>
-                <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">Ansehen →</span>
+                <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">${t(lang, 'Ansehen →')}</span>
               </div>
             </div>
           </a>
