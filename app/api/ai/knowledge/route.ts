@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { backfillSmoobuMessages, refreshChatKnowledge } from '@/lib/chat-knowledge'
 import { REGIONS } from '@/lib/regions'
+import { PROMPT_DEFAULTS, getPrompt, invalidatePromptCache } from '@/lib/prompts'
+import { askClaude } from '@/lib/ai'
 
 /**
  * Chat knowledge base management.
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page } = await request.json()
+  const { action, page, key, content, instruction } = await request.json()
 
   if (action === 'backfill') {
     const p = Number.isInteger(page) && page > 0 ? page : 1
@@ -179,6 +181,52 @@ export async function POST(request: Request) {
       if (!hasMore) break
     }
     return NextResponse.json({ imported, skipped, failed })
+  }
+  if (action === 'prompts-list') {
+    const out = []
+    for (const [key, def] of Object.entries(PROMPT_DEFAULTS)) {
+      const { data } = await supabaseAdmin.from('ai_prompts').select('content, updated_at').eq('key', key).maybeSingle()
+      out.push({ key, label: def.label, content: data?.content ?? def.content, isCustom: !!data, default: def.content })
+    }
+    return NextResponse.json({ prompts: out })
+  }
+  if (action === 'prompt-save') {
+    if (typeof key !== 'string' || !(key in PROMPT_DEFAULTS) || typeof content !== 'string' || !content.trim()) {
+      return NextResponse.json({ error: 'Ungültiger Prompt.' }, { status: 400 })
+    }
+    const { error } = await supabaseAdmin.from('ai_prompts').upsert(
+      { key, content: content.trim(), updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    invalidatePromptCache(key)
+    return NextResponse.json({ ok: true })
+  }
+  if (action === 'prompt-reset') {
+    if (typeof key !== 'string' || !(key in PROMPT_DEFAULTS)) {
+      return NextResponse.json({ error: 'Ungültiger Prompt.' }, { status: 400 })
+    }
+    await supabaseAdmin.from('ai_prompts').delete().eq('key', key)
+    invalidatePromptCache(key)
+    return NextResponse.json({ ok: true, content: PROMPT_DEFAULTS[key].content })
+  }
+  if (action === 'prompt-improve') {
+    // "Per KI anpassen": Claude rewrites the prompt according to the admin's
+    // instruction — returned as a proposal, saved only via prompt-save.
+    if (typeof key !== 'string' || !(key in PROMPT_DEFAULTS) || typeof instruction !== 'string' || !instruction.trim()) {
+      return NextResponse.json({ error: 'Anweisung fehlt.' }, { status: 400 })
+    }
+    const current = typeof content === 'string' && content.trim() ? content : await getPrompt(key)
+    const meta = `Du überarbeitest den SYSTEM-PROMPT eines KI-Assistenten für ${PROMPT_DEFAULTS[key].label} der
+Ferienwohnungs-Plattform TRIMOSA. Setze die Änderungswünsche des Admins um, erhalte dabei
+alle Sicherheitsregeln (nichts erfinden, keine ungeprüften Zusagen) — außer der Admin hebt
+sie ausdrücklich auf. Antworte NUR mit dem vollständigen neuen Prompt.`
+    try {
+      const proposal = await askClaude(meta, `AKTUELLER PROMPT:\n${current}\n\nÄNDERUNGSWUNSCH: ${instruction.slice(0, 500)}`)
+      return NextResponse.json({ proposal })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'KI-Fehler.' }, { status: 502 })
+    }
   }
   return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
 }
