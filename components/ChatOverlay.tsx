@@ -11,9 +11,11 @@ interface Props {
   open: boolean
   onClose: () => void
   userId: string
+  /** team mode: unified inbox (hosts/admins/staff) */
+  team?: boolean
 }
 
-export default function ChatOverlay({ open, onClose, userId }: Props) {
+export default function ChatOverlay({ open, onClose, userId, team = false }: Props) {
   if (!open) return null
-  return <ChatPanel variant="overlay" open={open} onClose={onClose} userId={userId} />
+  return <ChatPanel variant="overlay" open={open} onClose={onClose} userId={userId} team={team} />
 }
