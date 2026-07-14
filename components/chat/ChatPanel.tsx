@@ -791,62 +791,69 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               disabled={aiBusy}
               title="Antwort von Claude vorschlagen lassen"
               style={{
-                width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
-                border: '1.5px solid #E8D9A0', background: '#FDFAF0',
-                cursor: aiBusy ? 'wait' : 'pointer', fontSize: 17,
+                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                border: 'none', background: 'rgba(118,118,128,0.12)',
+                cursor: aiBusy ? 'wait' : 'pointer', fontSize: 15,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 opacity: aiBusy ? 0.5 : 1, transition: 'opacity .15s',
+                marginBottom: 1,
               }}
             >
               {aiBusy ? '⏳' : '✨'}
             </button>
           )}
-          <textarea
-            ref={taRef}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder={needsTranslation ? `Auf Deutsch schreiben — wird auf ${LANG_LABEL[guestLang!] ?? guestLang} ${flag(guestLang)} übersetzt…` : 'Nachricht schreiben…'}
-            rows={1}
-            style={{
-              flex: 1, resize: 'none', outline: 'none',
-              border: '1.5px solid #E0DCD2',
-              borderRadius: 22, padding: '10px 16px',
-              fontSize: 16, lineHeight: 1.45, fontFamily: 'inherit',
-              background: '#FAF9F6', color: '#1A1814',
-              maxHeight: '40dvh', overflowY: 'auto', transition: 'border-color .15s',
-            }}
-            onFocus={e => { e.target.style.borderColor = 'var(--gold)' }}
-            onBlur={e => { e.target.style.borderColor = '#E0DCD2' }}
-          />
-          {draft.trim().length > 0 && (
-            <button
-              onClick={() => { setDraft(''); setInstruction('') }}
-              title="Entwurf verwerfen"
+          {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
+          <div style={{
+            flex: 1, position: 'relative', display: 'flex',
+            border: '1px solid rgba(60,60,67,0.28)', borderRadius: 18,
+            background: '#fff', minHeight: 36,
+          }}>
+            <textarea
+              ref={taRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              enterKeyHint="enter"
+              placeholder={needsTranslation ? `Deutsch → ${flag(guestLang)} ${LANG_LABEL[guestLang!] ?? guestLang}` : 'Nachricht'}
+              rows={1}
               style={{
-                width: 42, height: 42, borderRadius: '50%', border: '1px solid #E8E4DB', flexShrink: 0,
-                background: '#FAF9F6', color: '#B0A99A', cursor: 'pointer', fontSize: 16,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flex: 1, resize: 'none', outline: 'none', border: 'none',
+                borderRadius: 18, padding: draft.trim() ? '7px 62px 7px 13px' : '7px 13px',
+                fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
+                background: 'transparent', color: '#111',
+                maxHeight: '40dvh', overflowY: 'auto',
               }}
-            >✕</button>
-          )}
-          <button
-            onClick={send}
-            disabled={busy || !draft.trim()}
-            style={{
-              width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
-              background: draft.trim() && !busy ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#EDE9E0',
-              color: draft.trim() && !busy ? '#fff' : '#CCC',
-              cursor: draft.trim() && !busy ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: draft.trim() && !busy ? '0 2px 12px rgba(196,162,53,.35)' : 'none',
-              transition: 'all .15s',
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+            />
+            {draft.trim().length > 0 && (
+              <>
+                <button
+                  onClick={() => { setDraft(''); setInstruction('') }}
+                  title="Entwurf verwerfen"
+                  style={{
+                    position: 'absolute', right: 36, bottom: 7, width: 22, height: 22,
+                    borderRadius: '50%', border: 'none', background: 'rgba(118,118,128,0.28)',
+                    color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >✕</button>
+                <button
+                  onClick={send}
+                  disabled={busy}
+                  title="Senden"
+                  style={{
+                    position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
+                    borderRadius: '50%', border: 'none', padding: 0,
+                    background: busy ? '#EDE9E0' : 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
+                    color: '#fff', cursor: busy ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     )
