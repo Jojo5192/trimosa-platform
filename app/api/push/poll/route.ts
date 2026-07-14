@@ -58,7 +58,7 @@ export async function GET(request: Request) {
           await sendPushToTeam(
             `💬 ${b.guest_name ?? 'Gast'}${listing?.title ? ` · ${listing.title}` : ''}`,
             sm.message.trim(),
-            '/dashboard/chat',
+            '/team',
           )
           pushes++
         }
