@@ -46,19 +46,26 @@ export async function backfillSmoobuMessages(page: number): Promise<{
     const listingId = resv.apartmentId != null ? listingBySmoobuId.get(resv.apartmentId) ?? null : null
     const rows = messages
       .filter((m) => (m.message ?? '').trim().length > 0)
-      .map((m) => ({
-        smoobu_reservation_id: resv.id,
-        smoobu_message_id: `${resv.id}_${m.id}`,
-        apartment_id: resv.apartmentId,
-        listing_id: listingId,
-        sender_type: m.sender === 'host' ? 'host' : 'guest',
-        content: m.message.trim().slice(0, 4000),
-        sent_at: m.date || null,
-      }))
+      .map((m) => {
+        // Smoobu's sender lives in `type` (senderType "owner"/"guest" or
+        // direction "outgoing"/"incoming") — `sender` is just the NAME.
+        const t = String(m.type ?? '').toLowerCase()
+        const isHost = t === 'owner' || t === 'outgoing' || t === 'host'
+        return {
+          smoobu_reservation_id: resv.id,
+          smoobu_message_id: `${resv.id}_${m.id}`,
+          apartment_id: resv.apartmentId,
+          listing_id: listingId,
+          sender_type: isHost ? 'host' : 'guest',
+          content: m.message.trim().slice(0, 4000),
+          sent_at: m.date || null,
+        }
+      })
     if (rows.length > 0) {
+      // Full upsert (no ignoreDuplicates) so a re-import CORRECTS existing rows
       const { error, count } = await supabaseAdmin
         .from('smoobu_message_archive')
-        .upsert(rows, { onConflict: 'smoobu_message_id', ignoreDuplicates: true, count: 'exact' })
+        .upsert(rows, { onConflict: 'smoobu_message_id', count: 'exact' })
       if (error) console.error('[chat-knowledge] archive upsert failed:', error.message)
       else imported += count ?? rows.length
     }
