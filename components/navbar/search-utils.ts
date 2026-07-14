@@ -1,6 +1,7 @@
 /**
  * Shared data + date helpers for the NavBar search (extracted from NavBar.tsx).
  */
+import { MONTHS_SHORT, type UiLang } from '@/lib/i18n'
 
 export const LOCATION_SUGGESTIONS = [
   { label: 'Trier', sub: 'Rheinland-Pfalz' },
@@ -37,10 +38,14 @@ export const DE_MONTHS_SHORT = ['Jan.','Feb.','Mär.','Apr.','Mai','Jun.','Jul.'
 export const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 export const DE_DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So']
 
-export function formatDate(iso: string): string {
+export function formatDate(iso: string, lang: UiLang = 'de'): string {
   if (!iso) return ''
   const [, m, d] = iso.split('-')
-  return `${parseInt(d)}. ${DE_MONTHS_SHORT[parseInt(m) - 1]}`
+  const mm = parseInt(m) - 1
+  const dd = parseInt(d)
+  if (lang === 'de') return `${dd}. ${DE_MONTHS_SHORT[mm]}`
+  const names = MONTHS_SHORT[lang]
+  return lang === 'en' ? `${names[mm]} ${dd}` : `${dd} ${names[mm]}`
 }
 
 export function isoToDate(iso: string): Date | null {
