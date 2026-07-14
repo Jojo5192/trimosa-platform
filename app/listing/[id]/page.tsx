@@ -19,7 +19,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
-import { TRANSLATION_LANGS, TRANSLATION_LANG_META, type TranslationEntry } from '@/lib/listing-translate'
+import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translate'
+import { t, isUiLang, type UiLang } from '@/lib/i18n'
+import { getUiLang } from '@/lib/i18n-server'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -133,27 +135,21 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const images: string[] = listing.images ?? []
   const roomsRaw: { id: string; name: string; description?: string; features?: string[]; images: string[] }[] = listing.rooms ?? []
 
-  // Language layer: German is canonical; EN/FR/NL come from listings.translations (AI, editor-managed)
+  // Language layer: the site-wide cookie (flag switcher) drives the language;
+  // an explicit ?lang= (SEO/hreflang links) overrides it. German is canonical.
+  const cookieLang = await getUiLang()
+  const lang: UiLang = isUiLang(langParam) ? langParam : cookieLang
   const tr = (listing.translations ?? {}) as Record<string, TranslationEntry>
   const availableLangs = TRANSLATION_LANGS.filter((l) => tr[l]?.title)
-  const activeLang = availableLangs.find((l) => l === langParam) ?? null
-  const t = activeLang ? tr[activeLang] : null
-  const displayTitle = t?.title ?? listing.title
-  const displayDescription = t?.description ?? listing.description
+  const activeLang = availableLangs.find((l) => l === lang) ?? null
+  const tc = activeLang ? tr[activeLang] : null
+  const displayTitle = tc?.title ?? listing.title
+  const displayDescription = tc?.description ?? listing.description
   const rooms = roomsRaw.map((r) => ({
     ...r,
-    name: t?.rooms?.[r.id]?.name ?? r.name,
-    description: t?.rooms?.[r.id]?.description ?? r.description,
+    name: tc?.rooms?.[r.id]?.name ?? r.name,
+    description: tc?.rooms?.[r.id]?.description ?? r.description,
   }))
-  const langHref = (l: string | null) => {
-    const q = new URLSearchParams()
-    if (searchCheckin) q.set('checkin', searchCheckin)
-    if (searchCheckout) q.set('checkout', searchCheckout)
-    if (searchGuests) q.set('guests', searchGuests)
-    if (l) q.set('lang', l)
-    const str = q.toString()
-    return `/listing/${listing.slug ?? listing.id}${str ? `?${str}` : ''}`
-  }
   const amenities: string[] = listing.amenities ?? []
   const mainGradient = getGradientStyle(listing.location ?? '', listing.title ?? '')
   const allImagesFlat = images.length > 0 ? images : rooms.flatMap(r => r.images)
@@ -194,7 +190,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <NavBar />
+      <NavBar lang={lang} />
 
       <div className="detail-container" style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 0' }}>
 
@@ -224,34 +220,17 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               </svg>
               <span>{listing.address || displayCity}</span>
               <a href="#lage" style={{ color: 'var(--gold-dark)', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-                Auf der Karte ansehen ↓
+                {t(lang, 'Auf der Karte ansehen ↓')}
               </a>
             </p>
-            {availableLangs.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-                <span aria-hidden style={{ fontSize: '13px' }}>🌐</span>
-                {([null, ...availableLangs] as (string | null)[]).map((l) => {
-                  const isActive = l === activeLang
-                  return (
-                    <Link key={l ?? 'de'} href={langHref(l)} style={{
-                      padding: '4px 11px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
-                      textDecoration: 'none',
-                      border: isActive ? '1px solid var(--gold)' : '1px solid #E5E5EA',
-                      background: isActive ? '#FAF5E4' : '#fff',
-                      color: isActive ? 'var(--gold-dark)' : '#6E6E73',
-                    }}>
-                      {l === null ? 'Deutsch' : TRANSLATION_LANG_META[l as 'en' | 'fr' | 'nl'].native}
-                    </Link>
-                  )
-                })}
-                {activeLang && (
-                  <span style={{ fontSize: '11px', color: '#98938A' }}>· automatisch übersetzt</span>
-                )}
-              </div>
+            {activeLang && (
+              <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: '#98938A' }}>
+                🌐 {t(lang, 'automatisch übersetzt')}
+              </p>
             )}
           </div>
           {hostProfile && (
-            <HostBadge host={{
+            <HostBadge lang={lang} host={{
               id: hostProfile.id,
               display_name: hostProfile.display_name,
               avatar_url: hostProfile.avatar_url,
@@ -265,6 +244,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
         {/* ── PHOTO GRID ── */}
         <PhotoGrid
+          lang={lang}
           rooms={rooms}
           allImages={allImagesFlat}
           listingTitle={displayTitle}
@@ -282,9 +262,9 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             {/* Quick stats with Host badge */}
             <div className="detail-stats" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingBottom: '28px', borderBottom: '1px solid #E5E5EA', marginBottom: '28px' }}>
               {[
-                { icon: '👥', label: 'Gäste', val: `bis ${listing.max_guests}` },
-                { icon: '🛏️', label: 'Schlafzimmer', val: listing.bedrooms ?? 1 },
-                { icon: '🚿', label: 'Badezimmer', val: listing.bathrooms ?? 1 },
+                { icon: '👥', label: t(lang, 'Gäste'), val: t(lang, 'bis {n}', { n: listing.max_guests }) },
+                { icon: '🛏️', label: t(lang, 'Schlafzimmer'), val: listing.bedrooms ?? 1 },
+                { icon: '🚿', label: t(lang, 'Badezimmer'), val: listing.bathrooms ?? 1 },
               ].map((item) => (
                 <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #E5E5EA', flex: '1 1 130px', minWidth: '120px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#FAF5E4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0 }}>
@@ -300,18 +280,19 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
             {/* Description */}
             <div className="detail-description" style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>Über diese Unterkunft</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '12px' }}>{t(lang, 'Über diese Unterkunft')}</h2>
               <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
-                {displayDescription || 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.'}
+                {displayDescription || t(lang, 'Keine Beschreibung verfügbar. Der Gastgeber wird in Kürze weitere Details hinzufügen.')}
               </p>
             </div>
 
             {/* Amenities (client component with overlay) */}
-            <AmenitiesSection amenities={amenities} />
+            <AmenitiesSection amenities={amenities} lang={lang} />
 
             {/* Floor plans (multiple with labels) */}
             {((listing.floor_plan_urls && listing.floor_plan_urls.length > 0) || listing.floor_plan_url) && (
               <FloorPlanSection
+                lang={lang}
                 urls={
                   listing.floor_plan_urls && listing.floor_plan_urls.length > 0
                     ? listing.floor_plan_urls
@@ -322,13 +303,14 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             )}
 
             {/* Occupancy calendar — 2 months, clickable dates feed into BookingBox */}
-            <OccupancyCalendar listingId={listing.id} />
+            <OccupancyCalendar listingId={listing.id} lang={lang} />
 
           </div>
 
           {/* RIGHT COLUMN — Booking Box */}
           <div className="detail-booking-col" style={{ position: 'sticky', top: 'calc(var(--navbar-h, 88px) + 16px)' }}>
             <BookingBox
+              lang={lang}
               listingId={listing.id}
               pricePerNight={listing.price_per_night}
               hostId={listing.host_id}
@@ -349,7 +331,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           {/* Full-width Map — own Leaflet style (matches the search map),
               with the region's destinations one zoom-out away */}
           <div id="lage" style={{ marginTop: '40px', marginBottom: '32px', scrollMarginTop: '96px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '6px' }}>Lage &amp; Umgebung</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '6px' }}>{t(lang, 'Lage & Umgebung')}</h2>
             {region && (
               <p style={{ fontSize: '13.5px', color: '#6E6E73', margin: '0 0 14px' }}>
                 Die Unterkunft und die schönsten Ausflugsziele in {region.name} auf einer Karte.
@@ -381,7 +363,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                     )}
                     <div style={{ flex: '1.5 1 300px', padding: 'clamp(18px, 3vw, 26px) clamp(18px, 3.5vw, 30px)' }}>
                       <p style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.11em', textTransform: 'uppercase', margin: '0 0 7px' }}>
-                        Deine Region
+                        {t(lang, 'Deine Region')}
                       </p>
                       <p style={{ fontSize: 'clamp(17px, 2.5vw, 21px)', fontWeight: 800, color: '#fff', margin: '0 0 5px', letterSpacing: '-0.3px' }}>
                         {region.emoji} {region.name}
@@ -403,7 +385,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                         display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 700,
                         color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)',
                         padding: '9px 18px', borderRadius: '999px',
-                      }}>Region entdecken →</span>
+                      }}>{t(lang, 'Region entdecken →')}</span>
                     </div>
                   </Link>
                 )}
@@ -437,6 +419,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
           {/* House Rules (structured + text) */}
           <HouseRulesDisplay
+            lang={lang}
             rules={{
               pets_allowed: listing.rule_pets_allowed,
               events_allowed: listing.rule_events_allowed,
@@ -456,7 +439,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           {/* Check-in Instructions */}
           {listing.checkin_instructions && (
             <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>Check-In Anweisungen</h2>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>{t(lang, 'Check-In Anweisungen')}</h2>
               <p style={{ fontSize: '13px', lineHeight: 1.7, color: '#6E6E73', whiteSpace: 'pre-line', margin: 0 }}>
                 {listing.checkin_instructions}
               </p>
@@ -466,7 +449,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           {/* Important Notes */}
           {listing.important_notes && (
             <div style={{ marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>Wichtige Hinweise</h2>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>{t(lang, 'Wichtige Hinweise')}</h2>
               <p style={{ fontSize: '13px', lineHeight: 1.7, color: '#92400E', whiteSpace: 'pre-line', margin: 0 }}>
                 {listing.important_notes}
               </p>
@@ -480,25 +463,25 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
             }}>
               <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
-                💬 Das sagen unsere Gäste
+                {t(lang, '💬 Das sagen unsere Gäste')}
               </p>
               <p style={{ fontSize: '14.5px', lineHeight: 1.7, color: '#3A3427', margin: '0 0 8px' }}>
                 {listing.guest_summary}
               </p>
               <p style={{ fontSize: '10.5px', color: '#A89968', margin: 0 }}>
-                Automatisch zusammengefasst aus echten Gästebewertungen — die Originale stehen darunter.
+                {t(lang, 'Automatisch zusammengefasst aus echten Gästebewertungen — die Originale stehen darunter.')}
               </p>
             </div>
           )}
 
           {/* Reviews */}
-          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} />
+          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} lang={lang} />
 
         </div>
       </div>
 
       {/* Fixed mobile booking bar — only visible on mobile via CSS */}
-      <MobileBookingBar pricePerNight={listing.price_per_night} />
+      <MobileBookingBar pricePerNight={listing.price_per_night} lang={lang} />
     </div>
   )
 }
