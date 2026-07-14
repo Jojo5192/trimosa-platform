@@ -44,8 +44,11 @@ Ist eine Nachricht bereits Deutsch, setze "de": null. Keine Erklärungen, kein M
   const user = items.map((m, i) => `${i}. ${m.text.slice(0, 1500)}`).join('\n\n')
   try {
     const raw = await askClaude(system, user, 4000, FAST_MODEL)
-    const jsonStart = raw.indexOf('[')
-    const parsed = JSON.parse(raw.slice(jsonStart)) as { i: number; lang: string; de: string | null }[]
+    // Robust extraction: models occasionally wrap JSON in markdown fences
+    const start = raw.indexOf('[')
+    const end = raw.lastIndexOf(']')
+    if (start === -1 || end <= start) throw new Error('Keine JSON-Antwort: ' + raw.slice(0, 120))
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as { i: number; lang: string; de: string | null }[]
     for (const row of parsed) {
       const item = items[row.i]
       if (!item || typeof row.lang !== 'string') continue
