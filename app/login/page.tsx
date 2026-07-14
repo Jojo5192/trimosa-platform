@@ -1,14 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import OAuthButtons from '@/components/OAuthButtons'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 export default function LoginPage() {
   const router = useRouter()
+  // Site-wide language (cookie from the NavBar flag switcher)
+  const [lang, setLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setLang(m[1])
+  }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,7 +27,7 @@ export default function LoginPage() {
     setError('')
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
     if (error) {
-      setError('E-Mail oder Passwort falsch.')
+      setError(t(lang, 'E-Mail oder Passwort falsch.'))
       setLoading(false)
     } else {
       router.push('/')
@@ -44,7 +51,7 @@ export default function LoginPage() {
           <Image src="/logo.png" alt="TRIMOSA" width={260} height={58}
             className="h-14 w-auto object-contain brightness-0 invert opacity-90 mb-8" />
           <p className="text-white/80 text-lg leading-relaxed max-w-xs">
-            Auszeiten, die bleiben.
+            {t(lang, 'Auszeiten, die bleiben.')}
           </p>
         </div>
       </div>
@@ -59,16 +66,16 @@ export default function LoginPage() {
           </div>
 
           <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#1D1D1F', marginBottom: '6px', letterSpacing: '-0.5px' }}>
-            Willkommen zurück
+            {t(lang, 'Willkommen zurück')}
           </h1>
           <p style={{ fontSize: '14px', color: '#6E6E73', marginBottom: '32px' }}>
-            Melde dich an, um fortzufahren
+            {t(lang, 'Melde dich an, um fortzufahren')}
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1D1D1F', marginBottom: '7px' }}>
-                E-Mail
+                {t(lang, 'E-Mail')}
               </label>
               <input
                 type="email"
@@ -84,10 +91,10 @@ export default function LoginPage() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '7px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 600, color: '#1D1D1F' }}>
-                  Passwort
+                  {t(lang, 'Passwort')}
                 </label>
                 <Link href="/passwort-vergessen" style={{ fontSize: '12.5px', color: 'var(--gold-dark)', fontWeight: 600, textDecoration: 'none' }}>
-                  Passwort vergessen?
+                  {t(lang, 'Passwort vergessen?')}
                 </Link>
               </div>
               <input
@@ -121,15 +128,15 @@ export default function LoginPage() {
               transition: 'opacity 0.15s',
             }}
           >
-            {loading ? 'Anmeldung läuft…' : 'Anmelden'}
+            {loading ? t(lang, 'Anmeldung läuft…') : t(lang, 'Anmelden')}
           </button>
 
           <OAuthButtons />
 
           <p style={{ textAlign: 'center', fontSize: '13px', color: '#6E6E73', marginTop: '24px' }}>
-            Noch kein Konto?{' '}
+            {t(lang, 'Noch kein Konto?')}{' '}
             <Link href="/register" style={{ color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}>
-              Registrieren
+              {t(lang, 'Registrieren')}
             </Link>
           </p>
         </div>
