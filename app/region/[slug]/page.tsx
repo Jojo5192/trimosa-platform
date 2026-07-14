@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
+import KulinarikMap from '@/components/KulinarikMap'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
@@ -180,32 +181,9 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
               Genuss in {region.name}
             </h2>
             <p style={{ fontSize: '13.5px', color: 'rgba(255,255,255,0.65)', margin: '0 0 20px', maxWidth: '620px', lineHeight: 1.6 }}>
-              Handverlesene Empfehlungen deiner Gastgeber — keine bezahlten Einträge.
+              Die besten Adressen der Region — handverlesen von deinen Gastgebern, keine bezahlten Einträge.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '12px' }}>
-              {region.kulinarik.map((k) => (
-                <div key={k.name} style={{
-                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '16px', padding: '16px 17px 15px', backdropFilter: 'blur(4px)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '9px' }}>
-                    <span style={{
-                      width: '38px', height: '38px', borderRadius: '12px', flexShrink: 0,
-                      background: 'linear-gradient(135deg, rgba(174,141,45,0.35), rgba(174,141,45,0.15))',
-                      border: '1px solid rgba(174,141,45,0.45)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '19px',
-                    }}>{k.emoji}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#fff', margin: 0, lineHeight: 1.25 }}>{k.name}</p>
-                      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--gold)', margin: '3px 0 0', letterSpacing: '0.03em' }}>
-                        {k.art} · <span style={{ color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>{k.ort}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.72)', margin: 0, lineHeight: 1.6 }}>{k.text}</p>
-                </div>
-              ))}
-            </div>
+            <KulinarikMap tipps={region.kulinarik} />
           </div>
         )}
 
