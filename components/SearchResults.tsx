@@ -64,7 +64,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 }
 
 /* ── Listing Card ── */
-function ListingCard({ card, index, linkParams, isHovered = false, onHover }: { card: CardData; index: number; linkParams?: string; isHovered?: boolean; onHover?: (id: string | null) => void }) {
+function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang = 'de' }: { card: CardData; index: number; linkParams?: string; isHovered?: boolean; onHover?: (id: string | null) => void; lang?: UiLang }) {
   const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
   const showTotal = card.totalPrice > 0
 
@@ -255,7 +255,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
           </div>
         )
       }
-      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} isHovered={hoveredIds.includes(card.id)} onHover={(id) => setHoveredIds(id ? [id] : [])} />)
+      out.push(<ListingCard key={card.id} card={card} index={i} linkParams={linkParams} isHovered={hoveredIds.includes(card.id)} onHover={(id) => setHoveredIds(id ? [id] : [])} lang={lang} />)
     })
     return out
   }
