@@ -32,12 +32,14 @@ export async function GET(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const [{ count: archiveCount }, { data: docs }] = await Promise.all([
+  const [{ count: archiveCount }, { count: hostCount }, { data: docs }] = await Promise.all([
     supabaseAdmin.from('smoobu_message_archive').select('id', { count: 'exact', head: true }),
+    supabaseAdmin.from('smoobu_message_archive').select('id', { count: 'exact', head: true }).eq('sender_type', 'host'),
     supabaseAdmin.from('chat_knowledge').select('scope, listing_id, source_count, updated_at, listings(title)'),
   ])
   return NextResponse.json({
     archiveCount: archiveCount ?? 0,
+    hostCount: hostCount ?? 0,
     documents: (docs ?? []).map((d) => ({
       scope: d.scope,
       title: d.scope === 'global' ? 'Allgemein' : ((Array.isArray(d.listings) ? d.listings[0] : d.listings) as { title: string } | null)?.title ?? '—',
