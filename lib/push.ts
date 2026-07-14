@@ -18,7 +18,7 @@ function ensureConfigured(): boolean {
   return true
 }
 
-export async function sendPushToTeam(title: string, body: string, url = '/dashboard/chat'): Promise<void> {
+export async function sendPushToTeam(title: string, body: string, url = '/team'): Promise<void> {
   if (!ensureConfigured()) return
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
