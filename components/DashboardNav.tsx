@@ -24,7 +24,9 @@ export default function DashboardNav() {
     fetch('/api/admin/users').then(r => { if (r.ok) setIsAdmin(true) }).catch(() => {})
   }, [])
 
-  const items = isAdmin ? [...NAV, { href: '/dashboard/admin', icon: '🛡️', label: 'Admin' }] : NAV
+  const items = isAdmin
+    ? [...NAV, { href: '/dashboard/empfehlungen', icon: '💬', label: 'Empfehlungen' }, { href: '/dashboard/admin', icon: '🛡️', label: 'Admin' }]
+    : NAV
 
   return (
     <nav style={{
