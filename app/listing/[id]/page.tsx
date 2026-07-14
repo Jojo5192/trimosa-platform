@@ -406,6 +406,24 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             </div>
           )}
 
+          {/* AI guest summary — generated server-side from imported review texts */}
+          {listing.guest_summary && (
+            <div style={{
+              marginBottom: '20px', borderRadius: '18px', padding: '18px 20px 15px',
+              background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+            }}>
+              <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
+                💬 Das sagen unsere Gäste
+              </p>
+              <p style={{ fontSize: '14.5px', lineHeight: 1.7, color: '#3A3427', margin: '0 0 8px' }}>
+                {listing.guest_summary}
+              </p>
+              <p style={{ fontSize: '10.5px', color: '#A89968', margin: 0 }}>
+                Automatisch zusammengefasst aus echten Gästebewertungen — die Originale stehen darunter.
+              </p>
+            </div>
+          )}
+
           {/* Reviews */}
           <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} revyoosPropertyId={listing.revyoos_property_id ?? undefined} />
 
