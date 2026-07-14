@@ -538,14 +538,14 @@ export default async function Home({
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
             {[
-              { label: 'Über uns', href: '/ueber-uns' },
+              { label: t(lang, 'Über uns'), href: '/ueber-uns' },
               { label: 'Trier', href: '/region/trier' },
               { label: 'Bitburg', href: '/region/bitburg' },
               { label: 'Südeifel', href: '/region/suedeifel' },
               { label: 'Saartal', href: '/region/saar' },
-              { label: 'Impressum', href: '/impressum' },
-              { label: 'Datenschutz', href: '/datenschutz' },
-              { label: 'AGB', href: '/agb' },
+              { label: t(lang, 'Impressum'), href: '/impressum' },
+              { label: t(lang, 'Datenschutz'), href: '/datenschutz' },
+              { label: t(lang, 'AGB'), href: '/agb' },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
