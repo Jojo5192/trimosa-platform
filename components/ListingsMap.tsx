@@ -216,7 +216,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
                <span style="font-size:11px;color:#888;margin-left:3px">gesamt · ${listing.nights} Nächte</span>`
             : `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
                <span style="font-size:11px;color:#888;margin-left:3px">${t(lang, '/Nacht')}</span>`
-          : `<span style="font-size:12px;font-weight:500;color:#888">Preis auf Anfrage</span>`
+          : `<span style="font-size:12px;font-weight:500;color:#888">${t(lang, 'Preis auf Anfrage')}</span>`
 
         const imageHeader = listing.image
           ? `<div style="width:100%;height:132px;overflow:hidden;background:#EDEBE4">
