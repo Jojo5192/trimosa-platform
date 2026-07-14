@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { sendPushToTeam } from '@/lib/push'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
 
     // Notify the host now that payment is confirmed — requests ask for
     // accept/decline, instant bookings just inform (fire-and-forget).
-    sendHostBookingAlert(bookingId).catch(err =>
+    sendHostBookingAlert(bookingId)
+    sendPushToTeam('📅 Neue Buchung/Anfrage eingegangen', 'Zahlung bestätigt — Details im Dashboard.', '/dashboard/bookings').catch(() => {}).catch(err =>
       console.error('[Webhook] host alert failed (non-fatal):', err)
     )
 
