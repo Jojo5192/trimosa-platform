@@ -540,12 +540,17 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
     .update({ reviews_synced_at: new Date().toISOString() })
     .eq('id', listing.id)
 
-  // Refresh the AI guest summary from the (possibly just updated) review texts.
-  // Fire-and-forget style but awaited so the cron result reflects reality —
-  // failures never break the sync itself.
-  await updateGuestSummary(listing.id).catch((err) =>
+  // Refresh the AI guest summary from the (possibly just updated) review
+  // texts. Its outcome is reported as an own results row so failures are
+  // visible right in the editor (no Vercel log digging) — but never break
+  // the sync itself.
+  try {
+    const summaryStatus = await updateGuestSummary(listing.id)
+    results.push({ source: 'zusammenfassung', status: summaryStatus === 'ok' ? 'ok' : 'skipped', fetched: 0, upserted: 0, detail: summaryStatus })
+  } catch (err) {
     console.error('[reviews-sync] guest summary failed:', err)
-  )
+    results.push({ source: 'zusammenfassung', status: 'error', fetched: 0, upserted: 0, detail: err instanceof Error ? err.message : String(err) })
+  }
 
   return results
 }
@@ -555,21 +560,22 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
  * praise, generated ONLY from imported review texts (no invented facts).
  * Written to listings.guest_summary; skipped below 5 usable texts.
  */
-export async function updateGuestSummary(listingId: string): Promise<void> {
-  if (!process.env.ANTHROPIC_API_KEY) return
+export async function updateGuestSummary(listingId: string): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY fehlt'
 
-  const { data: reviews } = await supabaseAdmin
+  const { data: reviews, error: loadError } = await supabaseAdmin
     .from('reviews')
     .select('review_text, rating, source')
     .eq('listing_id', listingId)
     .not('review_text', 'is', null)
     .order('review_date', { ascending: false })
     .limit(60)
+  if (loadError) throw new Error('Reviews laden: ' + loadError.message)
 
   const texts = (reviews ?? [])
     .map((r) => (r.review_text ?? '').trim())
     .filter((t) => t.length >= 20)
-  if (texts.length < 5) return
+  if (texts.length < 5) return `zu wenige Texte (${texts.length})`
 
   const system = `Du fasst Gästebewertungen für eine TRIMOSA-Ferienwohnung zusammen.
 Schreibe 2–3 warme, konkrete Sätze auf Deutsch darüber, was Gäste an dieser Wohnung
@@ -582,8 +588,10 @@ beginne direkt, z. B. "Gäste loben immer wieder …". Antworte NUR mit der Zusa
 ')
   const summary = await askClaude(system, user, 400)
 
-  await supabaseAdmin
+  const { error: writeError } = await supabaseAdmin
     .from('listings')
     .update({ guest_summary: summary, guest_summary_updated_at: new Date().toISOString() })
     .eq('id', listingId)
+  if (writeError) throw new Error('Summary speichern: ' + writeError.message)
+  return 'ok'
 }
