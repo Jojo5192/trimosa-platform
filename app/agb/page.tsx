@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
+// First visit per language AI-translates the page (then cached)
+export const maxDuration = 120
+
 export const metadata: Metadata = {
   title: 'AGB',
   description: 'Allgemeine Geschäftsbedingungen der TRIMOSA Apartments & Homes eGbR für die Vermietung von Ferienwohnungen.',
