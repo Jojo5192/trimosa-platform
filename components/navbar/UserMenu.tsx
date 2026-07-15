@@ -89,7 +89,6 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
                 { href: '/guest',               icon: '🏡', label: t(lang, 'Meine Reisen') },
                 { href: '/guest/chat',          icon: '💬', label: t(lang, 'Nachrichten') },
                 { href: '/guest/profile',       icon: '👤', label: t(lang, 'Profil bearbeiten') },
-                { href: '/guest/notifications', icon: '🔔', label: t(lang, 'Benachrichtigungen') },
               ].map(({ href, icon, label }) => (
                 <MenuItem key={href} href={href} onClick={onClose}>
                   <span style={{ marginRight: '8px', fontSize: '13px' }}>{icon}</span>
