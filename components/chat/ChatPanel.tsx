@@ -12,7 +12,7 @@ interface Conversation {
   /** unified inbox (team mode): thread source + badge data */
   kind?: 'direct' | 'booking'
   platform?: string
-  guestStatus?: 'current' | 'upcoming' | 'past' | null
+  guestStatus?: 'current' | 'upcoming' | 'past' | 'cancelled' | null
   lastPreview?: string | null
   lastSender?: 'guest' | 'host' | null
   noReplyNeeded?: boolean
@@ -42,6 +42,7 @@ const PLATFORM_COLORS: Record<string, string> = {
 }
 function statusInfo(c: Conversation): { dot: string; label: string } | null {
   if (!c.guestStatus) return null
+  if (c.guestStatus === 'cancelled') return { dot: '#EF4444', label: 'Storniert' }
   if (c.guestStatus === 'current') return { dot: '#22C55E', label: 'Vor Ort' }
   if (c.guestStatus === 'upcoming') {
     const days = c.check_in ? Math.ceil((new Date(c.check_in).getTime() - Date.now()) / 86400000) : null
