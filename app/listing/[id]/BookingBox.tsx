@@ -234,13 +234,17 @@ export default function BookingBox({
     // Check guest profile completeness (name + address required)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('guest_first_name, guest_last_name, guest_street, guest_city, guest_zip')
+      .select('account_type, company_name, guest_first_name, guest_last_name, guest_street, guest_city, guest_zip')
       .eq('id', session.user.id)
       .maybeSingle()
 
+    // Business accounts identify via company name — they have NO first/last
+    // name, so requiring one locked them out of booking entirely.
+    const nameComplete = profile?.account_type === 'business'
+      ? !!profile?.company_name
+      : !!(profile?.guest_first_name && profile?.guest_last_name)
     const profileComplete = !!(
-      profile?.guest_first_name &&
-      profile?.guest_last_name &&
+      nameComplete &&
       profile?.guest_street &&
       profile?.guest_city &&
       profile?.guest_zip
