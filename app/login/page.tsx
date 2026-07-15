@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import OAuthButtons from '@/components/OAuthButtons'
+import LangSwitcher from '@/components/LangSwitcher'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 export default function LoginPage() {
@@ -65,6 +66,9 @@ export default function LoginPage() {
             <Link href="/"><Image src="/logo.png" alt="TRIMOSA" width={180} height={40} className="h-9 w-auto object-contain mx-auto" /></Link>
           </div>
 
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+            <LangSwitcher compact />
+          </div>
           <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#1D1D1F', marginBottom: '6px', letterSpacing: '-0.5px' }}>
             {t(lang, 'Willkommen zurück')}
           </h1>
