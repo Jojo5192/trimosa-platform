@@ -187,12 +187,12 @@ export async function sendBookingEmail(bookingId: string) {
   // Guest language captured at booking time (uilang cookie) → the whole email
   // goes out in that language (AI-translated once, cached in static_translations)
   const lang: UiLang = isUiLang(booking.guest_lang) ? booking.guest_lang : 'de'
-  const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Buchung ist bei uns eingegangen — sobald deine Zahlung bestätigt ist, erhältst du alle Details zu Check-in und Aufenthalt.'
-  const P_REQUEST = 'vielen Dank für deine Anfrage für <strong>{titel}</strong>. Wir prüfen sie und melden uns schnellstmöglich bei dir — in der Regel innerhalb von 24 Stunden.'
+  const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Zahlung ist eingegangen und deine Buchung ist bestätigt. Alle Details zum Check-in erhältst du rechtzeitig vor deiner Anreise.'
+  const P_REQUEST = 'vielen Dank für deine Anfrage für <strong>{titel}</strong> — deine Zahlung ist eingegangen. Wir prüfen die Anfrage und melden uns schnellstmöglich, in der Regel innerhalb von 24 Stunden. Sollten wir nicht bestätigen können, erstatten wir den Betrag automatisch und vollständig.'
   const NOTE_REQUEST = 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.'
   const T = await makeTr(lang, lang === 'de' ? [] : [
-    'Hallo', 'Deine Buchung für {titel} ist eingegangen.', 'Deine Anfrage für {titel} ist eingegangen — wir melden uns.',
-    'Deine Buchung ist eingegangen', 'Deine Anfrage ist eingegangen',
+    'Hallo', 'Deine Buchung für {titel} ist bestätigt.', 'Deine Anfrage für {titel} ist eingegangen — wir melden uns.',
+    'Deine Buchung ist bestätigt', 'Deine Anfrage ist eingegangen',
     P_INSTANT, P_REQUEST, NOTE_REQUEST,
     'Buchung ansehen', 'Anfrage ansehen', 'Deine Buchung', 'Deine Anfrage',
     'Unterkunft', 'Anreise', 'Abreise', 'Gäste', 'Gesamtpreis',
@@ -208,9 +208,9 @@ export async function sendBookingEmail(bookingId: string) {
 
   const html = renderEmail({
     preheader: (isInstant
-      ? T('Deine Buchung für {titel} ist eingegangen.')
+      ? T('Deine Buchung für {titel} ist bestätigt.')
       : T('Deine Anfrage für {titel} ist eingegangen — wir melden uns.')).replace('{titel}', listing.title),
-    heading: isInstant ? T('Deine Buchung ist eingegangen') : T('Deine Anfrage ist eingegangen'),
+    heading: isInstant ? T('Deine Buchung ist bestätigt') : T('Deine Anfrage ist eingegangen'),
     paragraphs: [
       anrede,
       (isInstant ? T(P_INSTANT) : T(P_REQUEST)).replace('{titel}', listing.title),
