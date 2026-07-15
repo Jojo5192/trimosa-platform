@@ -429,6 +429,11 @@ export const REGIONS: Record<string, Region> = {
         text: 'Beef, Buns & Burgers: Der Kult-Laden in der Neustraße wird von vielen als die beste Burger-Adresse der Stadt gehandelt.',
       },
       {
+        emoji: '🍔', name: 'Burgeramt Trier', art: 'Burger', ort: 'Nagelstraße, Trier',
+        kategorie: 'gasthaus', lat: 49.7536, lon: 6.6384, googleQuery: 'Burgeramt Trier Nagelstraße',
+        text: 'Burger-Institution in der Fußgängerzone: Alles hausgemacht von A bis Z — von den Buns bis zu den Saucen, auch vegetarisch und vegan.',
+      },
+      {
         emoji: '🍷', name: 'Weinstube Kesselstatt', art: 'Weinstube', ort: 'An der Liebfrauenkirche, Trier',
         kategorie: 'wein', lat: 49.7557, lon: 6.6423, googleQuery: 'Weinstube Kesselstatt Trier', googlePlaceId: 'ChIJET6Ul5p8lUcRobVMexznOJc',
         image: {
