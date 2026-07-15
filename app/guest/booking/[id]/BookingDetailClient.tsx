@@ -59,10 +59,10 @@ function buildPolicyText(listing: Listing | null, lang: UiLang = 'de'): string {
 }
 
 function formatDate(iso: string, lang: UiLang = 'de') {
-  if (!iso) if (lang === 'en') return `${months[m - 1]} ${d}, ${y}`
-  return ''
+  if (!iso) return ''
   const [y, m, d] = iso.split('-').map(Number)
   const months = lang === 'de' ? ['Jan.','Feb.','Mär.','Apr.','Mai','Jun.','Jul.','Aug.','Sep.','Okt.','Nov.','Dez.'] : MONTHS_SHORT[lang]
+  if (lang === 'en') return `${months[m - 1]} ${d}, ${y}`
   return `${d}. ${months[m - 1]} ${y}`
 }
 
