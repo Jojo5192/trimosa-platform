@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 interface Message {
   id: string
@@ -23,6 +24,11 @@ function formatTime(iso: string) {
 }
 
 export default function BookingChat({ bookingId, currentUserId, isHost }: Props) {
+  const [lang, setLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setLang(m[1])
+  }, [])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -105,22 +111,22 @@ export default function BookingChat({ bookingId, currentUserId, isHost }: Props)
         </div>
         <div>
           <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: 0 }}>
-            {isHost ? 'Nachricht an Gast' : 'Nachricht an Gastgeber'}
+            {isHost ? t(lang, 'Nachricht an Gast') : t(lang, 'Nachricht an Gastgeber')}
           </p>
-          <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>Antwortet in Smoobu automatisch sichtbar</p>
+          <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>{t(lang, 'Antwortet in Smoobu automatisch sichtbar')}</p>
         </div>
       </div>
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#BBB', fontSize: '13px' }}>Nachrichten werden geladen…</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: '#BBB', fontSize: '13px' }}>{t(lang, 'Nachrichten werden geladen…')}</div>
         ) : messages.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>💬</div>
-            <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>Noch keine Nachrichten</p>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>{t(lang, 'Noch keine Nachrichten')}</p>
             <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>
-              {isHost ? 'Schreibe dem Gast eine erste Nachricht.' : 'Schreibe dem Gastgeber eine Nachricht.'}
+              {isHost ? t(lang, 'Schreibe dem Gast eine erste Nachricht.') : t(lang, 'Schreibe dem Gastgeber eine Nachricht.')}
             </p>
           </div>
         ) : (
@@ -166,7 +172,7 @@ export default function BookingChat({ bookingId, currentUserId, isHost }: Props)
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-          placeholder="Nachricht schreiben… (Enter zum Senden)"
+          placeholder={t(lang, 'Nachricht schreiben… (Enter zum Senden)')}
           rows={1}
           style={{
             flex: 1,
