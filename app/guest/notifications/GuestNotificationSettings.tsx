@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 interface Props {
   bookingConfirmed: boolean
@@ -10,6 +11,11 @@ interface Props {
 }
 
 export default function GuestNotificationSettings({ bookingConfirmed, bookingCancelled, newMessage, payment }: Props) {
+  const [lang, setLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setLang(m[1])
+  }, [])
   const [settings, setSettings] = useState({
     guest_notif_booking_confirmed: bookingConfirmed,
     guest_notif_booking_cancelled: bookingCancelled,
@@ -34,10 +40,10 @@ export default function GuestNotificationSettings({ bookingConfirmed, bookingCan
   }
 
   const items = [
-    { key: 'guest_notif_booking_confirmed' as const, icon: '✅', label: 'Buchung bestätigt', desc: 'Wenn deine Anfrage oder Buchung bestätigt wird.' },
-    { key: 'guest_notif_booking_cancelled' as const, icon: '❌', label: 'Buchung storniert',  desc: 'Wenn eine Buchung storniert wird.' },
-    { key: 'guest_notif_new_message' as const,       icon: '💬', label: 'Neue Nachricht',     desc: 'Wenn du eine Nachricht vom Gastgeber erhältst.' },
-    { key: 'guest_notif_payment' as const,           icon: '💳', label: 'Zahlung',            desc: 'Bestätigungen zu Zahlungen und Rückerstattungen.' },
+    { key: 'guest_notif_booking_confirmed' as const, icon: '✅', label: t(lang, 'Buchung bestätigt'), desc: t(lang, 'Wenn deine Anfrage oder Buchung bestätigt wird.') },
+    { key: 'guest_notif_booking_cancelled' as const, icon: '❌', label: t(lang, 'Buchung storniert'),  desc: t(lang, 'Wenn eine Buchung storniert wird.') },
+    { key: 'guest_notif_new_message' as const,       icon: '💬', label: t(lang, 'Neue Nachricht'),     desc: t(lang, 'Wenn du eine Nachricht vom Gastgeber erhältst.') },
+    { key: 'guest_notif_payment' as const,           icon: '💳', label: t(lang, 'Zahlung'),            desc: t(lang, 'Bestätigungen zu Zahlungen und Rückerstattungen.') },
   ]
 
   return (
