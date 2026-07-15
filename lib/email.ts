@@ -150,6 +150,27 @@ async function loadBooking(bookingId: string) {
 /**
  * Guest email right after the booking/request was created (pre-payment).
  */
+/**
+ * Branded welcome email right after registration — in the user's UI language.
+ * Best-effort: failures never block the registration itself.
+ */
+export async function sendWelcomeEmail(to: string, name: string, lang: UiLang = 'de') {
+  const P1 = 'schön, dass du da bist! Dein TRIMOSA-Konto ist startklar. Ab jetzt buchst du unsere Ferienwohnungen in Trier, Bitburg und der Südeifel direkt bei uns — ohne Vermittler, ohne versteckte Gebühren.'
+  const P2 = 'In deinem Gast-Bereich findest du alle Buchungen, deine Rechnungsdaten und den direkten Chat zu uns. Bei Fragen sind wir persönlich für dich da.'
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    'Hallo', 'Willkommen bei TRIMOSA!', 'Dein Konto ist startklar.', P1, P2, 'Jetzt Unterkunft entdecken',
+  ])
+  const anrede = name ? `${T('Hallo')} ${name.trim().split(/\s+/)[0]},` : `${T('Hallo')},`
+  const html = renderEmail({
+    preheader: T('Dein Konto ist startklar.'),
+    heading: T('Willkommen bei TRIMOSA!'),
+    paragraphs: [anrede, T(P1), T(P2)],
+    details: [],
+    cta: { label: T('Jetzt Unterkunft entdecken'), url: siteUrl },
+  })
+  return sendViaResend(to, T('Willkommen bei TRIMOSA!'), html)
+}
+
 export async function sendBookingEmail(bookingId: string) {
   const loaded = await loadBooking(bookingId)
   if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }
