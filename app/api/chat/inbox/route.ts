@@ -75,13 +75,13 @@ export async function GET() {
   const bookingIds = bookingRows.map((b) => b.id)
   const smoobuIds = bookingRows.map((b) => Number(b.smoobu_reservation_id)).filter(Number.isFinite)
 
-  type Last = { at: string; preview: string; sender: 'guest' | 'host' }
+  type Last = { at: string; preview: string; sender: 'guest' | 'host'; noReply?: boolean }
   const lastLive: Record<string, Last> = {}
   const bUnread: Record<string, number> = {}
   const { data: bMsgs } = bookingIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('booking_id, created_at, sender_type, read_at, content, content_de, lang')
+        .select('booking_id, created_at, sender_type, read_at, content, content_de, lang, no_reply_needed')
         .in('booking_id', bookingIds)
         .order('created_at', { ascending: false })
         .limit(800)
@@ -95,6 +95,7 @@ export async function GET() {
         at: m.created_at,
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
         sender: m.sender_type === 'guest' ? 'guest' : 'host',
+        noReply: !!m.no_reply_needed,
       }
     }
     if (m.sender_type === 'guest' && !m.read_at) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
@@ -129,12 +130,12 @@ export async function GET() {
   const { data: dMsgs } = convIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('conversation_id, created_at, sender_id, content, content_de, lang')
+        .select('conversation_id, created_at, sender_id, content, content_de, lang, no_reply_needed')
         .in('conversation_id', convIds)
         .order('created_at', { ascending: false })
         .limit(400)
     : { data: [] }
-  const lastDirect: Record<string, { preview: string; senderId: string | null }> = {}
+  const lastDirect: Record<string, { preview: string; senderId: string | null; noReply?: boolean }> = {}
   const dLang: Record<string, string> = {}
   for (const m of dMsgs ?? []) {
     if (m.conversation_id && m.lang && !dLang[m.conversation_id]) dLang[m.conversation_id] = m.lang
@@ -142,6 +143,7 @@ export async function GET() {
       lastDirect[m.conversation_id] = {
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
         senderId: m.sender_id ?? null,
+        noReply: !!m.no_reply_needed,
       }
     }
   }
@@ -164,6 +166,7 @@ export async function GET() {
       lastPreview: last?.preview ?? null,
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
       guestLang: dLang[c.id] ?? null,
+      noReplyNeeded: last?.noReply ?? false,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -187,6 +190,7 @@ export async function GET() {
         lastPreview: last?.preview ?? null,
         lastSender: last?.sender ?? null,
         guestLang: bLang[b.id] ?? null,
+        noReplyNeeded: last && 'noReply' in last ? !!last.noReply : false,
         unread: bUnread[b.id] ?? 0,
       }
     })
@@ -200,4 +204,37 @@ export async function GET() {
   const threads = [...withMsg, ...withoutMsg]
 
   return NextResponse.json({ userId: user.id, threads })
+}
+
+/**
+ * PATCH /api/chat/inbox — "Keine Antwort erforderlich" für einen Thread
+ * togglen. Setzt das Flag auf der NEUESTEN Nachricht des Threads; eine
+ * spätere Gast-Nachricht macht den Thread automatisch wieder unbeantwortet.
+ * Body: { kind: 'booking' | 'direct', id: string, value: boolean }
+ */
+export async function PATCH(req: Request) {
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Nicht angemeldet.' }, { status: 401 })
+  const { data: me } = await supabaseAdmin
+    .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
+  if (!me?.is_admin && !me?.is_host && !me?.is_staff) {
+    return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  }
+  const { kind, id, value } = await req.json()
+  if (!id || (kind !== 'booking' && kind !== 'direct') || typeof value !== 'boolean') {
+    return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
+  }
+  const col = kind === 'booking' ? 'booking_id' : 'conversation_id'
+  const { data: last } = await supabaseAdmin
+    .from('messages')
+    .select('id')
+    .eq(col, id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!last) return NextResponse.json({ error: 'Keine Nachricht im Thread.' }, { status: 404 })
+  const { error } = await supabaseAdmin.from('messages').update({ no_reply_needed: value }).eq('id', last.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }
