@@ -11,11 +11,15 @@ export default async function EditListingPage({ params }: { params: Promise<{ id
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Single-Host-Firma: jeder Team-Gastgeber/Admin darf jedes Inserat bearbeiten
+  const { data: me } = await supabaseAdmin
+    .from('profiles').select('is_host, is_admin').eq('id', user.id).maybeSingle()
+  if (!me?.is_host && !me?.is_admin) redirect('/dashboard')
+
   const { data: listing } = await supabaseAdmin
     .from('listings')
     .select('*')
     .eq('id', id)
-    .eq('host_id', user.id)
     .single()
 
   if (!listing) redirect('/dashboard')
