@@ -43,7 +43,8 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
           const isSelected = iso === checkIn || iso === checkOut
           const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut
           // First day of a booked stretch = still a valid check-out morning
-          const prevIso = new Date(new Date(iso + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10)
+          // UTC parsen! Lokale Mitternacht (CEST) minus 24h fiele via toISOString auf VORVORtag.
+          const prevIso = new Date(new Date(iso + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10)
           const checkoutEligible = isBooked && rates[prevIso]?.available !== 0
           const checkoutOnly = checkoutEligible && !!checkIn && !checkOut && iso > checkIn
           const clickable = !isPast && (!isBooked || checkoutOnly)
