@@ -31,9 +31,16 @@ export default async function GuestPage() {
     .eq('guest_id', user.id)
     .order('check_in', { ascending: false })
 
-  const upcoming = (bookings ?? []).filter(b => tripStatus(b.check_in, b.check_out) === 'upcoming')
-  const current  = (bookings ?? []).filter(b => tripStatus(b.check_in, b.check_out) === 'current')
-  const past     = (bookings ?? []).filter(b => tripStatus(b.check_in, b.check_out) === 'past')
+  // Stornierte Buchungen sind keine Reisen mehr: sie zählen nicht in die
+  // Kennzahlen und wandern in "Vergangene Reisen" (dort mit Storniert-Badge).
+  const activeBookings = (bookings ?? []).filter(b => b.status !== 'cancelled')
+  const cancelled      = (bookings ?? []).filter(b => b.status === 'cancelled')
+  const upcoming = activeBookings.filter(b => tripStatus(b.check_in, b.check_out) === 'upcoming')
+  const current  = activeBookings.filter(b => tripStatus(b.check_in, b.check_out) === 'current')
+  const past     = [
+    ...activeBookings.filter(b => tripStatus(b.check_in, b.check_out) === 'past'),
+    ...cancelled,
+  ]
 
   const statusBadge = (status: string) => {
     if (status === 'confirmed')  return { label: t(lang, 'Bestätigt'),    bg: '#DCFCE7', color: '#16A34A' }
