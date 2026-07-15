@@ -20,7 +20,7 @@ export function FloorPlanSection({ urls, labels = [], lang = 'de' }: { urls: str
               {/* eslint-disable-next-line @next/next/no-img-element -- no fixed-height container, low SEO value */}
               <img src={url} alt={labels[i] ? t(lang, labels[i]) : `${t(lang, 'Grundriss')} ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
               <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
-                🔍 Vergrößern
+                🔍 {t(lang, 'Vergrößern')}
               </div>
             </div>
             {labels[i] && (
