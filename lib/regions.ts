@@ -383,22 +383,22 @@ export const REGIONS: Record<string, Region> = {
     kulinarik: [
       {
         emoji: '✨', name: "BECKER'S", art: 'Fine Dining', ort: 'Trier-Olewig',
-        kategorie: 'fein', lat: 49.742, lon: 6.6679, top: true, googleQuery: "BECKER'S Hotel Restaurant Olewiger Straße Trier",
+        kategorie: 'fein', lat: 49.742, lon: 6.6679, top: true, googleQuery: "BECKER'S Hotel Restaurant Olewiger Straße Trier", googlePlaceId: 'ChIJ1Q4j0od7lUcRsRbhCgdJ3k4',
         text: 'Triers erste Gourmet-Adresse: Fine Dining im Designhotel mitten im Weinort Olewig — langjährig sternedekoriert und im Guide Michelin geführt, dazu Weine vom eigenen Gut.',
       },
       {
         emoji: '🦢', name: 'Bagatelle', art: 'Fine Dining', ort: 'Zurlaubener Ufer, Trier',
-        kategorie: 'fein', lat: 49.7647, lon: 6.635, googleQuery: 'Bagatelle Restaurant Zurlaubener Ufer Trier',
+        kategorie: 'fein', lat: 49.7647, lon: 6.635, googleQuery: 'Bagatelle Restaurant Zurlaubener Ufer Trier', googlePlaceId: 'ChIJ6Tmh3bx9lUcRogoGH2j1bnQ',
         text: 'Kreative Küche im alten Fischerviertel Zurlauben, direkt am Moselufer — im Guide Michelin empfohlen, im Sommer mit Terrasse zum Fluss.',
       },
       {
         emoji: '🦉', name: 'Schlemmereule', art: 'Fine Dining', ort: 'Domfreihof, Trier',
-        kategorie: 'fein', lat: 49.7569, lon: 6.6422, googleQuery: 'Schlemmereule Trier Domfreihof',
+        kategorie: 'fein', lat: 49.7569, lon: 6.6422, googleQuery: 'Schlemmereule Trier Domfreihof', googlePlaceId: 'ChIJZygDdZB8lUcR6e2De5RZDAk',
         text: 'Gehobene Küche im Palais Walderdorff direkt am Dom — seit Jahren eine feste Größe der Trierer Gastronomie.',
       },
       {
         emoji: '🏰', name: 'Schloss Monaise', art: 'Schloss-Restaurant', ort: 'Trier-Euren, an der Mosel',
-        kategorie: 'fein', lat: 49.7173, lon: 6.5997, googleQuery: 'Restaurant Schloss Monaise Trier',
+        kategorie: 'fein', lat: 49.7173, lon: 6.5997, googleQuery: 'Restaurant Schloss Monaise Trier', googlePlaceId: 'ChIJEW9JtNJklUcRDg8XRBS3D3w',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Trier_Schloss_Monaise_BW_2017-09-10_15-22-54.jpg/1280px-Trier_Schloss_Monaise_BW_2017-09-10_15-22-54.jpg',
           author: 'Berthold Werner',
@@ -410,27 +410,27 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '🏛️', name: 'Zum Domstein', art: 'Römische Küche', ort: 'Hauptmarkt, Trier',
-        kategorie: 'gasthaus', lat: 49.7571, lon: 6.641, googleQuery: 'Zum Domstein Hauptmarkt Trier',
+        kategorie: 'gasthaus', lat: 49.7571, lon: 6.641, googleQuery: 'Zum Domstein Hauptmarkt Trier', googlePlaceId: 'ChIJiZHrgJp8lUcRTBRpV-AH9gk',
         text: 'Institution am Hauptmarkt — neben regionaler Küche gibt es Gerichte nach altrömischen Rezepten, serviert über einem originalen römischen Gewölbekeller.',
       },
       {
         emoji: '🍽️', name: 'Weinwirtschaft Friedrich-Wilhelm', art: 'Weinrestaurant', ort: 'Weberbach, Trier',
-        kategorie: 'gasthaus', lat: 49.7536, lon: 6.6415, googleQuery: 'Weinwirtschaft Friedrich-Wilhelm Trier',
+        kategorie: 'gasthaus', lat: 49.7536, lon: 6.6415, googleQuery: 'Weinwirtschaft Friedrich-Wilhelm Trier', googlePlaceId: 'ChIJiWFdEJt8lUcRR_H5FBHJgrY',
         text: 'Regionale Küche und eine große Auswahl an Mosel-, Saar- und Ruwerweinen im historischen Ambiente an der Weberbach.',
       },
       {
         emoji: '🌿', name: 'Herrlich Ehrlich', art: 'Fusion-Küche', ort: 'Trier-West',
-        kategorie: 'gasthaus', lat: 49.7553, lon: 6.6257, googleQuery: 'Herrlich Ehrlich Trier',
+        kategorie: 'gasthaus', lat: 49.7553, lon: 6.6257, googleQuery: 'Herrlich Ehrlich Trier', googlePlaceId: 'ChIJ-8r7eKN8lUcRQIL__sRClGg',
         text: 'Hipper Genuss-Spot in Trier-West: europäisch-arabische Fusion-Küche — im Sommer große Terrasse unter Bäumen und Lichterketten.',
       },
       {
         emoji: '🍔', name: 'Der Daddy', art: 'Burger', ort: 'Neustraße, Trier',
-        kategorie: 'gasthaus', lat: 49.7502, lon: 6.6374, googleQuery: 'Der Daddy Burger Trier Neustraße',
+        kategorie: 'gasthaus', lat: 49.7502, lon: 6.6374, googleQuery: 'Der Daddy Burger Trier Neustraße', googlePlaceId: 'ChIJb2zaJJx8lUcRnkL9v_We0Xw',
         text: 'Beef, Buns & Burgers: Der Kult-Laden in der Neustraße wird von vielen als die beste Burger-Adresse der Stadt gehandelt.',
       },
       {
         emoji: '🍷', name: 'Weinstube Kesselstatt', art: 'Weinstube', ort: 'An der Liebfrauenkirche, Trier',
-        kategorie: 'wein', lat: 49.7557, lon: 6.6423, googleQuery: 'Weinstube Kesselstatt Trier',
+        kategorie: 'wein', lat: 49.7557, lon: 6.6423, googleQuery: 'Weinstube Kesselstatt Trier', googlePlaceId: 'ChIJET6Ul5p8lUcRobVMexznOJc',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Trier_Palais_Kesselstadt_BW_1.JPG/1280px-Trier_Palais_Kesselstadt_BW_1.JPG',
           author: 'Berthold Werner',
@@ -442,7 +442,7 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '⛱️', name: 'Weinstand am Hauptmarkt', art: 'Sommer-Highlight', ort: 'Hauptmarkt, Trier',
-        kategorie: 'wein', lat: 49.7575, lon: 6.6416, top: true, googleQuery: 'Weinstand Trier Hauptmarkt',
+        kategorie: 'wein', lat: 49.7575, lon: 6.6416, top: true, googleQuery: 'Weinstand Trier Hauptmarkt', googlePlaceId: 'ChIJ95sfaIh9lUcRv_iYpPa9-yY',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/2018_Trier%2C_Hauptmarkt_2.jpg/1280px-2018_Trier%2C_Hauptmarkt_2.jpg',
           author: 'Kleon3',
@@ -454,7 +454,7 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '🥂', name: 'La Rochelle', art: 'Weinlokal', ort: 'Johann-Philipp-Straße, Trier',
-        kategorie: 'wein', lat: 49.7547, lon: 6.6396, googleQuery: 'La Rochelle Trier',
+        kategorie: 'wein', lat: 49.7547, lon: 6.6396, googleQuery: 'La Rochelle Trier', googlePlaceId: 'ChIJZ1ZkSZp8lUcRiHtLzFCqfNk',
         text: 'Charmantes Weinlokal in der Altstadt — gepflegte Auswahl regionaler und internationaler Weine, perfekt für den Abend in der Stadt.',
       },
       {
@@ -464,17 +464,17 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '🍰', name: 'Café Razen', art: 'Konditorei seit 1953', ort: 'Sichelstraße, Trier',
-        kategorie: 'cafe', lat: 49.7578, lon: 6.645, googleQuery: 'Café Razen Sichelstraße Trier',
+        kategorie: 'cafe', lat: 49.7578, lon: 6.645, googleQuery: 'Café Razen Sichelstraße Trier', googlePlaceId: 'ChIJ1V694I98lUcRRD3RF9luwwU',
         text: 'Konditorei-Institution in dritter Generation: handgemachte Torten, Croissants und eigenes Eis — wenige Schritte vom Hauptmarkt.',
       },
       {
         emoji: '🎂', name: 'Café-Konditorei Raab', art: 'Konditorei', ort: 'Karl-Marx-Straße, Trier',
-        kategorie: 'cafe', lat: 49.7531, lon: 6.634, googleQuery: 'Café Konditorei Raab Trier',
+        kategorie: 'cafe', lat: 49.7531, lon: 6.634, googleQuery: 'Café Konditorei Raab Trier', googlePlaceId: 'ChIJ_6pM35h8lUcRG9MLPJ7iyfs',
         text: 'Konditor-Handwerk in vierter Generation: Torten, Pralinen und Kaffee wie früher — ein Klassiker an der Karl-Marx-Straße.',
       },
       {
         emoji: '🍺', name: 'Craftprotz', art: 'Kreativbierbar', ort: 'Palaststraße, Trier',
-        kategorie: 'bar', lat: 49.7551, lon: 6.6413, top: true, googleQuery: 'Craftprotz Trier',
+        kategorie: 'bar', lat: 49.7551, lon: 6.6413, top: true, googleQuery: 'Craftprotz Trier', googlePlaceId: 'ChIJ-YZRcQR9lUcRO7cKMBi9Kew',
         text: 'Kreativbierbar mit ständig wechselnden Craft-Bieren — gegründet von einem guten Freund des Hauses. Top, wenn du über den Bier-Tellerrand schauen willst.',
       },
     ],
@@ -641,17 +641,17 @@ export const REGIONS: Record<string, Region> = {
     kulinarik: [
       {
         emoji: '🍺', name: 'Zum Simonbräu', art: 'Brauhaus', ort: 'Am Markt, Bitburg',
-        kategorie: 'gasthaus', lat: 49.9739, lon: 6.522, top: true, googleQuery: 'Zum Simonbräu Bitburg',
+        kategorie: 'gasthaus', lat: 49.9739, lon: 6.522, top: true, googleQuery: 'Zum Simonbräu Bitburg', googlePlaceId: 'ChIJAcu7z-7cv0cR0FshUNqTPfs',
         text: 'Im Stammhaus der Bitburger-Brauerei: regionale Küche mit französischem Einschlag und frisch Gezapftes — mitten in der Stadt.',
       },
       {
         emoji: '🍽️', name: 'Torschänke Dudeldorf', art: 'Gasthaus', ort: 'Dudeldorf',
-        kategorie: 'gasthaus', lat: 49.9738, lon: 6.6364, googleQuery: 'Restaurant Torschänke Dudeldorf',
+        kategorie: 'gasthaus', lat: 49.9738, lon: 6.6364, googleQuery: 'Restaurant Torschänke Dudeldorf', googlePlaceId: 'ChIJUXc4ML7av0cRiOQkpL-iX7Y',
         text: 'Die „gute Stube" des historischen Torbogen-Dorfs Dudeldorf — herzlich, familiär und verlässlich gut, ein Liebling der Region.',
       },
       {
         emoji: '🍻', name: 'Bitburger Marken-Erlebniswelt', art: 'Brauerlebnis', ort: 'Bitburg',
-        kategorie: 'gasthaus', lat: 49.9664, lon: 6.5227, googleQuery: 'Bitburger Marken-Erlebniswelt Bitburg',
+        kategorie: 'gasthaus', lat: 49.9664, lon: 6.5227, googleQuery: 'Bitburger Marken-Erlebniswelt Bitburg', googlePlaceId: 'ChIJoUuQ0ejcv0cR0YxjMbYdlCw',
         text: 'Führung durch die Markenwelt der berühmten Brauerei — am Ende wartet ein frisch gezapftes Pils direkt an der Quelle.',
       },
       {
@@ -844,7 +844,7 @@ export const REGIONS: Record<string, Region> = {
     kulinarik: [
       {
         emoji: '🏰', name: 'Schloss Niederweis', art: 'Schloss-Restaurant', ort: 'Niederweis',
-        kategorie: 'fein', lat: 49.8702, lon: 6.4653, googleQuery: 'Schloss Niederweis Restaurant',
+        kategorie: 'fein', lat: 49.8702, lon: 6.4653, googleQuery: 'Schloss Niederweis Restaurant', googlePlaceId: 'ChIJ54gOmrDfv0cRzs6524w9hXI',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Schloss_Niederweis_01.jpg/1280px-Schloss_Niederweis_01.jpg',
           author: 'Thomas Hummel',
@@ -856,17 +856,17 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '🍗', name: 'Landgasthaus zum Klimmes', art: 'Flieten-Kult', ort: 'Wintersdorf, Sauertal',
-        kategorie: 'gasthaus', lat: 49.7876, lon: 6.5094, top: true, googleQuery: 'Landgasthaus zum Klimmes Wintersdorf',
+        kategorie: 'gasthaus', lat: 49.7876, lon: 6.5094, top: true, googleQuery: 'Landgasthaus zum Klimmes Wintersdorf', googlePlaceId: 'ChIJeVfyVXxhlUcRKFTtW9hr72g',
         text: 'Berühmt für seine Flieten — die knusprigen Hähnchenflügel, die man mit den Fingern isst. Dazu Viez aus eigener Kelterei: Trierer Land-Kultur pur.',
       },
       {
         emoji: '🇫🇷', name: 'Le Petit Poète', art: 'Bistro am Marktplatz', ort: 'Echternach (LU)',
-        kategorie: 'gasthaus', lat: 49.8126, lon: 6.4208, top: true, googleQuery: 'Le Petit Poète Echternach',
+        kategorie: 'gasthaus', lat: 49.8126, lon: 6.4208, top: true, googleQuery: 'Le Petit Poète Echternach', googlePlaceId: 'ChIJCcIGrHdglUcRYHW1DZd8FlY',
         text: 'Kleiner Klassiker direkt am Marktplatz der Abteistadt — französisch geprägte Karte und eine der beliebtesten Terrassen der Stadt.',
       },
       {
         emoji: '🍽️', name: 'Aal Eechternoach', art: 'Luxemburgisch-französisch', ort: 'Echternach (LU)',
-        kategorie: 'gasthaus', lat: 49.8129, lon: 6.4203, googleQuery: 'Aal Eechternoach Echternach',
+        kategorie: 'gasthaus', lat: 49.8129, lon: 6.4203, googleQuery: 'Aal Eechternoach Echternach', googlePlaceId: 'ChIJ2a-W3TJelUcRDbvpBD51QhM',
         text: 'Vom deftigen Klassiker bis zum feinen Fischgericht — luxemburgisch-französische Küche mit gutem Ruf bei Einheimischen wie Gästen.',
       },
       {
@@ -1061,17 +1061,17 @@ export const REGIONS: Record<string, Region> = {
     kulinarik: [
       {
         emoji: '✨', name: 'Villa Keller', art: 'Gourmet-Restaurant', ort: 'Brückenstraße, Saarburg',
-        kategorie: 'fein', lat: 49.6085, lon: 6.5578, top: true, googleQuery: 'Villa Keller Saarburg Restaurant',
+        kategorie: 'fein', lat: 49.6085, lon: 6.5578, top: true, googleQuery: 'Villa Keller Saarburg Restaurant', googlePlaceId: 'ChIJU03fZz1ulUcRNlxPw8tOl7k',
         text: 'Saarburgs erste Adresse: feine Küche in der historischen Villa direkt an der Saar — stilvoll vom Aperitif bis zum Dessert.',
       },
       {
         emoji: '🍷', name: 'Weingut Van Volxem', art: 'Weingut & Vinothek', ort: 'Wiltingen',
-        kategorie: 'wein', lat: 49.6427, lon: 6.5788, top: true, googleQuery: 'Weingut Van Volxem Wiltingen',
+        kategorie: 'wein', lat: 49.6427, lon: 6.5788, top: true, googleQuery: 'Weingut Van Volxem Wiltingen', googlePlaceId: 'ChIJEQrBEwNwlUcRBfVRrgI2jpU',
         text: 'Saar-Riesling von Weltruf: Die moderne Vinothek hoch über den Weinbergen gehört zu den eindrucksvollsten Genuss-Adressen der Region.',
       },
       {
         emoji: '🍇', name: 'Weingut von Othegraven', art: 'VDP-Weingut', ort: 'Kanzem',
-        kategorie: 'wein', lat: 49.6707, lon: 6.5781, googleQuery: 'Weingut von Othegraven Kanzem',
+        kategorie: 'wein', lat: 49.6707, lon: 6.5781, googleQuery: 'Weingut von Othegraven Kanzem', googlePlaceId: 'ChIJ31tyV1ZllUcR92KkIVckOgY',
         image: {
           src: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/20170830_Weingut_von_Othegraven_05.jpg/1280px-20170830_Weingut_von_Othegraven_05.jpg',
           author: 'Bungert55',
@@ -1083,7 +1083,7 @@ export const REGIONS: Record<string, Region> = {
       },
       {
         emoji: '🛏️', name: 'Weinhotel Ayler Kupp', art: 'Weinrestaurant', ort: 'Ayl',
-        kategorie: 'wein', lat: 49.6291, lon: 6.5536, googleQuery: 'Weinhotel Ayler Kupp Ayl',
+        kategorie: 'wein', lat: 49.6291, lon: 6.5536, googleQuery: 'Weinhotel Ayler Kupp Ayl', googlePlaceId: 'ChIJI1PkKzVulUcROQ3GFVmByHo',
         text: 'Restaurant und Weinhotel am Fuß der berühmten Lage Ayler Kupp — saisonale Küche, begleitet von den besten Rieslingen des Dorfs.',
       },
       {
