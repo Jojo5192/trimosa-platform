@@ -23,6 +23,7 @@ import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translat
 import { t, isUiLang, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
 import { makeTr } from '@/lib/static-translate'
+import { getHostTeam } from '@/lib/hosts'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -139,6 +140,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   // Language layer: the site-wide cookie (flag switcher) drives the language;
   // an explicit ?lang= (SEO/hreflang links) overrides it. German is canonical.
   const cookieLang = await getUiLang()
+  const hostTeam = await getHostTeam()
   const lang: UiLang = isUiLang(langParam) ? langParam : cookieLang
   const tr = (listing.translations ?? {}) as Record<string, TranslationEntry>
   const availableLangs = TRANSLATION_LANGS.filter((l) => tr[l]?.title)
@@ -242,7 +244,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             )}
           </div>
           {hostProfile && (
-            <HostBadge lang={lang} host={{
+            <HostBadge lang={lang} team={hostTeam.map((m) => ({ firstName: m.firstName, initials: m.initials, avatarUrl: m.avatarUrl }))} host={{
               id: hostProfile.id,
               display_name: hostProfile.display_name,
               avatar_url: hostProfile.avatar_url,
