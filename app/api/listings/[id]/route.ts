@@ -9,7 +9,12 @@ async function getListingAndAuth(id: string, userId: string) {
     .eq('id', id)
     .single()
   if (!existing) return { error: 'Inserat nicht gefunden', status: 404 }
-  if (existing.host_id !== userId) return { error: 'Keine Berechtigung', status: 403 }
+  if (existing.host_id !== userId) {
+    // Single-Host-Firma: alle Team-Gastgeber/Admins dürfen alle Inserate pflegen
+    const { data: me } = await supabaseAdmin
+      .from('profiles').select('is_host, is_admin').eq('id', userId).maybeSingle()
+    if (!me?.is_host && !me?.is_admin) return { error: 'Keine Berechtigung', status: 403 }
+  }
   return { existing }
 }
 
