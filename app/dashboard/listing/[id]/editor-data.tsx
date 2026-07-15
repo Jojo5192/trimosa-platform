@@ -165,6 +165,7 @@ export interface Listing {
   title: string
   description: string
   location: string
+  location_group?: string | null
   address?: string
   city?: string
   latitude?: number
