@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 interface Props {
   currentUrl: string | null
@@ -11,6 +12,11 @@ interface Props {
 }
 
 export default function AvatarCropper({ currentUrl, displayName, onUpload, bucket = 'listing-images', storagePath }: Props) {
+  const [uiLang, setUiLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const mm = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (mm && isUiLang(mm[1])) setUiLang(mm[1])
+  }, [])
   const [step, setStep] = useState<'idle' | 'crop' | 'uploading'>('idle')
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
@@ -172,7 +178,7 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
               onClick={() => fileRef.current?.click()}
               style={{ fontSize: '12px', fontWeight: 600, color: 'var(--gold)', background: 'none', border: '1px solid #E0DDD6', borderRadius: '999px', padding: '5px 14px', cursor: 'pointer' }}
             >
-              Foto {currentUrl ? 'ändern' : 'hinzufügen'}
+              {currentUrl ? t(uiLang, 'Foto ändern') : t(uiLang, 'Foto hinzufügen')}
             </button>
           </div>
         </div>
