@@ -78,7 +78,10 @@ function CalendarMonth({
         {Array.from({ length: leadBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
           const { iso, isPast, isUnavailable, isCheckIn, isCheckOut, inRange } = cellState(day)
-          const disabled = isPast || isUnavailable
+          // A day whose NIGHT is booked is still a valid CHECK-OUT day (you
+          // leave in the morning) — Airbnb & Co. handle it the same way.
+          const checkoutOnly = isUnavailable && selecting === 'out' && !!checkIn && iso > checkIn
+          const disabled = isPast || (isUnavailable && !checkoutOnly)
           const isSelected = isCheckIn || isCheckOut
           return (
             <button
@@ -96,8 +99,8 @@ function CalendarMonth({
                 fontWeight: isSelected ? 700 : 400,
                 transition: 'all 0.1s',
                 backgroundColor: isSelected ? '#111' : inRange ? 'rgba(17,17,17,0.08)' : 'transparent',
-                color: isSelected ? '#fff' : isPast || isUnavailable ? '#CCC' : '#111',
-                textDecoration: isUnavailable && !isPast ? 'line-through' : 'none',
+                color: isSelected ? '#fff' : isPast || (isUnavailable && !checkoutOnly) ? '#CCC' : '#111',
+                textDecoration: isUnavailable && !isPast && !checkoutOnly ? 'line-through' : 'none',
               }}
             >
               {day}
