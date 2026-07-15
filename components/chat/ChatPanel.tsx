@@ -15,6 +15,7 @@ interface Conversation {
   guestStatus?: 'current' | 'upcoming' | 'past' | null
   lastPreview?: string | null
   lastSender?: 'guest' | 'host' | null
+  noReplyNeeded?: boolean
   guestLang?: string | null
 }
 
@@ -27,7 +28,7 @@ const INBOX_FILTERS: { id: InboxFilter; label: string }[] = [
   { id: 'kommend', label: 'Kommend' },
 ]
 function matchesFilter(c: Conversation, f: InboxFilter): boolean {
-  if (f === 'unbeantwortet') return c.lastSender === 'guest'
+  if (f === 'unbeantwortet') return c.lastSender === 'guest' && !c.noReplyNeeded
   if (f === 'ungelesen') return c.unread > 0
   if (f === 'vorort') return c.guestStatus === 'current'
   if (f === 'kommend') return c.guestStatus === 'upcoming'
@@ -165,6 +166,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   // "✨" reply suggestion (hosts only) — lands in the composer as an editable
   // draft, never auto-sent. History is loaded server-side by the API.
+  // "Keine Antwort erforderlich": markiert die letzte Nachricht des Threads —
+  // eine spätere Gast-Nachricht macht ihn automatisch wieder unbeantwortet.
+  async function toggleNoReply() {
+    if (!active) return
+    const value = !active.noReplyNeeded
+    setConvs(cs => cs.map(c => c.id === active.id ? { ...c, noReplyNeeded: value } : c))
+    setActive(a => (a ? { ...a, noReplyNeeded: value } : a))
+    try {
+      await fetch('/api/chat/inbox', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: active.kind ?? 'direct', id: active.id, value }),
+      })
+    } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
+  }
+
   async function suggestReply() {
     if (!active || aiBusy) return
     setAiBusy(true)
@@ -264,6 +280,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
         platform: t.platform, guestStatus: t.guestStatus,
         lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
+        noReplyNeeded: t.noReplyNeeded ?? false,
         guestLang: t.guestLang ?? null,
       }))
       setConvs(data)
@@ -555,6 +572,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 </div>
                 {c.lastPreview && (
                   <div style={{ fontSize: fullWidth ? 12.5 : 11.5, color: c.unread ? '#3A3427' : '#8A857B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 600 : 400, marginBottom: 2 }}>
+                    {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: '#34A853', fontWeight: 700 }}>✓ </span>}
                     {c.lastSender === 'host' && <span style={{ color: '#B5A97F' }}>Du: </span>}
                     {c.lastPreview}
                   </div>
@@ -634,6 +652,19 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}`} style={{ fontSize: 15 }}>{flag(guestLang)}</span>
                 )}
                 <ThreadBadges c={active} size={10.5} />
+                {team && active.lastSender === 'guest' && (
+                  <button
+                    onClick={toggleNoReply}
+                    title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort erforderlich'}
+                    style={{
+                      width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                      background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'rgba(118,118,128,0.12)',
+                      color: active.noReplyNeeded ? '#fff' : '#8A8578',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      fontSize: 14, fontWeight: 700, transition: 'all .15s',
+                    }}
+                  >✓</button>
+                )}
               </div>
             )}
           </div>
