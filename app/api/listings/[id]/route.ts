@@ -28,7 +28,7 @@ export async function PATCH(
   const body = await request.json()
 
   const allowed = [
-    'title', 'description', 'location', 'address', 'city',
+    'title', 'description', 'location', 'address', 'city', 'location_group',
     'latitude', 'longitude',
     'max_guests', 'bedrooms', 'bathrooms',
     'amenities', 'rooms',
