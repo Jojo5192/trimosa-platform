@@ -13,7 +13,7 @@ export default async function TeamChatPage({ searchParams }: { searchParams: Pro
   const { conv } = await searchParams
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  if (!user) redirect('/login?next=/team')
 
   const { data: me } = await supabaseAdmin
     .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
