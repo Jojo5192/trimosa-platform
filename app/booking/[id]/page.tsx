@@ -1,10 +1,13 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { t } from '@/lib/i18n'
+import { getUiLang } from '@/lib/i18n-server'
 import NavBar from '@/components/NavBar'
 import BookingChat from './BookingChat'
 
 export default async function BookingPage({ params }: { params: Promise<{ id: string }> }) {
+  const lang = await getUiLang()
   const { id } = await params
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -33,9 +36,9 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   }
 
   const statusColors: Record<string, { bg: string; color: string; label: string }> = {
-    pending:   { bg: '#FFF7ED', color: '#92400E', label: 'Anfrage eingegangen' },
-    confirmed: { bg: '#F0FDF4', color: '#16A34A', label: 'Bestätigt' },
-    cancelled: { bg: '#FEF2F2', color: '#DC2626', label: 'Storniert' },
+    pending:   { bg: '#FFF7ED', color: '#92400E', label: t(lang, 'Anfrage eingegangen') },
+    confirmed: { bg: '#F0FDF4', color: '#16A34A', label: t(lang, 'Bestätigt') },
+    cancelled: { bg: '#FEF2F2', color: '#DC2626', label: t(lang, 'Storniert') },
   }
   const statusStyle = statusColors[booking.status] ?? statusColors.pending
 
@@ -70,15 +73,15 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
 
           {/* Booking details sidebar */}
           <div style={{ background: '#fff', borderRadius: '20px', padding: '20px', border: '1px solid #E8E6E0' }}>
-            <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>Buchungsdetails</h2>
+            <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>{t(lang, 'Buchungsdetails')}</h2>
 
             {[
-              { label: 'Anreise', val: fmt(booking.check_in) },
-              { label: 'Abreise', val: fmt(booking.check_out) },
-              { label: 'Nächte', val: String(nights) },
-              { label: 'Erwachsene', val: String(booking.adults ?? 1) },
-              ...(booking.children ? [{ label: 'Kinder', val: String(booking.children) }] : []),
-              { label: 'Gesamtpreis', val: `€ ${booking.total_price}` },
+              { label: t(lang, 'Anreise'), val: fmt(booking.check_in) },
+              { label: t(lang, 'Abreise'), val: fmt(booking.check_out) },
+              { label: t(lang, 'Nächte'), val: String(nights) },
+              { label: t(lang, 'Erwachsene'), val: String(booking.adults ?? 1) },
+              ...(booking.children ? [{ label: t(lang, 'Kinder'), val: String(booking.children) }] : []),
+              { label: t(lang, 'Gesamtpreis'), val: `€ ${booking.total_price}` },
             ].map(({ label, val }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F5F3EF', fontSize: '13px' }}>
                 <span style={{ color: '#888' }}>{label}</span>
@@ -88,7 +91,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
 
             {booking.message && (
               <div style={{ marginTop: '14px', padding: '12px', background: '#FAFAF8', borderRadius: '10px', border: '1px solid #EAE8E2' }}>
-                <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Nachricht des Gastes</p>
+                <p style={{ fontSize: '10px', fontWeight: 700, color: '#AAA', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>{t(lang, 'Nachricht des Gastes')}</p>
                 <p style={{ fontSize: '13px', color: '#555', margin: 0, lineHeight: 1.5 }}>{booking.message}</p>
               </div>
             )}
