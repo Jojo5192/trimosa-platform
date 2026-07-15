@@ -327,7 +327,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         <div ref={containerRef} className={`trimosa-searchmap${tiles === 'voyager' ? ' trimosa-map-voyager' : ''}`} style={{ width: '100%', height: height ?? 'clamp(340px, 55vh, 520px)' }} />
       </div>
       <p style={{ fontSize: '11.5px', color: '#999', margin: '8px 2px 0' }}>
-        🏠 = TRIMOSA-Apartments · Marker antippen für Details
+        🏠 = TRIMOSA-Apartments · {t(lang, 'Marker antippen für Details')}
       </p>
 
       {/* ── Destination cards, driven by the same category filter ── */}
