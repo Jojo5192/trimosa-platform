@@ -50,6 +50,9 @@ export default function GuestPickerPopover({
 
   return (
     <div
+      // Clicks inside must NOT bubble to the guests field — its onClick
+      // toggles the popover, so every +/− press closed it (owner bug report)
+      onClick={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         top: 'calc(100% + 12px)',
