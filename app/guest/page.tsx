@@ -70,7 +70,7 @@ export default async function GuestPage() {
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
             <span style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: 600 }}>
-              Details &amp; Stornierung →
+              {t(lang, 'Details & Stornierung')} →
             </span>
             {tripStatus(booking.check_in as string, booking.check_out as string) === 'past' && (booking.status === 'confirmed' || booking.status === 'completed') && (
               <span
