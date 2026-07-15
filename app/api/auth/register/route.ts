@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
+import { sendWelcomeEmail } from '@/lib/email'
+import { isUiLang, type UiLang } from '@/lib/i18n'
 
 /**
  * POST /api/auth/register
@@ -31,6 +33,7 @@ export async function POST(request: Request) {
     city,
     country,
     phone,
+    lang,            // UI-Sprache des Nutzers (Cookie) für die Willkommens-Mail
   } = body
 
   // Öffentliche Registrierung legt immer nur Gast-Konten an (Single-Host —
@@ -104,6 +107,14 @@ export async function POST(request: Request) {
     // User wieder löschen damit kein Halbzustand bleibt
     await supabaseAdmin.auth.admin.deleteUser(userId)
     return NextResponse.json({ error: 'Profil konnte nicht angelegt werden: ' + profileError.message }, { status: 500 })
+  }
+
+  // Willkommens-Mail (best-effort — darf die Registrierung nie blockieren)
+  try {
+    const uiLang: UiLang = isUiLang(lang) ? lang : 'de'
+    await sendWelcomeEmail(email.trim().toLowerCase(), resolvedDisplayName ?? '', uiLang)
+  } catch (err) {
+    console.error('[Register] Willkommens-Mail fehlgeschlagen:', err)
   }
 
   return NextResponse.json({ ok: true })
