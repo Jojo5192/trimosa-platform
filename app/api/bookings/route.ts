@@ -3,7 +3,6 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkAvailability } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
-import { sendBookingEmail } from '@/lib/email'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getUiLang } from '@/lib/i18n-server'
 
@@ -163,9 +162,9 @@ export async function POST(request: Request) {
     console.error('[Bookings] auto-conversation failed (non-fatal):', err)
   }
 
-  sendBookingEmail(newBooking.id).catch(err =>
-    console.error('[Bookings] confirmation email failed (non-fatal):', err)
-  )
+  // Gast-Bestätigung wird bewusst NICHT hier verschickt, sondern erst im
+  // Stripe-Webhook nach bestätigter Zahlung (Inhaber-Vorgabe: keine Mail
+  // vor Zahlungseingang; abgebrochene Checkouts bekommen so nie eine Mail).
 
   return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type })
 }
