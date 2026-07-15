@@ -308,6 +308,57 @@ export default async function Home({
     },
   }
 
+  // Regions discovery — rendered below the grid AND below the map view
+  const regionsSection = (
+          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 clamp(12px, 4vw, 20px) 56px' }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold-dark)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
+              {t(lang, 'Mehr als eine Unterkunft')}
+            </p>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: '#111', letterSpacing: '-0.4px', margin: 0 }}>
+                {t(lang, 'Entdecke unsere Regionen')}
+              </h2>
+              <span style={{ fontSize: '12.5px', color: '#8A8578' }}>
+                {t(lang, 'Ausflugsziele, Karten & Tipps —')}{' '}
+                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{t(lang, 'über TRIMOSA →')}</Link>
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
+              {Object.values(REGIONS).map((r) => {
+                const hasListings = (allListings ?? [])
+                  .some((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
+                // Signature photo of the region (first curated hero POI) —
+                // deliberately NOT an apartment shot; those live in the grid above
+                const img = (r.heroSlugs
+                  .map((s) => r.pois.find((p) => p.slug === s)?.image?.src)
+                  .find((s): s is string => !!s))
+                  ?? r.pois.find((p) => p.image)?.image?.src
+                return (
+                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
+                    position: 'relative', display: 'block', textDecoration: 'none',
+                    borderRadius: '16px', overflow: 'hidden', aspectRatio: '16/10',
+                    background: 'linear-gradient(135deg, #12222E, #1E3A4C)',
+                  }}>
+                    {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
+                    <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
+                    {r.comingSoon && !hasListings && (
+                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t(lang, 'Bald')}</span>
+                    )}
+                    <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
+                      <p style={{ fontSize: '15.5px', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.2px', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
+                        {r.emoji} {r.name}
+                      </p>
+                      <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.82)', margin: '3px 0 0', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
+                        {T(r.claim)}
+                      </p>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
+  )
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#ECEEF4' }}>
       <script
@@ -318,6 +369,7 @@ export default async function Home({
 
       {showResults ? (
         /* ── Full-viewport split: listings + map ── */
+        <>
         <SearchResults
           cards={cardData}
           centerLat={centerCoords?.[0]}
@@ -330,6 +382,8 @@ export default async function Home({
           openMapByDefault={view === 'map'}
           lang={lang}
         />
+          {regionsSection}
+        </>
       ) : (
         <>
           {/* ── Filter Bar (homepage) ── */}
@@ -400,54 +454,7 @@ export default async function Home({
             </div>
           </section>
 
-          {/* ── Regions discovery (below the apartments — they stay the star) ── */}
-          <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 clamp(12px, 4vw, 20px) 56px' }}>
-            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold-dark)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>
-              {t(lang, 'Mehr als eine Unterkunft')}
-            </p>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: 'clamp(17px, 2.4vw, 24px)', fontWeight: 800, color: '#111', letterSpacing: '-0.4px', margin: 0 }}>
-                {t(lang, 'Entdecke unsere Regionen')}
-              </h2>
-              <span style={{ fontSize: '12.5px', color: '#8A8578' }}>
-                {t(lang, 'Ausflugsziele, Karten & Tipps —')}{' '}
-                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{t(lang, 'über TRIMOSA →')}</Link>
-              </span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
-              {Object.values(REGIONS).map((r) => {
-                const hasListings = (allListings ?? [])
-                  .some((l) => ((l.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase()))
-                // Signature photo of the region (first curated hero POI) —
-                // deliberately NOT an apartment shot; those live in the grid above
-                const img = (r.heroSlugs
-                  .map((s) => r.pois.find((p) => p.slug === s)?.image?.src)
-                  .find((s): s is string => !!s))
-                  ?? r.pois.find((p) => p.image)?.image?.src
-                return (
-                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
-                    position: 'relative', display: 'block', textDecoration: 'none',
-                    borderRadius: '16px', overflow: 'hidden', aspectRatio: '16/10',
-                    background: 'linear-gradient(135deg, #12222E, #1E3A4C)',
-                  }}>
-                    {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
-                    <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
-                    {r.comingSoon && !hasListings && (
-                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t(lang, 'Bald')}</span>
-                    )}
-                    <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
-                      <p style={{ fontSize: '15.5px', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.2px', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
-                        {r.emoji} {r.name}
-                      </p>
-                      <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.82)', margin: '3px 0 0', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>
-                        {T(r.claim)}
-                      </p>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
+          {regionsSection}
 
           {/* Floating map-view toggle — booking-site style, bottom center */}
           <Link href="/?view=map" aria-label={t(lang, 'Karte anzeigen')} style={{
