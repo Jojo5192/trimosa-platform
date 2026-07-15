@@ -77,9 +77,12 @@ async function syncSmoobuMessages(
       // NOTE: Smoobu uses type=1 as a generic "text message" category, NOT as sender type.
       // The actual sender comes from senderType ("owner"/"guest") or direction ("outgoing"/"incoming").
       // Those fields are already normalised into sm.type by smoobu.ts (senderType > direction > type).
+      // Numeric Smoobu types (§49): '2' = an den Gast (von uns), '1' = an den Host
       const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
+                        || typeStr === '1'
       const typeIsHost  = typeStr.includes('host')  || typeStr === 'outgoing' || typeStr === 'sent'
                         || typeStr === 'host_to_guest' || typeStr === 'automated' || typeStr === 'owner'
+                        || typeStr === '2'
                         || senderStr.includes('host') || senderStr.includes('gastgeber')
 
       // Unknown type → HOST (booking confirmations and system messages come from host)
@@ -92,6 +95,13 @@ async function syncSmoobuMessages(
         '| type:', JSON.stringify(sm.type), '| sender:', JSON.stringify(sm.sender),
         '| subject:', sm.subject?.slice(0, 50),
         '| → isHost:', isHost)
+
+      // Direct-website bookings: the guest writes HERE, never via Smoobu.
+      // Type-1 messages on these reservations are Smoobu system notifications
+      // for the host ("Guest Phone Number", booking confirmations) — they must
+      // NOT leak into the guest's chat. Real guest messages already live in
+      // our DB (and Trimosa-forwarded copies are linked by content above).
+      if (!isHost) continue
 
       const senderId = isHost ? hostId : (guestId ?? hostId)  // fallback to hostId if guestId is null
 
