@@ -31,7 +31,9 @@ export default function LoginPage() {
       setError(t(lang, 'E-Mail oder Passwort falsch.'))
       setLoading(false)
     } else {
-      router.push('/')
+      // After PWA session expiry the team returns straight to /team etc.
+      const next = new URLSearchParams(window.location.search).get('next')
+      router.push(next && next.startsWith('/') && !next.startsWith('//') ? next : '/')
     }
   }
 
