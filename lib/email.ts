@@ -8,6 +8,8 @@ import { isUiLang, MONTHS, type UiLang } from '@/lib/i18n'
  *   created (before payment) — wording differs by booking_type.
  * - sendHostBookingAlert: host notification once payment is confirmed
  *   (called from the Stripe webhook) — requests ask for accept/decline.
+ * - sendBookingCancelledEmail: guest cancellation confirmation (guest cancel,
+ *   host decline, Stripe-dashboard refund) incl. refund info.
  * All senders use supabaseAdmin so they work from routes and webhooks alike.
  */
 
@@ -287,4 +289,70 @@ export async function sendHostBookingAlert(bookingId: string) {
       : `🔔 Neue Anfrage: ${listing.title} · ${zeitraum}`,
     html
   )
+}
+
+/**
+ * Guest cancellation confirmation — sent whenever a direct TRIMOSA booking is
+ * cancelled: guest cancels (refund per policy), host declines a request
+ * (always full refund) or a refund is issued from the Stripe dashboard.
+ * External channel bookings (Airbnb/Booking) have no guest account here —
+ * their platform sends its own mails, so this quietly no-ops for them.
+ * `refunded` is the EUR amount actually refunded (0 = none).
+ */
+export async function sendBookingCancelledEmail(bookingId: string, opts: { refunded?: number; declined?: boolean } = {}) {
+  const loaded = await loadBooking(bookingId)
+  if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }
+  const { booking, listing, details } = loaded
+  if (!booking.guest_id) return { ok: false, error: 'Externe Buchung ohne Gast-Konto' }
+
+  const { data: guestData } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
+  const guestEmail = guestData?.user?.email
+  if (!guestEmail) return { ok: false, error: 'Keine Gast-E-Mail gefunden' }
+  const rawName = (guestData?.user?.user_metadata?.name as string | undefined) ?? ''
+  const firstName = rawName.trim().split(/\s+/)[0] || ''
+
+  const refunded = opts.refunded ?? 0
+  const declined = !!opts.declined
+  const lang: UiLang = isUiLang(booking.guest_lang) ? booking.guest_lang : 'de'
+
+  const P_CANCEL = 'hiermit bestätigen wir die Stornierung deiner Buchung für <strong>{titel}</strong>. Der Zeitraum ist damit wieder freigegeben.'
+  const P_DECLINED = 'leider können wir deine Anfrage für <strong>{titel}</strong> für den gewünschten Zeitraum nicht bestätigen. Deine Buchung wurde storniert.'
+  const P_REFUND = 'Die Erstattung von <strong>{betrag}</strong> wurde bereits veranlasst und erscheint in der Regel innerhalb von 5–10 Werktagen auf deiner Zahlungsmethode.'
+  const P_NOREFUND = 'Gemäß der für diese Buchung geltenden Stornierungsbedingungen war leider keine Erstattung möglich.'
+  const NOTE = 'Wir würden uns freuen, dich ein anderes Mal bei uns begrüßen zu dürfen. Bei Fragen erreichst du uns jederzeit über den Chat in deinem Gast-Bereich.'
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    'Hallo', 'Deine Buchung wurde storniert', 'Stornierungsbestätigung',
+    'Deine Stornierung für {titel} ist bestätigt.',
+    P_CANCEL, P_DECLINED, P_REFUND, P_NOREFUND, NOTE,
+    'Unterkünfte entdecken', 'Erstattung',
+    'Unterkunft', 'Anreise', 'Abreise', 'Gäste', 'Gesamtpreis',
+  ])
+  const anrede = firstName ? `${T('Hallo')} ${firstName},` : `${T('Hallo')},`
+
+  const paragraphs = [anrede, (declined ? T(P_DECLINED) : T(P_CANCEL)).replace('{titel}', listing.title)]
+  if (refunded > 0) {
+    paragraphs.push(T(P_REFUND).replace('{betrag}', `€ ${refunded.toFixed(2)}`))
+  } else if (booking.payment_status === 'paid') {
+    paragraphs.push(T(P_NOREFUND))
+  }
+
+  const trDetails = details.map((d) => ({
+    ...d,
+    label: T(d.label),
+    value: (d.label === 'Anreise' || d.label === 'Abreise') && lang !== 'de'
+      ? formatDateLong(d.label === 'Anreise' ? booking.check_in : booking.check_out, lang)
+      : d.value,
+  }))
+  if (refunded > 0) trDetails.push({ label: T('Erstattung'), value: `€ ${refunded.toFixed(2)}` })
+
+  const html = renderEmail({
+    preheader: T('Deine Stornierung für {titel} ist bestätigt.').replace('{titel}', listing.title),
+    heading: T('Deine Buchung wurde storniert'),
+    paragraphs,
+    details: trDetails,
+    cta: { label: T('Unterkünfte entdecken'), url: siteUrl },
+    note: T(NOTE),
+  })
+
+  return sendViaResend(guestEmail, `${T('Stornierungsbestätigung')}: ${listing.title}`, html)
 }
