@@ -563,3 +563,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   bottom: 100%;
   border-bottom-color: #16283A;
 }
+
+/* Mobile: die Wortmarke frisst sonst die halbe Kopfzeile — Such-Pille braucht Platz */
+@media (max-width: 767px) {
+  .nav-logo-img { height: 28px !important; }
+}
