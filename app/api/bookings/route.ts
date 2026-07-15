@@ -5,6 +5,7 @@ import { checkAvailability } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 import { sendBookingEmail } from '@/lib/email'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { getUiLang } from '@/lib/i18n-server'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
   const { data: newBooking, error: bookingError } = await supabaseAdmin
     .from('bookings')
     .insert({
+      guest_lang: await getUiLang(),
       listing_id: listingId,
       guest_id: user.id,
       check_in: checkIn,
