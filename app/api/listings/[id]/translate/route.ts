@@ -22,8 +22,8 @@ async function requireOwnerOrAdmin(listingId: string) {
     .single()
   if (!listing) return { error: 'Inserat nicht gefunden', status: 404 as const }
   if (listing.host_id !== user.id) {
-    const { data: me } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-    if (!me?.is_admin) return { error: 'Keine Berechtigung', status: 403 as const }
+    const { data: me } = await supabaseAdmin.from('profiles').select('is_admin, is_host').eq('id', user.id).maybeSingle()
+    if (!me?.is_admin && !me?.is_host) return { error: 'Keine Berechtigung', status: 403 as const }
   }
   return { listing }
 }
