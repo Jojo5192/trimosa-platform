@@ -38,9 +38,9 @@ export async function getHostTeam(): Promise<HostMember[]> {
   try {
     const { data } = await supabaseAdmin
       .from('profiles')
-      .select('display_name, avatar_url, created_at')
+      .select('display_name, avatar_url, member_since')
       .eq('is_host', true)
-      .order('created_at', { ascending: true })
+      .order('member_since', { ascending: true })
     const team = (data ?? []).map((p) => toMember(p.display_name as string, p.avatar_url as string | null))
     const result = team.length >= 2 ? team : FALLBACK
     g.__hostTeamCache = { at: Date.now(), team: result }
