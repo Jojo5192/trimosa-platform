@@ -250,7 +250,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
 
           {/* Logo */}
           <Link href="/" className="nav-logo" style={{ flexShrink: 0, textDecoration: 'none' }}>
-            <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} priority style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
+            <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} priority className="nav-logo-img" style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
           </Link>
 
           {/* ── Mobile Search Trigger (hidden on md+) ── */}
@@ -272,7 +272,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: q ? '#111' : '#555', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {q || t(lang, 'Wohin?')}
               </p>
-              <p style={{ margin: 0, fontSize: '11px', color: '#999', lineHeight: 1 }}>
+              <p style={{ margin: 0, fontSize: '11px', color: '#999', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {checkin && checkout
                   ? `${formatDate(checkin, lang)} – ${formatDate(checkout, lang)}${adults + kids > 1 ? ` · ${adults + kids} ${t(lang, 'Gäste')}` : ''}`
                   : checkin
