@@ -24,7 +24,7 @@ interface Props {
   initialPhone?: string
 }
 
-export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland', initialPhone = '' }: Props) {
+export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType: initialAccountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland', initialPhone = '' }: Props) {
   const [lang, setLang] = useState<UiLang>('de')
   useEffect(() => {
     const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
@@ -37,6 +37,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl)
   const [firstName, setFirstName] = useState(initialFirstName)
   const [lastName, setLastName] = useState(initialLastName)
+  const [accountType, setAccountType] = useState<'person' | 'business'>(initialAccountType)
   const [companyName, setCompanyName] = useState(initialCompanyName)
   const [vatId, setVatId] = useState(initialVatId)
   const [street, setStreet] = useState(initialStreet)
@@ -145,6 +146,20 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         </div>
         <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>{t(lang, 'Diese Angaben werden für Buchungen und Rechnungen benötigt.')}</p>
 
+        {/* Privat ⇄ Firma umschaltbar — Gäste können jederzeit eine Firma für die Rechnungsadresse hinterlegen */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          {([['person', t(lang, 'Privatperson')], ['business', t(lang, 'Firma')]] as const).map(([val, label]) => (
+            <button key={val} type="button" onClick={() => setAccountType(val)} style={{
+              flex: 1, padding: '10px', borderRadius: '12px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+              border: accountType === val ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+              background: accountType === val ? '#FDF6E3' : '#fff',
+              color: accountType === val ? 'var(--gold-dark)' : '#555',
+            }}>
+              {val === 'person' ? '👤' : '🏢'} {label}
+            </button>
+          ))}
+        </div>
+
         {accountType === 'person' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
@@ -159,11 +174,11 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         ) : (
           <div style={{ marginBottom: '14px' }}>
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Firmenname *</label>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Firmenname')} *</label>
               <input style={inputStyle} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Musterfirma GmbH" />
             </div>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>USt-ID <span style={{ fontWeight: 400, color: '#AAA' }}>(optional)</span></label>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>USt-ID <span style={{ fontWeight: 400, color: '#AAA' }}>({t(lang, 'optional')})</span></label>
               <input style={inputStyle} value={vatId} onChange={e => setVatId(e.target.value)} placeholder="DE123456789" />
             </div>
           </div>
