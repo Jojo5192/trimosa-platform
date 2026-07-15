@@ -34,16 +34,17 @@ function applyTr(node: ReactNode, T: (s: string) => string): ReactNode {
   if (typeof node === 'string') return node.trim().length > 1 ? T(node) : node
   if (Array.isArray(node)) return node.map((n, i) => {
     const r = applyTr(n, T)
-    return isValidElement(r) && r.key == null ? cloneElement(r as ReactElement, { key: i }) : r
+    return isValidElement(r) && r.key == null ? cloneElement(r as ReactElement<Record<string, unknown>>, { key: i }) : r
   })
   if (isValidElement(node)) {
     const p = node.props as { heading?: unknown; children?: ReactNode }
     const extra: Record<string, unknown> = {}
     if (typeof p.heading === 'string') extra.heading = T(p.heading)
+    const el = node as ReactElement<Record<string, unknown>>
     if (p.children === undefined) {
-      return Object.keys(extra).length ? cloneElement(node, extra) : node
+      return Object.keys(extra).length ? cloneElement(el, extra) : node
     }
-    return cloneElement(node, extra, applyTr(p.children, T))
+    return cloneElement(el, extra, applyTr(p.children, T))
   }
   return node
 }
