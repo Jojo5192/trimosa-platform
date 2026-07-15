@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
 
   if (listing.host_id !== user.id) {
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-    if (!profile?.is_admin) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
+      .from('profiles').select('is_admin, is_host').eq('id', user.id).maybeSingle()
+    if (!profile?.is_admin && !profile?.is_host) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
   }
 
   const results = await syncListingReviews(listing)
