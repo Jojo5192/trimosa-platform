@@ -1,9 +1,12 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { redirect } from 'next/navigation'
+import { t } from '@/lib/i18n'
+import { getUiLang } from '@/lib/i18n-server'
 import GuestProfileClient from './GuestProfileClient'
 
 export default async function GuestProfilePage() {
+  const lang = await getUiLang()
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -45,7 +48,7 @@ export default async function GuestProfilePage() {
     <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 20px 80px' }}>
       <div style={{ marginBottom: '28px' }}>
         <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Mein Konto</p>
-        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', margin: 0 }}>Profil bearbeiten</h1>
+        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', margin: 0 }}>{t(lang, 'Profil bearbeiten')}</h1>
       </div>
       <GuestProfileClient
         initialName={(profile?.display_name as string) ?? user.user_metadata?.name ?? ''}
