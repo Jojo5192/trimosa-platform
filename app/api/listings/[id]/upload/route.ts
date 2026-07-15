@@ -22,8 +22,16 @@ export async function POST(
     .eq('id', id)
     .single()
 
-  if (!existing || existing.host_id !== user.id) {
-    return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
+  if (!existing) {
+    return NextResponse.json({ error: 'Inserat nicht gefunden' }, { status: 404 })
+  }
+  if (existing.host_id !== user.id) {
+    // Single-Host-Firma: alle Team-Gastgeber/Admins dürfen Fotos aller Inserate pflegen
+    const { data: me } = await supabaseAdmin
+      .from('profiles').select('is_host, is_admin').eq('id', user.id).maybeSingle()
+    if (!me?.is_host && !me?.is_admin) {
+      return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
+    }
   }
 
   const formData = await request.formData()
