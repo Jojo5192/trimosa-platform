@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AvatarCropper from '@/components/AvatarCropper'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 const LANGUAGE_OPTIONS = ['Deutsch', 'Englisch', 'Französisch', 'Spanisch', 'Italienisch', 'Niederländisch', 'Polnisch', 'Russisch']
 
@@ -24,6 +25,11 @@ interface Props {
 }
 
 export default function GuestProfileClient({ initialName, initialBio, initialLocation, initialLanguages, initialAvatarUrl, accountType = 'person', initialFirstName = '', initialLastName = '', initialCompanyName = '', initialVatId = '', initialStreet = '', initialCity = '', initialZip = '', initialCountry = 'Deutschland', initialPhone = '' }: Props) {
+  const [lang, setLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setLang(m[1])
+  }, [])
   const [displayName, setDisplayName] = useState(initialName)
   const [bio, setBio] = useState(initialBio)
   const [location, setLocation] = useState(initialLocation)
@@ -107,7 +113,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       // Account deleted — redirect to home
       window.location.href = '/'
     } catch (err: unknown) {
-      setDeleteError(err instanceof Error ? err.message : 'Unbekannter Fehler')
+      setDeleteError(err instanceof Error ? err.message : t(lang, 'Unbekannter Fehler'))
       setDeleting(false)
     }
   }
@@ -123,7 +129,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {/* Avatar */}
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0' }}>
-        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>Profilfoto</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>{t(lang, 'Profilfoto')}</h2>
         <AvatarCropper
           currentUrl={avatarUrl}
           displayName={displayName}
@@ -134,19 +140,19 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       {/* Required fields: name + address */}
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '2px solid var(--gold)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>Pflichtangaben für Buchungen</h2>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400E', background: '#FFF7ED', padding: '2px 8px', borderRadius: '99px' }}>Erforderlich</span>
+          <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>{t(lang, 'Pflichtangaben für Buchungen')}</h2>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400E', background: '#FFF7ED', padding: '2px 8px', borderRadius: '99px' }}>{t(lang, 'Erforderlich')}</span>
         </div>
-        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>Diese Angaben werden für Buchungen und Rechnungen benötigt.</p>
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>{t(lang, 'Diese Angaben werden für Buchungen und Rechnungen benötigt.')}</p>
 
         {accountType === 'person' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Vorname *</label>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Vorname')} *</label>
               <input style={inputStyle} value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Max" />
             </div>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Nachname *</label>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Nachname')} *</label>
               <input style={inputStyle} value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Mustermann" />
             </div>
           </div>
@@ -164,44 +170,44 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         )}
 
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Straße und Hausnummer *</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Straße & Hausnummer')} *</label>
           <input style={inputStyle} value={street} onChange={e => setStreet(e.target.value)} placeholder="Musterstraße 1" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px', marginBottom: '12px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>PLZ *</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'PLZ')} *</label>
             <input style={inputStyle} value={zip} onChange={e => setZip(e.target.value)} placeholder="10115" />
           </div>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Stadt *</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Ort')} *</label>
             <input style={inputStyle} value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />
           </div>
         </div>
 
         <div>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Land</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Land')}</label>
           <input style={inputStyle} value={country} onChange={e => setCountry(e.target.value)} placeholder="Deutschland" />
         </div>
 
         <div style={{ marginTop: '14px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Telefonnummer *</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Telefon')} *</label>
           <input type="tel" style={inputStyle} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49 170 1234567" autoComplete="tel" />
-          <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1.4 }}>Wird für Buchungen benötigt und an den Gastgeber weitergegeben.</p>
+          <p style={{ fontSize: '11px', color: '#999', margin: '5px 0 0', lineHeight: 1.4 }}>{t(lang, 'Wird für Buchungen benötigt und an den Gastgeber weitergegeben.')}</p>
         </div>
       </div>
 
       {/* Optional personal info */}
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0' }}>
-        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>Weitere Infos (optional)</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 16px' }}>{t(lang, 'Weitere Infos (optional)')}</h2>
 
         <div style={{ marginBottom: '14px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Anzeigename</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Anzeigename')}</label>
           <input style={inputStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder={accountType === 'business' ? companyName || 'Firmenname' : `${firstName} ${lastName}`.trim() || 'Dein Name'} />
         </div>
 
         <div style={{ marginBottom: '14px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Über mich</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Über mich')}</label>
           <textarea
             style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }}
             value={bio}
@@ -212,14 +218,14 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
         </div>
 
         <div>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>Wohnort (öffentlich)</label>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '6px' }}>{t(lang, 'Wohnort (öffentlich)')}</label>
           <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)} placeholder="z.B. Berlin" />
         </div>
       </div>
 
       {/* Languages */}
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0' }}>
-        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 14px' }}>Sprachen</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 14px' }}>{t(lang, 'Sprachen')}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {LANGUAGE_OPTIONS.map(lang => {
             const active = languages.includes(lang)
@@ -241,12 +247,12 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
 
       <button type="button" onClick={handleSave} disabled={saving}
         style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
-        {saving ? 'Wird gespeichert…' : saved ? '✓ Gespeichert' : 'Profil speichern'}
+        {saving ? t(lang, 'Wird gespeichert…') : saved ? t(lang, '✓ Gespeichert') : t(lang, 'Profil speichern')}
       </button>
 
       {/* Delete account section */}
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #F5D0D0', marginTop: '8px' }}>
-        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>Konto löschen</h2>
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>{t(lang, 'Konto löschen')}</h2>
         <p style={{ fontSize: '13px', color: '#888', margin: '0 0 16px', lineHeight: 1.5 }}>
           Dein Konto und alle zugehörigen Daten werden unwiderruflich gelöscht. Aktive Buchungen können dadurch beeinträchtigt werden.
         </p>
@@ -275,7 +281,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
                 onClick={() => { setDeleteConfirm(false); setDeleteError('') }}
                 style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1.5px solid #D2D2D7', background: '#fff', color: '#555', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
               >
-                Abbrechen
+                {t(lang, 'Abbrechen')}
               </button>
               <button
                 type="button"
@@ -283,7 +289,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
                 disabled={deleting}
                 style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: '#DC2626', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}
               >
-                {deleting ? 'Wird gelöscht…' : 'Ja, löschen'}
+                {deleting ? t(lang, 'Wird gelöscht…') : t(lang, 'Ja, löschen')}
               </button>
             </div>
           </div>
