@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createReservation } from '@/lib/smoobu'
 import { stripe } from '@/lib/stripe'
 import { slugify } from '@/lib/slug'
+import { sendBookingCancelledEmail } from '@/lib/email'
 
 export async function acceptBooking(bookingId: string) {
   const supabase = await createSupabaseServerClient()
@@ -139,6 +140,13 @@ export async function declineBooking(bookingId: string) {
       ...(stripeRefundId ? { refunded_at: new Date().toISOString(), stripe_refund_id: stripeRefundId } : {}),
     })
     .eq('id', bookingId)
+
+  // Cancellation confirmation email to the guest (full refund on decline)
+  try {
+    await sendBookingCancelledEmail(bookingId, { refunded, declined: true })
+  } catch (err) {
+    console.error('[declineBooking] cancellation email failed (non-fatal):', err)
+  }
 
   // Notify guest via chat
   try {
