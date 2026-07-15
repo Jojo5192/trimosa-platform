@@ -1,4 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { makeTr } from '@/lib/static-translate'
+import { isUiLang, MONTHS, type UiLang } from '@/lib/i18n'
 
 /**
  * Transactional emails via Resend, branded for TRIMOSA.
@@ -13,10 +15,12 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
 
 const DE_MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
-function formatDateLong(iso: string): string {
+function formatDateLong(iso: string, lang: UiLang = 'de'): string {
   if (!iso) return ''
   const [y, m, d] = iso.split('-').map(Number)
-  return `${d}. ${DE_MONTHS[m - 1]} ${y}`
+  const months = lang === 'de' ? DE_MONTHS : MONTHS[lang]
+  if (lang === 'en') return `${months[m - 1]} ${d}, ${y}`
+  return `${d}. ${months[m - 1]} ${y}`
 }
 
 /* ── Shared branded layout (table-based for broad mail-client support) ── */
@@ -156,34 +160,48 @@ export async function sendBookingEmail(bookingId: string) {
   if (!guestEmail) return { ok: false, error: 'Keine Gast-E-Mail gefunden' }
   const rawName = (guestData?.user?.user_metadata?.name as string | undefined) ?? ''
   const firstName = rawName.trim().split(/\s+/)[0] || ''
-  const anrede = firstName ? `Hallo ${firstName},` : 'Hallo,'
 
   const isInstant = booking.booking_type === 'instant'
 
+  // Guest language captured at booking time (uilang cookie) → the whole email
+  // goes out in that language (AI-translated once, cached in static_translations)
+  const lang: UiLang = isUiLang(booking.guest_lang) ? booking.guest_lang : 'de'
+  const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Buchung ist bei uns eingegangen — sobald deine Zahlung bestätigt ist, erhältst du alle Details zu Check-in und Aufenthalt.'
+  const P_REQUEST = 'vielen Dank für deine Anfrage für <strong>{titel}</strong>. Wir prüfen sie und melden uns schnellstmöglich bei dir — in der Regel innerhalb von 24 Stunden.'
+  const NOTE_REQUEST = 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.'
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    'Hallo', 'Deine Buchung für {titel} ist eingegangen.', 'Deine Anfrage für {titel} ist eingegangen — wir melden uns.',
+    'Deine Buchung ist eingegangen', 'Deine Anfrage ist eingegangen',
+    P_INSTANT, P_REQUEST, NOTE_REQUEST,
+    'Buchung ansehen', 'Anfrage ansehen', 'Deine Buchung', 'Deine Anfrage',
+    'Unterkunft', 'Anreise', 'Abreise', 'Gäste', 'Gesamtpreis',
+  ])
+  const anrede = firstName ? `${T('Hallo')} ${firstName},` : `${T('Hallo')},`
+  const trDetails = details.map((d) => ({
+    ...d,
+    label: T(d.label),
+    value: (d.label === 'Anreise' || d.label === 'Abreise') && lang !== 'de'
+      ? formatDateLong(d.label === 'Anreise' ? booking.check_in : booking.check_out, lang)
+      : d.value,
+  }))
+
   const html = renderEmail({
-    preheader: isInstant
-      ? `Deine Buchung für ${listing.title} ist eingegangen.`
-      : `Deine Anfrage für ${listing.title} ist eingegangen — wir melden uns.`,
-    heading: isInstant ? 'Deine Buchung ist eingegangen' : 'Deine Anfrage ist eingegangen',
-    paragraphs: isInstant
-      ? [
-          anrede,
-          `schön, dass du dich für <strong>${listing.title}</strong> entschieden hast! Deine Buchung ist bei uns eingegangen — sobald deine Zahlung bestätigt ist, erhältst du alle Details zu Check-in und Aufenthalt.`,
-        ]
-      : [
-          anrede,
-          `vielen Dank für deine Anfrage für <strong>${listing.title}</strong>. Wir prüfen sie und melden uns schnellstmöglich bei dir — in der Regel innerhalb von 24 Stunden.`,
-        ],
-    details,
-    cta: { label: isInstant ? 'Buchung ansehen' : 'Anfrage ansehen', url: `${siteUrl}/guest` },
-    note: isInstant
-      ? undefined
-      : 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.',
+    preheader: (isInstant
+      ? T('Deine Buchung für {titel} ist eingegangen.')
+      : T('Deine Anfrage für {titel} ist eingegangen — wir melden uns.')).replace('{titel}', listing.title),
+    heading: isInstant ? T('Deine Buchung ist eingegangen') : T('Deine Anfrage ist eingegangen'),
+    paragraphs: [
+      anrede,
+      (isInstant ? T(P_INSTANT) : T(P_REQUEST)).replace('{titel}', listing.title),
+    ],
+    details: trDetails,
+    cta: { label: isInstant ? T('Buchung ansehen') : T('Anfrage ansehen'), url: `${siteUrl}/guest` },
+    note: isInstant ? undefined : T(NOTE_REQUEST),
   })
 
   return sendViaResend(
     guestEmail,
-    isInstant ? `Deine Buchung: ${listing.title}` : `Deine Anfrage: ${listing.title}`,
+    `${isInstant ? T('Deine Buchung') : T('Deine Anfrage')}: ${listing.title}`,
     html
   )
 }
