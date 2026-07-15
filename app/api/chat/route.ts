@@ -4,6 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
+import { makeTr } from '@/lib/static-translate'
+import { getUiLang } from '@/lib/i18n-server'
 
 // ── Smoobu sync helper ───────────────────────────────────────
 async function syncSmoobuMessages(
@@ -175,6 +177,21 @@ export async function GET(req: NextRequest) {
         const t = map.get(m.id)
         return t ? { ...m, lang: t.lang, content_de: t.german } : m
       })
+    }
+
+    // Guest view in a non-German UI language: show host/system messages
+    // translated (AI, cached per text) — the guest's own messages stay as sent.
+    if (conv && user.id === conv.guest_id) {
+      try {
+        const uiLang = await getUiLang()
+        if (uiLang !== 'de') {
+          const foreign = out.filter((m) => m.sender_id !== user.id && (m.content ?? '').trim().length > 1)
+          const T = await makeTr(uiLang, foreign.map((m) => m.content))
+          out = out.map((m) => (m.sender_id !== user.id && m.content ? { ...m, content: T(m.content) } : m))
+        }
+      } catch (err) {
+        console.error('[Chat] guest translate failed:', err)
+      }
     }
 
     return NextResponse.json(out)
