@@ -20,7 +20,6 @@ export default async function BookingsPage({
   const { data: listings } = await supabaseAdmin
     .from('listings')
     .select('id, title')
-    .eq('host_id', user.id)
     .order('title')
 
   const listingIds = listings?.map(l => l.id) ?? []
