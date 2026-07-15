@@ -158,6 +158,7 @@ interface Props {
 
 export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
+  const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
   const [msgs, setMsgs]         = useState<Message[]>([])
   const [draft, setDraft]       = useState('')
@@ -173,6 +174,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const value = !active.noReplyNeeded
     setConvs(cs => cs.map(c => c.id === active.id ? { ...c, noReplyNeeded: value } : c))
     setActive(a => (a ? { ...a, noReplyNeeded: value } : a))
+    // Booking.com wertet die Antwortquote separat — dort muss der Haken
+    // weiterhin in der Booking-App gesetzt werden (Smoobu reicht ihn nicht durch)
+    if (value && /booking/i.test(active.platform ?? '')) {
+      setBookingHintFor(active.id)
+      setTimeout(() => setBookingHintFor((cur) => (cur === active.id ? null : cur)), 8000)
+    } else {
+      setBookingHintFor(null)
+    }
     try {
       await fetch('/api/chat/inbox', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -667,6 +676,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 )}
               </div>
             )}
+          </div>
+        )}
+        {bookingHintFor === active?.id && (
+          <div style={{
+            padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
+            background: '#EBF2FE', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: '#1D4FA3',
+          }}>
+            ✓ Erledigt — <strong>denk dran:</strong> Bei Booking.com-Gästen den Haken „Keine Antwort nötig" zusätzlich in der Booking-App setzen (zählt für eure Antwortquote).
           </div>
         )}
 
