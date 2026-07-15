@@ -3,7 +3,7 @@ import { sendPushToTeam } from '@/lib/push'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
-import { sendBookingEmail, sendHostBookingAlert } from '@/lib/email'
+import { sendBookingEmail, sendHostBookingAlert, sendBookingCancelledEmail } from '@/lib/email'
 
 /**
  * POST /api/payments/webhook
@@ -283,6 +283,13 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error('[Webhook] Smoobu cancelReservation failed:', err)
       }
+    }
+
+    // Cancellation confirmation email to the guest
+    try {
+      await sendBookingCancelledEmail(booking.id, { refunded: (charge.amount_refunded ?? 0) / 100 })
+    } catch (err) {
+      console.error('[Webhook] cancellation email failed (non-fatal):', err)
     }
 
     try {
