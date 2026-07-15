@@ -30,11 +30,11 @@ export async function GET() {
   const [{ data: conversations }, { data: bookings }] = await Promise.all([
     supabaseAdmin
       .from('conversations')
-      .select('*, bookings(check_in, check_out, channel, listing_id)')
+      .select('*, bookings(check_in, check_out, channel, listing_id, status)')
       .order('last_message_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, channel, source, listing_id, smoobu_reservation_id, created_at, listings(title), conversations(id)')
+      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, listings(title), conversations(id)')
       .not('smoobu_reservation_id', 'is', null)
       .order('check_in', { ascending: false })
       .limit(400),
@@ -120,7 +120,8 @@ export async function GET() {
     }
   }
 
-  function guestStatus(checkIn: string | null, checkOut: string | null): 'current' | 'upcoming' | 'past' | null {
+  function guestStatus(checkIn: string | null, checkOut: string | null, bookingStatus?: string | null): 'current' | 'upcoming' | 'past' | 'cancelled' | null {
+    if (bookingStatus === 'cancelled') return 'cancelled'
     if (!checkIn || !checkOut) return null
     if (checkIn <= today && checkOut >= today) return 'current'
     if (checkIn > today) return 'upcoming'
@@ -149,7 +150,7 @@ export async function GET() {
   }
 
   const directThreads = (conversations ?? []).map((c) => {
-    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string } | null
+    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string } | null
     const gp = guestProfile.get(c.guest_id)
     const last = lastDirect[c.id]
     return {
@@ -161,7 +162,7 @@ export async function GET() {
       platform: 'TRIMOSA',
       checkIn: b?.check_in ?? null,
       checkOut: b?.check_out ?? null,
-      guestStatus: guestStatus(b?.check_in ?? null, b?.check_out ?? null),
+      guestStatus: guestStatus(b?.check_in ?? null, b?.check_out ?? null, b?.status ?? null),
       lastMessageAt: c.last_message_at,
       lastPreview: last?.preview ?? null,
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
@@ -172,8 +173,13 @@ export async function GET() {
   })
 
   const bookingThreads = bookingRows
-    // Only meaningful threads: has messages OR guest is current/upcoming
-    .filter((b) => lastLive[b.id] || lastArchive[Number(b.smoobu_reservation_id)] || guestStatus(b.check_in, b.check_out) !== 'past')
+    // Only meaningful threads: has messages OR guest is current/upcoming.
+    // Cancelled bookings count like 'past' — visible only with chat history.
+    .filter((b) => {
+      if (lastLive[b.id] || lastArchive[Number(b.smoobu_reservation_id)]) return true
+      const st = guestStatus(b.check_in, b.check_out, b.status)
+      return st === 'current' || st === 'upcoming'
+    })
     .map((b) => {
       const last = lastLive[b.id] ?? lastArchive[Number(b.smoobu_reservation_id)] ?? null
       return {
@@ -185,7 +191,7 @@ export async function GET() {
         platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
         checkIn: b.check_in,
         checkOut: b.check_out,
-        guestStatus: guestStatus(b.check_in, b.check_out),
+        guestStatus: guestStatus(b.check_in, b.check_out, b.status),
         lastMessageAt: last?.at ?? null,
         lastPreview: last?.preview ?? null,
         lastSender: last?.sender ?? null,
