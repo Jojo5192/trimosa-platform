@@ -138,7 +138,7 @@ async function loadBooking(bookingId: string) {
   const listing = booking.listings as { title: string; location: string; host_id: string }
   const guests = (booking.adults ?? 1) + (booking.children ?? 0)
   const details = [
-    { label: 'Unterkunft', value: `${listing.title} · ${listing.location}` },
+    { label: 'Unterkunft', value: listing.title },
     { label: 'Anreise', value: formatDateLong(booking.check_in) },
     { label: 'Abreise', value: formatDateLong(booking.check_out) },
     { label: 'Gäste', value: String(guests) },
@@ -187,7 +187,7 @@ export async function sendBookingEmail(bookingId: string) {
   // Guest language captured at booking time (uilang cookie) → the whole email
   // goes out in that language (AI-translated once, cached in static_translations)
   const lang: UiLang = isUiLang(booking.guest_lang) ? booking.guest_lang : 'de'
-  const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Zahlung ist eingegangen und deine Buchung ist bestätigt. Alle Details zum Check-in erhältst du rechtzeitig vor deiner Anreise.'
+  const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Zahlung ist eingegangen und deine Buchung ist bestätigt. Alle Details zum Check-In erhältst du rechtzeitig vor deiner Anreise.'
   const P_REQUEST = 'vielen Dank für deine Anfrage für <strong>{titel}</strong> — deine Zahlung ist eingegangen. Wir prüfen die Anfrage und melden uns schnellstmöglich, in der Regel innerhalb von 24 Stunden. Sollten wir nicht bestätigen können, erstatten wir den Betrag automatisch und vollständig.'
   const NOTE_REQUEST = 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.'
   const T = await makeTr(lang, lang === 'de' ? [] : [
