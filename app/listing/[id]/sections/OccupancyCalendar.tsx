@@ -42,12 +42,15 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
           const isBooked = !isPast && rate?.available === 0
           const isSelected = iso === checkIn || iso === checkOut
           const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut
-          // Booked nights still allow CHECK-OUT that morning
-          const checkoutOnly = isBooked && !!checkIn && !checkOut && iso > checkIn
+          // First day of a booked stretch = still a valid check-out morning
+          const prevIso = new Date(new Date(iso + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10)
+          const checkoutEligible = isBooked && rates[prevIso]?.available !== 0
+          const checkoutOnly = checkoutEligible && !!checkIn && !checkOut && iso > checkIn
           const clickable = !isPast && (!isBooked || checkoutOnly)
 
           let bg = '#F0FDF4'; let color = '#16A34A'; let border = '1px solid #BBF7D0'
           if (isPast) { bg = '#F9FAFB'; color = '#D1D5DB'; border = '1px solid #F3F4F6' }
+          else if (checkoutEligible) { bg = 'linear-gradient(135deg, #F0FDF4 50%, #FEF2F2 50%)'; color = '#B45309'; border = '1px solid #FDE0B2' }
           else if (isBooked) { bg = '#FEF2F2'; color = '#DC2626'; border = '1px solid #FECACA' }
           if (isSelected) { bg = '#111'; color = '#fff'; border = '1px solid #111' }
           else if (inRange) { bg = 'rgba(17,17,17,0.08)'; color = '#1D1D1F'; border = '1px solid rgba(17,17,17,0.12)' }
@@ -61,7 +64,7 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
               style={{
                 aspectRatio: '1', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '12px', fontWeight: isSelected ? 700 : isPast ? 400 : 600,
-                backgroundColor: bg, color, border,
+                background: bg, color, border,
                 cursor: clickable ? 'pointer' : 'default',
                 transition: 'all 0.1s',
               }}
