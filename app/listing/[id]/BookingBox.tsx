@@ -58,10 +58,14 @@ function CalendarMonth({
     const rate = rates[iso]
     const isPast = iso < minDate
     const isUnavailable = !isPast && rate?.available === 0
+    // First day of a booked stretch: the NIGHT is taken, but the morning is a
+    // valid check-out — show it as bookable (no strikethrough), like Airbnb
+    const prevIso = new Date(new Date(iso + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10)
+    const checkoutEligible = isUnavailable && rates[prevIso]?.available !== 0
     const isCheckIn = iso === checkIn
     const isCheckOut = iso === checkOut
     const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut
-    return { iso, isPast, isUnavailable, isCheckIn, isCheckOut, inRange, price: rate?.price }
+    return { iso, isPast, isUnavailable, checkoutEligible, isCheckIn, isCheckOut, inRange, price: rate?.price }
   }
 
   return (
@@ -77,10 +81,10 @@ function CalendarMonth({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
         {Array.from({ length: leadBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-          const { iso, isPast, isUnavailable, isCheckIn, isCheckOut, inRange } = cellState(day)
+          const { iso, isPast, isUnavailable, checkoutEligible, isCheckIn, isCheckOut, inRange } = cellState(day)
           // A day whose NIGHT is booked is still a valid CHECK-OUT day (you
           // leave in the morning) — Airbnb & Co. handle it the same way.
-          const checkoutOnly = isUnavailable && selecting === 'out' && !!checkIn && iso > checkIn
+          const checkoutOnly = checkoutEligible && selecting === 'out' && !!checkIn && iso > checkIn
           const disabled = isPast || (isUnavailable && !checkoutOnly)
           const isSelected = isCheckIn || isCheckOut
           return (
@@ -99,8 +103,8 @@ function CalendarMonth({
                 fontWeight: isSelected ? 700 : 400,
                 transition: 'all 0.1s',
                 backgroundColor: isSelected ? '#111' : inRange ? 'rgba(17,17,17,0.08)' : 'transparent',
-                color: isSelected ? '#fff' : isPast || (isUnavailable && !checkoutOnly) ? '#CCC' : '#111',
-                textDecoration: isUnavailable && !isPast && !checkoutOnly ? 'line-through' : 'none',
+                color: isSelected ? '#fff' : isPast ? '#CCC' : isUnavailable && !checkoutEligible ? '#CCC' : isUnavailable ? '#777' : '#111',
+                textDecoration: isUnavailable && !isPast && !checkoutEligible ? 'line-through' : 'none',
               }}
             >
               {day}
