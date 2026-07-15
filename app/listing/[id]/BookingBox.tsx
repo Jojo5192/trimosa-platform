@@ -60,7 +60,8 @@ function CalendarMonth({
     const isUnavailable = !isPast && rate?.available === 0
     // First day of a booked stretch: the NIGHT is taken, but the morning is a
     // valid check-out — show it as bookable (no strikethrough), like Airbnb
-    const prevIso = new Date(new Date(iso + 'T00:00:00').getTime() - 86400000).toISOString().slice(0, 10)
+    // UTC parsen! Lokale Mitternacht (CEST) minus 24h fiele via toISOString auf VORVORtag.
+    const prevIso = new Date(new Date(iso + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10)
     const checkoutEligible = isUnavailable && rates[prevIso]?.available !== 0
     const isCheckIn = iso === checkIn
     const isCheckOut = iso === checkOut
