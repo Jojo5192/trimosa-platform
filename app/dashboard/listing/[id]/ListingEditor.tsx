@@ -17,6 +17,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
   const [title, setTitle] = useState(listing.title)
   const [description, setDescription] = useState(listing.description ?? '')
   const [location, setLocation] = useState(listing.location ?? '')
+  const [locationGroup, setLocationGroup] = useState(listing.location_group ?? '')
   const [address, setAddress] = useState(listing.address ?? '')
   const [city, setCity] = useState(listing.city ?? '')
   const [lat, setLat] = useState<number | null>(listing.latitude ?? null)
@@ -171,6 +172,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           title,
           description,
           location,
+          location_group: locationGroup.trim() || null,
           address,
           city,
           latitude: lat,
@@ -359,6 +361,9 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           </Field>
           <Field label="Genaue Adresse" hint="Wird erst nach Buchungsbestätigung angezeigt">
             <input style={inputStyle} value={address} onChange={e => setAddress(e.target.value)} placeholder="Musterstraße 1, 83727 Schliersee" />
+          </Field>
+          <Field label="Standort-Gruppe" hint="Wohnungen mit gleichem Gruppennamen (z. B. „Sirzenich“) werden großen Gruppen als Kombination vorgeschlagen">
+            <input style={inputStyle} value={locationGroup} onChange={e => setLocationGroup(e.target.value)} placeholder="Sirzenich" />
           </Field>
         </div>
         <Field label="Ort (wird auf Detailseite angezeigt)">
