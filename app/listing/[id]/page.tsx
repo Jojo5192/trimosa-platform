@@ -148,6 +148,10 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const displayDescription = tc?.description ?? listing.description
   // Editorial bits without per-listing translations (room keywords, AI guest
   // summary): AI-translated once, cached forever (lib/static-translate)
+  // Region context for the map + teaser (matched via listing location)
+  const region = Object.values(REGIONS).find((r) =>
+    ((listing.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase())
+  )
   const TR = await makeTr(lang, lang === 'de' ? [] : [
     ...roomsRaw.flatMap((r) => r.features ?? []),
     ...(listing.guest_summary ? [listing.guest_summary as string] : []),
@@ -185,10 +189,6 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     petsAllowed: listing.rule_pets_allowed ?? undefined,
   }
 
-  // Region context for the map + teaser (matched via listing location)
-  const region = Object.values(REGIONS).find((r) =>
-    ((listing.location as string) || '').toLowerCase().includes(r.locationMatch.toLowerCase())
-  )
   const regionHero = region?.heroSlugs
     .map((s) => region.pois.find((p) => p.slug === s)?.image?.src)
     .find((s): s is string => !!s)
