@@ -465,6 +465,408 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
       {/* ── Grundrisse (mehrere) ── */}
       <Section title="Grundrisse">
         <Field label="Grundrisse" hint="Mehrere Grundrisse möglich (z.B. pro Etage)">
+          {floorPlanUrls.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: floorPlanUrls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              {floorPlanUrls.map((url, i) => (
+                <div key={i} style={{ borderRadius: '14px', overflow: 'hidden', background: '#f9f7f3', border: '1px solid #E8E6E0' }}>
+                  <img src={url} alt={floorPlanLabels[i] || `Grundriss ${i + 1}`} style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '200px', objectFit: 'cover' }} />
+                  <div style={{ padding: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={floorPlanLabels[i] ?? ''}
+                      onChange={e => {
+                        const next = [...floorPlanLabels]
+                        next[i] = e.target.value
+                        setFloorPlanLabels(next)
+                      }}
+                      placeholder="z.B. Erdgeschoss"
+                      style={{ ...inputStyle, flex: 1, fontSize: '12px', padding: '6px 10px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFloorPlanUrls(prev => prev.filter((_, idx) => idx !== i))
+                        setFloorPlanLabels(prev => prev.filter((_, idx) => idx !== i))
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.92)', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#c00', flexShrink: 0 }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => floorPlanInputRef.current?.click()}
+            disabled={floorPlanUploading}
+            style={{
+              width: '100%', padding: floorPlanUrls.length > 0 ? '16px' : '40px', borderRadius: '14px', border: '2px dashed #D4C5B0',
+              background: '#fafaf8', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: '6px',
+            }}
+          >
+            {floorPlanUploading ? (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold-dark)' }}>Wird hochgeladen…</span>
+            ) : (
+              <>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--gold-dark)' }}>
+                  {floorPlanUrls.length > 0 ? '+ Weiteren Grundriss hochladen' : 'Grundriss hochladen'}
+                </span>
+                <span style={{ fontSize: '11px', color: '#BBB' }}>JPG, PNG oder WebP · max. 10 MB</span>
+              </>
+            )}
+          </button>
+          <input
+            ref={floorPlanInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFloorPlanUpload}
+            style={{ display: 'none' }}
+          />
+        </Field>
+      </Section>
+
+      {/* ── Hausregeln & Check-in ── */}
+      <Section title="Hausregeln">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <Field label="Check-in ab">
+            <input type="time" style={inputStyle} value={checkInTime} onChange={e => setCheckInTime(e.target.value)} />
+          </Field>
+          <Field label="Check-out bis">
+            <input type="time" style={inputStyle} value={checkOutTime} onChange={e => setCheckOutTime(e.target.value)} />
+          </Field>
+        </div>
+
+        {/* Toggle rules (Airbnb-style) */}
+        <div style={{ borderRadius: '14px', border: '1px solid #E8E6E0', overflow: 'hidden', marginBottom: '16px' }}>
+          {([
+            { label: 'Haustiere erlaubt', value: rulePetsAllowed, set: setRulePetsAllowed },
+            { label: 'Veranstaltungen erlaubt', value: ruleEventsAllowed, set: setRuleEventsAllowed },
+            { label: 'Rauchen, Vaporizer und E-Zigaretten erlaubt', value: ruleSmokingAllowed, set: setRuleSmokingAllowed },
+            { label: 'Kommerzielles Fotografieren und Filmen erlaubt', value: ruleCommercialPhoto, set: setRuleCommercialPhoto },
+          ] as const).map((rule, i) => (
+            <div key={rule.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: i < 3 ? '1px solid #F0EEE8' : 'none' }}>
+              <span style={{ fontSize: '14px', color: '#1D1D1F' }}>{rule.label}</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" onClick={() => rule.set(false)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: !rule.value ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: !rule.value ? '#1D1D1F' : '#fff',
+                  color: !rule.value ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✕</button>
+                <button type="button" onClick={() => rule.set(true)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: rule.value ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: rule.value ? '#1D1D1F' : '#fff',
+                  color: rule.value ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✓</button>
+              </div>
+            </div>
+          ))}
+
+          {/* Quiet hours toggle with time pickers */}
+          <div style={{ borderTop: '1px solid #F0EEE8', padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: ruleQuietHours ? '12px' : 0 }}>
+              <span style={{ fontSize: '14px', color: '#1D1D1F' }}>Ruhezeiten</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" onClick={() => setRuleQuietHours(false)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: !ruleQuietHours ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: !ruleQuietHours ? '#1D1D1F' : '#fff',
+                  color: !ruleQuietHours ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✕</button>
+                <button type="button" onClick={() => setRuleQuietHours(true)} style={{
+                  width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: ruleQuietHours ? '2px solid #1D1D1F' : '1.5px solid #E0DDD6', background: ruleQuietHours ? '#1D1D1F' : '#fff',
+                  color: ruleQuietHours ? '#fff' : '#999', cursor: 'pointer', fontSize: '14px',
+                }}>✓</button>
+              </div>
+            </div>
+            {ruleQuietHours && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', marginBottom: '4px', display: 'block' }}>Beginn der Ruhezeit</label>
+                  <select style={inputStyle} value={ruleQuietStart} onChange={e => setRuleQuietStart(e.target.value)}>
+                    {Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#888', marginBottom: '4px', display: 'block' }}>Ende der Ruhezeit</label>
+                  <select style={inputStyle} value={ruleQuietEnd} onChange={e => setRuleQuietEnd(e.target.value)}>
+                    {Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Max guests within rules */}
+          <div style={{ borderTop: '1px solid #F0EEE8', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '14px', color: '#1D1D1F' }}>Anzahl der Gäste</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button type="button" onClick={() => setMaxGuests(v => Math.max(1, v - 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111' }}>−</button>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: '#111', minWidth: '20px', textAlign: 'center' }}>{maxGuests}</span>
+              <button type="button" onClick={() => setMaxGuests(v => Math.min(30, v + 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111' }}>+</button>
+            </div>
+          </div>
+        </div>
+
+        <Field label="Zusätzliche Regeln" hint="Gib an, was du von Gästen sonst noch erwartest">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={ruleAdditionalRules}
+            onChange={e => setRuleAdditionalRules(e.target.value)}
+            placeholder="z.B. Schuhe bitte am Eingang ausziehen, Müll bitte trennen…"
+            rows={3}
+          />
+        </Field>
+
+        <Field label="Check-In Anweisungen">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={checkinInstructions}
+            onChange={e => setCheckinInstructions(e.target.value)}
+            placeholder="z.B. Schlüsselkasten Code, Anfahrtsbeschreibung…"
+            rows={4}
+          />
+          <AiPolishButton field="checkin_instructions" text={checkinInstructions} onAccept={setCheckinInstructions}
+            context={{ Titel: title, Ort: location }} />
+        </Field>
+        <Field label="Wichtige Hinweise für Gäste">
+          <textarea
+            style={{ ...inputStyle, resize: 'vertical' }}
+            value={importantNotes}
+            onChange={e => setImportantNotes(e.target.value)}
+            placeholder="z.B. Parkmöglichkeiten, WLAN-Passwort…"
+            rows={4}
+          />
+          <AiPolishButton field="important_notes" text={importantNotes} onAccept={setImportantNotes}
+            context={{ Titel: title, Ort: location }} />
+        </Field>
+      </Section>
+
+      {/* ── Plattform-Links & Bewertungen ── */}
+      <Section title="Bewertungen & Plattformen">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px' }}>
+          Verlinke deine Inserate auf anderen Plattformen und verwalte Bewertungen.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+          <Field label="Airbnb URL">
+            <input value={airbnbUrl} onChange={e => setAirbnbUrl(e.target.value)} placeholder="https://airbnb.com/rooms/..." style={inputStyle} />
+          </Field>
+          <Field label="Booking.com URL">
+            <input value={bookingUrl} onChange={e => setBookingUrl(e.target.value)} placeholder="https://booking.com/hotel/..." style={inputStyle} />
+          </Field>
+          <Field label="VRBO URL">
+            <input value={vrboUrl} onChange={e => setVrboUrl(e.target.value)} placeholder="https://vrbo.com/..." style={inputStyle} />
+          </Field>
+          <Field label="Google Place ID">
+            <input value={googlePlaceId} onChange={e => setGooglePlaceId(e.target.value)} placeholder="ChIJ..." style={inputStyle} />
+          </Field>
+        </div>
+        <ReviewsManager listingId={listing.id} />
+        <TranslationsCard listingId={listing.id} />
+      </Section>
+
+      {/* ── Buchungsmodus (pro Inserat) ── */}
+      <Section title="Buchung">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 4px' }}>
+          Lege für dieses Inserat fest, wie Gäste buchen können.
+        </p>
+
+        {/* Sofortbuchung */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #F0EDE8', cursor: 'pointer' }}>
+          <div style={{ paddingRight: '16px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>⚡ Sofortbuchung erlauben</p>
+            <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Gäste können sofort buchen – der Kalender wird direkt gesperrt.</p>
+          </div>
+          <div onClick={(e) => { e.preventDefault(); setAllowInstant(v => !v) }} style={{
+            width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
+            background: allowInstant ? 'var(--gold)' : '#D1D1D6', position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+          }}>
+            <div style={{ position: 'absolute', top: '3px', left: allowInstant ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+          </div>
+        </label>
+
+        {/* Anfragen */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: allowRequests ? '1px solid #F0EDE8' : 'none', cursor: 'pointer' }}>
+          <div style={{ paddingRight: '16px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>✉ Anfragen erlauben</p>
+            <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Gäste können Anfragen stellen – du bestätigst manuell.</p>
+          </div>
+          <div onClick={(e) => { e.preventDefault(); setAllowRequests(v => !v) }} style={{
+            width: '44px', height: '26px', borderRadius: '13px', flexShrink: 0,
+            background: allowRequests ? 'var(--gold)' : '#D1D1D6', position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+          }}>
+            <div style={{ position: 'absolute', top: '3px', left: allowRequests ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+          </div>
+        </label>
+
+        {/* Mindestnächte für Anfragen */}
+        {allowRequests && (
+          <div style={{ padding: '14px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ paddingRight: '16px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: '0 0 2px' }}>Mindestaufenthalt für Anfragen</p>
+              <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Anfragen erst ab dieser Anzahl Nächte möglich.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button type="button" onClick={() => setMinRequestNights(n => Math.max(1, n - 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>−</button>
+              <span style={{ fontSize: '14px', fontWeight: 700, minWidth: '30px', textAlign: 'center' }}>{minRequestNights}</span>
+              <button type="button" onClick={() => setMinRequestNights(n => Math.min(30, n + 1))}
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #E0DDD6', background: '#fff', cursor: 'pointer', fontSize: '16px' }}>+</button>
+              <span style={{ fontSize: '12px', color: '#888' }}>Nacht{minRequestNights !== 1 ? 'e' : ''}</span>
+            </div>
+          </div>
+        )}
+
+        {!allowInstant && !allowRequests && (
+          <div style={{ marginTop: '12px', padding: '10px 14px', background: '#FEF2F2', borderRadius: '10px', border: '1px solid #FECACA' }}>
+            <p style={{ fontSize: '12px', color: '#DC2626', margin: 0 }}>
+              ⚠️ Weder Sofortbuchung noch Anfragen sind aktiv. Gäste können dieses Inserat nicht buchen.
+            </p>
+          </div>
+        )}
+      </Section>
+
+      {/* ── Stornierungsbedingungen ── */}
+      <Section title="Stornierungsbedingungen">
+        <p style={{ fontSize: '12px', color: '#888', margin: '0 0 14px' }}>
+          Wähle eine Vorlage oder definiere eigene Fristen. Die Bedingungen werden Gästen vor der Buchung angezeigt.
+        </p>
+
+        {/* Template selector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+          {CANCELLATION_TEMPLATES.map(t => (
+            <label key={t.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '12px',
+              padding: '12px 16px', borderRadius: '12px', cursor: 'pointer',
+              border: cancelPolicy === t.id ? '2px solid var(--gold)' : '1.5px solid #E0DDD6',
+              background: cancelPolicy === t.id ? '#FBF6EC' : '#fff',
+            }}>
+              <input
+                type="radio"
+                name="cancellation"
+                value={t.id}
+                checked={cancelPolicy === t.id}
+                onChange={() => {
+                  setCancelPolicy(t.id)
+                  setCancelFreeDays(t.freeDays)
+                  setCancelFreePercent(t.freePercent)
+                  setCancelPartialDays(t.partialDays)
+                  setCancelPartialPercent(t.partialPercent)
+                }}
+                style={{ marginTop: '2px', accentColor: 'var(--gold)' }}
+              />
+              <div>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 2px' }}>{t.label}</p>
+                <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>{t.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {/* Custom fields — always visible, editable when any template is selected */}
+        <div style={{
+          background: '#F9F7F3', borderRadius: '14px', padding: '18px 20px',
+          border: '1px solid #E8E6E0',
+        }}>
+          <p style={{ fontSize: '12px', fontWeight: 700, color: '#555', margin: '0 0 14px' }}>
+            {cancelPolicy === 'custom' ? 'Benutzerdefinierte Werte' : 'Aktive Werte (zum Anpassen bearbeiten)'}
+          </p>
+
+          {/* Tier 1: free cancellation */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                Kostenloser Zeitraum (Tage vor Check-in)
+              </label>
+              <input type="number" min={0} max={90} value={cancelFreeDays}
+                onChange={e => { setCancelFreeDays(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                Erstattung in diesem Zeitraum (%)
+              </label>
+              <input type="number" min={0} max={100} value={cancelFreePercent}
+                onChange={e => { setCancelFreePercent(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+              />
+            </div>
+          </div>
+
+          {/* Tier 2: partial refund (optional) */}
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#555' }}>
+              <input type="checkbox"
+                checked={cancelPartialDays != null}
+                onChange={e => {
+                  if (e.target.checked) {
+                    setCancelPartialDays(Math.max(Math.floor(cancelFreeDays / 2), 1))
+                    setCancelPartialPercent(50)
+                  } else {
+                    setCancelPartialDays(null)
+                    setCancelPartialPercent(null)
+                  }
+                  setCancelPolicy('custom')
+                }}
+                style={{ accentColor: 'var(--gold)' }}
+              />
+              Zusätzliche Teilerstattungs-Stufe aktivieren
+            </label>
+          </div>
+
+          {cancelPartialDays != null && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                  Teilerstattung bis (Tage vor Check-in)
+                </label>
+                <input type="number" min={0} max={cancelFreeDays - 1} value={cancelPartialDays}
+                  onChange={e => { setCancelPartialDays(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                  style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#777', display: 'block', marginBottom: '5px' }}>
+                  Teilerstattung (%)
+                </label>
+                <input type="number" min={0} max={cancelFreePercent} value={cancelPartialPercent ?? 0}
+                  onChange={e => { setCancelPartialPercent(parseInt(e.target.value) || 0); setCancelPolicy('custom') }}
+                  style={{ width: '100%', borderRadius: '10px', border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: '13px', boxSizing: 'border-box' as const }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Live preview */}
+          <div style={{ marginTop: '16px', padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #E8E6E0' }}>
+            <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vorschau für Gäste</p>
+            <p style={{ fontSize: '12px', color: '#555', margin: 0, lineHeight: 1.5 }}>
+              {cancelFreePercent === 100
+                ? `Kostenlose Stornierung bis ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                : cancelFreePercent > 0
+                  ? `${cancelFreePercent} % Erstattung bis ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                  : `Keine Erstattung ab ${cancelFreeDays} ${cancelFreeDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+              }
+              {cancelPartialDays != null && cancelPartialPercent != null && cancelPartialPercent > 0
+                ? ` ${cancelPartialPercent} % Erstattung bis ${cancelPartialDays} ${cancelPartialDays === 1 ? 'Tag' : 'Tage'} vor Check-in.`
+                : ''
+              }
+              {' '}Danach keine Erstattung.
+            </p>
+          </div>
+        </div>
+      </Section>
+
 
       {/* ── Fehler / Speichern ── */}
       {error && (
