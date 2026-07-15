@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import OAuthButtons from '@/components/OAuthButtons'
+import LangSwitcher from '@/components/LangSwitcher'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 type AccountType = 'person' | 'business'
@@ -112,6 +113,7 @@ export default function RegisterPage() {
         city:   city.trim(),
         country: country.trim() || 'Deutschland',
         phone:  phone.trim(),
+        lang,
       }),
     })
 
@@ -149,9 +151,9 @@ export default function RegisterPage() {
           <p className="text-white/80 text-lg leading-relaxed max-w-xs">{t(lang, 'Auszeiten, die bleiben.')}</p>
           <div style={{ marginTop: '48px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
             {[
-              { icon: '🔒', text: 'Daten werden sicher übertragen' },
-              { icon: '🏠', text: 'Direkt vom Gastgeber' },
-              { icon: '💬', text: 'Persönlicher Kontakt' },
+              { icon: '🔒', text: t(lang, 'Daten werden sicher übertragen') },
+              { icon: '🏠', text: t(lang, 'Direkt vom Gastgeber') },
+              { icon: '💬', text: t(lang, 'Persönlicher Kontakt') },
             ].map(i => (
               <div key={i.text} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '18px' }}>{i.icon}</span>
@@ -171,6 +173,9 @@ export default function RegisterPage() {
             <Link href="/"><Image src="/logo.png" alt="TRIMOSA" width={160} height={36} className="h-9 w-auto object-contain mx-auto" /></Link>
           </div>
 
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+            <LangSwitcher compact />
+          </div>
           <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#1D1D1F', marginBottom: '4px', letterSpacing: '-0.5px' }}>
             {t(lang, 'Konto erstellen')}
           </h1>
@@ -185,8 +190,8 @@ export default function RegisterPage() {
               <SectionLabel>{t(lang, 'Kontotyp')}</SectionLabel>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 {([
-                  { value: 'person'   as AccountType, emoji: '👤', title: 'Privatperson', sub: 'Privatkonto' },
-                  { value: 'business' as AccountType, emoji: '🏢', title: 'Unternehmen',  sub: 'Firmenkonto' },
+                  { value: 'person'   as AccountType, emoji: '👤', title: t(lang, 'Privatperson'), sub: t(lang, 'Privatkonto') },
+                  { value: 'business' as AccountType, emoji: '🏢', title: t(lang, 'Unternehmen'),  sub: t(lang, 'Firmenkonto') },
                 ] as const).map(opt => (
                   <button key={opt.value} type="button" onClick={() => setAccountType(opt.value)}
                     style={{
@@ -205,7 +210,7 @@ export default function RegisterPage() {
 
             {/* ── 2. Name / Firma ── */}
             <div>
-              <SectionLabel>{accountType === 'business' ? 'Firmendaten' : 'Persönliche Daten'}</SectionLabel>
+              <SectionLabel>{accountType === 'business' ? t(lang, 'Firmendaten') : t(lang, 'Persönliche Daten')}</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {accountType === 'person' ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -218,10 +223,10 @@ export default function RegisterPage() {
                   </div>
                 ) : (
                   <>
-                    <Field label="Firmenname *">
+                    <Field label={`${t(lang, 'Firmenname')} *`}>
                       <input style={inp} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Musterfirma GmbH" autoComplete="organization" />
                     </Field>
-                    <Field label="USt-ID" hint="Optional — z.B. DE123456789">
+                    <Field label="USt-ID" hint={`${t(lang, 'Optional')} — z.B. DE123456789`}>
                       <input style={inp} value={vatId} onChange={e => setVatId(e.target.value)} placeholder="DE123456789" />
                     </Field>
                   </>
@@ -234,7 +239,7 @@ export default function RegisterPage() {
               <SectionLabel>{t(lang, 'Öffentlicher Anzeigename')}</SectionLabel>
               <Field
                 label={t(lang, 'Anzeigename')}
-                hint="Wird im Chat und bei Bewertungen angezeigt. Dein richtiger Name / deine Firma bleibt intern und wird nur für Buchungen und Rechnungen verwendet."
+                hint={t(lang, 'Wird im Chat und bei Bewertungen angezeigt. Dein richtiger Name / deine Firma bleibt intern und wird nur für Buchungen und Rechnungen verwendet.')}
               >
                 <input
                   style={inp}
