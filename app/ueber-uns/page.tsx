@@ -8,6 +8,7 @@ import { REGIONS } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
+import { getHostTeam } from '@/lib/hosts'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
 
@@ -21,12 +22,6 @@ export const metadata: Metadata = {
     'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar. TRI·MO·SA — unser Name ist unsere Heimat. Lerne uns kennen.',
   alternates: { canonical: `${siteUrl}/ueber-uns` },
 }
-
-const FOUNDERS = [
-  { name: 'Johannes Görgen', initials: 'JG' },
-  { name: 'Pascal Junk', initials: 'PJ' },
-  { name: 'Dominik Palzer', initials: 'DP' },
-]
 
 const HERO_TEXT = 'TRIMOSA ist ein junges, regional verwurzeltes Unternehmen aus der Region Trier. Was mit einer gemeinsamen Leidenschaft für Immobilien und Gastfreundschaft begann, sind heute moderne Ferienwohnungen zwischen Mosel und Eifel — jede einzelne handverlesen, frisch renoviert und persönlich eingerichtet.'
 const STORY_1 = 'Johannes, Pascal und Dominik kennen sich seit Jahren — und teilen neben der Freundschaft zwei Dinge: die Begeisterung für schöne Räume und die Überzeugung, dass unsere Heimat zwischen Mosel, Sauer und Eifel mehr Besucher verdient, die sie so erleben wie wir.'
@@ -44,6 +39,7 @@ const VALUES = [
 
 export default async function UeberUnsPage() {
   const lang = await getUiLang()
+  const FOUNDERS = await getHostTeam()
   const T = await makeTr(lang, lang === 'de' ? [] : [
     ...VALUES.flatMap((v) => [v.title, v.text]),
     ...Object.values(REGIONS).map((r) => r.claim),
@@ -187,12 +183,12 @@ export default async function UeberUnsPage() {
           {FOUNDERS.map((f) => (
             <div key={f.name} style={{ textAlign: 'center' }}>
               <div style={{
-                width: '84px', height: '84px', borderRadius: '50%', margin: '0 auto 10px',
+                position: 'relative', overflow: 'hidden', width: '84px', height: '84px', borderRadius: '50%', margin: '0 auto 10px',
                 background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '0.02em',
                 boxShadow: '0 6px 18px rgba(174,141,45,0.3)',
-              }}>{f.initials}</div>
+              }}>{f.avatarUrl ? <Image src={f.avatarUrl} alt={f.name} fill sizes="84px" style={{ objectFit: 'cover', borderRadius: '50%' }} /> : f.initials}</div>
               <p style={{ fontSize: '14px', fontWeight: 700, color: '#1A1400', margin: 0 }}>{f.name}</p>
               <p style={{ fontSize: '12px', color: '#8A8065', margin: '2px 0 0' }}>{t(lang, 'Gründer & Gastgeber')}</p>
             </div>
