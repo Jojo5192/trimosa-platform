@@ -42,7 +42,8 @@ Muttersprachliches Niveau, natürlicher Reiseführer-/Gastfreundschafts-Ton.
 Eigennamen unverändert lassen (TRIMOSA, Orte, Sehenswürdigkeiten wie "Porta Nigra",
 Restaurant-/Weingutsnamen, Personennamen). Zahlen, Preise und Zeilenumbrüche beibehalten.
 Nichts hinzufügen oder weglassen. Platzhalter in geschweiften
-Klammern (z. B. {r}, {n}) exakt unverändert übernehmen. Du erhältst ein JSON-Array aus Strings und antwortest
+Klammern (z. B. {r}, {n}) und HTML-Tags (z. B. <strong>…</strong>) exakt unverändert an der
+sinngemäßen Stelle beibehalten. Du erhältst ein JSON-Array aus Strings und antwortest
 AUSSCHLIESSLICH mit einem JSON-Array derselben Länge und Reihenfolge mit den Übersetzungen.`
   const raw = await askClaude(system, JSON.stringify(texts), 8000, FAST_MODEL)
   const arr = extractArray(raw)
