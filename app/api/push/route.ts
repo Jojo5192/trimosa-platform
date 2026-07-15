@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { sendPushToTeam } from '@/lib/push'
 
 /**
  * Team push subscriptions (chat PWA):
@@ -17,11 +18,23 @@ async function requireTeam() {
   return (me?.is_admin || me?.is_host || me?.is_staff) ? user : null
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await requireTeam()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
   if (!key) return NextResponse.json({ error: 'Push ist noch nicht konfiguriert (VAPID-Keys fehlen).' }, { status: 501 })
+
+  // Test trigger: /api/push?test=1 (logged-in team member in the browser)
+  // sends a demo notification to EVERY subscribed team device.
+  const url = new URL(request.url)
+  if (url.searchParams.get('test') === '1') {
+    const { count } = await supabaseAdmin
+      .from('push_subscriptions')
+      .select('id', { count: 'exact', head: true })
+    await sendPushToTeam('🔔 Test von TRIMOSA', 'Push-Benachrichtigungen funktionieren! 🎉 Genau so sehen Gast-Nachrichten aus.', '/team')
+    return NextResponse.json({ ok: true, geraete: count ?? 0, hinweis: 'Test-Push an alle registrierten Team-Geräte gesendet.' })
+  }
+
   return NextResponse.json({ publicKey: key })
 }
 
