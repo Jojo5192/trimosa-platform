@@ -8,10 +8,7 @@ const NAV = [
   { href: '/dashboard',               icon: '⊞',  label: 'Übersicht'    },
   { href: '/dashboard/bookings',      icon: '📅', label: 'Buchungen'    },
   { href: '/dashboard/chat',          icon: '💬', label: 'Chat'         },
-  { href: '/dashboard/stats',         icon: '📊', label: 'Statistiken'  },
-  { href: '/dashboard/invoices',      icon: '🧾', label: 'Rechnungen'   },
   { href: '/dashboard/notifications', icon: '🔔', label: 'Nachrichten'  },
-  { href: '/dashboard/setup',         icon: '⚙️', label: 'Einrichtung'  },
 ]
 
 export default function DashboardNav() {
