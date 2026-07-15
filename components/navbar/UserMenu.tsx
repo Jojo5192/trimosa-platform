@@ -65,10 +65,7 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
                 { href: '/dashboard',               icon: '⊞', label: 'Übersicht' },
                 { href: '/dashboard/bookings',      icon: '📅', label: 'Buchungen' },
                 { href: '/dashboard/chat',          icon: '💬', label: 'Chat' },
-                { href: '/dashboard/stats',         icon: '📊', label: 'Statistiken' },
-                { href: '/dashboard/invoices',      icon: '🧾', label: 'Rechnungen' },
                 { href: '/dashboard/notifications', icon: '🔔', label: 'Benachrichtigungen' },
-                { href: '/dashboard/setup',         icon: '⚙️', label: 'Einrichtung' },
               ].map(({ href, icon, label }) => (
                 <MenuItem key={href} href={href} onClick={onClose}>
                   <span style={{ marginRight: '8px', fontSize: '13px' }}>{icon}</span>
