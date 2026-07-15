@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { stripe, refundAmount, resolvePolicy, policyDescription } from '@/lib/stripe'
 import { cancelReservation, sendMessageToGuest } from '@/lib/smoobu'
+import { sendBookingCancelledEmail } from '@/lib/email'
 
 /**
  * POST /api/payments/refund
@@ -84,6 +85,13 @@ export async function POST(req: NextRequest) {
       stripe_refund_id: stripeRefundId,
     })
     .eq('id', bookingId)
+
+  // ─── Cancellation confirmation email to the guest ─────────────
+  try {
+    await sendBookingCancelledEmail(bookingId, { refunded: refund })
+  } catch (err) {
+    console.error('[Refund] cancellation email failed (non-fatal):', err)
+  }
 
   // ─── Cancel in Smoobu to free the calendar block ──────────────
   if (booking.smoobu_reservation_id) {
