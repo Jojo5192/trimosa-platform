@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 
 interface Conversation {
   id: string; guest_id: string; host_id: string
@@ -91,25 +92,27 @@ const flag = (l?: string | null) => (l ? FLAGS[l] ?? '🌐' : '🌐')
 function ava(name: string) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?'
 }
-function fmtTime(iso: string) {
+
+const CHAT_LOCALE: Record<UiLang, string> = { de: 'de-DE', en: 'en-GB', fr: 'fr-FR', nl: 'nl-NL' }
+function fmtTime(iso: string, lang: UiLang = 'de') {
   const d = new Date(iso), now = new Date()
   const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff === 0) return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-  if (diff === 1) return 'Gestern'
-  if (diff < 7)  return d.toLocaleDateString('de-DE', { weekday: 'short' })
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+  if (diff === 0) return d.toLocaleTimeString(CHAT_LOCALE[lang], { hour: '2-digit', minute: '2-digit' })
+  if (diff === 1) return t(lang, 'Gestern')
+  if (diff < 7)  return d.toLocaleDateString(CHAT_LOCALE[lang], { weekday: 'short' })
+  return d.toLocaleDateString(CHAT_LOCALE[lang], { day: '2-digit', month: '2-digit' })
 }
-function fmtDay(iso: string) {
+function fmtDay(iso: string, lang: UiLang = 'de') {
   const d = new Date(iso), now = new Date()
   const dDay      = d.toLocaleDateString('de-DE')
   const today     = now.toLocaleDateString('de-DE')
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toLocaleDateString('de-DE')
-  if (dDay === today)     return 'Heute'
-  if (dDay === yesterday) return 'Gestern'
-  return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+  if (dDay === today)     return t(lang, 'Heute')
+  if (dDay === yesterday) return t(lang, 'Gestern')
+  return d.toLocaleDateString(CHAT_LOCALE[lang], { weekday: 'long', day: 'numeric', month: 'long' })
 }
-function fmtMsgT(iso: string) {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+function fmtMsgT(iso: string, lang: UiLang = 'de') {
+  return new Date(iso).toLocaleTimeString(CHAT_LOCALE[lang], { hour: '2-digit', minute: '2-digit' })
 }
 function fmtDateRange(checkIn: string | null, checkOut: string | null) {
   if (!checkIn || !checkOut) return null
@@ -223,6 +226,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const bottomRef     = useRef<HTMLDivElement>(null)
+  // Visitor UI language (guest side; the team keeps the German cookie anyway)
+  const [uiLang, setUiLang] = useState<UiLang>('de')
+  useEffect(() => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + UI_COOKIE + '=([a-z]{2})'))
+    if (m && isUiLang(m[1])) setUiLang(m[1])
+  }, [])
   const taRef         = useRef<HTMLTextAreaElement>(null)
   const timer         = useRef<ReturnType<typeof setInterval> | null>(null)
   const mobileShellRef = useRef<HTMLDivElement>(null)
@@ -438,7 +447,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   /* ── group messages by day ── */
   const grouped: { day: string; items: Message[] }[] = []
   for (const m of msgs) {
-    const d = fmtDay(m.created_at)
+    const d = fmtDay(m.created_at, uiLang)
     if (!grouped.length || grouped[grouped.length - 1].day !== d) grouped.push({ day: d, items: [m] })
     else grouped[grouped.length - 1].items.push(m)
   }
@@ -495,7 +504,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {!loading && filtered.length === 0 && (
           <div style={{ padding: '64px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>Keine Nachrichten</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>{t(uiLang, 'Keine Nachrichten')}</div>
             <div style={{ fontSize: 13, color: '#AAA', marginTop: 6, lineHeight: 1.5 }}>
               Gäste können über die Inseratsseite schreiben.
             </div>
@@ -538,7 +547,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </span>
                   <span style={{ fontSize: 11, color: '#AAA', flexShrink: 0, marginLeft: 8 }}>
                     {c.last_message_at
-                      ? fmtTime(c.last_message_at)
+                      ? fmtTime(c.last_message_at, uiLang)
                       : c.check_in
                         ? `ab ${new Date(c.check_in).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
                         : ''}
@@ -635,7 +644,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           {msgs.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
-              <div style={{ fontSize: 13, color: '#AAA' }}>Noch keine Nachrichten</div>
+              <div style={{ fontSize: 13, color: '#AAA' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
             </div>
           )}
           {grouped.map(({ day, items }) => (
@@ -711,7 +720,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
                       {isLast && (
                         <span style={{ fontSize: 10.5, color: '#AAA', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
-                          {fmtMsgT(msg.created_at)}
+                          {fmtMsgT(msg.created_at, uiLang)}
                           {isMe && msg.read_at && <span style={{ color: 'var(--gold)', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
                         </span>
                       )}
@@ -813,7 +822,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               value={draft}
               onChange={e => setDraft(e.target.value)}
               enterKeyHint="enter"
-              placeholder={needsTranslation ? `Deutsch → ${flag(guestLang)} ${LANG_LABEL[guestLang!] ?? guestLang}` : 'Nachricht'}
+              placeholder={needsTranslation ? `Deutsch → ${flag(guestLang)} ${LANG_LABEL[guestLang!] ?? guestLang}` : t(uiLang, 'Nachricht')}
               rows={1}
               style={{
                 flex: 1, resize: 'none', outline: 'none', border: 'none',
@@ -876,10 +885,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           {isMobile && mobileView === 'chat' ? null : (
             <div>
               <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
-                Kommunikation
+                {t(uiLang, 'Kommunikation')}
               </p>
               <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#111', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                Nachrichten
+                {t(uiLang, 'Nachrichten')}
                 {unread > 0 && (
                   <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--gold)', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
                     {unread}
@@ -947,7 +956,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 <span style={{ flex: 1, fontWeight: 700, fontSize: 17, color: '#1A1814' }}>
-                  Nachrichten
+                  {t(uiLang, 'Nachrichten')}
                   {unread > 0 && (
                     <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
                       {unread}
@@ -1011,7 +1020,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: '#1A1814' }}>
-              Nachrichten
+              {t(uiLang, 'Nachrichten')}
               {unread > 0 && (
                 <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
                   {unread}
