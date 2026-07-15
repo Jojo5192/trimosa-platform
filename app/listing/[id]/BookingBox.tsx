@@ -479,7 +479,7 @@ export default function BookingBox({
             </p>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#555', marginBottom: '4px' }}>
-            <span>€ {pricePerNight} × {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
+            <span>€ {displayPrice != null && nights > 0 ? Math.round(displayPrice / nights) : pricePerNight} × {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
             <span>≈ € {displayPrice ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 700, color: '#111' }}>
