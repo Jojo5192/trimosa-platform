@@ -2,7 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import Link from 'next/link'
 import Image from 'next/image'
 import NavBar from '@/components/NavBar'
-import SearchResults, { type CardData } from '@/components/SearchResults'
+import SearchResults, { type CardData, type ComboSuggestion } from '@/components/SearchResults'
 import { t, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
 import { makeTr } from '@/lib/static-translate'
@@ -308,6 +308,56 @@ export default async function Home({
     },
   }
 
+  // ── Wohnungs-Gruppierung: Kombi-Vorschläge für große Gruppen ──
+  // Wenn KEINE einzelne (verfügbare) Wohnung die gesuchte Personenzahl schafft,
+  // schlagen wir die kleinste ausreichende Kombination aus Wohnungen derselben
+  // Standort-Gruppe vor (listings.location_group, im Editor gepflegt).
+  const groupById = new Map<string, string>()
+  for (const l of filtered) {
+    const g = (l.location_group as string | null)?.trim()
+    if (g) groupById.set(l.id as string, g)
+  }
+  const combos: ComboSuggestion[] = []
+  if (guestsNum && guestsNum > 1) {
+    const anySingleFits = cardData.some((c) => !c.unavailable && c.maxGuests >= guestsNum)
+    if (!anySingleFits) {
+      const byGroup = new Map<string, CardData[]>()
+      for (const c of cardData) {
+        const g = groupById.get(c.id)
+        if (!g || c.unavailable || !c.maxGuests) continue
+        if (!byGroup.has(g)) byGroup.set(g, [])
+        byGroup.get(g)!.push(c)
+      }
+      for (const [group, cards] of byGroup) {
+        if (cards.length < 2) continue
+        let best: CardData[] | null = null
+        let bestOver = Infinity
+        const consider = (pick: CardData[]) => {
+          const cap = pick.reduce((sum, c) => sum + c.maxGuests, 0)
+          if (cap >= guestsNum && cap - guestsNum < bestOver) { best = pick; bestOver = cap - guestsNum }
+        }
+        for (let i = 0; i < cards.length; i++)
+          for (let j = i + 1; j < cards.length; j++) consider([cards[i], cards[j]])
+        if (!best && cards.length >= 3) {
+          for (let i = 0; i < cards.length; i++)
+            for (let j = i + 1; j < cards.length; j++)
+              for (let k = j + 1; k < cards.length; k++) consider([cards[i], cards[j], cards[k]])
+        }
+        if (best) {
+          const picked = best as CardData[]
+          combos.push({
+            group,
+            cards: picked,
+            capacity: picked.reduce((sum, c) => sum + c.maxGuests, 0),
+            totalPrice: picked.every((c) => c.totalPrice > 0) ? picked.reduce((sum, c) => sum + c.totalPrice, 0) : null,
+            nights: picked[0]?.nights ?? 0,
+          })
+        }
+      }
+      combos.sort((a, b) => a.capacity - b.capacity)
+    }
+  }
+
   // Regions discovery — rendered below the grid AND below the map view
   const regionsSection = (
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 clamp(12px, 4vw, 20px) 56px' }}>
@@ -380,6 +430,7 @@ export default async function Home({
           searchCheckout={checkout}
           locations={topLocations}
           openMapByDefault={view === 'map'}
+          combos={combos}
           lang={lang}
         />
           {regionsSection}
@@ -405,7 +456,7 @@ export default async function Home({
               {cardData.map((card, index) => {
                 const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
                 return (
-                  <Link key={card.id} href={`/listing/${card.slug ?? card.id}`} className="listing-card" target="_blank"
+                  <Link key={card.id} href={`/listing/${card.slug ?? card.id}`} className="listing-card"
                     style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
                     <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
                       {card.image
