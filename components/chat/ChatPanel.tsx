@@ -159,6 +159,8 @@ interface Props {
 export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
+  const [authExpired, setAuthExpired] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
   const [msgs, setMsgs]         = useState<Message[]>([])
   const [draft, setDraft]       = useState('')
@@ -278,6 +280,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const getConvs = useCallback(async () => {
     if (team) {
       const r = await fetch('/api/chat/inbox')
+      if (r.status === 401 || r.status === 403) { setAuthExpired(true); return null }
       if (!r.ok) return null
       const { threads } = await r.json()
       const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => ({
@@ -433,16 +436,30 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   async function reallySend(content: string, contentDe?: string, lang?: string) {
     if (!active) return
     setBusy(true)
-    const payload = active.kind === 'booking'
-      ? { content, ...(contentDe ? { contentDe, lang } : {}) }
-      : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
-    const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
-    const r = await fetch(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (r.ok) { setDraft(''); setPendingSend(null); await getMsgs(active.id, active.kind); getConvs() }
-    setBusy(false)
+    setSendError(null)
+    try {
+      const payload = active.kind === 'booking'
+        ? { content, ...(contentDe ? { contentDe, lang } : {}) }
+        : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
+      const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (r.ok) {
+        setDraft(''); setPendingSend(null)
+        await getMsgs(active.id, active.kind); getConvs()
+      } else if (r.status === 401 || r.status === 403) {
+        setAuthExpired(true)
+      } else {
+        const d = await r.json().catch(() => null)
+        setSendError(d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
+      }
+    } catch {
+      setSendError('Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function send() {
@@ -676,6 +693,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 )}
               </div>
             )}
+          </div>
+        )}
+        {sendError && (
+          <div style={{
+            padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
+            background: '#FEF2F2', borderBottom: '0.5px solid rgba(220,38,38,0.25)', color: '#B91C1C',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ flex: 1 }}>⚠️ {sendError}</span>
+            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         )}
         {bookingHintFor === active?.id && (
@@ -919,6 +946,22 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   /* ═══════════════════════════════════════════════════════════
      RENDER — 'page': inline card (chat pages) · 'overlay': fixed modal
   ═══════════════════════════════════════════════════════════ */
+  // Session expired: fixed banner with one-tap relogin (returns to this page)
+  const authBanner = authExpired ? (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9500,
+      padding: '12px 16px', paddingTop: 'max(12px, env(safe-area-inset-top))',
+      background: '#B45309', color: '#fff', display: 'flex', alignItems: 'center', gap: 10,
+      fontSize: 13.5, fontWeight: 600, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+    }}>
+      <span style={{ flex: 1 }}>Sitzung abgelaufen — bitte neu anmelden.</span>
+      <button
+        onClick={() => { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search) }}
+        style={{ border: 'none', borderRadius: 999, padding: '8px 16px', background: '#fff', color: '#92400E', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
+      >Neu anmelden</button>
+    </div>
+  ) : null
+
   if (variant === 'page' || variant === 'app') {
     const isApp = variant === 'app'
     return (
@@ -928,6 +971,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         height: isApp ? '100dvh' : 'calc(100vh - 130px)',
         display: 'flex', flexDirection: 'column',
       }}>
+        {authBanner}
         {/* Page header (hidden in app shell — nothing but chat) */}
         <div style={{ marginBottom: '12px', display: isApp ? 'none' : 'flex', alignItems: 'center', gap: '10px' }}>
           {isMobile && mobileView === 'chat' ? null : (
