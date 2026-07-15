@@ -227,12 +227,12 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #E8E6E0' }}>
         <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: '0 0 14px' }}>{t(lang, 'Sprachen')}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {LANGUAGE_OPTIONS.map(lang => {
-            const active = languages.includes(lang)
+          {LANGUAGE_OPTIONS.map(l => {
+            const active = languages.includes(l)
             return (
-              <button key={lang} type="button" onClick={() => toggleLanguage(lang)}
+              <button key={l} type="button" onClick={() => toggleLanguage(l)}
                 style={{ padding: '7px 16px', borderRadius: '999px', fontSize: '13px', fontWeight: active ? 600 : 400, border: `1.5px solid ${active ? 'var(--gold)' : '#E0DDD6'}`, background: active ? '#FDF6E3' : '#fff', color: active ? 'var(--gold-dark)' : '#555', cursor: 'pointer' }}>
-                {lang}
+                {t(lang, l)}
               </button>
             )
           })}
@@ -254,7 +254,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', border: '1px solid #F5D0D0', marginTop: '8px' }}>
         <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>{t(lang, 'Konto löschen')}</h2>
         <p style={{ fontSize: '13px', color: '#888', margin: '0 0 16px', lineHeight: 1.5 }}>
-          Dein Konto und alle zugehörigen Daten werden unwiderruflich gelöscht. Aktive Buchungen können dadurch beeinträchtigt werden.
+          {t(lang, 'Dein Konto und alle zugehörigen Daten werden unwiderruflich gelöscht. Aktive Buchungen können dadurch beeinträchtigt werden.')}
         </p>
 
         {!deleteConfirm ? (
@@ -263,7 +263,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
             onClick={() => setDeleteConfirm(true)}
             style={{ padding: '10px 20px', borderRadius: '10px', border: '1.5px solid #DC2626', background: 'transparent', color: '#DC2626', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
           >
-            Konto löschen
+            {t(lang, 'Konto löschen')}
           </button>
         ) : (
           <div>
