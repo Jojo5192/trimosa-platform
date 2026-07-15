@@ -23,10 +23,10 @@ export default async function DashboardPage() {
   const smoobuApiKey = (profile as Record<string, unknown> | null)?.smoobu_api_key as string | null
   const smoobuChannelId = (profile as Record<string, unknown> | null)?.smoobu_channel_id as number | null
 
+  // Single-Host-Firma: ALLE Team-Gastgeber sehen ALLE Inserate & Buchungen
   const { data: listings } = await supabase
     .from('listings')
     .select('*')
-    .eq('host_id', user.id)
     .order('created_at', { ascending: false })
 
   const listingIds = listings?.map((l) => l.id) ?? []
@@ -75,22 +75,6 @@ export default async function DashboardPage() {
         </div>
 
         {/* Setup Banner */}
-        <Link href="/dashboard/setup"
-          className="flex items-center justify-between mb-6 rounded-2xl px-6 py-4 hover:opacity-90 transition-all shadow-sm"
-          style={{ background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', textDecoration: 'none' }}>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              Neu hier?
-            </p>
-            <p className="text-base font-bold" style={{ color: '#fff' }}>
-              Schritt-für-Schritt Einrichtung →
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              Smoobu verbinden · Preise · Abrechnungsdaten
-            </p>
-          </div>
-          <div style={{ fontSize: '2rem' }}>🏠</div>
-        </Link>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
