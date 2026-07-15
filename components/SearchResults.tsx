@@ -20,6 +20,14 @@ const CARD_GRADIENTS = [
   { from: '#EDE8D0', to: '#A89050', accent: '#8A7238' },
 ]
 
+export interface ComboSuggestion {
+  group: string
+  cards: CardData[]
+  capacity: number
+  totalPrice: number | null
+  nights: number
+}
+
 export interface CardData {
   id: string
   slug?: string   // speaking URL segment; falls back to id
@@ -53,6 +61,7 @@ interface Props {
   /** Open the fullscreen map immediately on mobile (homepage "Karte anzeigen"). */
   openMapByDefault?: boolean
   lang?: UiLang
+  combos?: ComboSuggestion[]
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -72,7 +81,6 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang
     <Link
       href={`/listing/${card.slug ?? card.id}${linkParams || ''}`}
       className="listing-card"
-      target="_blank"
       onMouseEnter={() => onHover?.(card.id)}
       onMouseLeave={() => onHover?.(null)}
       style={{
@@ -167,7 +175,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang
 }
 
 /* ── Main component ── */
-export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [], openMapByDefault = false, lang = 'de' }: Props) {
+export default function SearchResults({ cards, centerLat, centerLon, searchQuery, searchGuests, searchCheckin, searchCheckout, locations = [], openMapByDefault = false, lang = 'de', combos = [] }: Props) {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMapOpen, setMobileMapOpen] = useState(openMapByDefault)
   // Hover-sync between the card list and the map markers (both directions).
@@ -246,6 +254,52 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
   // flex column and the desktop grid (gridColumn is ignored in flex).
   function renderCards(): ReactNode[] {
     const out: ReactNode[] = []
+    // Combo suggestions for large groups: no single apartment fits, but
+    // apartments in the same location group do together (owner feature §48)
+    if (combos.length > 0 && searchGuests) {
+      out.push(
+        <div key="combo-panel" style={{
+          gridColumn: '1 / -1', borderRadius: '18px', padding: '16px 18px',
+          background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+          boxShadow: '0 6px 24px rgba(174,141,45,0.14)',
+        }}>
+          <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 4px' }}>
+            💡 {t(lang, 'Tipp für {n} Personen', { n: searchGuests })}
+          </p>
+          <p style={{ fontSize: '12.5px', color: '#6B6455', margin: '0 0 12px', lineHeight: 1.5 }}>
+            {t(lang, 'Keine einzelne Wohnung ist groß genug — direkt nebeneinander kombiniert passt es:')}
+          </p>
+          {combos.map((combo) => (
+            <div key={combo.group} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+              {combo.cards.map((c, ci) => (
+                <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  {ci > 0 && <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--gold-dark)' }}>+</span>}
+                  <Link href={`/listing/${c.slug ?? c.id}${linkParams}`} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none',
+                    background: '#fff', border: '1px solid #EADFC2', borderRadius: '12px', padding: '6px 12px 6px 6px',
+                  }}>
+                    {c.image
+                      ? /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={c.image} alt="" style={{ width: '34px', height: '34px', borderRadius: '8px', objectFit: 'cover' }} />
+                      : <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏠</span>}
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#111' }}>{c.title}</span>
+                    <span style={{ fontSize: '11.5px', color: '#8A8065' }}>{c.maxGuests} {t(lang, 'Gäste')}</span>
+                  </Link>
+                </span>
+              ))}
+              <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--gold-dark)', marginLeft: '2px' }}>
+                = {t(lang, 'bis {n} Gäste', { n: combo.capacity })}
+                {combo.totalPrice != null && combo.nights > 0 && (
+                  <span style={{ fontWeight: 600, color: '#6B6455' }}>
+                    {' '}· {t(lang, 'zusammen')} €{combo.totalPrice} / {combo.nights} {combo.nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )
+    }
     sorted.forEach((card, i) => {
       if (showGroupDivider && i === firstUnmatchedIdx) {
         out.push(
