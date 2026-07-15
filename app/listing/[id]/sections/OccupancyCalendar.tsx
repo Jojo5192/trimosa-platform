@@ -42,7 +42,9 @@ function CalendarMonthGrid({ year, month, rates, todayStr, checkIn, checkOut, on
           const isBooked = !isPast && rate?.available === 0
           const isSelected = iso === checkIn || iso === checkOut
           const inRange = checkIn && checkOut && iso > checkIn && iso < checkOut
-          const clickable = !isPast && !isBooked
+          // Booked nights still allow CHECK-OUT that morning
+          const checkoutOnly = isBooked && !!checkIn && !checkOut && iso > checkIn
+          const clickable = !isPast && (!isBooked || checkoutOnly)
 
           let bg = '#F0FDF4'; let color = '#16A34A'; let border = '1px solid #BBF7D0'
           if (isPast) { bg = '#F9FAFB'; color = '#D1D5DB'; border = '1px solid #F3F4F6' }
