@@ -88,7 +88,7 @@ function initials(name: string): string {
   return name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '?'
 }
 
-type Filter = 'aktiv' | 'erledigt' | 'alle'
+type Filter = 'aktiv' | 'erledigt' | 'alle' | 'vorschlaege'
 
 export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'; userId: string }) {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -263,17 +263,22 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.15)`,
       }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Aufgaben</h1>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([['aktiv', `Aktiv${counts.aktiv ? ` ${counts.aktiv}` : ''}`], ['erledigt', `Erledigt${counts.erledigt ? ` ${counts.erledigt}` : ''}`], ['alle', 'Alle']] as [Filter, string][]).map(([f, label]) => (
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          {([
+            ['aktiv', `Aktiv${counts.aktiv ? ` ${counts.aktiv}` : ''}`],
+            ['erledigt', `Erledigt${counts.erledigt ? ` ${counts.erledigt}` : ''}`],
+            ['alle', 'Alle'],
+            ...(apiRole === 'admin' ? [['vorschlaege', `🤖 Vorschläge${suggestions.length ? ` ${suggestions.length}` : ''}`]] : []),
+          ] as [Filter, string][]).map(([f, label]) => (
             <button key={f} onClick={() => setFilter(f)} style={{
-              padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600,
-              background: filter === f ? '#111' : 'rgba(120,120,128,0.12)',
-              color: filter === f ? '#fff' : '#3C3C43', cursor: 'pointer',
+              padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, flexShrink: 0,
+              background: filter === f ? (f === 'vorschlaege' ? '#6D28D9' : '#111') : f === 'vorschlaege' && suggestions.length ? '#EDE9FE' : 'rgba(120,120,128,0.12)',
+              color: filter === f ? '#fff' : f === 'vorschlaege' && suggestions.length ? '#6D28D9' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
             }}>{label}</button>
           ))}
         </div>
         {/* Personen-Schnellfilter (nur wer alle Aufgaben sieht) */}
-        {viewAll && people.length > 0 && (
+        {viewAll && people.length > 0 && filter !== 'vorschlaege' && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
             {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
               <button key={id || 'alle'} onClick={() => setPersonFilter(id)} style={{
@@ -297,8 +302,8 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         </div>
       )}
 
-      {/* 🤖 Vorschläge-Inbox (nur Admins/Gastgeber) */}
-      {apiRole === 'admin' && (
+      {/* 🤖 Vorschläge-Reiter (nur Admins/Gastgeber) — eigene Ansicht */}
+      {apiRole === 'admin' && filter === 'vorschlaege' && (
         <div style={{ padding: '12px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: suggestions.length ? 8 : 0 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#6D28D9', margin: 0 }}>
@@ -310,6 +315,13 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
             }}>{analyzing ? 'Analysiere… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
           </div>
           {aiNote && <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 8px' }}>{aiNote}</p>}
+          {suggestions.length === 0 && !analyzing && (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#8E8E93' }}>
+              <p style={{ fontSize: 36, margin: '0 0 8px' }}>🤖</p>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine offenen Vorschläge.</p>
+              <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Der tägliche Lauf (4:45 Uhr) analysiert neue Gastnachrichten & Bewertungen automatisch.</p>
+            </div>
+          )}
           {suggestions.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {suggestions.map((t) => (
@@ -347,7 +359,8 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         </div>
       )}
 
-      {/* Liste */}
+      {/* Liste (nicht im Vorschläge-Reiter) */}
+      {filter !== 'vorschlaege' && (
       <div style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
           <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
@@ -475,11 +488,12 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
           )
         })}
       </div>
+      )}
 
     </div>
 
       {/* FAB (nur mit Anlegen-Recht) — außerhalb des Scrollers, im Content-Bereich */}
-      {manage && (
+      {manage && filter !== 'vorschlaege' && (
         <button onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'absolute', right: 18, bottom: 18, width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
