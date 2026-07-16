@@ -139,6 +139,10 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   }
 
   return (
+    // Äußerer Wrapper NICHT scrollbar: iOS klemmt position:fixed-Overlays in
+    // -webkit-overflow-scrolling-Containern fest (Sheet läge sonst unter der
+    // Tab-Bar und scrollt mit) — Sheet + FAB leben deshalb AUSSERHALB des Scrollers.
+    <div style={{ height: '100%', position: 'relative' }}>
     <div style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
       {/* Header + Filter */}
       <div style={{
@@ -265,10 +269,12 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         })}
       </div>
 
-      {/* FAB (nur Team) */}
+    </div>
+
+      {/* FAB (nur mit Anlegen-Recht) — außerhalb des Scrollers, im Content-Bereich */}
       {manage && (
         <button onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
-          position: 'fixed', right: 18, bottom: 'calc(76px + env(safe-area-inset-bottom))', width: 54, height: 54, borderRadius: '50%',
+          position: 'absolute', right: 18, bottom: 18, width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
           boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
@@ -312,6 +318,8 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   const [visibility, setVisibility] = useState<string>(task?.visibility ?? 'admin')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // iOS zeigt bei leeren date-Inputs GAR NICHTS an → eigener Platzhalter
+  const isIOS = typeof navigator !== 'undefined' && /iP(hone|ad|od)/.test(navigator.userAgent)
 
   async function save() {
     if (!title.trim()) { setErr('Titel fehlt.'); return }
@@ -431,7 +439,16 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Rotfrist (fällig bis)</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
+              <div style={{ position: 'relative' }}>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                  style={{ ...inputStyle, minHeight: 44 }} />
+                {isIOS && !dueDate && (
+                  <span style={{
+                    position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 14, color: '#9CA3AF', pointerEvents: 'none',
+                  }}>Datum wählen…</span>
+                )}
+              </div>
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Zugewiesen an</label>
