@@ -80,8 +80,18 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
 
   const load = useCallback(async (attempt = 0) => {
     try {
-      const res = await fetch('/api/tasks')
-      const json = await res.json()
+      // cache: 'no-store' — iOS-PWA beantwortete GETs sonst aus dem Cache
+      // (leerer/stale Body → Safari-„pattern"-Fehler statt Daten)
+      const res = await fetch('/api/tasks', { cache: 'no-store' })
+      const text = await res.text()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let json: { [k: string]: any } = {}
+      try { json = JSON.parse(text) } catch {
+        if (attempt < 1) { setTimeout(() => load(1), 1200); return }
+        setError(`Unerwartete Antwort vom Server (HTTP ${res.status}).`)
+        setLoading(false)
+        return
+      }
       if (res.ok) {
         setTasks(json.tasks ?? [])
         setPeople(json.people ?? [])
