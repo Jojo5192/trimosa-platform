@@ -23,8 +23,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(() => ({}))
   const upd: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-  if (!auth.manage) {
-    if (task.assignee_id !== auth.userId) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  // Admin-Schutz: von Admins/Gastgebern erstellte Aufgaben dürfen Nicht-Admins
+  // NICHT verändern — nur den Status ihrer eigenen (zugewiesenen) abarbeiten.
+  let editable = auth.role === 'admin'
+  if (!editable && auth.manage) {
+    const { data: creator } = task.created_by
+      ? await supabaseAdmin.from('profiles').select('is_admin, is_host').eq('id', task.created_by).maybeSingle()
+      : { data: null }
+    editable = !(creator?.is_admin || creator?.is_host)
+  }
+
+  if (!auth.manage || !editable) {
+    if (task.assignee_id !== auth.userId && task.created_by !== auth.userId) {
+      return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+    }
     if (!OWN_STATUS.includes(body.status)) return NextResponse.json({ error: 'Ungültiger Status.' }, { status: 400 })
     upd.status = body.status
   } else {
@@ -100,6 +112,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const auth = await getTaskAuth()
   if (!auth || !auth.manage) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  if (auth.role !== 'admin') {
+    // Nicht-Admins dürfen Admin-/Gastgeber-Aufgaben auch nicht löschen
+    const { data: task } = await supabaseAdmin.from('tasks').select('created_by').eq('id', id).maybeSingle()
+    if (!task) return NextResponse.json({ error: 'Aufgabe nicht gefunden.' }, { status: 404 })
+    const { data: creator } = task.created_by
+      ? await supabaseAdmin.from('profiles').select('is_admin, is_host').eq('id', task.created_by).maybeSingle()
+      : { data: null }
+    if (creator?.is_admin || creator?.is_host) {
+      return NextResponse.json({ error: 'Nur Admins können diese Aufgabe löschen.' }, { status: 403 })
+    }
+  }
   const { error } = await supabaseAdmin.from('tasks').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
