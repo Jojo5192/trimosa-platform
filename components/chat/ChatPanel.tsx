@@ -867,7 +867,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           borderTop: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.92)',
           backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           padding: '8px 12px',
-          paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+          // In der Tab-Shell (app) übernimmt die Tab-Leiste die Safe-Area
+          paddingBottom: variant === 'app' ? 8 : 'max(8px, env(safe-area-inset-bottom))',
           display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
           {active && isHost(active) && msgs.length > 0 && (
@@ -969,7 +970,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       <div style={{
         maxWidth: isApp ? undefined : '1100px', margin: '0 auto',
         padding: isApp ? 0 : isMobile ? '10px 10px 16px' : '20px 20px 32px',
-        height: isApp ? '100dvh' : 'calc(100vh - 130px)',
+        // app: füllt den Content-Bereich der Tab-Shell (die setzt die Höhe)
+        height: isApp ? '100%' : 'calc(100vh - 130px)',
         display: 'flex', flexDirection: 'column',
       }}>
         {authBanner}
