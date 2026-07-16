@@ -2,21 +2,28 @@
 
 /**
  * 📅 Kalender-Tab: Agenda der nächsten 8 Wochen — Abreisen (= Reinigungs-
- * Slots), Anreisen, Wechsel-Tage (Abreise + Anreise derselben Wohnung) und
- * fällige Aufgaben. Überfällige Aufgaben stehen gesammelt ganz oben.
+ * Slots), Anreisen, Wechsel-Tage und fällige Aufgaben. Dazu LEERSTANDS-
+ * INTELLIGENZ: „🔧 Gerade frei" zeigt aktuell leere Wohnungen mit Dauer +
+ * passenden offenen Aufgaben, und jede Abreise zeigt das folgende Frei-
+ * Fenster („danach 4 Nächte frei") samt Aufgaben-Gelegenheiten.
  * Dienstleister sehen keine Gastnamen (kommen von der API gar nicht erst).
  */
 import { useState, useEffect } from 'react'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null }
-type CalTask = { id: string; title: string; due_date: string; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
+type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
+type ListingInfo = { title: string; group: string | null }
 
 const DE_DAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const DE_MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+const PRIO_DOT: Record<string, string> = { hoch: '#EF4444', mittel: '#F59E0B', niedrig: '#9CA3AF' }
 
 function isoOffset(days: number): string {
   const d = new Date(Date.now() + days * 86400_000)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime()) / 86400_000)
 }
 function dayLabel(iso: string, today: string): string {
   const d = new Date(iso + 'T00:00:00Z')
@@ -30,10 +37,37 @@ function fmtShort(iso: string): string {
   return `${Number(d)}.${Number(m)}.`
 }
 
+/** Offene Aufgaben, die zu dieser Wohnung passen (direkt oder via Standort). */
+function tasksForListing(tasks: CalTask[], listingId: string, group: string | null): CalTask[] {
+  return tasks.filter((t) =>
+    t.listing_id === listingId || (!!t.location_group && !!group && t.location_group === group)
+  )
+}
+
+function TaskChips({ tasks, max = 3 }: { tasks: CalTask[]; max?: number }) {
+  const shown = tasks.slice(0, max)
+  const rest = tasks.length - shown.length
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 5, verticalAlign: 'middle' }}>
+      {shown.map((t) => (
+        <span key={t.id} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
+          padding: '3px 9px', borderRadius: 999, background: '#fff', color: '#4A4438',
+          boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.2)',
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: PRIO_DOT[t.prio] ?? '#9CA3AF', flexShrink: 0 }} />
+          {t.title.length > 34 ? t.title.slice(0, 34) + '…' : t.title}
+        </span>
+      ))}
+      {rest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#8A7020' }}>+{rest} weitere</span>}
+    </span>
+  )
+}
+
 export default function CalendarPanel() {
   const [stays, setStays] = useState<Stay[]>([])
   const [tasks, setTasks] = useState<CalTask[]>([])
-  const [listings, setListings] = useState<Record<string, string>>({})
+  const [listings, setListings] = useState<Record<string, ListingInfo>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,31 +83,61 @@ export default function CalendarPanel() {
   }, [])
 
   const today = isoOffset(0)
-  const overdue = tasks.filter((t) => t.due_date < today)
+  const rangeEnd = isoOffset(56)
+  const overdue = tasks.filter((t) => t.due_date && t.due_date < today)
 
-  // Agenda: nur Tage mit Ereignissen (heute bis +56)
-  const days: { iso: string; events: { type: 'abreise' | 'anreise' | 'aufgabe'; label: string; sub?: string; wechsel?: boolean }[] }[] = []
+  /** Nächste Anreise einer Wohnung NACH einem Datum (exklusive). */
+  function nextCheckIn(listingId: string, afterIso: string): string | null {
+    const next = stays
+      .filter((s) => s.listingId === listingId && s.checkIn >= afterIso)
+      .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]
+    return next?.checkIn ?? null
+  }
+
+  /* ── „Gerade frei": Wohnungen ohne aktuellen Aufenthalt + ohne Anreise heute ── */
+  const freeNow = Object.entries(listings)
+    .map(([id, info]) => {
+      const occupied = stays.some((s) => s.listingId === id && s.checkIn <= today && s.checkOut > today)
+      const arrivingToday = stays.some((s) => s.listingId === id && s.checkIn === today)
+      if (occupied || arrivingToday) return null
+      const nextIn = nextCheckIn(id, today)
+      const nights = nextIn ? daysBetween(today, nextIn) : null
+      return { id, title: info.title, nights, nextIn, tasks: tasksForListing(tasks, id, info.group) }
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => (b.tasks.length - a.tasks.length) || ((b.nights ?? 99) - (a.nights ?? 99)))
+
+  /* ── Agenda: nur Tage mit Ereignissen (heute bis +56) ── */
+  type Ev = { type: 'abreise' | 'anreise' | 'aufgabe'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[] }
+  const days: { iso: string; events: Ev[] }[] = []
   for (let i = 0; i <= 56; i++) {
     const iso = isoOffset(i)
     const outs = stays.filter((s) => s.checkOut === iso)
     const ins = stays.filter((s) => s.checkIn === iso)
     const due = tasks.filter((t) => t.due_date === iso)
-    const events: typeof days[number]['events'] = []
+    const events: Ev[] = []
     for (const s of outs) {
+      const info = listings[s.listingId]
       const wechsel = ins.some((x) => x.listingId === s.listingId)
-      events.push({
-        type: 'abreise',
-        label: listings[s.listingId] ?? 'Wohnung',
-        sub: s.guestName ?? undefined,
-        wechsel,
-      })
+      let gapText: string | undefined
+      let gapTasks: CalTask[] | undefined
+      if (!wechsel) {
+        const nextIn = nextCheckIn(s.listingId, iso)
+        const nights = nextIn ? daysBetween(iso, nextIn) : null
+        gapText = nights != null
+          ? `danach ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'} frei (bis ${fmtShort(nextIn!)})`
+          : `danach frei — nichts geplant bis ${fmtShort(rangeEnd)}`
+        const matching = tasksForListing(tasks, s.listingId, info?.group ?? null)
+        if (matching.length && (nights == null || nights >= 1)) gapTasks = matching
+      }
+      events.push({ type: 'abreise', label: info?.title ?? 'Wohnung', sub: s.guestName ?? undefined, wechsel, gapText, gapTasks })
     }
     for (const s of ins) {
-      events.push({ type: 'anreise', label: listings[s.listingId] ?? 'Wohnung', sub: s.guestName ?? undefined })
+      events.push({ type: 'anreise', label: listings[s.listingId]?.title ?? 'Wohnung', sub: s.guestName ?? undefined })
     }
     for (const t of due) {
-      const scope = t.listing_id ? listings[t.listing_id] : t.location_group ? `📍 ${t.location_group}` : 'Allgemein'
-      events.push({ type: 'aufgabe', label: t.title, sub: scope })
+      const scope = t.listing_id ? listings[t.listing_id]?.title : t.location_group ? `📍 ${t.location_group}` : 'Allgemein'
+      events.push({ type: 'aufgabe', label: t.title, sub: scope ?? undefined })
     }
     if (events.length) days.push({ iso, events })
   }
@@ -112,7 +176,36 @@ export default function CalendarPanel() {
                     boxShadow: 'inset 0 0 0 1.5px #EF4444', display: 'flex', justifyContent: 'space-between', gap: 10,
                   }}>
                     <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{t.title}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', flexShrink: 0 }}>seit {fmtShort(t.due_date)}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', flexShrink: 0 }}>seit {fmtShort(t.due_date!)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 🔧 Gerade frei: leere Wohnungen + Aufgaben-Gelegenheiten */}
+          {freeNow.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#8A7020', margin: '0 0 8px' }}>🔧 Gerade frei</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {freeNow.map((f) => (
+                  <div key={f.id} style={{
+                    background: 'linear-gradient(135deg, #FDFBF4, #FAF5E4)', borderRadius: 14, padding: '12px 14px',
+                    boxShadow: 'inset 0 0 0 1px #E8DCB8',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{f.title}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#8A7020', flexShrink: 0 }}>
+                        {f.nights != null
+                          ? `frei bis ${fmtShort(f.nextIn!)} · ${f.nights} ${f.nights === 1 ? 'Nacht' : 'Nächte'}`
+                          : 'frei — nichts geplant'}
+                      </span>
+                    </div>
+                    {f.tasks.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <TaskChips tasks={f.tasks} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -138,27 +231,37 @@ export default function CalendarPanel() {
                     <div key={i} style={{
                       background: '#fff', borderRadius: 14, padding: '10px 13px',
                       boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
-                      display: 'flex', alignItems: 'center', gap: 11,
                     }}>
-                      <span style={{
-                        width: 32, height: 32, borderRadius: 10, background: meta.bg, color: meta.color,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 16, fontWeight: 800, flexShrink: 0,
-                      }}>{meta.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13.5, fontWeight: 700, color: '#111', margin: 0 }}>
-                          {e.label}
-                          {e.wechsel && (
-                            <span style={{
-                              marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
-                              background: '#EDE9FE', color: '#6D28D9', verticalAlign: 'middle',
-                            }}>WECHSEL</span>
-                          )}
-                        </p>
-                        <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '1px 0 0' }}>
-                          {meta.tag}{e.sub ? ` · ${e.sub}` : ''}
-                        </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                        <span style={{
+                          width: 32, height: 32, borderRadius: 10, background: meta.bg, color: meta.color,
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 16, fontWeight: 800, flexShrink: 0,
+                        }}>{meta.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 13.5, fontWeight: 700, color: '#111', margin: 0 }}>
+                            {e.label}
+                            {e.wechsel && (
+                              <span style={{
+                                marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
+                                background: '#EDE9FE', color: '#6D28D9', verticalAlign: 'middle',
+                              }}>WECHSEL</span>
+                            )}
+                          </p>
+                          <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '1px 0 0' }}>
+                            {meta.tag}{e.sub ? ` · ${e.sub}` : ''}{e.gapText ? ` · ${e.gapText}` : ''}
+                          </p>
+                        </div>
                       </div>
+                      {e.gapTasks && e.gapTasks.length > 0 && (
+                        <div style={{
+                          marginTop: 9, padding: '8px 11px', borderRadius: 10,
+                          background: '#FAF5E4', boxShadow: 'inset 0 0 0 0.5px #E8DCB8',
+                        }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: '#8A7020', marginRight: 7 }}>🛠️ Gelegenheit:</span>
+                          <TaskChips tasks={e.gapTasks} />
+                        </div>
+                      )}
                     </div>
                   )
                 })}
