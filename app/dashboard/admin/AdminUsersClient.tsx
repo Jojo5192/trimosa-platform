@@ -9,6 +9,7 @@ export default function AdminUsersClient() {
   const [admins, setAdmins] = useState<Person[]>([])
   const [hosts, setHosts] = useState<Person[]>([])
   const [staff, setStaff] = useState<Person[]>([])
+  const [providers, setProviders] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -19,6 +20,7 @@ export default function AdminUsersClient() {
       setAdmins(json.admins ?? [])
       setHosts(json.hosts ?? [])
       setStaff(json.staff ?? [])
+      setProviders(json.providers ?? [])
     }
     setLoading(false)
   }, [])
@@ -57,6 +59,16 @@ export default function AdminUsersClient() {
         loading={loading}
         onChanged={load}
       />
+      <RoleSection
+        flag="is_provider"
+        title="Dienstleister (Aufgaben)"
+        addLabel="Als Dienstleister freischalten"
+        grantedMsg="ist jetzt Dienstleister und sieht in der Team-App die eigenen Aufgaben und den Kalender — keine Chats."
+        revokedMsg="ist kein Dienstleister mehr."
+        people={providers}
+        loading={loading}
+        onChanged={load}
+      />
     </div>
   )
 }
@@ -64,7 +76,7 @@ export default function AdminUsersClient() {
 function RoleSection({
   flag, title, addLabel, grantedMsg, revokedMsg, people, loading, onChanged,
 }: {
-  flag: 'is_admin' | 'is_host' | 'is_staff'
+  flag: 'is_admin' | 'is_host' | 'is_staff' | 'is_provider'
   title: string
   addLabel: string
   grantedMsg: string
