@@ -6,7 +6,7 @@ import type { MetadataRoute } from 'next'
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'TRIMOSA Team-Chat',
+    name: 'TRIMOSA Team',
     short_name: 'TRIMOSA',
     description: 'Gäste-Kommunikation von TRIMOSA Apartments & Homes',
     start_url: '/team',
