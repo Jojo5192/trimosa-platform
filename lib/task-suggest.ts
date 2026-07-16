@@ -30,6 +30,24 @@ async function setCursor(since: string): Promise<void> {
   await supabaseAdmin.from('app_settings').upsert({ key: CURSOR_KEY, value: { since }, updated_at: new Date().toISOString() })
 }
 
+/**
+ * JSON-Array robust parsen — wird die Antwort trotz Budget am Token-Limit
+ * abgeschnitten, retten wir alle VOLLSTÄNDIGEN Einträge bis zum letzten '}'.
+ */
+function parseSuggestions(raw: string): Suggestion[] {
+  const start = raw.indexOf('[')
+  if (start === -1) throw new Error('Keine JSON-Antwort: ' + raw.slice(0, 150))
+  const end = raw.lastIndexOf(']')
+  if (end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)) as Suggestion[] } catch { /* weiter zum Rettungspfad */ }
+  }
+  const lastObj = raw.lastIndexOf('}')
+  if (lastObj > start) {
+    try { return JSON.parse(raw.slice(start, lastObj + 1) + ']') as Suggestion[] } catch { /* unten werfen */ }
+  }
+  throw new Error('JSON nicht parsebar (Antwort-Ende): …' + raw.slice(-150))
+}
+
 /** sinceDaysOverride: Zeitraum erzwingen (z. B. 42 = 6-Wochen-Backfill) statt Cursor. */
 export async function runTaskSuggest(sinceDaysOverride?: number): Promise<SuggestSummary> {
   const since = sinceDaysOverride
@@ -127,13 +145,10 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   ].join('\n')
 
   const system = await getPrompt('task_suggest')
-  // 12000 Tokens: Sonnet nutzt einen Teil als Denkbudget (§45-Lektion) —
-  // zu knapp bemessen käme eine leere Antwort mit stop_reason max_tokens.
-  const raw = await askClaude(system, user, 12000)
-  const startIdx = raw.indexOf('[')
-  const endIdx = raw.lastIndexOf(']')
-  if (startIdx === -1 || endIdx <= startIdx) throw new Error('Keine JSON-Antwort: ' + raw.slice(0, 150))
-  const suggestions = JSON.parse(raw.slice(startIdx, endIdx + 1)) as Suggestion[]
+  // Großzügiges Budget: Sonnet nutzt einen Teil als Denkbudget (§45-Lektion),
+  // und lange Antworten dürfen nicht mitten im JSON abreißen.
+  const raw = await askClaude(system, user, 20000)
+  const suggestions = parseSuggestions(raw)
 
   // ── Vorschläge anlegen (mit DB-seitigem Titel-Dedupe) ──
   const existingLower = new Set(existingTitles.map((t) => t.toLowerCase()))
