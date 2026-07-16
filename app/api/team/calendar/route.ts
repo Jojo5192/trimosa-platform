@@ -8,6 +8,9 @@ import { getTaskAuth } from '@/lib/tasks'
  * mit Leerstands-Fenstern). DATENSPARSAM: Dienstleister bekommen KEINE
  * Gastnamen. Aufgaben folgen den Aufgaben-Rechten (Rolle + visibility).
  */
+export const dynamic = 'force-dynamic'
+const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
+
 export async function GET() {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
@@ -61,5 +64,5 @@ export async function GET() {
     listings: Object.fromEntries((listings ?? []).map((l) => [
       l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
     ])),
-  })
+  }, NO_STORE)
 }
