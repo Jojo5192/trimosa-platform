@@ -6,6 +6,7 @@ import DashboardNav from '@/components/DashboardNav'
 import AdminUsersClient from './AdminUsersClient'
 import KnowledgeAdmin from './KnowledgeAdmin'
 import PromptStudio from './PromptStudio'
+import TaskPermissionsCard from './TaskPermissionsCard'
 
 export default async function AdminPage() {
   const supabase = await createSupabaseServerClient()
@@ -35,6 +36,8 @@ export default async function AdminPage() {
         </p>
 
         <AdminUsersClient />
+
+        <TaskPermissionsCard />
 
         <KnowledgeAdmin />
 
