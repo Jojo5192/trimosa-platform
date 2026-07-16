@@ -18,13 +18,9 @@ function ensureConfigured(): boolean {
   return true
 }
 
-export async function sendPushToTeam(title: string, body: string, url = '/team'): Promise<void> {
-  if (!ensureConfigured()) return
-  const { data: subs } = await supabaseAdmin
-    .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
-  if (!subs?.length) return
+type Sub = { id: string; endpoint: string; p256dh: string; auth: string }
 
+async function sendToSubs(subs: Sub[], title: string, body: string, url: string): Promise<void> {
   const payload = JSON.stringify({ title, body: body.slice(0, 180), url })
   await Promise.all(subs.map(async (s) => {
     try {
@@ -41,4 +37,24 @@ export async function sendPushToTeam(title: string, body: string, url = '/team')
       }
     }
   }))
+}
+
+export async function sendPushToTeam(title: string, body: string, url = '/team'): Promise<void> {
+  if (!ensureConfigured()) return
+  const { data: subs } = await supabaseAdmin
+    .from('push_subscriptions')
+    .select('id, endpoint, p256dh, auth')
+  if (!subs?.length) return
+  await sendToSubs(subs, title, body, url)
+}
+
+/** Push to ONE user's devices (e.g. task assignment to a provider). */
+export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben'): Promise<void> {
+  if (!ensureConfigured()) return
+  const { data: subs } = await supabaseAdmin
+    .from('push_subscriptions')
+    .select('id, endpoint, p256dh, auth')
+    .eq('user_id', userId)
+  if (!subs?.length) return
+  await sendToSubs(subs, title, body, url)
 }
