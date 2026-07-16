@@ -43,8 +43,11 @@ Regeln:
   wird wiederholt bemängelt). Kein Lob, keine Allgemeinplätze, keine
   Einzelmeinungen ohne Handlungsbedarf, nichts, was der Gast nur fragt.
 - titel: kurz und konkret, wie ein Handwerker-Auftrag (z. B. "Duschkopf im Bad tauschen").
-- beschreibung: 1–2 Sätze mit wörtlichem Zitat und Quelle (z. B. 'Bewertung Airbnb 3/5'
-  oder 'Gastnachricht') — NIEMALS den Namen des Gastes nennen.
+- beschreibung: KOMPLETT AUF DEUTSCH — fremdsprachige Zitate sinngemäß ins Deutsche
+  übersetzen (in Anführungszeichen, mit Quelle wie 'Bewertung Booking 3/5' oder
+  'Gastnachricht'). NIEMALS den Namen des Gastes nennen.
+- Wurde ein Problem MEHRFACH genannt, beginne die beschreibung mit der Anzahl der
+  unabhängigen Nennungen, z. B. "3× genannt: ..." — und zitiere bis zu zwei Beispiele.
 - wohnung: exakter Wohnungsname aus der Liste, oder null wenn unklar/übergreifend.
 - prio: "hoch" (Sicherheit/Funktionsausfall) · "mittel" (Komfort) · "niedrig" (Nice-to-have).
 - quelle: "nachricht" oder "bewertung".
