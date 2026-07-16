@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(await runTaskSuggest(sinceDays))
   } catch (err) {
     console.error('[task-suggest]', err)
-    return NextResponse.json({ error: 'Analyse fehlgeschlagen — Details im Log.' }, { status: 500 })
+    // Admin-gated: konkrete Fehlermeldung zurückgeben (Diagnose ohne Vercel-Logs)
+    const detail = String(err instanceof Error ? err.message : err).slice(0, 400)
+    return NextResponse.json({ error: `Analyse fehlgeschlagen: ${detail}` }, { status: 500 })
   }
 }
