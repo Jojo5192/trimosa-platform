@@ -55,6 +55,14 @@ export default function DatenschutzPage() {
           ist Art. 6 Abs. 1 lit. f DSGVO. Es findet eine Übermittlung in die USA statt; diese wird
           auf die Standardvertragsklauseln der EU-Kommission gestützt.
         </LegalP>
+        <LegalP>
+          Zur Verbesserung unseres Angebots nutzen wir außerdem Vercel Web Analytics, eine
+          datenschutzfreundliche Reichweitenmessung. Dabei werden keine Cookies gesetzt, keine
+          geräteübergreifenden Profile gebildet und keine IP-Adressen dauerhaft gespeichert;
+          die Auswertung erfolgt anonymisiert (z. B. Seitenaufrufe, Herkunftsland, Gerätetyp).
+          Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der
+          statistischen Auswertung der Nutzung ohne Eingriff in die Privatsphäre).
+        </LegalP>
       </LegalSection>
 
       <LegalSection heading="4. Datenbank, Anmeldung und Speicherung (Supabase)">
