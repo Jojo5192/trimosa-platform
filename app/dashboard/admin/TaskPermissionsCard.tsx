@@ -57,8 +57,10 @@ export default function TaskPermissionsCard() {
     <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #E8E6E0', padding: 20, marginTop: 32 }}>
       <p style={{ fontSize: 15, fontWeight: 700, color: '#111', margin: '0 0 4px' }}>✅ Aufgaben-Rechte</p>
       <p style={{ fontSize: 12.5, color: '#888', margin: '0 0 16px' }}>
-        Admins und Gastgeber sehen und verwalten immer alle Aufgaben. Hier legst du fest, was
-        Mitarbeiter und Dienstleister in der Team-App dürfen.
+        Admins und Gastgeber sehen und verwalten immer alle Aufgaben. Zusätzlich hat jede
+        Aufgabe eine Sichtbarkeit (🔒 Nur Admins · 👥 + Mitarbeiter · 🌐 Alle) — „Freigegebene"
+        heißt: alle Aufgaben, deren Sichtbarkeit die Rolle einschließt. Die eigene zugewiesene
+        Aufgabe sieht jeder immer.
       </p>
 
       {!perms ? (
@@ -73,7 +75,7 @@ export default function TaskPermissionsCard() {
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', margin: '0 0 5px' }}>Aufgaben sehen</p>
                   <Toggle
-                    options={[['own', 'Nur eigene'], ['all', 'Alle']]}
+                    options={[['own', 'Nur eigene'], ['all', 'Freigegebene']]}
                     value={perms[role].view}
                     onChange={(v) => save({ ...perms, [role]: { ...perms[role], view: v as 'all' | 'own' } })}
                   />
