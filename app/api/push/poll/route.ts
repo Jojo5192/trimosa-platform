@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages } from '@/lib/smoobu'
 import { sendPushToTeam } from '@/lib/push'
+import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 
 /**
  * Cron (every 10 min): polls Smoobu messages for RELEVANT bookings (guests
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
       const { data: known } = await supabaseAdmin
         .from('messages').select('smoobu_message_id').in('smoobu_message_id', ids)
       const knownSet = new Set((known ?? []).map((m) => m.smoobu_message_id))
+      const newGuestMsgs: { id: string; text: string }[] = []
       for (const sm of msgs) {
         if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
         const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
@@ -61,20 +63,30 @@ export async function GET(request: Request) {
             continue
           }
         }
-        const { error } = await supabaseAdmin.from('messages').insert({
+        const { data: inserted, error } = await supabaseAdmin.from('messages').insert({
           booking_id: b.id,
           smoobu_message_id: String(sm.id),
           sender_type: isHost ? 'host' : 'guest',
           content: sm.message.trim(),
           created_at: sm.date || undefined,
-        })
-        if (error) continue
+        }).select('id').single()
+        if (error || !inserted) continue
         newMessages++
-        if (!isHost) {
-          const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null
+        if (!isHost) newGuestMsgs.push({ id: inserted.id, text: sm.message.trim() })
+      }
+
+      // Translate new guest messages BEFORE pushing — the notification (and
+      // the inbox preview, via the cached content_de) shows German, with the
+      // guest's language as a flag. Fail-soft: untranslated original.
+      if (newGuestMsgs.length) {
+        const tr = await translateIncoming(newGuestMsgs)
+        const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null
+        for (const g of newGuestMsgs) {
+          const t = tr.get(g.id)
+          const flag = t?.lang && t.lang !== 'de' ? `${LANG_FLAGS[t.lang] ?? '🌐'} ` : ''
           await sendPushToTeam(
-            `💬 ${b.guest_name ?? 'Gast'}${listing?.title ? ` · ${listing.title}` : ''}`,
-            sm.message.trim(),
+            `💬 ${flag}${b.guest_name ?? 'Gast'}${listing?.title ? ` · ${listing.title}` : ''}`,
+            t?.german ?? g.text,
             '/team',
           )
           pushes++
