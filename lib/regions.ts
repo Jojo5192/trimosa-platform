@@ -865,6 +865,16 @@ export const REGIONS: Record<string, Region> = {
         text: 'Berühmt für seine Flieten — die knusprigen Hähnchenflügel, die man mit den Fingern isst. Dazu Viez aus eigener Kelterei: Trierer Land-Kultur pur.',
       },
       {
+        emoji: '🐟', name: 'Gasthaus Ferring', art: 'Eifeler Gasthaus & Biergarten', ort: 'Minden an der Sauer',
+        kategorie: 'gasthaus', lat: 49.8238, lon: 6.4685, googleQuery: 'Gasthaus Ferring Minden Sauer',
+        text: 'Familiengeführtes Gasthaus dort, wo die Prüm in die Sauer mündet — regionale Küche mit frischer Mindener Forelle, dazu Biergarten und Terrasse.',
+      },
+      {
+        emoji: '🌉', name: 'Ralinger Hof', art: 'Gasthaus an der Sauerbrücke', ort: 'Ralingen an der Sauer',
+        kategorie: 'gasthaus', lat: 49.8057, lon: 6.5098, googleQuery: 'Ralinger Hof Ralingen',
+        text: 'Klassisches Gasthaus direkt an der Brücke über die Sauer — bodenständige Küche im Grenzort, auf der anderen Flussseite beginnt Luxemburg.',
+      },
+      {
         emoji: '🇫🇷', name: 'Le Petit Poète', art: 'Bistro am Marktplatz', ort: 'Echternach (LU)',
         kategorie: 'gasthaus', lat: 49.8126, lon: 6.4208, top: true, googleQuery: 'Le Petit Poète Echternach', googlePlaceId: 'ChIJCcIGrHdglUcRYHW1DZd8FlY',
         text: 'Kleiner Klassiker direkt am Marktplatz der Abteistadt — französisch geprägte Karte und eine der beliebtesten Terrassen der Stadt.',
@@ -878,6 +888,11 @@ export const REGIONS: Record<string, Region> = {
         emoji: '🥾', name: 'Teufels Küche', art: 'Wander-Einkehr', ort: 'An der Teufelsschlucht, Ernzen',
         kategorie: 'cafe', lat: 49.8283, lon: 6.4443, googleQuery: 'Teufels Küche Teufelsschlucht Ernzen',
         text: 'Stärkung direkt am Schluchteingang: Snacks, Kuchen und kalte Getränke — perfekt vor oder nach der Tour durch die Felsen.',
+      },
+      {
+        emoji: '🍕', name: 'Pizzeria Da Toni', art: 'Italiener in Irrel', ort: 'Irrel',
+        kategorie: 'gasthaus', lat: 49.8421, lon: 6.4573, googleQuery: 'Pizzeria Da Toni Irrel',
+        text: 'Italienischer Familienklassiker mitten in Irrel — Pizza und Pasta, wie gemacht für den Abend nach einer Tour durch die nahe Teufelsschlucht.',
       },
       {
         emoji: '🐟', name: 'Gasthäuser im Sauertal', art: 'Regionalküche', ort: 'Bollendorf & Umgebung',
