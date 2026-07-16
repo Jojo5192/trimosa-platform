@@ -18,7 +18,7 @@ async function requireAdmin() {
   return { user }
 }
 
-async function listByFlag(flag: 'is_admin' | 'is_host' | 'is_staff') {
+async function listByFlag(flag: 'is_admin' | 'is_host' | 'is_staff' | 'is_provider') {
   const { data: rows } = await supabaseAdmin
     .from('profiles')
     .select(`id, display_name, ${flag}`)
@@ -37,8 +37,10 @@ export async function GET() {
   const { error } = await requireAdmin()
   if (error) return error
 
-  const [admins, hosts, staff] = await Promise.all([listByFlag('is_admin'), listByFlag('is_host'), listByFlag('is_staff')])
-  return NextResponse.json({ admins, hosts, staff })
+  const [admins, hosts, staff, providers] = await Promise.all([
+    listByFlag('is_admin'), listByFlag('is_host'), listByFlag('is_staff'), listByFlag('is_provider'),
+  ])
+  return NextResponse.json({ admins, hosts, staff, providers })
 }
 
 /**
@@ -55,9 +57,10 @@ export async function PATCH(req: NextRequest) {
   const hasAdmin = typeof body.is_admin === 'boolean'
   const hasHost = typeof body.is_host === 'boolean'
   const hasStaff = typeof body.is_staff === 'boolean'
+  const hasProvider = typeof body.is_provider === 'boolean'
 
-  if (!email || (!hasAdmin && !hasHost && !hasStaff)) {
-    return NextResponse.json({ error: 'email und is_admin, is_host oder is_staff (boolean) sind erforderlich.' }, { status: 400 })
+  if (!email || (!hasAdmin && !hasHost && !hasStaff && !hasProvider)) {
+    return NextResponse.json({ error: 'email und is_admin, is_host, is_staff oder is_provider (boolean) sind erforderlich.' }, { status: 400 })
   }
 
   // auth.users isn't queryable via PostgREST — resolve the id through a
@@ -116,6 +119,15 @@ export async function PATCH(req: NextRequest) {
     const { error: e } = await supabaseAdmin
       .from('profiles')
       .update({ is_staff: body.is_staff })
+      .eq('id', target.id)
+    if (e) return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+
+  // ── Provider flag (Dienstleister: nur Aufgaben + Kalender) ──
+  if (hasProvider) {
+    const { error: e } = await supabaseAdmin
+      .from('profiles')
+      .update({ is_provider: body.is_provider })
       .eq('id', target.id)
     if (e) return NextResponse.json({ error: e.message }, { status: 500 })
   }
