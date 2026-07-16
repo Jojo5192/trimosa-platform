@@ -11,8 +11,8 @@ import { getPrompt } from '@/lib/prompts'
 import { sendPushToUser } from '@/lib/push'
 
 const CURSOR_KEY = 'task_ai_cursor'
-const MAX_MESSAGES = 120
-const MAX_REVIEWS = 60
+const MAX_MESSAGES = 250
+const MAX_REVIEWS = 100
 
 interface Suggestion { titel: string; beschreibung: string; wohnung: string | null; prio: string; quelle: string }
 export interface SuggestSummary { nachrichten: number; bewertungen: number; vorschlaege: number; note?: string }
@@ -30,8 +30,11 @@ async function setCursor(since: string): Promise<void> {
   await supabaseAdmin.from('app_settings').upsert({ key: CURSOR_KEY, value: { since }, updated_at: new Date().toISOString() })
 }
 
-export async function runTaskSuggest(): Promise<SuggestSummary> {
-  const since = await getCursor()
+/** sinceDaysOverride: Zeitraum erzwingen (z. B. 42 = 6-Wochen-Backfill) statt Cursor. */
+export async function runTaskSuggest(sinceDaysOverride?: number): Promise<SuggestSummary> {
+  const since = sinceDaysOverride
+    ? new Date(Date.now() - sinceDaysOverride * 86400_000).toISOString()
+    : await getCursor()
   const runStart = new Date().toISOString()
 
   const { data: listingRows } = await supabaseAdmin.from('listings').select('id, title')
