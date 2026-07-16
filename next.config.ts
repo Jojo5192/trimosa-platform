@@ -60,6 +60,15 @@ const nextConfig: NextConfig = {
           { key: 'Content-Security-Policy-Report-Only', value: csp },
         ],
       },
+      {
+        // API-Antworten NIE cachen — iOS-PWAs beantworten GETs sonst aus dem
+        // HTTP-Cache mit stale/leeren Bodies (Safari: "string did not match
+        // the expected pattern"). Gilt bewusst für ALLE Routen inkl. Fehler.
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
+        ],
+      },
     ]
   },
 };
