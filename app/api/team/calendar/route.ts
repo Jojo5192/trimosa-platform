@@ -4,9 +4,9 @@ import { getTaskAuth } from '@/lib/tasks'
 
 /**
  * 📅 Kalender der Team-App: An-/Abreisen aller Wohnungen (heute − 1 Tag bis
- * + 8 Wochen) + fällige Aufgaben. DATENSPARSAM: Dienstleister bekommen KEINE
- * Gastnamen — nur Wohnung + Datum (reicht für Reinigung/Handwerk).
- * Aufgaben folgen den Aufgaben-Rechten (viewAll vs. nur eigene).
+ * + 8 Wochen) + OFFENE Aufgaben (fällige für die Agenda, alle fürs Matching
+ * mit Leerstands-Fenstern). DATENSPARSAM: Dienstleister bekommen KEINE
+ * Gastnamen. Aufgaben folgen den Aufgaben-Rechten (Rolle + visibility).
  */
 export async function GET() {
   const auth = await getTaskAuth()
@@ -23,7 +23,7 @@ export async function GET() {
       .lte('check_in', end)
       .gte('check_out', start)
       .limit(500),
-    supabaseAdmin.from('listings').select('id, title'),
+    supabaseAdmin.from('listings').select('id, title, location_group'),
   ])
 
   // Unbezahlte Direkt-Buchungen ausblenden (Geister vor Webhook-Aufräumung)
@@ -38,12 +38,12 @@ export async function GET() {
       guestName: auth.role === 'provider' ? null : (b.guest_name ?? null),
     }))
 
+  // ALLE offenen Aufgaben (auch ohne Rotfrist) — Panel nutzt fällige für die
+  // Agenda und alle für die Leerstands-Gelegenheiten je Wohnung.
   let taskQuery = supabaseAdmin
     .from('tasks')
-    .select('id, title, due_date, status, prio, listing_id, location_group, is_general, assignee_id')
-    .not('due_date', 'is', null)
+    .select('id, title, due_date, status, prio, listing_id, location_group, is_general')
     .in('status', ['offen', 'in_arbeit'])
-    .lte('due_date', end)
     .limit(300)
   if (auth.role !== 'admin') {
     // gleiche Sichtbarkeits-Logik wie /api/tasks (Aufgaben-Rechte + visibility)
@@ -58,6 +58,8 @@ export async function GET() {
     role: auth.role,
     stays,
     tasks: tasks ?? [],
-    listings: Object.fromEntries((listings ?? []).map((l) => [l.id, l.title])),
+    listings: Object.fromEntries((listings ?? []).map((l) => [
+      l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
+    ])),
   })
 }
