@@ -59,6 +59,22 @@ export async function GET() {
     }
   }
 
+  // editable je Aufgabe: Admins alles; manage-Nicht-Admins nur Aufgaben, die
+  // NICHT von Admins/Gastgebern erstellt wurden (Admin-Schutz).
+  let adminCreators = new Set<string>()
+  if (auth.role !== 'admin' && auth.manage) {
+    const creatorIds = [...new Set((tasks ?? []).map((t) => t.created_by).filter(Boolean))] as string[]
+    if (creatorIds.length) {
+      const { data: profs } = await supabaseAdmin
+        .from('profiles').select('id, is_admin, is_host').in('id', creatorIds)
+      adminCreators = new Set((profs ?? []).filter((p) => p.is_admin || p.is_host).map((p) => p.id))
+    }
+  }
+  const withEditable = (tasks ?? []).map((t) => ({
+    ...t,
+    editable: auth.role === 'admin' || (auth.manage && !(t.created_by && adminCreators.has(t.created_by))),
+  }))
+
   // Kommentar-Zähler der sichtbaren Aufgaben (ein Query, Zählung in JS)
   const taskIds = (tasks ?? []).map((t) => t.id)
   const commentCounts: Record<string, number> = {}
@@ -73,7 +89,7 @@ export async function GET() {
     role: auth.role,
     viewAll: auth.viewAll,
     manage: auth.manage,
-    tasks: tasks ?? [],
+    tasks: withEditable,
     commentCounts,
     people,
     listings: (listings ?? []).map((l) => ({ id: l.id, title: l.title })),
