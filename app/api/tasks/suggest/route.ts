@@ -22,11 +22,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const auth = await getTaskAuth()
   if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
-    return NextResponse.json(await runTaskSuggest())
+    // optional: { sinceDays: 42 } für einen Backfill über einen festen Zeitraum
+    const body = await request.json().catch(() => ({}))
+    const sinceDays = typeof body.sinceDays === 'number' && body.sinceDays >= 1 && body.sinceDays <= 90
+      ? Math.round(body.sinceDays) : undefined
+    return NextResponse.json(await runTaskSuggest(sinceDays))
   } catch (err) {
     console.error('[task-suggest]', err)
     return NextResponse.json({ error: 'Analyse fehlgeschlagen — Details im Log.' }, { status: 500 })
