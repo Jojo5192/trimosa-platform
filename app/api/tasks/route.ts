@@ -15,10 +15,14 @@ export async function GET() {
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
   let query = supabaseAdmin.from('tasks').select('*').order('created_at', { ascending: false }).limit(500)
-  if (!auth.viewAll) {
-    query = query.or(`assignee_id.eq.${auth.userId},created_by.eq.${auth.userId}`)
-  }
   if (auth.role !== 'admin') {
+    // Sichtbar: eigene (zugewiesen/selbst angelegt) + je nach Rollen-Recht die
+    // für die Gruppe FREIGEGEBENEN Aufgaben (visibility). Admin-Aufgaben
+    // ('admin', Default) sieht außer dem Zugewiesenen niemand.
+    const own = `assignee_id.eq.${auth.userId},created_by.eq.${auth.userId}`
+    if (!auth.viewAll) query = query.or(own)
+    else if (auth.role === 'staff') query = query.or(`${own},visibility.in.(team,alle)`)
+    else query = query.or(`${own},visibility.eq.alle`)
     query = query.in('status', ['offen', 'in_arbeit', 'erledigt'])
   }
   const { data: tasks, error } = await query
@@ -81,12 +85,18 @@ export async function POST(req: NextRequest) {
     is_general: !listingId && !locationGroup,
     prio: PRIOS.includes(body.prio) ? body.prio : 'mittel',
     status: 'offen',
+    visibility: ['admin', 'team', 'alle'].includes(body.visibility) ? body.visibility : 'admin',
     assignee_id: typeof body.assignee_id === 'string' && body.assignee_id ? body.assignee_id : null,
     due_date: typeof body.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null,
     created_by: auth.userId,
   }
 
-  const { data: task, error } = await supabaseAdmin.from('tasks').insert(row).select('*').single()
+  let { data: task, error } = await supabaseAdmin.from('tasks').insert(row).select('*').single()
+  if (error && /visibility/i.test(error.message)) {
+    // Migration 20260716_task_visibility noch nicht ausgeführt → ohne Spalte anlegen
+    delete (row as Record<string, unknown>).visibility
+    ;({ data: task, error } = await supabaseAdmin.from('tasks').insert(row).select('*').single())
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (task.assignee_id && task.assignee_id !== auth.userId) {
