@@ -23,6 +23,11 @@ export interface Task {
   assignee_id: string | null
   due_date: string | null
   created_at: string
+  visibility?: 'admin' | 'team' | 'alle'
+}
+
+const VIS_META: Record<string, string> = {
+  admin: '🔒 Nur Admins', team: '👥 + Mitarbeiter', alle: '🌐 Alle',
 }
 
 type Person = { id: string; name: string; isProvider: boolean }
@@ -212,6 +217,11 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: prio.bg, color: prio.color }}>{prio.label}</span>
                 <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#374151' }}>{scopeChip(t)}</span>
+                {manage && (
+                  <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#6B7280' }}>
+                    {VIS_META[t.visibility ?? 'admin']}
+                  </span>
+                )}
                 {t.due_date && (
                   <span style={{
                     fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
@@ -299,6 +309,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   )
   const [scopeListing, setScopeListing] = useState(task?.listing_id ?? listings[0]?.id ?? '')
   const [scopeGroup, setScopeGroup] = useState(task?.location_group ?? groups[0] ?? '')
+  const [visibility, setVisibility] = useState<string>(task?.visibility ?? 'admin')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -307,7 +318,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
     setSaving(true)
     setErr(null)
     const payload = {
-      title, description, prio, status,
+      title, description, prio, status, visibility,
       due_date: dueDate || null,
       assignee_id: assignee || null,
       listing_id: scopeType === 'listing' ? scopeListing : null,
@@ -407,6 +418,14 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               options={[['hoch', '🔴 Hoch'], ['mittel', '🟡 Mittel'], ['niedrig', '⚪ Niedrig']]}
               value={prio}
               onChange={setPrio}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Sichtbar für (Zugewiesene sehen ihre Aufgabe immer)</label>
+            <Segmented
+              options={[['admin', '🔒 Nur Admins'], ['team', '👥 + Mitarbeiter'], ['alle', '🌐 Alle']]}
+              value={visibility}
+              onChange={setVisibility}
             />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
