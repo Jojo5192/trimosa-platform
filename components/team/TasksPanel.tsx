@@ -63,8 +63,12 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   const [groups, setGroups] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('aktiv')
+  const [personFilter, setPersonFilter] = useState<string>('') // '' = alle · 'none' = ohne · sonst Personen-ID
   const [editing, setEditing] = useState<Task | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Rechte kommen vom Server (admin-konfigurierbar); Startwert = grobe Vermutung
+  const [manage, setManage] = useState(role === 'team')
+  const [viewAll, setViewAll] = useState(role === 'team')
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +79,8 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         setPeople(json.people ?? [])
         setListings(json.listings ?? [])
         setGroups(json.groups ?? [])
+        setManage(!!json.manage)
+        setViewAll(!!json.viewAll)
       } else setError(json.error ?? 'Fehler beim Laden.')
     } catch {
       setError('Netzwerkfehler beim Laden.')
@@ -95,6 +101,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
     return tasks
       .filter((t) => t.status !== 'vorschlag' && t.status !== 'verworfen')
       .filter((t) => filter === 'alle' ? true : filter === 'erledigt' ? t.status === 'erledigt' : t.status !== 'erledigt')
+      .filter((t) => !personFilter ? true : personFilter === 'none' ? !t.assignee_id : t.assignee_id === personFilter)
       .sort((a, b) => {
         const oa = isOverdue(a) ? 0 : 1, ob = isOverdue(b) ? 0 : 1
         if (oa !== ob) return oa - ob
@@ -104,7 +111,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         if (a.due_date !== b.due_date) return (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999')
         return b.created_at.localeCompare(a.created_at)
       })
-  }, [tasks, filter, isOverdue])
+  }, [tasks, filter, personFilter, isOverdue])
 
   const counts = useMemo(() => ({
     aktiv: tasks.filter((t) => ['offen', 'in_arbeit'].includes(t.status)).length,
@@ -145,6 +152,18 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
             }}>{label}</button>
           ))}
         </div>
+        {/* Personen-Schnellfilter (nur wer alle Aufgaben sieht) */}
+        {viewAll && people.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
+            {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
+              <button key={id || 'alle'} onClick={() => setPersonFilter(id)} style={{
+                padding: '5px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0,
+                background: personFilter === id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+                color: personFilter === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>{id && id !== 'none' ? `👤 ${label}` : label}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -162,7 +181,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
           <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>✅</p>
             <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>
-              {filter === 'erledigt' ? 'Noch nichts erledigt.' : role === 'provider' ? 'Keine Aufgaben für dich — alles erledigt!' : 'Keine offenen Aufgaben.'}
+              {filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich — alles erledigt!' : 'Keine offenen Aufgaben.'}
             </p>
           </div>
         ) : visible.map((t) => {
@@ -172,11 +191,11 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
           const done = t.status === 'erledigt'
           return (
             <div key={t.id}
-              onClick={role === 'team' ? () => setEditing(t) : undefined}
+              onClick={manage ? () => setEditing(t) : undefined}
               style={{
                 background: '#fff', borderRadius: 16, padding: '13px 15px',
                 boxShadow: overdue ? 'inset 0 0 0 1.5px #EF4444' : `inset 0 0 0 0.5px rgba(60,60,67,0.15)`,
-                cursor: role === 'team' ? 'pointer' : 'default',
+                cursor: manage ? 'pointer' : 'default',
                 opacity: done ? 0.65 : 1,
               }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -187,7 +206,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
               </div>
               {t.description && (
                 <p style={{ fontSize: 13, color: '#6B7280', margin: '5px 0 0', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                  {t.description.length > 140 && role === 'team' ? t.description.slice(0, 140) + '…' : t.description}
+                  {t.description.length > 140 && manage ? t.description.slice(0, 140) + '…' : t.description}
                 </p>
               )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
@@ -211,7 +230,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                   </span>
                 )}
               </div>
-              {role === 'provider' && !done && (
+              {!manage && !done && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
@@ -225,7 +244,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                   }}>✓ Erledigt</button>
                 </div>
               )}
-              {role === 'provider' && done && (
+              {!manage && done && (
                 <button onClick={() => providerStatus(t, 'offen')} style={{
                   marginTop: 10, padding: '7px 14px', borderRadius: 10, border: HAIR, background: '#fff',
                   color: '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -237,7 +256,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
       </div>
 
       {/* FAB (nur Team) */}
-      {role === 'team' && (
+      {manage && (
         <button onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'fixed', right: 18, bottom: 'calc(76px + env(safe-area-inset-bottom))', width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
@@ -246,7 +265,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         }}>+</button>
       )}
 
-      {editing && role === 'team' && (
+      {editing && manage && (
         <TaskSheet
           task={editing === 'new' ? null : editing}
           people={people}
