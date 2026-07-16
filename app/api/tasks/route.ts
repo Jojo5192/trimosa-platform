@@ -1,35 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToUser } from '@/lib/push'
-import { getTaskRole, TASK_PRIOS as PRIOS } from '@/lib/tasks'
+import { getTaskAuth, TASK_PRIOS as PRIOS } from '@/lib/tasks'
 
 /**
- * Aufgaben-API (Team-App).
- *  GET  → team (admin|host|staff): alle Aufgaben + Zuweisbare + Wohnungen/Standorte
- *         provider: nur die EIGENEN Aufgaben (keine Vorschläge/Verworfenen)
- *  POST → team: Aufgabe anlegen (Zuordnung: listing ODER Standort ODER allgemein)
+ * Aufgaben-API (Team-App). Rechte sind admin-konfigurierbar (lib/tasks):
+ *  viewAll=false → nur Aufgaben, die einem zugewiesen sind ODER die man selbst
+ *  angelegt hat. manage=false → kein Anlegen/Bearbeiten, nur Status der eigenen.
  * Zuweisung pusht den Empfänger („✅ Neue Aufgabe") auf /team?tab=aufgaben.
  */
 
 export async function GET() {
-  const auth = await getTaskRole()
+  const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
   let query = supabaseAdmin.from('tasks').select('*').order('created_at', { ascending: false }).limit(500)
-  if (auth.role === 'provider') {
-    query = query.eq('assignee_id', auth.userId).in('status', ['offen', 'in_arbeit', 'erledigt'])
+  if (!auth.viewAll) {
+    query = query.or(`assignee_id.eq.${auth.userId},created_by.eq.${auth.userId}`)
+  }
+  if (auth.role !== 'admin') {
+    query = query.in('status', ['offen', 'in_arbeit', 'erledigt'])
   }
   const { data: tasks, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Namen für Zuweisungen + Wohnungs-/Standort-Auswahl (Titel-Maps für beide Rollen)
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, title, location_group').order('title')
   const groups = [...new Set((listings ?? []).map((l) => (l.location_group ?? '').trim()).filter(Boolean))].sort()
 
-  const assigneeIds = [...new Set((tasks ?? []).map((t) => t.assignee_id).filter(Boolean))] as string[]
+  // Personen: Verwalter (manage/viewAll) bekommen die komplette Team-Liste
+  // (Zuweisungs-Dropdown + Personen-Filter); sonst nur Namen der Beteiligten.
   let people: { id: string; name: string; isProvider: boolean }[] = []
-  if (auth.role === 'team') {
+  if (auth.manage || auth.viewAll) {
     const { data: profs } = await supabaseAdmin
       .from('profiles')
       .select('id, display_name, is_admin, is_host, is_staff, is_provider')
@@ -40,15 +42,19 @@ export async function GET() {
       name: (p.display_name as string | null)?.trim() || 'Ohne Namen',
       isProvider: !!p.is_provider && !p.is_admin && !p.is_host && !p.is_staff,
     }))
-  } else if (assigneeIds.length) {
-    const { data: profs } = await supabaseAdmin
-      .from('profiles').select('id, display_name').in('id', assigneeIds)
-    people = (profs ?? []).map((p) => ({ id: p.id, name: (p.display_name as string | null)?.trim() || 'Ohne Namen', isProvider: false }))
+  } else {
+    const ids = [...new Set((tasks ?? []).map((t) => t.assignee_id).filter(Boolean))] as string[]
+    if (ids.length) {
+      const { data: profs } = await supabaseAdmin.from('profiles').select('id, display_name').in('id', ids)
+      people = (profs ?? []).map((p) => ({ id: p.id, name: (p.display_name as string | null)?.trim() || 'Ohne Namen', isProvider: false }))
+    }
   }
 
   return NextResponse.json({
-    role: auth.role,
     userId: auth.userId,
+    role: auth.role,
+    viewAll: auth.viewAll,
+    manage: auth.manage,
     tasks: tasks ?? [],
     people,
     listings: (listings ?? []).map((l) => ({ id: l.id, title: l.title })),
@@ -57,8 +63,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await getTaskRole()
-  if (!auth || auth.role !== 'team') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  const auth = await getTaskAuth()
+  if (!auth || !auth.manage) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' ? body.title.trim() : ''
@@ -66,14 +72,13 @@ export async function POST(req: NextRequest) {
 
   const listingId = typeof body.listing_id === 'string' && body.listing_id ? body.listing_id : null
   const locationGroup = typeof body.location_group === 'string' && body.location_group.trim() ? body.location_group.trim() : null
-  const isGeneral = !listingId && !locationGroup
 
   const row = {
     title: title.slice(0, 200),
     description: typeof body.description === 'string' ? body.description.trim().slice(0, 4000) : '',
     listing_id: listingId,
     location_group: listingId ? null : locationGroup,
-    is_general: isGeneral,
+    is_general: !listingId && !locationGroup,
     prio: PRIOS.includes(body.prio) ? body.prio : 'mittel',
     status: 'offen',
     assignee_id: typeof body.assignee_id === 'string' && body.assignee_id ? body.assignee_id : null,
