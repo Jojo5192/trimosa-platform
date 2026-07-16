@@ -45,8 +45,12 @@ export async function GET() {
     .in('status', ['offen', 'in_arbeit'])
     .lte('due_date', end)
     .limit(300)
-  if (!auth.viewAll) {
-    taskQuery = taskQuery.or(`assignee_id.eq.${auth.userId},created_by.eq.${auth.userId}`)
+  if (auth.role !== 'admin') {
+    // gleiche Sichtbarkeits-Logik wie /api/tasks (Aufgaben-Rechte + visibility)
+    const own = `assignee_id.eq.${auth.userId},created_by.eq.${auth.userId}`
+    if (!auth.viewAll) taskQuery = taskQuery.or(own)
+    else if (auth.role === 'staff') taskQuery = taskQuery.or(`${own},visibility.in.(team,alle)`)
+    else taskQuery = taskQuery.or(`${own},visibility.eq.alle`)
   }
   const { data: tasks } = await taskQuery
 
