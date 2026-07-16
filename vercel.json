@@ -11,6 +11,10 @@
     {
       "path": "/api/push/poll",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/tasks/suggest",
+      "schedule": "45 4 * * *"
     }
   ]
 }
