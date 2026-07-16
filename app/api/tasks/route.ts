@@ -59,12 +59,22 @@ export async function GET() {
     }
   }
 
+  // Kommentar-Zähler der sichtbaren Aufgaben (ein Query, Zählung in JS)
+  const taskIds = (tasks ?? []).map((t) => t.id)
+  const commentCounts: Record<string, number> = {}
+  if (taskIds.length) {
+    const { data: rows } = await supabaseAdmin
+      .from('task_comments').select('task_id').in('task_id', taskIds).limit(3000)
+    for (const r of rows ?? []) commentCounts[r.task_id] = (commentCounts[r.task_id] ?? 0) + 1
+  }
+
   return NextResponse.json({
     userId: auth.userId,
     role: auth.role,
     viewAll: auth.viewAll,
     manage: auth.manage,
     tasks: tasks ?? [],
+    commentCounts,
     people,
     listings: (listings ?? []).map((l) => ({ id: l.id, title: l.title })),
     groups,
@@ -93,13 +103,15 @@ export async function POST(req: NextRequest) {
     visibility: ['admin', 'team', 'alle'].includes(body.visibility) ? body.visibility : 'admin',
     assignee_id: typeof body.assignee_id === 'string' && body.assignee_id ? body.assignee_id : null,
     due_date: typeof body.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null,
+    recur_days: Number.isInteger(body.recur_days) && body.recur_days >= 1 && body.recur_days <= 365 ? body.recur_days : null,
     created_by: auth.userId,
   }
 
   let { data: task, error } = await supabaseAdmin.from('tasks').insert(row).select('*').single()
-  if (error && /visibility/i.test(error.message)) {
-    // Migration 20260716_task_visibility noch nicht ausgeführt → ohne Spalte anlegen
+  if (error && /visibility|recur_days|photos/i.test(error.message)) {
+    // Phase-4-/Visibility-Migration noch nicht ausgeführt → ohne neue Spalten anlegen
     delete (row as Record<string, unknown>).visibility
+    delete (row as Record<string, unknown>).recur_days
     ;({ data: task, error } = await supabaseAdmin.from('tasks').insert(row).select('*').single())
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
