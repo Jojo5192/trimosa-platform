@@ -129,6 +129,46 @@ export default function CalendarPanel() {
     .filter((x): x is NonNullable<typeof x> => !!x)
     .sort((a, b) => (b.tasks.length - a.tasks.length) || ((b.nights ?? 99) - (a.nights ?? 99)))
 
+  /* ── 🧠 Planungs-Vorschläge: offene Aufgaben in KOMMENDE Frei-Fenster legen ── */
+  const freeNowIds = new Set(freeNow.map((f) => f.id))
+  type Slot = { from: string; nights: number | null; to: string | null }
+  function nextGap(listingId: string): Slot | null {
+    const mine = stays.filter((s) => s.listingId === listingId).sort((a, b) => a.checkIn.localeCompare(b.checkIn))
+    if (mine.length === 0) return { from: today, nights: null, to: null }
+    for (let i = 0; i < mine.length; i++) {
+      const out = mine[i].checkOut
+      if (out <= today) continue
+      const next = mine.slice(i + 1).find((x) => x.checkIn >= out)
+      const nights = next ? daysBetween(out, next.checkIn) : null
+      if (nights == null) return { from: out, nights: null, to: null }
+      if (nights >= 1) return { from: out, nights, to: next!.checkIn }
+      // nights === 0 (Wechseltag) → nächste Lücke suchen
+    }
+    return null
+  }
+  const planning = Object.entries(listings)
+    .filter(([id]) => !freeNowIds.has(id))
+    .map(([id, info]) => {
+      const matching = tasksForListing(tasks, id, info.group)
+      if (!matching.length) return null
+      const slot = nextGap(id)
+      if (!slot) return null
+      return { id, title: info.title, slot, tasks: matching }
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => a.slot.from.localeCompare(b.slot.from))
+  // Standort-Aufgaben nur beim FRÜHESTEN Fenster ihres Standorts zeigen (Gruppierung)
+  const seenGroupTask = new Set<string>()
+  for (const p of planning) {
+    p.tasks = p.tasks.filter((t) => {
+      if (t.listing_id || !t.location_group) return true
+      if (seenGroupTask.has(t.id)) return false
+      seenGroupTask.add(t.id)
+      return true
+    })
+  }
+  const planningVisible = planning.filter((p) => p.tasks.length > 0)
+
   /* ── Agenda: nur Tage mit Ereignissen (heute bis +56) ── */
   type Ev = { type: 'abreise' | 'anreise' | 'aufgabe'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[] }
   const days: { iso: string; events: Ev[] }[] = []
@@ -157,9 +197,23 @@ export default function CalendarPanel() {
     for (const s of ins) {
       events.push({ type: 'anreise', label: listings[s.listingId]?.title ?? 'Wohnung', sub: s.guestName ?? undefined })
     }
+    // Mehrere fällige Aufgaben am selben Ort → EINE gruppierte Karte
+    const dueByScope = new Map<string, CalTask[]>()
     for (const t of due) {
-      const scope = t.listing_id ? listings[t.listing_id]?.title : t.location_group ? `📍 ${t.location_group}` : 'Allgemein'
-      events.push({ type: 'aufgabe', label: t.title, sub: scope ?? undefined })
+      const key = t.listing_id ?? (t.location_group ? `g:${t.location_group}` : 'allg')
+      dueByScope.set(key, [...(dueByScope.get(key) ?? []), t])
+    }
+    for (const [key, list] of dueByScope) {
+      const scope = key.startsWith('g:') ? `📍 ${key.slice(2)}` : key === 'allg' ? 'Allgemein' : listings[key]?.title ?? 'Wohnung'
+      if (list.length === 1) {
+        events.push({ type: 'aufgabe', label: list[0].title, sub: scope })
+      } else {
+        events.push({
+          type: 'aufgabe',
+          label: `${list.length} Aufgaben fällig · ${scope}`,
+          sub: list.map((t) => t.title).join(' · ').slice(0, 110),
+        })
+      }
     }
     if (events.length) days.push({ iso, events })
   }
@@ -228,6 +282,33 @@ export default function CalendarPanel() {
                         <TaskChips tasks={f.tasks} />
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 🧠 Planungs-Vorschläge: kommende Frei-Fenster mit passenden Aufgaben */}
+          {planningVisible.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#0369A1', margin: '0 0 8px' }}>🧠 Planungs-Vorschläge</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {planningVisible.map((p) => (
+                  <div key={p.id} style={{
+                    background: 'linear-gradient(135deg, #FAFDFF, #EFF8FF)', borderRadius: 14, padding: '12px 14px',
+                    boxShadow: 'inset 0 0 0 1px #BAE6FD',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{p.title}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#0369A1', flexShrink: 0 }}>
+                        {p.slot.nights != null
+                          ? `Fenster ${fmtShort(p.slot.from)}–${fmtShort(p.slot.to!)} · ${p.slot.nights} ${p.slot.nights === 1 ? 'Nacht' : 'Nächte'}`
+                          : `frei ab ${fmtShort(p.slot.from)} — nichts geplant`}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <TaskChips tasks={p.tasks} max={4} />
+                    </div>
                   </div>
                 ))}
               </div>
