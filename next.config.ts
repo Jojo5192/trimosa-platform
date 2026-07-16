@@ -69,6 +69,15 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'no-store, must-revalidate' },
         ],
       },
+      {
+        // Duplicate-Content-Schutz: trimosa-app.vercel.app (+ Previews) spiegelt
+        // die komplette Seite — nur trimosa.de soll in den Google-Index.
+        source: '/:path*',
+        has: [{ type: 'host', value: '(.*)\\.vercel\\.app' }],
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
     ]
   },
 };
