@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -12,6 +13,25 @@ import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
+
+const ogSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
+
+// Startseiten-SEO: Canonical + Social-Share-Tags (WhatsApp/Facebook zeigen
+// sonst kein Bild). Titel/Beschreibung erben vom Root-Layout.
+export const metadata: Metadata = {
+  alternates: { canonical: ogSiteUrl },
+  openGraph: {
+    title: 'TRIMOSA — Ferienwohnungen in Sirzenich, Trier, Bitburg & der Südeifel',
+    description:
+      'Handverlesene Ferienwohnungen in Sirzenich bei Trier, Bitburg und der Südeifel — direkt vom Gastgeber, ohne Vermittler und ohne versteckte Gebühren.',
+    url: ogSiteUrl,
+    siteName: 'TRIMOSA Apartments & Homes',
+    images: [{ url: `${ogSiteUrl}/og.jpg`, width: 1200, height: 630 }],
+    locale: 'de_DE',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image' },
+}
 
 /* ── Refined, muted card gradients ── */
 const CARD_GRADIENTS = [
