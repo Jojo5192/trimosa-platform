@@ -463,7 +463,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
       <div onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560, maxHeight: '88dvh', overflowY: 'auto',
         background: '#F7F7F8', borderRadius: '20px 20px 0 0', padding: '18px 18px',
-        paddingBottom: 'max(18px, env(safe-area-inset-bottom))',
+        paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: '#111' }}>
@@ -519,12 +519,14 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               onChange={setVisibility}
             />
           </div>
+          {/* minWidth: 0 zwingt die Flex-Spalten zum Schrumpfen — sonst bläst das
+              native iOS-Select die Zeile über den Rand (min-width: auto) */}
           <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>Rotfrist (fällig bis)</label>
               <div style={{ position: 'relative' }}>
                 <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-                  style={{ ...inputStyle, minHeight: 44 }} />
+                  style={{ ...inputStyle, minHeight: 44, maxWidth: '100%' }} />
                 {isIOS && !dueDate && (
                   <span style={{
                     position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
@@ -533,9 +535,10 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 )}
               </div>
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>Zugewiesen an</label>
-              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={inputStyle}>
+              <select value={assignee} onChange={(e) => setAssignee(e.target.value)}
+                style={{ ...inputStyle, minHeight: 44, maxWidth: '100%' }}>
                 <option value="">— niemand —</option>
                 {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isProvider ? ' · Dienstleister' : ''}</option>)}
               </select>
