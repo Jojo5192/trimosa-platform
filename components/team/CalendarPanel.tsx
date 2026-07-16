@@ -86,8 +86,13 @@ export default function CalendarPanel() {
   useEffect(() => { load() }, [load])
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') load() }
+    const onOnline = () => load()
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', onOnline)
+    }
   }, [load])
 
   const today = isoOffset(0)
