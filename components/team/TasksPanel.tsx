@@ -519,10 +519,10 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               onChange={setVisibility}
             />
           </div>
-          {/* minWidth: 0 zwingt die Flex-Spalten zum Schrumpfen — sonst bläst das
-              native iOS-Select die Zeile über den Rand (min-width: auto) */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Native iOS-Date/Select-Felder haben starre Mindestbreiten — auf
+              schmalen Screens stapeln sich die Spalten deshalb untereinander */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <label style={labelStyle}>Rotfrist (fällig bis)</label>
               <div style={{ position: 'relative' }}>
                 <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
@@ -535,7 +535,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 )}
               </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <label style={labelStyle}>Zugewiesen an</label>
               <select value={assignee} onChange={(e) => setAssignee(e.target.value)}
                 style={{ ...inputStyle, minHeight: 44, maxWidth: '100%' }}>
