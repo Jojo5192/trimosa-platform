@@ -26,6 +26,8 @@ export interface Task {
   visibility?: 'admin' | 'team' | 'alle'
   photos?: { url: string; by: string; at: string }[]
   recur_days?: number | null
+  created_by?: string | null
+  editable?: boolean
 }
 
 const RECUR_OPTIONS: [number | '', string][] = [
@@ -88,7 +90,7 @@ function initials(name: string): string {
 
 type Filter = 'aktiv' | 'erledigt' | 'alle'
 
-export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId: string }) {
+export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'; userId: string }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [listings, setListings] = useState<ListingOpt[]>([])
@@ -105,6 +107,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   const [analyzing, setAnalyzing] = useState(false)
   const [aiNote, setAiNote] = useState<string | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
+  const [completing, setCompleting] = useState<Task | null>(null)
   const [openComments, setOpenComments] = useState<string | null>(null)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
 
@@ -251,7 +254,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
     <div style={{ height: '100%', position: 'relative' }}>
     {/* Hintergrund-Scroll sperren, solange das Sheet offen ist — sonst
         scrollt iOS beim Wischen im Sheet die Liste dahinter (Scroll-Chaining) */}
-    <div style={{ height: '100%', overflowY: editing ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    <div style={{ height: '100%', overflowY: (editing || completing) ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
       {/* Header + Filter */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
@@ -362,11 +365,11 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
           const done = t.status === 'erledigt'
           return (
             <div key={t.id}
-              onClick={manage ? () => setEditing(t) : undefined}
+              onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
               style={{
                 background: '#fff', borderRadius: 16, padding: '13px 15px',
                 boxShadow: overdue ? 'inset 0 0 0 1.5px #EF4444' : `inset 0 0 0 0.5px rgba(60,60,67,0.15)`,
-                cursor: manage ? 'pointer' : 'default',
+                cursor: manage && t.editable !== false ? 'pointer' : 'default',
                 opacity: done ? 0.65 : 1,
               }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -448,7 +451,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                 </div>
               )}
 
-              {!manage && !done && (
+              {(!manage || t.editable === false) && !done && (t.assignee_id === userId || t.created_by === userId || manage) && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
@@ -456,13 +459,13 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                       color: '#92400E', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}>▶ In Arbeit</button>
                   )}
-                  <button onClick={() => providerStatus(t, 'erledigt')} style={{
+                  <button onClick={() => setCompleting(t)} style={{
                     flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: '#16A34A',
                     color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   }}>✓ Erledigt</button>
                 </div>
               )}
-              {!manage && done && (
+              {(!manage || t.editable === false) && done && (t.assignee_id === userId || t.created_by === userId || manage) && (
                 <button onClick={() => providerStatus(t, 'offen')} style={{
                   marginTop: 10, padding: '7px 14px', borderRadius: 10, border: HAIR, background: '#fff',
                   color: '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -485,6 +488,25 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         }}>+</button>
       )}
 
+      {completing && (
+        <CompleteDialog
+          task={completing}
+          onClose={() => setCompleting(null)}
+          onDone={async (note) => {
+            const t = completing
+            setCompleting(null)
+            if (note.trim()) {
+              await fetch(`/api/tasks/${t.id}/comments`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: `✅ Erledigt: ${note.trim()}` }),
+              }).catch(() => {})
+              setCommentCounts((c) => ({ ...c, [t.id]: (c[t.id] ?? 0) + 1 }))
+            }
+            providerStatus(t, 'erledigt')
+          }}
+        />
+      )}
+
       {editing && manage && (
         <TaskSheet
           task={editing === 'new' ? null : editing}
@@ -495,6 +517,42 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
           onSaved={() => { setEditing(null); load() }}
         />
       )}
+    </div>
+  )
+}
+
+/* ── Erledigen-Dialog: kurzer Bericht, was gemacht wurde (→ Kommentar) ── */
+function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: (note: string) => void }) {
+  const [note, setNote] = useState('')
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.35)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 560, background: '#F7F7F8', borderRadius: '20px 20px 0 0',
+        padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px', color: '#111' }}>✓ „{task.title}" erledigen</h2>
+        <p style={{ fontSize: 12.5, color: '#8E8E93', margin: '0 0 10px' }}>Kurz festhalten, was gemacht wurde (optional):</p>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
+          placeholder="z. B. Duschkopf getauscht, Dichtung erneuert…"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12,
+            border: '1px solid #E0DDD5', fontSize: 14, background: '#fff', resize: 'vertical',
+            overscrollBehavior: 'contain',
+          }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button onClick={onClose} style={{
+            flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: '#fff',
+            color: '#3C3C43', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}>Abbrechen</button>
+          <button onClick={() => onDone(note)} style={{
+            flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: '#16A34A',
+            color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }}>✓ Erledigt melden</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -579,6 +637,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   const [scopeGroup, setScopeGroup] = useState(task?.location_group ?? groups[0] ?? '')
   const [visibility, setVisibility] = useState<string>(task?.visibility ?? 'admin')
   const [recurDays, setRecurDays] = useState<string>(task?.recur_days ? String(task.recur_days) : '')
+  const [doneNote, setDoneNote] = useState('')
   const [photos, setPhotos] = useState<{ url: string }[]>(task?.photos ?? [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -601,7 +660,15 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
     const res = task
       ? await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    if (res.ok) onSaved()
+    if (res.ok) {
+      if (task && status === 'erledigt' && task.status !== 'erledigt' && doneNote.trim()) {
+        await fetch(`/api/tasks/${task.id}/comments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `✅ Erledigt: ${doneNote.trim()}` }),
+        }).catch(() => {})
+      }
+      onSaved()
+    }
     else {
       const json = await res.json().catch(() => ({}))
       setErr(json.error ?? 'Speichern fehlgeschlagen.')
@@ -613,7 +680,15 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
     if (!task || !confirm('Aufgabe wirklich löschen?')) return
     setSaving(true)
     const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
-    if (res.ok) onSaved()
+    if (res.ok) {
+      if (task && status === 'erledigt' && task.status !== 'erledigt' && doneNote.trim()) {
+        await fetch(`/api/tasks/${task.id}/comments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `✅ Erledigt: ${doneNote.trim()}` }),
+        }).catch(() => {})
+      }
+      onSaved()
+    }
     else { setErr('Löschen fehlgeschlagen.'); setSaving(false) }
   }
 
@@ -771,6 +846,13 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 value={status}
                 onChange={setStatus}
               />
+            </div>
+          )}
+          {task && status === 'erledigt' && task.status !== 'erledigt' && (
+            <div>
+              <label style={labelStyle}>Was wurde gemacht? (optional — wird als Kommentar gespeichert)</label>
+              <textarea value={doneNote} onChange={(e) => setDoneNote(e.target.value)} rows={2}
+                style={{ ...inputStyle, resize: 'vertical' }} />
             </div>
           )}
 
