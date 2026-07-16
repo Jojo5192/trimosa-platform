@@ -78,7 +78,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   const [analyzing, setAnalyzing] = useState(false)
   const [aiNote, setAiNote] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (attempt = 0) => {
     try {
       const res = await fetch('/api/tasks')
       const json = await res.json()
@@ -90,13 +90,22 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         setManage(!!json.manage)
         setViewAll(!!json.viewAll)
         setApiRole(json.role ?? '')
-      } else setError(json.error ?? 'Fehler beim Laden.')
+        setError(null)
+      } else setError(json.error ?? `Fehler beim Laden (${res.status}).`)
     } catch {
+      // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
+      if (attempt < 1) { setTimeout(() => load(1), 1200); return }
       setError('Netzwerkfehler beim Laden.')
     }
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+  // App kommt aus dem Hintergrund zurück → frisch laden
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [load])
 
   const listingTitle = useMemo(() => new Map(listings.map((l) => [l.id, l.title])), [listings])
   const personName = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people])
@@ -211,8 +220,12 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
       </div>
 
       {error && (
-        <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-          <span>{error}</span>
+        <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>{error}</span>
+          <button onClick={() => { setLoading(true); setError(null); load() }} style={{
+            border: 'none', background: '#B91C1C', color: '#fff', borderRadius: 999,
+            padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+          }}>Erneut laden</button>
           <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
