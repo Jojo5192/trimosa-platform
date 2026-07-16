@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
-import { translateIncoming } from '@/lib/translate'
+import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
 import { makeTr } from '@/lib/static-translate'
 import { getUiLang } from '@/lib/i18n-server'
@@ -324,16 +324,23 @@ export async function POST(req: NextRequest) {
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', convId)
 
-  // Guest wrote via the website → buzz the team (fire-and-forget)
+  // Guest wrote via the website → buzz the team (fire-and-forget).
+  // Translate first so the notification + inbox preview show German
+  // (cached on the row); fail-soft to the original text.
   {
     const { data: convMeta } = await supabaseAdmin
       .from('conversations').select('host_id, guest_name, listing_title').eq('id', convId).maybeSingle()
     if (convMeta && convMeta.host_id !== user.id) {
-      sendPushToTeam(
-        `💬 ${convMeta.guest_name ?? 'Gast'}${convMeta.listing_title ? ` · ${convMeta.listing_title}` : ''}`,
-        content.trim(),
-        '/team',
-      ).catch((e) => console.error('[push] chat trigger:', e))
+      ;(async () => {
+        const tr = await translateIncoming([{ id: message.id, text: content.trim() }])
+        const t = tr.get(message.id)
+        const flag = t?.lang && t.lang !== 'de' ? `${LANG_FLAGS[t.lang] ?? '🌐'} ` : ''
+        await sendPushToTeam(
+          `💬 ${flag}${convMeta.guest_name ?? 'Gast'}${convMeta.listing_title ? ` · ${convMeta.listing_title}` : ''}`,
+          t?.german ?? content.trim(),
+          '/team',
+        )
+      })().catch((e) => console.error('[push] chat trigger:', e))
     }
   }
 
