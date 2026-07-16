@@ -27,6 +27,8 @@ export const metadata: Metadata = {
     template: "%s | TRIMOSA",
   },
   description: "Handverlesene Ferienwohnungen in Sirzenich bei Trier, Bitburg und der Südeifel — direkt vom Gastgeber, ohne Vermittler.",
+  // Bing Webmaster Tools (Domain-Property nicht importierbar → Meta-Verifizierung)
+  verification: { other: { "msvalidate.01": "16F4C326DC193773955BAD589FCBA512" } },
 };
 
 export default function RootLayout({
