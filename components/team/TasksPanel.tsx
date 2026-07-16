@@ -24,6 +24,33 @@ export interface Task {
   due_date: string | null
   created_at: string
   visibility?: 'admin' | 'team' | 'alle'
+  photos?: { url: string; by: string; at: string }[]
+  recur_days?: number | null
+}
+
+const RECUR_OPTIONS: [number | '', string][] = [
+  ['', 'Nie'], [7, 'Wöchentlich'], [14, 'Alle 2 Wochen'], [30, 'Monatlich'],
+  [91, 'Vierteljährlich'], [182, 'Halbjährlich'], [365, 'Jährlich'],
+]
+function recurLabel(days: number): string {
+  const hit = RECUR_OPTIONS.find(([v]) => v === days)
+  return hit ? hit[1].toLowerCase() : `alle ${days} Tage`
+}
+
+/** Handy-Fotos vor dem Upload verkleinern (JPEG ≤1600px — auch HEIC via Safari-Decoder). */
+async function compressToJpeg(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const max = 1600
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bmp.width * scale)
+    canvas.height = Math.round(bmp.height * scale)
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    return await new Promise<Blob>((res) => canvas.toBlob((b) => res(b ?? file), 'image/jpeg', 0.82))
+  } catch {
+    return file
+  }
 }
 
 const VIS_META: Record<string, string> = {
@@ -77,6 +104,9 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   const [apiRole, setApiRole] = useState<string>('')
   const [analyzing, setAnalyzing] = useState(false)
   const [aiNote, setAiNote] = useState<string | null>(null)
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
+  const [openComments, setOpenComments] = useState<string | null>(null)
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null)
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -100,6 +130,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         setManage(!!json.manage)
         setViewAll(!!json.viewAll)
         setApiRole(json.role ?? '')
+        setCommentCounts(json.commentCounts ?? {})
         setError(null)
       } else setError(json.error ?? `Fehler beim Laden (${res.status}).`)
     } catch (e) {
@@ -194,6 +225,23 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
     if (t.listing_id) return `🏠 ${listingTitle.get(t.listing_id) ?? 'Wohnung'}`
     if (t.location_group) return `📍 ${t.location_group}`
     return '🏢 Allgemein'
+  }
+
+  async function uploadPhoto(task: Task, file: File) {
+    setUploadingFor(task.id)
+    try {
+      const blob = await compressToJpeg(file)
+      const fd = new FormData()
+      fd.append('file', new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' }))
+      const res = await fetch(`/api/tasks/${task.id}/photos`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setError(j.error ?? 'Foto-Upload fehlgeschlagen.')
+      } else await load()
+    } catch {
+      setError('Foto-Upload fehlgeschlagen.')
+    }
+    setUploadingFor(null)
   }
 
   return (
@@ -340,6 +388,11 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                     {VIS_META[t.visibility ?? 'admin']}
                   </span>
                 )}
+                {!!t.recur_days && (
+                  <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#E0F2FE', color: '#0369A1' }}>
+                    🔁 {recurLabel(t.recur_days)}
+                  </span>
+                )}
                 {t.due_date && (
                   <span style={{
                     fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
@@ -358,6 +411,43 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
                   </span>
                 )}
               </div>
+              {/* Foto-Strip */}
+              {(t.photos?.length ?? 0) > 0 && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                  {(t.photos ?? []).slice(0, 4).map((p, i) => (
+                    <a key={i} href={p.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.url} alt="" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                    </a>
+                  ))}
+                  {(t.photos?.length ?? 0) > 4 && (
+                    <span style={{ alignSelf: 'center', fontSize: 11, fontWeight: 700, color: '#8A7020' }}>+{(t.photos ?? []).length - 4}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Aktionszeile: Kommentare + Foto (alle Rollen) */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 9 }} onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)} style={{
+                  padding: '6px 12px', borderRadius: 999, border: HAIR, background: openComments === t.id ? '#EDE9FE' : '#fff',
+                  color: '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                }}>💬 {commentCounts[t.id] ?? 0}</button>
+                <label style={{
+                  padding: '6px 12px', borderRadius: 999, border: HAIR, background: '#fff',
+                  color: '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                }}>
+                  {uploadingFor === t.id ? '⏳ lädt…' : '📷 Foto'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(t, f); e.target.value = '' }} />
+                </label>
+              </div>
+
+              {openComments === t.id && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <CommentsArea taskId={t.id} onPosted={() => setCommentCounts((c) => ({ ...c, [t.id]: (c[t.id] ?? 0) + 1 }))} />
+                </div>
+              )}
+
               {!manage && !done && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
@@ -409,6 +499,64 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   )
 }
 
+/* ── Inline-Kommentarbereich auf der Karte (alle Rollen mit Sicht) ── */
+function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => void }) {
+  const [comments, setComments] = useState<{ id: string; author: string; mine: boolean; content: string; created_at: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const loadComments = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/comments`, { cache: 'no-store' })
+      const j = await res.json()
+      if (res.ok) setComments(j.comments ?? [])
+    } catch { /* Leerzustand bleibt */ }
+    setLoading(false)
+  }, [taskId])
+  useEffect(() => { loadComments() }, [loadComments])
+
+  async function send() {
+    if (!text.trim() || sending) return
+    setSending(true)
+    const res = await fetch(`/api/tasks/${taskId}/comments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: text.trim() }),
+    })
+    if (res.ok) { setText(''); onPosted(); loadComments() }
+    setSending(false)
+  }
+
+  return (
+    <div style={{ marginTop: 9, padding: '10px 12px', borderRadius: 12, background: '#F7F7F8' }}>
+      {loading ? <p style={{ fontSize: 12, color: '#8E8E93', margin: 0 }}>Laden…</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {comments.length === 0 && <p style={{ fontSize: 12, color: '#8E8E93', margin: 0 }}>Noch keine Kommentare.</p>}
+          {comments.map((c) => (
+            <div key={c.id}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: c.mine ? '#8A7020' : '#6B7280', margin: '0 0 2px' }}>
+                {c.author} · {new Date(c.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}, {new Date(c.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+              <p style={{ fontSize: 13, color: '#111', margin: 0, whiteSpace: 'pre-wrap' }}>{c.content}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') send() }}
+          placeholder="Kommentar schreiben…"
+          style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid #E0DDD5', fontSize: 13, background: '#fff' }} />
+        <button onClick={send} disabled={sending || !text.trim()} style={{
+          width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
+          background: text.trim() ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#D1D5DB',
+          color: '#fff', fontSize: 15, fontWeight: 700, cursor: text.trim() ? 'pointer' : 'default',
+        }}>↑</button>
+      </div>
+    </div>
+  )
+}
+
 /* ── Bottom-Sheet: Aufgabe anlegen/bearbeiten (Team) ── */
 function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   task: Task | null
@@ -430,6 +578,8 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   const [scopeListing, setScopeListing] = useState(task?.listing_id ?? listings[0]?.id ?? '')
   const [scopeGroup, setScopeGroup] = useState(task?.location_group ?? groups[0] ?? '')
   const [visibility, setVisibility] = useState<string>(task?.visibility ?? 'admin')
+  const [recurDays, setRecurDays] = useState<string>(task?.recur_days ? String(task.recur_days) : '')
+  const [photos, setPhotos] = useState<{ url: string }[]>(task?.photos ?? [])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // iOS zeigt bei leeren date-Inputs GAR NICHTS an → eigener Platzhalter
@@ -446,6 +596,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
       listing_id: scopeType === 'listing' ? scopeListing : null,
       location_group: scopeType === 'group' ? scopeGroup : null,
       is_general: scopeType === 'general',
+      recur_days: recurDays ? Number(recurDays) : null,
     }
     const res = task
       ? await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -552,6 +703,36 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               onChange={setVisibility}
             />
           </div>
+          <div>
+            <label style={labelStyle}>🔁 Wiederholen (nach Erledigung startet automatisch die nächste Runde)</label>
+            <select value={recurDays} onChange={(e) => setRecurDays(e.target.value)} style={{ ...inputStyle, minHeight: 44 }}>
+              {RECUR_OPTIONS.map(([v, label]) => <option key={String(v)} value={String(v)}>{label}</option>)}
+            </select>
+          </div>
+          {task && photos.length > 0 && (
+            <div>
+              <label style={labelStyle}>Fotos ({photos.length})</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {photos.map((p) => (
+                  <div key={p.url} style={{ position: 'relative' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                    <button type="button" onClick={async () => {
+                      const res = await fetch(`/api/tasks/${task.id}/photos`, {
+                        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: p.url }),
+                      })
+                      if (res.ok) setPhotos((ps) => ps.filter((x) => x.url !== p.url))
+                    }} style={{
+                      position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
+                      border: 'none', background: '#B91C1C', color: '#fff', fontSize: 11, fontWeight: 700,
+                      cursor: 'pointer', lineHeight: 1,
+                    }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Native iOS-Date/Select-Felder haben starre Mindestbreiten — auf
               schmalen Screens stapeln sich die Spalten deshalb untereinander */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
