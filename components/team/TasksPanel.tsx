@@ -74,6 +74,9 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
   // Rechte kommen vom Server (admin-konfigurierbar); Startwert = grobe Vermutung
   const [manage, setManage] = useState(role === 'team')
   const [viewAll, setViewAll] = useState(role === 'team')
+  const [apiRole, setApiRole] = useState<string>('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiNote, setAiNote] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +89,7 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         setGroups(json.groups ?? [])
         setManage(!!json.manage)
         setViewAll(!!json.viewAll)
+        setApiRole(json.role ?? '')
       } else setError(json.error ?? 'Fehler beim Laden.')
     } catch {
       setError('Netzwerkfehler beim Laden.')
@@ -122,6 +126,35 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
     aktiv: tasks.filter((t) => ['offen', 'in_arbeit'].includes(t.status)).length,
     erledigt: tasks.filter((t) => t.status === 'erledigt').length,
   }), [tasks])
+
+  const suggestions = useMemo(() => tasks.filter((t) => t.status === 'vorschlag'), [tasks])
+
+  async function analyze() {
+    setAnalyzing(true)
+    setAiNote(null)
+    try {
+      const res = await fetch('/api/tasks/suggest', { method: 'POST' })
+      const j = await res.json()
+      if (res.ok) {
+        setAiNote(j.vorschlaege > 0
+          ? `${j.vorschlaege} neue Vorschläge (aus ${j.nachrichten} Nachrichten, ${j.bewertungen} Bewertungen).`
+          : j.note ?? `Nichts Neues gefunden (${j.nachrichten} Nachrichten, ${j.bewertungen} Bewertungen geprüft).`)
+        load()
+      } else setAiNote(j.error ?? 'Analyse fehlgeschlagen.')
+    } catch {
+      setAiNote('Netzwerkfehler bei der Analyse.')
+    }
+    setAnalyzing(false)
+  }
+
+  async function discardSuggestion(t: Task) {
+    setTasks((ts) => ts.filter((x) => x.id !== t.id))
+    const res = await fetch(`/api/tasks/${t.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'verworfen' }),
+    })
+    if (!res.ok) { setError('Verwerfen fehlgeschlagen.'); load() }
+  }
 
   async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
     setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status } : t))
@@ -179,6 +212,56 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
           <span>{error}</span>
           <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+        </div>
+      )}
+
+      {/* 🤖 Vorschläge-Inbox (nur Admins/Gastgeber) */}
+      {apiRole === 'admin' && (
+        <div style={{ padding: '12px 16px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: suggestions.length ? 8 : 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#6D28D9', margin: 0 }}>
+              🤖 Vorschläge{suggestions.length ? ` (${suggestions.length})` : ''}
+            </p>
+            <button onClick={analyze} disabled={analyzing} style={{
+              padding: '5px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
+              background: '#EDE9FE', color: '#6D28D9', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
+            }}>{analyzing ? 'Analysiere… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
+          </div>
+          {aiNote && <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 8px' }}>{aiNote}</p>}
+          {suggestions.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {suggestions.map((t) => (
+                <div key={t.id} style={{
+                  background: 'linear-gradient(135deg, #FDFCFF, #F5F1FE)', borderRadius: 16, padding: '13px 15px',
+                  boxShadow: 'inset 0 0 0 1px #DDD0F5',
+                }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#111', margin: 0 }}>{t.title}</p>
+                  {t.description && (
+                    <p style={{ fontSize: 12.5, color: '#6B7280', margin: '4px 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{t.description}</p>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: (PRIO_META[t.prio] ?? PRIO_META.mittel).bg, color: (PRIO_META[t.prio] ?? PRIO_META.mittel).color }}>
+                      {(PRIO_META[t.prio] ?? PRIO_META.mittel).label}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#374151' }}>{scopeChip(t)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#EDE9FE', color: '#6D28D9' }}>
+                      {t.source === 'ki_bewertung' ? 'aus Bewertung' : 'aus Nachricht'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
+                    <button onClick={() => setEditing({ ...t, status: 'offen' })} style={{
+                      flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: '#16A34A',
+                      color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}>✓ Annehmen</button>
+                    <button onClick={() => discardSuggestion(t)} style={{
+                      flex: 1, padding: '9px 0', borderRadius: 12, border: HAIR, background: '#fff',
+                      color: '#6B7280', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}>✕ Verwerfen</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
