@@ -176,7 +176,9 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
     // -webkit-overflow-scrolling-Containern fest (Sheet läge sonst unter der
     // Tab-Bar und scrollt mit) — Sheet + FAB leben deshalb AUSSERHALB des Scrollers.
     <div style={{ height: '100%', position: 'relative' }}>
-    <div style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    {/* Hintergrund-Scroll sperren, solange das Sheet offen ist — sonst
+        scrollt iOS beim Wischen im Sheet die Liste dahinter (Scroll-Chaining) */}
+    <div style={{ height: '100%', overflowY: editing ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
       {/* Header + Filter */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
@@ -462,6 +464,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560, maxHeight: '88dvh', overflowY: 'auto',
+        overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
         background: '#F7F7F8', borderRadius: '20px 20px 0 0', padding: '18px 18px',
         paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
@@ -479,7 +482,8 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
           </div>
           <div>
             <label style={labelStyle}>Beschreibung (optional)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
+              style={{ ...inputStyle, resize: 'vertical', overscrollBehavior: 'contain' }} />
           </div>
           <div>
             <label style={labelStyle}>Zuordnung</label>
@@ -525,8 +529,13 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <label style={labelStyle}>Rotfrist (fällig bis)</label>
               <div style={{ position: 'relative' }}>
+                {/* iOS-date-Inputs ignorieren width:100% mit nativem Appearance
+                    (rendern breiter als der Container) → appearance: none */}
                 <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
-                  style={{ ...inputStyle, minHeight: 44, maxWidth: '100%' }} />
+                  style={{
+                    ...inputStyle, minHeight: 44, display: 'block', minWidth: 0,
+                    WebkitAppearance: 'none', appearance: 'none', textAlign: 'left',
+                  }} />
                 {isIOS && !dueDate && (
                   <span style={{
                     position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
