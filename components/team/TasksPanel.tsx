@@ -92,19 +92,25 @@ export default function TasksPanel({ role }: { role: 'team' | 'provider'; userId
         setApiRole(json.role ?? '')
         setError(null)
       } else setError(json.error ?? `Fehler beim Laden (${res.status}).`)
-    } catch {
+    } catch (e) {
       // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
       if (attempt < 1) { setTimeout(() => load(1), 1200); return }
-      setError('Netzwerkfehler beim Laden.')
+      const detail = e instanceof Error && e.message ? ` (${e.message.slice(0, 80)})` : ''
+      setError(`Netzwerkfehler beim Laden${detail}`)
     }
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
-  // App kommt aus dem Hintergrund zurück → frisch laden
+  // App kommt aus dem Hintergrund zurück ODER Netz kehrt zurück → frisch laden
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') load() }
+    const onOnline = () => load()
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', onOnline)
+    }
   }, [load])
 
   const listingTitle = useMemo(() => new Map(listings.map((l) => [l.id, l.title])), [listings])
