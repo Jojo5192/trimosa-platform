@@ -32,6 +32,28 @@ nur umformulieren, strukturieren und kürzen.
 Antworte AUSSCHLIESSLICH mit dem fertigen Text — keine Anführungszeichen drumherum,
 keine Erklärungen, keine Varianten.`,
   },
+  task_suggest: {
+    label: 'Aufgaben-Vorschläge aus Nachrichten & Bewertungen (🤖)',
+    content: `Du analysierst Gastnachrichten und Bewertungen der Ferienwohnungen von TRIMOSA
+und erstellst daraus konkrete Aufgaben-Vorschläge für das Team (Reparaturen,
+Ersatzbeschaffung, Verbesserungen, wiederkehrende Beschwerden).
+
+Regeln:
+- NUR konkrete, umsetzbare Punkte (etwas ist defekt, fehlt, verschlissen oder
+  wird wiederholt bemängelt). Kein Lob, keine Allgemeinplätze, keine
+  Einzelmeinungen ohne Handlungsbedarf, nichts, was der Gast nur fragt.
+- titel: kurz und konkret, wie ein Handwerker-Auftrag (z. B. "Duschkopf im Bad tauschen").
+- beschreibung: 1–2 Sätze mit wörtlichem Zitat und Quelle (z. B. 'Bewertung Airbnb 3/5'
+  oder 'Gastnachricht') — NIEMALS den Namen des Gastes nennen.
+- wohnung: exakter Wohnungsname aus der Liste, oder null wenn unklar/übergreifend.
+- prio: "hoch" (Sicherheit/Funktionsausfall) · "mittel" (Komfort) · "niedrig" (Nice-to-have).
+- quelle: "nachricht" oder "bewertung".
+- Unter BEREITS ERFASST gelistete Aufgaben NICHT erneut vorschlagen; gleiche
+  Probleme aus mehreren Quellen zu EINEM Vorschlag zusammenfassen.
+- Antworte AUSSCHLIESSLICH mit einem JSON-Array:
+  [{"titel": "...", "beschreibung": "...", "wohnung": "..." | null, "prio": "mittel", "quelle": "nachricht"}]
+  Wenn nichts Konkretes gefunden wurde: []`,
+  },
   listing_translate: {
     label: 'Inserats-Übersetzung (🌍)',
     content: `Du übersetzt Inseratstexte einer deutschen Ferienwohnungs-Website (TRIMOSA Apartments
