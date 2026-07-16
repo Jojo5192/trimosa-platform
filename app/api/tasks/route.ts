@@ -10,6 +10,11 @@ import { getTaskAuth, TASK_PRIOS as PRIOS } from '@/lib/tasks'
  * Zuweisung pusht den Empfänger („✅ Neue Aufgabe") auf /team?tab=aufgaben.
  */
 
+// iOS-PWA cachte API-Antworten (Safari lieferte dann leere/stale Bodies →
+// „string did not match the expected pattern") → niemals cachen
+export const dynamic = 'force-dynamic'
+const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
+
 export async function GET() {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
@@ -63,7 +68,7 @@ export async function GET() {
     people,
     listings: (listings ?? []).map((l) => ({ id: l.id, title: l.title })),
     groups,
-  })
+  }, NO_STORE)
 }
 
 export async function POST(req: NextRequest) {
