@@ -50,6 +50,23 @@ export interface TaskAuth {
   chat: boolean
 }
 
+/**
+ * Darf diese Person die Aufgabe SEHEN? Gleiche Logik wie der GET-Filter:
+ * admin alles · sonst eigene (zugewiesen/erstellt) + je Rollen-Recht die für
+ * die Gruppe freigegebene Sichtbarkeit. Für Kommentar-/Foto-Routen.
+ */
+export function canSeeTask(auth: TaskAuth, task: {
+  assignee_id: string | null; created_by: string | null; visibility?: string | null; status?: string
+}): boolean {
+  if (auth.role === 'admin') return true
+  if (task.status === 'vorschlag' || task.status === 'verworfen') return false
+  if (task.assignee_id === auth.userId || task.created_by === auth.userId) return true
+  if (!auth.viewAll) return false
+  const vis = task.visibility ?? 'admin'
+  if (auth.role === 'staff') return vis === 'team' || vis === 'alle'
+  return vis === 'alle'
+}
+
 export async function getTaskAuth(): Promise<TaskAuth | null> {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
