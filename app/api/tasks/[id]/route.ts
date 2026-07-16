@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToUser } from '@/lib/push'
-import { getTaskRole, TASK_PRIOS as PRIOS } from '@/lib/tasks'
+import { getTaskAuth, TASK_PRIOS as PRIOS } from '@/lib/tasks'
 
 /**
  * PATCH /api/tasks/[id]
- *  team:     alle Felder (inkl. Zuordnung, Prio, Rotfrist, Zuweisung, Status, verwerfen)
- *  provider: nur die EIGENE Aufgabe, nur Status offen ⇄ in_arbeit ⇄ erledigt
- * DELETE — team only.
+ *  manage:  alle Felder (Zuordnung, Prio, Rotfrist, Zuweisung, Status, verwerfen)
+ *  sonst:   nur die EIGENE (zugewiesene) Aufgabe, nur Status offen ⇄ in_arbeit ⇄ erledigt
+ * DELETE — nur mit manage-Recht.
  */
 const STATUS = ['vorschlag', 'offen', 'in_arbeit', 'erledigt', 'verworfen']
-const PROVIDER_STATUS = ['offen', 'in_arbeit', 'erledigt']
+const OWN_STATUS = ['offen', 'in_arbeit', 'erledigt']
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const auth = await getTaskRole()
+  const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
   const { data: task } = await supabaseAdmin.from('tasks').select('*').eq('id', id).maybeSingle()
@@ -23,9 +23,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(() => ({}))
   const upd: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-  if (auth.role === 'provider') {
+  if (!auth.manage) {
     if (task.assignee_id !== auth.userId) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
-    if (!PROVIDER_STATUS.includes(body.status)) return NextResponse.json({ error: 'Ungültiger Status.' }, { status: 400 })
+    if (!OWN_STATUS.includes(body.status)) return NextResponse.json({ error: 'Ungültiger Status.' }, { status: 400 })
     upd.status = body.status
   } else {
     if (typeof body.title === 'string' && body.title.trim()) upd.title = body.title.trim().slice(0, 200)
@@ -67,8 +67,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const auth = await getTaskRole()
-  if (!auth || auth.role !== 'team') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  const auth = await getTaskAuth()
+  if (!auth || !auth.manage) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const { error } = await supabaseAdmin.from('tasks').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
