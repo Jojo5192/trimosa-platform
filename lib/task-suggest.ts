@@ -127,7 +127,9 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   ].join('\n')
 
   const system = await getPrompt('task_suggest')
-  const raw = await askClaude(system, user, 6000)
+  // 12000 Tokens: Sonnet nutzt einen Teil als Denkbudget (§45-Lektion) —
+  // zu knapp bemessen käme eine leere Antwort mit stop_reason max_tokens.
+  const raw = await askClaude(system, user, 12000)
   const startIdx = raw.indexOf('[')
   const endIdx = raw.lastIndexOf(']')
   if (startIdx === -1 || endIdx <= startIdx) throw new Error('Keine JSON-Antwort: ' + raw.slice(0, 150))
