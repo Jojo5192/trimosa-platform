@@ -8,7 +8,7 @@
  * Fenster („danach 4 Nächte frei") samt Aufgaben-Gelegenheiten.
  * Dienstleister sehen keine Gastnamen (kommen von der API gar nicht erst).
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
@@ -71,16 +71,24 @@ export default function CalendarPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetch('/api/team/calendar')
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.error) setError(j.error)
-        else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setListings(j.listings ?? {}) }
-      })
-      .catch(() => setError('Netzwerkfehler beim Laden.'))
-      .finally(() => setLoading(false))
+  const load = useCallback(async (attempt = 0) => {
+    try {
+      const j = await fetch('/api/team/calendar').then((r) => r.json())
+      if (j.error) setError(j.error)
+      else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setListings(j.listings ?? {}); setError(null) }
+    } catch {
+      // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
+      if (attempt < 1) { setTimeout(() => load(1), 1200); return }
+      setError('Netzwerkfehler beim Laden.')
+    }
+    setLoading(false)
   }, [])
+  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [load])
 
   const today = isoOffset(0)
   const rangeEnd = isoOffset(56)
