@@ -13,7 +13,7 @@ import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import SectionNav from '@/components/SectionNav'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
-import { REGIONS } from '@/lib/regions'
+import { REGIONS, findPoi } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
@@ -33,11 +33,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   const region = REGIONS[slug]
   if (!region) return {}
+  // Signaturbild der Region (erster heroSlug mit Foto) als Social-Share-Bild
+  const heroImage = region.heroSlugs
+    .map((s) => findPoi(s)?.poi.image?.src)
+    .find(Boolean)
   return {
     title: region.metaTitle,
     description: region.metaDescription,
     alternates: { canonical: `${siteUrl}/region/${region.slug}` },
-    openGraph: { title: region.metaTitle, description: region.metaDescription, url: `${siteUrl}/region/${region.slug}` },
+    openGraph: {
+      title: region.metaTitle,
+      description: region.metaDescription,
+      url: `${siteUrl}/region/${region.slug}`,
+      images: heroImage ? [{ url: heroImage }] : undefined,
+    },
+    twitter: { card: heroImage ? 'summary_large_image' : 'summary' },
   }
 }
 
