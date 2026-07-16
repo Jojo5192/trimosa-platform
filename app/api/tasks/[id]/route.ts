@@ -33,6 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (PRIOS.includes(body.prio)) upd.prio = body.prio
     if (STATUS.includes(body.status)) upd.status = body.status
     if (['admin', 'team', 'alle'].includes(body.visibility)) upd.visibility = body.visibility
+    if ('recur_days' in body) {
+      upd.recur_days = Number.isInteger(body.recur_days) && body.recur_days >= 1 && body.recur_days <= 365 ? body.recur_days : null
+    }
     if ('due_date' in body) {
       upd.due_date = typeof body.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null
     }
@@ -54,11 +57,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (status !== 'erledigt' && task.status === 'erledigt') upd.completed_at = null
 
   let { data: saved, error } = await supabaseAdmin.from('tasks').update(upd).eq('id', id).select('*').single()
-  if (error && /visibility/i.test(error.message)) {
+  if (error && /visibility|recur_days|photos/i.test(error.message)) {
     delete upd.visibility
+    delete upd.recur_days
     ;({ data: saved, error } = await supabaseAdmin.from('tasks').update(upd).eq('id', id).select('*').single())
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // 🔁 Wiederkehrende Aufgabe erledigt → nächste Ausgabe automatisch anlegen
+  // (Rotfrist = heute + Intervall; Fotos/Kommentare wandern NICHT mit — die
+  // erledigte Aufgabe bleibt als Historie stehen).
+  if (status === 'erledigt' && task.status !== 'erledigt' && saved.recur_days) {
+    const next = new Date(Date.now() + saved.recur_days * 86400_000).toISOString().slice(0, 10)
+    await supabaseAdmin.from('tasks').insert({
+      title: saved.title,
+      description: saved.description,
+      source: saved.source,
+      listing_id: saved.listing_id,
+      location_group: saved.location_group,
+      is_general: saved.is_general,
+      prio: saved.prio,
+      status: 'offen',
+      visibility: saved.visibility ?? 'admin',
+      assignee_id: saved.assignee_id,
+      due_date: next,
+      recur_days: saved.recur_days,
+      created_by: saved.created_by,
+    }).then(({ error: e }) => { if (e) console.error('[tasks] recur insert:', e.message) })
+  }
 
   // Neu-/Umzuweisung → Push an den Empfänger
   const newAssignee = upd.assignee_id as string | null | undefined
