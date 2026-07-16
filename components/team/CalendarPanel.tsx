@@ -73,7 +73,16 @@ export default function CalendarPanel() {
 
   const load = useCallback(async (attempt = 0) => {
     try {
-      const j = await fetch('/api/team/calendar').then((r) => r.json())
+      const res = await fetch('/api/team/calendar', { cache: 'no-store' })
+      const text = await res.text()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let j: { [k: string]: any } = {}
+      try { j = JSON.parse(text) } catch {
+        if (attempt < 1) { setTimeout(() => load(1), 1200); return }
+        setError(`Unerwartete Antwort vom Server (HTTP ${res.status}).`)
+        setLoading(false)
+        return
+      }
       if (j.error) setError(j.error)
       else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setListings(j.listings ?? {}); setError(null) }
     } catch {
