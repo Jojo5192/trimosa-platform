@@ -32,6 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof body.description === 'string') upd.description = body.description.trim().slice(0, 4000)
     if (PRIOS.includes(body.prio)) upd.prio = body.prio
     if (STATUS.includes(body.status)) upd.status = body.status
+    if (['admin', 'team', 'alle'].includes(body.visibility)) upd.visibility = body.visibility
     if ('due_date' in body) {
       upd.due_date = typeof body.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null
     }
@@ -52,7 +53,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (status === 'erledigt' && task.status !== 'erledigt') upd.completed_at = new Date().toISOString()
   if (status !== 'erledigt' && task.status === 'erledigt') upd.completed_at = null
 
-  const { data: saved, error } = await supabaseAdmin.from('tasks').update(upd).eq('id', id).select('*').single()
+  let { data: saved, error } = await supabaseAdmin.from('tasks').update(upd).eq('id', id).select('*').single()
+  if (error && /visibility/i.test(error.message)) {
+    delete upd.visibility
+    ;({ data: saved, error } = await supabaseAdmin.from('tasks').update(upd).eq('id', id).select('*').single())
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Neu-/Umzuweisung → Push an den Empfänger
