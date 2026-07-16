@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
 import TasksPanel from '@/components/team/TasksPanel'
+import CalendarPanel from '@/components/team/CalendarPanel'
 
 type Tab = 'chat' | 'aufgaben' | 'kalender'
 
@@ -43,18 +44,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
         {tab === 'aufgaben' && (
           <TasksPanel role={role} userId={userId} />
         )}
-        {tab === 'kalender' && (
-          <div style={{
-            height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', background: '#F7F7F8', padding: 24, textAlign: 'center',
-          }}>
-            <p style={{ fontSize: 44, margin: '0 0 10px' }}>📅</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: '0 0 6px' }}>Kalender kommt in Kürze</p>
-            <p style={{ fontSize: 13.5, color: '#8E8E93', margin: 0, maxWidth: 300, lineHeight: 1.5 }}>
-              Hier erscheinen An- und Abreisen aller Wohnungen sowie fällige Aufgaben.
-            </p>
-          </div>
-        )}
+        {tab === 'kalender' && <CalendarPanel />}
       </div>
 
       {/* Bottom-Tab-Bar */}
