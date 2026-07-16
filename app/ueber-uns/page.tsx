@@ -17,10 +17,18 @@ export const revalidate = 3600
 export const maxDuration = 120
 
 export const metadata: Metadata = {
-  title: 'Über uns — TRIMOSA Apartments & Homes',
+  // Layout-Template hängt „| TRIMOSA" an — Marke hier nicht doppeln
+  title: 'Über uns — drei Freunde, eine Region',
   description:
     'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar. TRI·MO·SA — unser Name ist unsere Heimat. Lerne uns kennen.',
   alternates: { canonical: `${siteUrl}/ueber-uns` },
+  openGraph: {
+    title: 'Über uns — TRIMOSA Apartments & Homes',
+    description: 'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar.',
+    url: `${siteUrl}/ueber-uns`,
+    images: [{ url: `${siteUrl}/og.jpg` }],
+  },
+  twitter: { card: 'summary_large_image' },
 }
 
 const HERO_TEXT = 'TRIMOSA ist ein junges, regional verwurzeltes Unternehmen aus der Region Trier. Was mit einer gemeinsamen Leidenschaft für Immobilien und Gastfreundschaft begann, sind heute moderne Ferienwohnungen zwischen Mosel und Eifel — jede einzelne handverlesen, frisch renoviert und persönlich eingerichtet.'
