@@ -42,12 +42,21 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
+  // Team-Mitglieder (Admin/Gastgeber/Mitarbeiter) landen beim Chat-Klick in der
+  // vollen Team-App (/team) statt im Gast-Overlay. Die Flags kommen aus der
+  // eigenen profiles-Zeile (RLS erlaubt self-read); user_metadata.role='host'
+  // dient als Sofort-Heuristik, bis der Select durch ist. Ref statt State,
+  // damit der open-chat-Event-Listener keine stale closure erwischt.
+  const isTeamRef = useRef(false)
+  const openChat = useCallback(() => {
+    if (isTeamRef.current) router.push('/team')
+    else setChatOpen(true)
+  }, [router])
   /* Listen for open-chat events from MobileBookingBar */
   useEffect(() => {
-    function handleOpenChat() { setChatOpen(true) }
-    window.addEventListener('open-chat', handleOpenChat)
-    return () => window.removeEventListener('open-chat', handleOpenChat)
-  }, [])
+    window.addEventListener('open-chat', openChat)
+    return () => window.removeEventListener('open-chat', openChat)
+  }, [openChat])
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
 
@@ -96,7 +105,13 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
   }, [])
 
   async function loadProfile(userId: string, userMeta?: Record<string, unknown>) {
-    const { data } = await supabase.from('profiles').select('avatar_url, guest_first_name').eq('id', userId).maybeSingle()
+    isTeamRef.current = userMeta?.role === 'host'
+    const { data } = await supabase
+      .from('profiles')
+      .select('avatar_url, guest_first_name, is_admin, is_host, is_staff')
+      .eq('id', userId)
+      .maybeSingle()
+    if (data) isTeamRef.current = !!(data.is_admin || data.is_host || data.is_staff)
     if (data?.avatar_url) setAvatarUrl(data.avatar_url)
 
     // Show onboarding modal if guest hasn't filled in personal data
@@ -496,9 +511,9 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
               <>
                 {/* Chat icon + Meine Reisen — nur auf Desktop sichtbar */}
                 <div className="hidden md:flex" style={{ alignItems: 'center', gap: '8px' }}>
-                  {/* Chat icon with unread badge — opens overlay */}
+                  {/* Chat icon with unread badge — Gäste: Overlay, Team: /team-App */}
                   <button
-                    onClick={() => setChatOpen(true)}
+                    onClick={openChat}
                     style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', border: '1px solid #E0DDD6', backgroundColor: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0, cursor: 'pointer', color: '#555' }}
                     title="Nachrichten"
                   >
@@ -633,7 +648,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
       {user && !chatOpen && (
         <button
           className="mobile-fab"
-          onClick={() => setChatOpen(true)}
+          onClick={openChat}
           style={{
             position: 'fixed',
             bottom: '24px',
