@@ -63,15 +63,23 @@ export default function MobileBookingBar({ pricePerNight, lang = 'de' }: Props) 
         </button>
       )}
 
-      {/* Price */}
+      {/* Price + Bestpreis-Garantie (bei datumsabhängigem Preis ersetzt die
+          Garantie das wenig einladende „Preis auf Anfrage") */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {pricePerNight > 0 ? (
           <>
-            <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
-            <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ {t(lang, 'Nacht')}</span>
+            <div>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
+              <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ {t(lang, 'Nacht')}</span>
+            </div>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#16A34A', whiteSpace: 'nowrap' }}>
+              🏷️ {t(lang, 'Bestpreis-Garantie')}
+            </span>
           </>
         ) : (
-          <span style={{ fontSize: '12px', fontWeight: 600, color: '#888' }}>{t(lang, 'Preis auf Anfrage')}</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#16A34A', whiteSpace: 'nowrap' }}>
+            🏷️ {t(lang, 'Bestpreis-Garantie')}
+          </span>
         )}
       </div>
 
