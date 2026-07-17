@@ -594,6 +594,21 @@ export default async function Home({
             <strong style={{ color: '#F5F0E8' }}>Mo</strong>sel, <strong style={{ color: '#F5F0E8' }}>Sa</strong>uer &amp; Saar.
           </p>
 
+          {/* Direktbuchungs-Vorteile */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', margin: '0 0 26px' }}>
+            {[
+              `🏷️ ${t(lang, 'Bestpreis-Garantie')}`,
+              `🤝 ${t(lang, 'Direkt vom Gastgeber')}`,
+              `🛡 ${t(lang, 'Sichere Zahlung')}`,
+            ].map((chip) => (
+              <span key={chip} style={{
+                fontSize: '12px', fontWeight: 600, color: 'rgba(245,240,232,0.85)',
+                padding: '7px 14px', borderRadius: '999px', border: '1px solid rgba(245,240,232,0.25)',
+                whiteSpace: 'nowrap',
+              }}>{chip}</span>
+            ))}
+          </div>
+
           {/* CTA */}
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <Link href="/?view=map" style={{
