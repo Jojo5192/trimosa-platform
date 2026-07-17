@@ -431,6 +431,7 @@ export const REGIONS: Record<string, Region> = {
       {
         emoji: '🍔', name: 'Burgeramt Trier', art: 'Burger', ort: 'Nagelstraße, Trier',
         kategorie: 'gasthaus', lat: 49.7536, lon: 6.6384, googleQuery: 'Burgeramt Trier Nagelstraße',
+        googlePlaceId: 'ChIJGShfxJt8lUcRYD8XB1Jq2Kg',
         text: 'Burger-Institution in der Fußgängerzone: Alles hausgemacht von A bis Z — von den Buns bis zu den Saucen, auch vegetarisch und vegan.',
       },
       {
@@ -867,11 +868,13 @@ export const REGIONS: Record<string, Region> = {
       {
         emoji: '🐟', name: 'Gasthaus Ferring', art: 'Eifeler Gasthaus & Biergarten', ort: 'Minden an der Sauer',
         kategorie: 'gasthaus', lat: 49.8238, lon: 6.4685, googleQuery: 'Gasthaus Ferring Minden Sauer',
+        googlePlaceId: 'ChIJhS_BZTNglUcRxG2HHHzXupo',
         text: 'Familiengeführtes Gasthaus dort, wo die Prüm in die Sauer mündet — regionale Küche mit frischer Mindener Forelle, dazu Biergarten und Terrasse.',
       },
       {
         emoji: '🌉', name: 'Ralinger Hof', art: 'Gasthaus an der Sauerbrücke', ort: 'Ralingen an der Sauer',
         kategorie: 'gasthaus', lat: 49.8057, lon: 6.5098, googleQuery: 'Ralinger Hof Ralingen',
+        googlePlaceId: 'ChIJU0BrWY9hlUcRX9tqUTA8sdc',
         text: 'Klassisches Gasthaus direkt an der Brücke über die Sauer — bodenständige Küche im Grenzort, auf der anderen Flussseite beginnt Luxemburg.',
       },
       {
@@ -892,6 +895,7 @@ export const REGIONS: Record<string, Region> = {
       {
         emoji: '🍕', name: 'Pizzeria Da Toni', art: 'Italiener in Irrel', ort: 'Irrel',
         kategorie: 'gasthaus', lat: 49.8421, lon: 6.4573, googleQuery: 'Pizzeria Da Toni Irrel',
+        googlePlaceId: 'ChIJp5_Qsovfv0cRAYKv_lzAwZI',
         text: 'Italienischer Familienklassiker mitten in Irrel — Pizza und Pasta, wie gemacht für den Abend nach einer Tour durch die nahe Teufelsschlucht.',
       },
       {
