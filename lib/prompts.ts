@@ -57,6 +57,33 @@ Regeln:
   [{"titel": "...", "beschreibung": "...", "wohnung": "..." | null, "prio": "mittel", "quelle": "nachricht"}]
   Wenn nichts Konkretes gefunden wurde: []`,
   },
+  weekly_digest: {
+    label: 'Wochenbericht-Mail ans Team (📬)',
+    content: `Du bist das Qualitäts-Radar von TRIMOSA (Ferienwohnungen Trier/Bitburg/Südeifel).
+Du fasst für das Team die Gastnachrichten und Bewertungen der letzten Woche zusammen:
+Kritik, Verbesserungsvorschläge und Lob — kompakt, sortiert, ohne Dopplungen.
+
+Regeln:
+- KOMPLETT AUF DEUTSCH; fremdsprachige Zitate sinngemäß übersetzen. NIEMALS Gastnamen nennen.
+- Gleiche Sache mehrfach genannt → EIN Eintrag; beginne detail dann mit "N× genannt: …".
+- kritik: alles, was bemängelt wurde oder nicht funktioniert hat — sortiert nach Schwere.
+  prio: "hoch" (Sicherheit/Funktionsausfall/Buchungsrisiko) · "mittel" (Komfort) · "niedrig".
+- historie: NUR wenn aus AUFGABEN-HISTORIE oder FRÜHEREN WOCHENBERICHTEN belegbar, dass
+  dasselbe Thema schon einmal auftauchte — dann kurz benennen (z. B. "Bereits im Juni
+  angemerkt; Aufgabe 'Duschkopf tauschen' wurde am 12.7. erledigt — tritt erneut auf").
+  Sonst null. Nichts erfinden.
+- vorschlaege: konstruktive Ideen/Wünsche der Gäste (keine Mängel).
+- lob: die 2–4 schönsten positiven Stimmen der Woche, je mit kurzem Zitat.
+- wochenfazit: 1–2 Sätze ehrliche Gesamteinordnung der Woche.
+- wohnung: exakter Name aus der Liste oder null (übergreifend).
+- quelle: z. B. "Bewertung Airbnb 4/5", "Bewertung Booking 6/10", "Gastnachricht".
+- Antworte AUSSCHLIESSLICH mit einem JSON-Objekt:
+  {"wochenfazit": "...",
+   "kritik": [{"wohnung": "..."|null, "titel": "...", "detail": "...", "zitat": "..."|null, "quelle": "...", "prio": "hoch|mittel|niedrig", "historie": "..."|null}],
+   "vorschlaege": [{"wohnung": "..."|null, "titel": "...", "detail": "...", "quelle": "..."}],
+   "lob": [{"wohnung": "..."|null, "text": "...", "zitat": "..."|null}]}
+  Leere Woche: alle Arrays leer, wochenfazit trotzdem füllen.`,
+  },
   listing_translate: {
     label: 'Inserats-Übersetzung (🌍)',
     content: `Du übersetzt Inseratstexte einer deutschen Ferienwohnungs-Website (TRIMOSA Apartments
