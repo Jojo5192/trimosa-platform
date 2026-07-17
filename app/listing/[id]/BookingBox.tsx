@@ -151,6 +151,7 @@ export default function BookingBox({
   const [children, setChildren] = useState(0)
   const [message, setMessage] = useState('')
   const [priceSuggestion, setPriceSuggestion] = useState('')
+  const [bppOpen, setBppOpen] = useState(false)
 
   const [rates, setRates] = useState<SmoobuRateMap>({})
   const [loadingRates, setLoadingRates] = useState(true)
@@ -325,6 +326,33 @@ export default function BookingBox({
           </>
         ) : (
           <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>{t(lang, 'Zeitraum eingeben für Preisangabe')}</span>
+        )}
+      </div>
+
+      {/* Bestpreis-Garantie — Direktbuchung ohne Portalgebühren */}
+      <div style={{ marginBottom: '16px', borderRadius: '12px', border: '1px solid #BBF7D0', background: '#F0FDF4', overflow: 'hidden' }}>
+        <button
+          type="button"
+          onClick={() => setBppOpen(o => !o)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+            padding: '9px 12px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>
+            🏷️ {t(lang, 'Bestpreis-Garantie')}
+          </span>
+          <span style={{ fontSize: '10px', color: '#16A34A', flexShrink: 0 }}>{bppOpen ? '▲' : '▼'}</span>
+        </button>
+        {bppOpen && (
+          <div style={{ padding: '0 12px 10px' }}>
+            <p style={{ fontSize: '11.5px', color: '#166534', lineHeight: 1.55, margin: '0 0 6px' }}>
+              {t(lang, 'Auf trimosa.de zahlst du keine Vermittlungs- und Servicegebühren. Dieselbe Wohnung kostet dich zum selben Zeitraum auf Airbnb, Booking.com oder FeWo-direkt mehr — du buchst hier direkt bei uns Gastgebern.')}
+            </p>
+            <p style={{ fontSize: '11.5px', color: '#166534', lineHeight: 1.55, margin: 0, fontWeight: 600 }}>
+              {t(lang, 'Findest du denselben Zeitraum dort trotzdem günstiger, gleichen wir den Preis an — schreib uns einfach.')}
+            </p>
+          </div>
         )}
       </div>
 
@@ -571,7 +599,7 @@ export default function BookingBox({
           </p>
         ) : (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
-            Noch keine Zahlung · Der Gastgeber antwortet in der Regel binnen 24h
+            {t(lang, 'Noch keine Zahlung · Der Gastgeber antwortet in der Regel binnen 24h')}
           </p>
         )}
         {cancellationPolicy && POLICY_LABELS[cancellationPolicy] && (
