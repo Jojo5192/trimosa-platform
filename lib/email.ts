@@ -108,7 +108,7 @@ function renderEmail({ preheader, heading, paragraphs, details, cta, secondaryCt
 </html>`
 }
 
-async function sendViaResend(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string; note?: string }> {
+export async function sendViaResend(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string; note?: string }> {
   const resendKey = process.env.RESEND_API_KEY
   if (!resendKey) {
     console.log(`[E-Mail] RESEND_API_KEY nicht gesetzt — "${subject}" an ${to} nicht versendet.`)
