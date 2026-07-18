@@ -151,7 +151,10 @@ function renderDigestHtml(opts: {
 </html>`
 }
 
-export async function runWeeklyDigest(): Promise<DigestSummary> {
+/** opts.onlyEmail: Test-Modus — sendet nur an diese Adresse und speichert den
+ *  Bericht NICHT (sonst sähe der echte Mittwoch-Lauf die Themen als „bereits
+ *  berichtet"). Der Cron ruft ohne opts auf → alle Team-Mitglieder + speichern. */
+export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promise<DigestSummary> {
   const sinceDate = new Date(Date.now() - 7 * 86400_000)
   const since = sinceDate.toISOString()
   const rangeLabel = `${fmtShort(sinceDate)} – ${fmtShort(new Date())}`
@@ -352,14 +355,18 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
   // ── Empfänger: Admins, Gastgeber, Mitarbeiter (nicht Dienstleister) —
   // bewusst die persönliche LOGIN-Mail, NICHT notification_email (die ist das
   // operative Buchungs-Postfach, z. B. fewo@) ──
-  const { data: team } = await supabaseAdmin
-    .from('profiles').select('id')
-    .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
   const emails = new Set<string>()
-  for (const p of team ?? []) {
-    const { data: u } = await supabaseAdmin.auth.admin.getUserById(p.id)
-    const mail = u?.user?.email ?? null
-    if (mail) emails.add(mail.toLowerCase())
+  if (opts.onlyEmail) {
+    emails.add(opts.onlyEmail.toLowerCase())
+  } else {
+    const { data: team } = await supabaseAdmin
+      .from('profiles').select('id')
+      .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
+    for (const p of team ?? []) {
+      const { data: u } = await supabaseAdmin.auth.admin.getUserById(p.id)
+      const mail = u?.user?.email ?? null
+      if (mail) emails.add(mail.toLowerCase())
+    }
   }
 
   const subject = `📬 TRIMOSA Wochenbericht ${rangeLabel} — ${content.kritik.length} Kritikpunkte, ${content.lob.length}× Lob`
@@ -369,13 +376,15 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
     if (res.ok) sent++
   }
 
-  // Bericht speichern (Gedächtnis für künftige Läufe) — best-effort
-  try {
-    await supabaseAdmin.from('weekly_digests').insert({
-      week_start: since.slice(0, 10),
-      content: content as unknown as Record<string, unknown>,
-    })
-  } catch (e) { console.error('[weekly-digest] speichern:', e) }
+  // Bericht speichern (Gedächtnis für künftige Läufe) — nicht im Test-Modus
+  if (!opts.onlyEmail) {
+    try {
+      await supabaseAdmin.from('weekly_digests').insert({
+        week_start: since.slice(0, 10),
+        content: content as unknown as Record<string, unknown>,
+      })
+    } catch (e) { console.error('[weekly-digest] speichern:', e) }
+  }
 
   return {
     nachrichten: messages.length,
