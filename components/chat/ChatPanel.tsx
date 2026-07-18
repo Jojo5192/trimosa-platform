@@ -547,6 +547,18 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             )}
           </div>
         )}
+        {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
+            das Team weiß, dass ✓/📞 die Antwortzeit im Wochenbericht sauber hält */}
+        {team && inboxFilter === 'unbeantwortet' && !loading && filtered.length > 0 && (
+          <div style={{
+            margin: '10px 12px 2px', padding: '9px 12px', borderRadius: 12, flexShrink: 0,
+            background: '#FAF5E4', border: '1px solid #EADFB8',
+            fontSize: 11.5, lineHeight: 1.55, color: '#6B5D33',
+          }}>
+            Diese Threads zählen im <strong>Wochenbericht</strong> als unbeantwortet.
+            Bereits geklärt? Im Thread oben markieren: <strong>📞 telefonisch geklärt</strong> · <strong>✓ keine Antwort nötig</strong> — dann stimmt eure Antwortzeit-Statistik.
+          </div>
+        )}
         {loading && (
           <div style={{ padding: 32, textAlign: 'center', color: '#999', fontSize: 13 }}>Lädt…</div>
         )}
