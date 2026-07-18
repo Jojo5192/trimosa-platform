@@ -78,9 +78,11 @@ export async function GET() {
   type Last = { at: string; preview: string; sender: 'guest' | 'host'; noReply?: boolean; phone?: boolean }
   const lastLive: Record<string, Last> = {}
   const bUnread: Record<string, number> = {}
-  // phone_resolved mit Deploy-sicherem Retry (Migration evtl. noch nicht gelaufen)
+  // phone_resolved mit Deploy-sicherem Retry (Migration evtl. noch nicht gelaufen).
+  // Breiter Response-Typ, weil supabase-js die beiden select-Strings verschieden typisiert.
+  type MsgRes = { data: unknown[] | null; error: { message: string } | null }
   const B_COLS = 'booking_id, created_at, sender_type, read_at, content, content_de, lang, no_reply_needed'
-  let bRes = bookingIds.length
+  let bRes: MsgRes = bookingIds.length
     ? await supabaseAdmin
         .from('messages')
         .select(B_COLS + ', phone_resolved')
@@ -96,7 +98,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(800)
   }
-  const bMsgs = (bRes.data ?? []) as Array<{
+  const bMsgs = (bRes.data ?? []) as unknown as Array<{
     booking_id: string | null; created_at: string; sender_type: string | null; read_at: string | null
     content: string | null; content_de: string | null; lang: string | null
     no_reply_needed?: boolean; phone_resolved?: boolean
@@ -145,7 +147,7 @@ export async function GET() {
   }
 
   const D_COLS = 'conversation_id, created_at, sender_id, content, content_de, lang, no_reply_needed'
-  let dRes = convIds.length
+  let dRes: MsgRes = convIds.length
     ? await supabaseAdmin
         .from('messages')
         .select(D_COLS + ', phone_resolved')
@@ -161,7 +163,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(400)
   }
-  const dMsgs = (dRes.data ?? []) as Array<{
+  const dMsgs = (dRes.data ?? []) as unknown as Array<{
     conversation_id: string | null; created_at: string; sender_id: string | null
     content: string | null; content_de: string | null; lang: string | null
     no_reply_needed?: boolean; phone_resolved?: boolean
