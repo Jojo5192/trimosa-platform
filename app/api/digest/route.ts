@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runWeeklyDigest } from '@/lib/weekly-digest'
 import { getTaskAuth } from '@/lib/tasks'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 /**
  * 📬 Wochenbericht-Mail ans Team:
- *  GET  → Vercel-Cron mittwochs (Bearer CRON_SECRET)
- *  POST → manueller Test-Versand (nur Admins/Gastgeber)
+ *  GET  → Vercel-Cron mittwochs (Bearer CRON_SECRET) — an ALLE Team-Mitglieder
+ *  POST → manueller TEST-Versand (Admins/Gastgeber) — nur an den Auslöser selbst
  */
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,10 @@ export async function POST() {
   const auth = await getTaskAuth()
   if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
-    return NextResponse.json(await runWeeklyDigest())
+    const { data: u } = await supabaseAdmin.auth.admin.getUserById(auth.userId)
+    const onlyEmail = u?.user?.email
+    if (!onlyEmail) return NextResponse.json({ error: 'Eigene E-Mail nicht gefunden.' }, { status: 500 })
+    return NextResponse.json({ test: true, an: onlyEmail, ...(await runWeeklyDigest({ onlyEmail })) })
   } catch (err) {
     console.error('[weekly-digest]', err)
     // Admin-gated: konkrete Fehlermeldung zurückgeben (Diagnose ohne Vercel-Logs)
