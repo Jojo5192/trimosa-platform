@@ -48,6 +48,7 @@ export async function PATCH(
     'rule_quiet_hours', 'rule_quiet_start', 'rule_quiet_end',
     'rule_commercial_photo', 'rule_additional_rules',
     'airbnb_url', 'booking_url', 'vrbo_url', 'google_place_id',
+    'guide',
   ]
   const patch: Record<string, unknown> = {}
   for (const key of allowed) {
