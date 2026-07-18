@@ -47,13 +47,47 @@ export interface DigestSummary {
   empfaenger: number; note?: string
 }
 
-/** JSON-Objekt robust parsen (Rettungspfad bei abgeschnittener Antwort). */
+/** Fehlende schließende Klammern für ein abgeschnittenes JSON-Fragment ermitteln
+ *  (String-Kontext wird beachtet); null wenn das Fragment in sich kaputt ist. */
+function closeBrackets(s: string): string | null {
+  const stack: string[] = []
+  let inStr = false, esc = false
+  for (const ch of s) {
+    if (esc) { esc = false; continue }
+    if (inStr) {
+      if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') inStr = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') { if (stack.pop() !== ch) return null }
+  }
+  if (inStr) return null
+  return stack.reverse().join('')
+}
+
+/** JSON-Objekt robust parsen — reißt die Antwort am Token-Limit ab (§84-Lektion),
+ *  schneiden wir bis zum letzten vollständigen Objekt zurück und schließen die
+ *  offenen Klammern, statt den ganzen Lauf zu verlieren. */
 function parseDigest(raw: string): DigestContent {
   const start = raw.indexOf('{')
   if (start === -1) throw new Error('Keine JSON-Antwort: ' + raw.slice(0, 150))
-  const end = raw.lastIndexOf('}')
-  const candidate = raw.slice(start, end + 1)
-  const parsed = JSON.parse(candidate) as Partial<DigestContent>
+  const candidate = raw.slice(start, raw.lastIndexOf('}') + 1)
+  let parsed: Partial<DigestContent> | null = null
+  try { parsed = JSON.parse(candidate) as Partial<DigestContent> } catch {
+    let cut = candidate.length
+    for (let tries = 0; tries < 60 && parsed === null; tries++) {
+      cut = candidate.lastIndexOf('}', cut - 1)
+      if (cut <= 0) break
+      const head = candidate.slice(0, cut + 1)
+      const closers = closeBrackets(head)
+      if (closers === null) continue
+      try { parsed = JSON.parse(head + closers) as Partial<DigestContent> } catch { /* weiter zurückschneiden */ }
+    }
+  }
+  if (!parsed) throw new Error('JSON nicht parsebar (Antwort-Ende): …' + raw.slice(-150))
   return {
     wochenfazit: String(parsed.wochenfazit ?? ''),
     kritik: Array.isArray(parsed.kritik) ? parsed.kritik : [],
@@ -365,8 +399,9 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
   ].join('\n')
 
   const system = await getPrompt('weekly_digest')
-  // §45-/§84-Lektion: großzügiges Budget (Denkanteil + lange JSON-Antwort)
-  const raw = await askClaude(system, user, 20000)
+  // §45-/§84-Lektion: großzügiges Budget (Denkanteil + lange JSON-Antwort mit
+  // übersetzten Zitaten — 20000 riss beim Erstlauf ab)
+  const raw = await askClaude(system, user, 32000)
   const content = parseDigest(raw)
 
   const html = renderDigestHtml({
