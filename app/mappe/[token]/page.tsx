@@ -6,8 +6,8 @@ import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { parseGuide, collectGuideTexts, translateBlocks, type GuideCtx } from '@/lib/guide'
-import GuideBlocks, { DE_LABELS, type GuideLabels } from '@/components/guide/GuideBlocks'
+import { parseGuide, collectGuideTexts, translateBlocks, DE_LABELS, type GuideCtx, type GuideLabels } from '@/lib/guide'
+import GuideBlocks from '@/components/guide/GuideBlocks'
 
 /**
  * 📖 Öffentliche Gästemappe — persönlicher, unguessbarer Link je Buchung
