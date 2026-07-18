@@ -24,10 +24,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const auth = await getTaskAuth()
   if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
+    // { all: true } → echter Versand an ALLE Team-Mitglieder inkl. Speichern
+    // (wie der Mittwoch-Cron); ohne all → Test nur an den Auslöser, ohne Speichern.
+    const body = await request.json().catch(() => ({}))
+    if (body.all === true) {
+      return NextResponse.json({ test: false, an: 'alle Team-Mitglieder', ...(await runWeeklyDigest()) })
+    }
     const { data: u } = await supabaseAdmin.auth.admin.getUserById(auth.userId)
     const onlyEmail = u?.user?.email
     if (!onlyEmail) return NextResponse.json({ error: 'Eigene E-Mail nicht gefunden.' }, { status: 500 })
