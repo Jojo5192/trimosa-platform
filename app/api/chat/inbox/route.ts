@@ -75,19 +75,34 @@ export async function GET() {
   const bookingIds = bookingRows.map((b) => b.id)
   const smoobuIds = bookingRows.map((b) => Number(b.smoobu_reservation_id)).filter(Number.isFinite)
 
-  type Last = { at: string; preview: string; sender: 'guest' | 'host'; noReply?: boolean }
+  type Last = { at: string; preview: string; sender: 'guest' | 'host'; noReply?: boolean; phone?: boolean }
   const lastLive: Record<string, Last> = {}
   const bUnread: Record<string, number> = {}
-  const { data: bMsgs } = bookingIds.length
+  // phone_resolved mit Deploy-sicherem Retry (Migration evtl. noch nicht gelaufen)
+  const B_COLS = 'booking_id, created_at, sender_type, read_at, content, content_de, lang, no_reply_needed'
+  let bRes = bookingIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('booking_id, created_at, sender_type, read_at, content, content_de, lang, no_reply_needed')
+        .select(B_COLS + ', phone_resolved')
         .in('booking_id', bookingIds)
         .order('created_at', { ascending: false })
         .limit(800)
-    : { data: [] }
+    : { data: [], error: null }
+  if (bRes.error && /phone_resolved/i.test(bRes.error.message)) {
+    bRes = await supabaseAdmin
+      .from('messages')
+      .select(B_COLS)
+      .in('booking_id', bookingIds)
+      .order('created_at', { ascending: false })
+      .limit(800)
+  }
+  const bMsgs = (bRes.data ?? []) as Array<{
+    booking_id: string | null; created_at: string; sender_type: string | null; read_at: string | null
+    content: string | null; content_de: string | null; lang: string | null
+    no_reply_needed?: boolean; phone_resolved?: boolean
+  }>
   const bLang: Record<string, string> = {}
-  for (const m of bMsgs ?? []) {
+  for (const m of bMsgs) {
     if (!m.booking_id) continue
     if (!bLang[m.booking_id] && m.sender_type === 'guest' && m.lang) bLang[m.booking_id] = m.lang
     if (!lastLive[m.booking_id]) {
@@ -96,6 +111,7 @@ export async function GET() {
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
         sender: m.sender_type === 'guest' ? 'guest' : 'host',
         noReply: !!m.no_reply_needed,
+        phone: !!m.phone_resolved,
       }
     }
     if (m.sender_type === 'guest' && !m.read_at) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
@@ -128,23 +144,38 @@ export async function GET() {
     return 'past'
   }
 
-  const { data: dMsgs } = convIds.length
+  const D_COLS = 'conversation_id, created_at, sender_id, content, content_de, lang, no_reply_needed'
+  let dRes = convIds.length
     ? await supabaseAdmin
         .from('messages')
-        .select('conversation_id, created_at, sender_id, content, content_de, lang, no_reply_needed')
+        .select(D_COLS + ', phone_resolved')
         .in('conversation_id', convIds)
         .order('created_at', { ascending: false })
         .limit(400)
-    : { data: [] }
-  const lastDirect: Record<string, { preview: string; senderId: string | null; noReply?: boolean }> = {}
+    : { data: [], error: null }
+  if (dRes.error && /phone_resolved/i.test(dRes.error.message)) {
+    dRes = await supabaseAdmin
+      .from('messages')
+      .select(D_COLS)
+      .in('conversation_id', convIds)
+      .order('created_at', { ascending: false })
+      .limit(400)
+  }
+  const dMsgs = (dRes.data ?? []) as Array<{
+    conversation_id: string | null; created_at: string; sender_id: string | null
+    content: string | null; content_de: string | null; lang: string | null
+    no_reply_needed?: boolean; phone_resolved?: boolean
+  }>
+  const lastDirect: Record<string, { preview: string; senderId: string | null; noReply?: boolean; phone?: boolean }> = {}
   const dLang: Record<string, string> = {}
-  for (const m of dMsgs ?? []) {
+  for (const m of dMsgs) {
     if (m.conversation_id && m.lang && !dLang[m.conversation_id]) dLang[m.conversation_id] = m.lang
     if (m.conversation_id && !lastDirect[m.conversation_id]) {
       lastDirect[m.conversation_id] = {
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
         senderId: m.sender_id ?? null,
         noReply: !!m.no_reply_needed,
+        phone: !!m.phone_resolved,
       }
     }
   }
@@ -168,6 +199,7 @@ export async function GET() {
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
       guestLang: dLang[c.id] ?? null,
       noReplyNeeded: last?.noReply ?? false,
+      phoneResolved: last?.phone ?? false,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -197,6 +229,7 @@ export async function GET() {
         lastSender: last?.sender ?? null,
         guestLang: bLang[b.id] ?? null,
         noReplyNeeded: last && 'noReply' in last ? !!last.noReply : false,
+        phoneResolved: last && 'phone' in last ? !!last.phone : false,
         unread: bUnread[b.id] ?? 0,
       }
     })
@@ -227,10 +260,12 @@ export async function PATCH(req: Request) {
   if (!me?.is_admin && !me?.is_host && !me?.is_staff) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   }
-  const { kind, id, value } = await req.json()
+  const { kind, id, value, field } = await req.json()
   if (!id || (kind !== 'booking' && kind !== 'direct') || typeof value !== 'boolean') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
+  // field: 'no_reply' (Default, ✓) oder 'phone' (📞 per Telefonat geklärt)
+  const column = field === 'phone' ? 'phone_resolved' : 'no_reply_needed'
   const col = kind === 'booking' ? 'booking_id' : 'conversation_id'
   const { data: last } = await supabaseAdmin
     .from('messages')
@@ -240,7 +275,7 @@ export async function PATCH(req: Request) {
     .limit(1)
     .maybeSingle()
   if (!last) return NextResponse.json({ error: 'Keine Nachricht im Thread.' }, { status: 404 })
-  const { error } = await supabaseAdmin.from('messages').update({ no_reply_needed: value }).eq('id', last.id)
+  const { error } = await supabaseAdmin.from('messages').update({ [column]: value }).eq('id', last.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
