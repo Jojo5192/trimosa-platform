@@ -38,6 +38,25 @@ export interface GuideCtx {
   regionClaim: string | null
 }
 
+/** Anzeige-Labels der Mappe — HIER (server-safe) statt in der Client-Datei:
+ *  Konstanten aus 'use client'-Modulen sind in Server-Komponenten nur
+ *  Client-Referenzen (Object.entries → leer → Crash beim Übersetzen). */
+export interface GuideLabels {
+  wifi: string; network: string; password: string; copy: string; copied: string
+  checkInFrom: string; checkOutUntil: string; addressTitle: string; route: string
+  rulesTitle: string; regionTitle: string; regionCta: string; contactTitle: string
+  emptyBlock: string
+}
+
+export const DE_LABELS: GuideLabels = {
+  wifi: 'WLAN', network: 'Netzwerk', password: 'Passwort', copy: 'Kopieren', copied: 'Kopiert!',
+  checkInFrom: 'Check-in ab', checkOutUntil: 'Check-out bis',
+  addressTitle: 'Adresse & Anfahrt', route: 'Route in Google Maps öffnen',
+  rulesTitle: 'Hausregeln', regionTitle: 'Region entdecken',
+  regionCta: 'Zum Reiseführer', contactTitle: 'Dein Gastgeber-Team',
+  emptyBlock: 'Noch nicht ausgefüllt — erscheint erst mit Inhalt.',
+}
+
 export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: string; hint: string; smart?: boolean }> = {
   heading: { icon: '🔠', label: 'Überschrift', hint: 'Große Abschnitts-Überschrift' },
   text: { icon: '¶', label: 'Absatz', hint: 'Freier Fließtext' },
