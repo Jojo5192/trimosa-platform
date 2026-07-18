@@ -1,30 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import type { GuideBlock, GuideCtx } from '@/lib/guide'
+import type { GuideBlock, GuideCtx, GuideLabels } from '@/lib/guide'
 import { blockHasContent } from '@/lib/guide'
 
 /**
  * 📖 Gästemappe: rendert die Block-Liste — geteilt zwischen der öffentlichen
  * Mappe (/mappe/[token], Server-Seite reicht bereits übersetzte Blöcke + Labels)
  * und der Live-Vorschau im Builder (preview=true zeigt auch leere Blöcke blass).
+ * Labels/Interface leben server-safe in lib/guide.ts (RSC-Client-Referenz-Falle).
  */
-
-export interface GuideLabels {
-  wifi: string; network: string; password: string; copy: string; copied: string
-  checkInFrom: string; checkOutUntil: string; addressTitle: string; route: string
-  rulesTitle: string; regionTitle: string; regionCta: string; contactTitle: string
-  emptyBlock: string
-}
-
-export const DE_LABELS: GuideLabels = {
-  wifi: 'WLAN', network: 'Netzwerk', password: 'Passwort', copy: 'Kopieren', copied: 'Kopiert!',
-  checkInFrom: 'Check-in ab', checkOutUntil: 'Check-out bis',
-  addressTitle: 'Adresse & Anfahrt', route: 'Route in Google Maps öffnen',
-  rulesTitle: 'Hausregeln', regionTitle: 'Region entdecken',
-  regionCta: 'Zum Reiseführer', contactTitle: 'Dein Gastgeber-Team',
-  emptyBlock: 'Noch nicht ausgefüllt — erscheint erst mit Inhalt.',
-}
 
 const CARD: React.CSSProperties = {
   background: '#fff', border: '1px solid #EDE9DE', borderRadius: 16,
