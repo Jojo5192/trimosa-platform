@@ -16,6 +16,7 @@ interface Conversation {
   lastPreview?: string | null
   lastSender?: 'guest' | 'host' | null
   noReplyNeeded?: boolean
+  phoneResolved?: boolean
   guestLang?: string | null
 }
 
@@ -28,7 +29,7 @@ const INBOX_FILTERS: { id: InboxFilter; label: string }[] = [
   { id: 'kommend', label: 'Kommend' },
 ]
 function matchesFilter(c: Conversation, f: InboxFilter): boolean {
-  if (f === 'unbeantwortet') return c.lastSender === 'guest' && !c.noReplyNeeded
+  if (f === 'unbeantwortet') return c.lastSender === 'guest' && !c.noReplyNeeded && !c.phoneResolved
   if (f === 'ungelesen') return c.unread > 0
   if (f === 'vorort') return c.guestStatus === 'current'
   if (f === 'kommend') return c.guestStatus === 'upcoming'
@@ -170,13 +171,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   // "✨" reply suggestion (hosts only) — lands in the composer as an editable
   // draft, never auto-sent. History is loaded server-side by the API.
-  // "Keine Antwort erforderlich": markiert die letzte Nachricht des Threads —
-  // eine spätere Gast-Nachricht macht ihn automatisch wieder unbeantwortet.
-  async function toggleNoReply() {
+  // Thread-Markierungen auf der jeweils LETZTEN Nachricht — eine spätere
+  // Gast-Nachricht macht den Thread automatisch wieder unbeantwortet.
+  //  ✓  "Keine Antwort erforderlich"
+  //  📞 "Per Telefonat geklärt" (zählt im Wochenbericht als telefonisch beantwortet)
+  async function toggleMark(field: 'no_reply' | 'phone') {
     if (!active) return
-    const value = !active.noReplyNeeded
-    setConvs(cs => cs.map(c => c.id === active.id ? { ...c, noReplyNeeded: value } : c))
-    setActive(a => (a ? { ...a, noReplyNeeded: value } : a))
+    const key = field === 'phone' ? 'phoneResolved' as const : 'noReplyNeeded' as const
+    const value = !active[key]
+    setConvs(cs => cs.map(c => c.id === active.id ? { ...c, [key]: value } : c))
+    setActive(a => (a ? { ...a, [key]: value } : a))
     // Booking.com wertet die Antwortquote separat — dort muss der Haken
     // weiterhin in der Booking-App gesetzt werden (Smoobu reicht ihn nicht durch)
     if (value && /booking/i.test(active.platform ?? '')) {
@@ -188,7 +192,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     try {
       await fetch('/api/chat/inbox', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: active.kind ?? 'direct', id: active.id, value }),
+        body: JSON.stringify({ kind: active.kind ?? 'direct', id: active.id, value, field }),
       })
     } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
   }
@@ -294,6 +298,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         platform: t.platform, guestStatus: t.guestStatus,
         lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
         noReplyNeeded: t.noReplyNeeded ?? false,
+        phoneResolved: t.phoneResolved ?? false,
         guestLang: t.guestLang ?? null,
       }))
       setConvs(data)
@@ -600,6 +605,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 {c.lastPreview && (
                   <div style={{ fontSize: fullWidth ? 12.5 : 11.5, color: c.unread ? '#3A3427' : '#8A857B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 600 : 400, marginBottom: 2 }}>
                     {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: '#34A853', fontWeight: 700 }}>✓ </span>}
+                    {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 11 }}>📞 </span>}
                     {c.lastSender === 'host' && <span style={{ color: '#B5A97F' }}>Du: </span>}
                     {c.lastPreview}
                   </div>
@@ -680,17 +686,30 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 )}
                 <ThreadBadges c={active} size={10.5} />
                 {team && active.lastSender === 'guest' && (
-                  <button
-                    onClick={toggleNoReply}
-                    title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort erforderlich'}
-                    style={{
-                      width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                      background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'rgba(118,118,128,0.12)',
-                      color: active.noReplyNeeded ? '#fff' : '#8A8578',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      fontSize: 14, fontWeight: 700, transition: 'all .15s',
-                    }}
-                  >✓</button>
+                  <>
+                    <button
+                      onClick={() => toggleMark('phone')}
+                      title={active.phoneResolved ? 'Telefon-Markierung entfernen' : 'Per Telefonat geklärt'}
+                      style={{
+                        width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                        background: active.phoneResolved ? 'linear-gradient(135deg, #2E7CF6, #1D5FD1)' : 'rgba(118,118,128,0.12)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        fontSize: 13, transition: 'all .15s',
+                        filter: active.phoneResolved ? 'none' : 'grayscale(1) opacity(0.6)',
+                      }}
+                    >📞</button>
+                    <button
+                      onClick={() => toggleMark('no_reply')}
+                      title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort erforderlich'}
+                      style={{
+                        width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                        background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'rgba(118,118,128,0.12)',
+                        color: active.noReplyNeeded ? '#fff' : '#8A8578',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        fontSize: 14, fontWeight: 700, transition: 'all .15s',
+                      }}
+                    >✓</button>
+                  </>
                 )}
               </div>
             )}
