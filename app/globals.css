@@ -568,3 +568,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 767px) {
   .nav-logo-img { height: 28px !important; }
 }
+
+/* Gästemappen-Builder: Vorschau rutscht auf schmalen Screens unter den Editor */
+@media (max-width: 900px) {
+  .mappe-grid { grid-template-columns: 1fr !important; }
+}
