@@ -19,6 +19,26 @@ interface KritikItem { wohnung: string | null; titel: string; detail: string; zi
 interface VorschlagItem { wohnung: string | null; titel: string; detail: string; quelle: string }
 interface LobItem { wohnung: string | null; text: string; zitat: string | null }
 interface DigestContent { wochenfazit: string; kritik: KritikItem[]; vorschlaege: VorschlagItem[]; lob: LobItem[] }
+/** Numerische Wochen-Kennzahlen — werden mitgespeichert, damit der nächste
+ *  Bericht die Veränderung zur Vorwoche zeigen kann. */
+interface DigestStats { nachrichten: number; bewertungen: number; note: number | null; antwortzeitMs: number | null }
+type Delta = { text: string; color: string } | null
+
+/** Vorwochen-Vergleich für eine Kennzahl-Kachel (▲/▼, grün = besser). */
+function fmtDelta(cur: number | null, prev: number | null | undefined, opts: {
+  betterWhenLower?: boolean; neutral?: boolean; fmt?: (n: number) => string
+} = {}): Delta {
+  if (cur === null || prev === null || prev === undefined) return null
+  const diff = cur - prev
+  const fmt = opts.fmt ?? ((n: number) => String(Math.round(n)))
+  if (Math.abs(diff) < 1e-9 || fmt(Math.abs(diff)) === fmt(0)) return { text: '± 0 zur Vorwoche', color: '#A8A292' }
+  const up = diff > 0
+  const better = opts.neutral ? null : (opts.betterWhenLower ? !up : up)
+  return {
+    text: `${up ? '▲' : '▼'} ${fmt(Math.abs(diff))} zur Vorwoche`,
+    color: better === null ? '#A8A292' : better ? '#16A34A' : '#DC2626',
+  }
+}
 
 export interface DigestSummary {
   nachrichten: number; bewertungen: number
@@ -57,16 +77,18 @@ function fmtShort(d: Date): string {
 function renderDigestHtml(opts: {
   rangeLabel: string
   stats: { nachrichten: number; bewertungen: number; note: string; antwortzeit: string }
+  deltas: { nachrichten: Delta; bewertungen: Delta; note: Delta; antwortzeit: Delta }
   content: DigestContent
   taskLine: string | null
   responseLine: string | null
 }): string {
-  const { rangeLabel, stats, content, taskLine, responseLine } = opts
+  const { rangeLabel, stats, deltas, content, taskLine, responseLine } = opts
 
-  const statCell = (value: string, label: string) => `
+  const statCell = (value: string, label: string, delta: Delta = null) => `
     <td width="25%" align="center" style="padding:14px 4px;background:#FCFBF7;border:1px solid #EDE9DE;border-radius:12px;">
       <div style="font-size:20px;font-weight:700;color:#1A1400;line-height:1.2;">${value}</div>
       <div style="font-size:11px;color:#8A8065;margin-top:2px;">${label}</div>
+      ${delta ? `<div style="font-size:10px;font-weight:700;color:${delta.color};margin-top:3px;">${delta.text}</div>` : ''}
     </td>`
 
   const kritikSorted = [...content.kritik].sort((a, b) => (PRIO_ORDER[a.prio] ?? 1) - (PRIO_ORDER[b.prio] ?? 1))
@@ -118,10 +140,10 @@ function renderDigestHtml(opts: {
           <p style="margin:0 0 18px;font-size:14.5px;line-height:1.7;color:#4A4438;">${esc(content.wochenfazit)}</p>
 
           <table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>
-            ${statCell(String(stats.nachrichten), 'Gastnachrichten')}
-            ${statCell(String(stats.bewertungen), 'neue Bewertungen')}
-            ${statCell(stats.note, 'Ø-Note der Woche')}
-            ${statCell(stats.antwortzeit, 'Ø Antwortzeit')}
+            ${statCell(String(stats.nachrichten), 'Gastnachrichten', deltas.nachrichten)}
+            ${statCell(String(stats.bewertungen), 'neue Bewertungen', deltas.bewertungen)}
+            ${statCell(stats.note, 'Ø-Note der Woche', deltas.note)}
+            ${statCell(stats.antwortzeit, 'Ø Antwortzeit', deltas.antwortzeit)}
           </tr></table>
           ${responseLine ? `<p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:#8A8065;text-align:center;">${responseLine}</p>` : ''}
 
@@ -282,7 +304,8 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
     .limit(MAX_REVIEWS)
   const reviews = (reviewRows ?? []).filter((r) => String(r.review_text ?? '').trim().length >= 25)
   const ratings = (reviewRows ?? []).map((r) => Number(r.rating)).filter((n) => Number.isFinite(n) && n > 0)
-  const avgNote = ratings.length ? (ratings.reduce((s, n) => s + n, 0) / ratings.length).toFixed(2).replace('.', ',') : '—'
+  const avgNoteNum = ratings.length ? ratings.reduce((s, n) => s + n, 0) / ratings.length : null
+  const avgNote = avgNoteNum !== null ? avgNoteNum.toFixed(2).replace('.', ',') : '—'
 
   // ── Aufgaben-Kontext: Wochen-KI-Vorschläge (Statuszeile) + Historie (für „🔁") ──
   const { data: weekTasks } = await supabaseAdmin
@@ -306,8 +329,9 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
     return `- [${created}] ${t.title}${done}`
   })
 
-  // ── Frühere Wochenberichte als Gedächtnis (fail-soft ohne Tabelle) ──
+  // ── Frühere Wochenberichte: Gedächtnis für die KI + Vorwochen-Kennzahlen ──
   let previousDigests: string[] = []
+  let prevStats: Partial<DigestStats> | null = null
   try {
     const { data: prev } = await supabaseAdmin
       .from('weekly_digests').select('week_start, content')
@@ -317,6 +341,7 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
       const titles = (c.kritik ?? []).map((k) => k.titel).filter(Boolean)
       return `Woche ab ${p.week_start}: ${titles.length ? titles.join(' · ') : '(keine Kritikpunkte)'}`
     })
+    prevStats = ((prev?.[0]?.content as { stats?: DigestStats } | undefined)?.stats) ?? null
   } catch { /* Migration noch nicht ausgeführt */ }
 
   const user = [
@@ -347,6 +372,12 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
   const html = renderDigestHtml({
     rangeLabel,
     stats: { nachrichten: messages.length, bewertungen: reviews.length, note: avgNote, antwortzeit },
+    deltas: {
+      nachrichten: fmtDelta(messages.length, prevStats?.nachrichten, { neutral: true }),
+      bewertungen: fmtDelta(reviews.length, prevStats?.bewertungen, { neutral: true }),
+      note: fmtDelta(avgNoteNum, prevStats?.note, { fmt: (n) => n.toFixed(2).replace('.', ',') }),
+      antwortzeit: fmtDelta(avgResponse, prevStats?.antwortzeitMs, { betterWhenLower: true, fmt: fmtDuration }),
+    },
     content,
     taskLine,
     responseLine,
@@ -376,12 +407,16 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
     if (res.ok) sent++
   }
 
-  // Bericht speichern (Gedächtnis für künftige Läufe) — nicht im Test-Modus
+  // Bericht speichern (Gedächtnis + Vorwochen-Kennzahlen) — nicht im Test-Modus
   if (!opts.onlyEmail) {
     try {
+      const stats: DigestStats = {
+        nachrichten: messages.length, bewertungen: reviews.length,
+        note: avgNoteNum, antwortzeitMs: avgResponse,
+      }
       await supabaseAdmin.from('weekly_digests').insert({
         week_start: since.slice(0, 10),
-        content: content as unknown as Record<string, unknown>,
+        content: { ...content, stats } as unknown as Record<string, unknown>,
       })
     } catch (e) { console.error('[weekly-digest] speichern:', e) }
   }
