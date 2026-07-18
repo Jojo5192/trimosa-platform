@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BLOCK_META, defaultTemplate, emptyBlock, type GuideBlock, type GuideCtx,
+  BLOCK_META, defaultTemplate, emptyBlock, DE_LABELS, type GuideBlock, type GuideCtx,
 } from '@/lib/guide'
-import GuideBlocks, { DE_LABELS } from '@/components/guide/GuideBlocks'
+import GuideBlocks from '@/components/guide/GuideBlocks'
 
 /**
  * 📖 Gästemappen-Builder (Client): links Bausteine anordnen und ausfüllen,
