@@ -23,6 +23,7 @@ interface DigestContent { wochenfazit: string; kritik: KritikItem[]; vorschlaege
 export interface DigestSummary {
   nachrichten: number; bewertungen: number
   kritik: number; vorschlaege: number; lob: number
+  antwortzeit: string; offeneThreads: number; telefonGeklaert: number
   empfaenger: number; note?: string
 }
 
@@ -55,16 +56,17 @@ function fmtShort(d: Date): string {
 /* ── Mail-HTML (gleicher Marken-Rahmen wie lib/email.ts, eigener Body) ── */
 function renderDigestHtml(opts: {
   rangeLabel: string
-  stats: { nachrichten: number; bewertungen: number; note: string }
+  stats: { nachrichten: number; bewertungen: number; note: string; antwortzeit: string }
   content: DigestContent
   taskLine: string | null
+  responseLine: string | null
 }): string {
-  const { rangeLabel, stats, content, taskLine } = opts
+  const { rangeLabel, stats, content, taskLine, responseLine } = opts
 
   const statCell = (value: string, label: string) => `
-    <td width="33%" align="center" style="padding:14px 6px;background:#FCFBF7;border:1px solid #EDE9DE;border-radius:12px;">
-      <div style="font-size:22px;font-weight:700;color:#1A1400;line-height:1.2;">${value}</div>
-      <div style="font-size:11.5px;color:#8A8065;margin-top:2px;">${label}</div>
+    <td width="25%" align="center" style="padding:14px 4px;background:#FCFBF7;border:1px solid #EDE9DE;border-radius:12px;">
+      <div style="font-size:20px;font-weight:700;color:#1A1400;line-height:1.2;">${value}</div>
+      <div style="font-size:11px;color:#8A8065;margin-top:2px;">${label}</div>
     </td>`
 
   const kritikSorted = [...content.kritik].sort((a, b) => (PRIO_ORDER[a.prio] ?? 1) - (PRIO_ORDER[b.prio] ?? 1))
@@ -119,7 +121,9 @@ function renderDigestHtml(opts: {
             ${statCell(String(stats.nachrichten), 'Gastnachrichten')}
             ${statCell(String(stats.bewertungen), 'neue Bewertungen')}
             ${statCell(stats.note, 'Ø-Note der Woche')}
+            ${statCell(stats.antwortzeit, 'Ø Antwortzeit')}
           </tr></table>
+          ${responseLine ? `<p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:#8A8065;text-align:center;">${responseLine}</p>` : ''}
 
           ${section(`🔴 Kritik &amp; Mängel (${content.kritik.length})`, kritikRows, 'Keine Kritik diese Woche — starke Leistung!')}
           ${section(`💡 Verbesserungsvorschläge (${content.vorschlaege.length})`, vorschlagRows, 'Keine neuen Vorschläge diese Woche.')}
@@ -155,14 +159,16 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
   const { data: listingRows } = await supabaseAdmin.from('listings').select('id, title')
   const listingTitle = new Map((listingRows ?? []).map((l) => [l.id, String(l.title)]))
 
-  // ── Gastnachrichten der Woche (Buchungs-Welt + Direkt-Chat) ──
+  // ── Nachrichten der Woche (Buchungs-Welt + Direkt-Chat) — ALLE Sender,
+  // damit auch die Antwortzeiten (Gast → erste Host-Antwort) berechenbar sind.
+  // select('*') hält den Lauf robust, falls phone_resolved noch nicht migriert ist.
   const { data: bookingMsgs } = await supabaseAdmin
     .from('messages')
-    .select('content, content_de, created_at, booking_id')
-    .eq('sender_type', 'guest')
+    .select('*')
+    .not('booking_id', 'is', null)
     .gt('created_at', since)
     .order('created_at', { ascending: false })
-    .limit(MAX_MESSAGES)
+    .limit(600)
   const bookingIds = [...new Set((bookingMsgs ?? []).map((m) => m.booking_id).filter(Boolean))] as string[]
   const bookingListing = new Map<string, string>()
   if (bookingIds.length) {
@@ -172,11 +178,11 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
 
   const { data: directMsgs } = await supabaseAdmin
     .from('messages')
-    .select('content, content_de, created_at, sender_id, conversation_id')
+    .select('*')
     .not('conversation_id', 'is', null)
     .gt('created_at', since)
     .order('created_at', { ascending: false })
-    .limit(MAX_MESSAGES)
+    .limit(600)
   const convIds = [...new Set((directMsgs ?? []).map((m) => m.conversation_id).filter(Boolean))] as string[]
   const convGuest = new Map<string, { guestId: string | null; listingId: string | null }>()
   if (convIds.length) {
@@ -192,15 +198,77 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
   type Item = { text: string; listingId: string | null }
   const messages: Item[] = []
   for (const m of bookingMsgs ?? []) {
+    if (m.sender_type !== 'guest') continue
     const text = (m.content_de || m.content || '').trim()
-    if (text.length >= 25) messages.push({ text, listingId: m.booking_id ? bookingListing.get(m.booking_id) ?? null : null })
+    if (text.length >= 25 && messages.length < MAX_MESSAGES) messages.push({ text, listingId: m.booking_id ? bookingListing.get(m.booking_id) ?? null : null })
   }
   for (const m of directMsgs ?? []) {
     const meta = m.conversation_id ? convGuest.get(m.conversation_id) : null
     if (!meta || !m.sender_id || m.sender_id !== meta.guestId) continue
     const text = (m.content_de || m.content || '').trim()
-    if (text.length >= 25) messages.push({ text, listingId: meta.listingId })
+    if (text.length >= 25 && messages.length < MAX_MESSAGES) messages.push({ text, listingId: meta.listingId })
   }
+
+  // ── Antwortzeiten: je Thread chronologisch; jede Gast-Sequenz wartet auf die
+  // erste Host-Antwort. Offene Threads am Wochenende zählen als unbeantwortet —
+  // außer die letzte Nachricht trägt 📞 phone_resolved oder ✓ no_reply_needed.
+  type Ev = { at: number; from: 'guest' | 'host'; phone: boolean; noReply: boolean }
+  const threads = new Map<string, Ev[]>()
+  const pushEv = (key: string, ev: Ev) => {
+    const arr = threads.get(key) ?? []
+    arr.push(ev)
+    threads.set(key, arr)
+  }
+  for (const m of bookingMsgs ?? []) {
+    if (m.sender_type === 'system') continue
+    pushEv('b:' + m.booking_id, {
+      at: new Date(m.created_at).getTime(),
+      from: m.sender_type === 'guest' ? 'guest' : 'host',
+      phone: !!m.phone_resolved, noReply: !!m.no_reply_needed,
+    })
+  }
+  for (const m of directMsgs ?? []) {
+    const meta = m.conversation_id ? convGuest.get(m.conversation_id) : null
+    if (!meta) continue
+    pushEv('d:' + m.conversation_id, {
+      at: new Date(m.created_at).getTime(),
+      from: m.sender_id && m.sender_id === meta.guestId ? 'guest' : 'host',
+      phone: !!m.phone_resolved, noReply: !!m.no_reply_needed,
+    })
+  }
+  const responseTimes: number[] = []
+  let openThreads = 0, phoneResolved = 0, noReplyNeeded = 0
+  for (const evs of threads.values()) {
+    evs.sort((a, b) => a.at - b.at)
+    let waitingSince: number | null = null
+    let lastEv: Ev | null = null
+    for (const ev of evs) {
+      if (ev.from === 'guest') { if (waitingSince === null) waitingSince = ev.at }
+      else if (waitingSince !== null) { responseTimes.push(ev.at - waitingSince); waitingSince = null }
+      lastEv = ev
+    }
+    if (waitingSince !== null && lastEv) {
+      if (lastEv.phone) phoneResolved++
+      else if (lastEv.noReply) noReplyNeeded++
+      else openThreads++
+    }
+  }
+  const avgResponse = responseTimes.length
+    ? responseTimes.reduce((s, n) => s + n, 0) / responseTimes.length
+    : null
+  const fmtDuration = (ms: number): string => {
+    const min = ms / 60000
+    if (min < 60) return `${Math.round(min)} min`
+    const h = min / 60
+    if (h < 24) return `${h.toFixed(1).replace('.', ',')} h`
+    return `${(h / 24).toFixed(1).replace('.', ',')} Tg.`
+  }
+  const antwortzeit = avgResponse !== null ? fmtDuration(avgResponse) : '—'
+  const responseLineParts: string[] = []
+  if (openThreads) responseLineParts.push(`✉️ ${openThreads} Thread${openThreads === 1 ? '' : 's'} warten noch auf Antwort`)
+  if (phoneResolved) responseLineParts.push(`📞 ${phoneResolved} per Telefonat geklärt`)
+  if (noReplyNeeded) responseLineParts.push(`✓ ${noReplyNeeded} ohne Antwortbedarf`)
+  const responseLine = responseLineParts.length ? responseLineParts.join(' · ') : null
 
   // ── Bewertungen der Woche (nach Import-Datum) ──
   const { data: reviewRows } = await supabaseAdmin
@@ -275,22 +343,22 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
 
   const html = renderDigestHtml({
     rangeLabel,
-    stats: { nachrichten: messages.length, bewertungen: reviews.length, note: avgNote },
+    stats: { nachrichten: messages.length, bewertungen: reviews.length, note: avgNote, antwortzeit },
     content,
     taskLine,
+    responseLine,
   })
 
-  // ── Empfänger: Admins, Gastgeber, Mitarbeiter (nicht Dienstleister) ──
+  // ── Empfänger: Admins, Gastgeber, Mitarbeiter (nicht Dienstleister) —
+  // bewusst die persönliche LOGIN-Mail, NICHT notification_email (die ist das
+  // operative Buchungs-Postfach, z. B. fewo@) ──
   const { data: team } = await supabaseAdmin
-    .from('profiles').select('id, notification_email')
+    .from('profiles').select('id')
     .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
   const emails = new Set<string>()
   for (const p of team ?? []) {
-    let mail = (p.notification_email as string | null)?.trim() || null
-    if (!mail) {
-      const { data: u } = await supabaseAdmin.auth.admin.getUserById(p.id)
-      mail = u?.user?.email ?? null
-    }
+    const { data: u } = await supabaseAdmin.auth.admin.getUserById(p.id)
+    const mail = u?.user?.email ?? null
     if (mail) emails.add(mail.toLowerCase())
   }
 
@@ -315,6 +383,9 @@ export async function runWeeklyDigest(): Promise<DigestSummary> {
     kritik: content.kritik.length,
     vorschlaege: content.vorschlaege.length,
     lob: content.lob.length,
+    antwortzeit,
+    offeneThreads: openThreads,
+    telefonGeklaert: phoneResolved,
     empfaenger: sent,
   }
 }
