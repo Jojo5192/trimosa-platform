@@ -8,6 +8,7 @@ const NAV = [
   { href: '/dashboard',               icon: '⊞',  label: 'Übersicht'    },
   { href: '/dashboard/bookings',      icon: '📅', label: 'Buchungen'    },
   { href: '/dashboard/chat',          icon: '💬', label: 'Chat'         },
+  { href: '/dashboard/mappe',         icon: '📖', label: 'Gästemappe'   },
   { href: '/dashboard/notifications', icon: '🔔', label: 'Nachrichten'  },
 ]
 
