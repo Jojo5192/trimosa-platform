@@ -8,7 +8,7 @@
  * Rotfrist: due_date überschritten → Aufgabe wird rot markiert + sortiert
  * nach ganz oben.
  */
-import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import QsBlock from '@/components/team/QsPanel'
 
 export interface Task {
@@ -111,6 +111,10 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
   const [completing, setCompleting] = useState<Task | null>(null)
   const [openComments, setOpenComments] = useState<string | null>(null)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
+  // Standardansicht = EIGENE Aufgaben (Inhaber-Wunsch 19.7.): beim ersten
+  // Load wird für Alles-Seher der Personen-Filter auf die eigene Person
+  // vorgewählt; ein manueller Klick (touched) gewinnt danach immer
+  const personTouched = useRef(false)
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -135,6 +139,10 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         setViewAll(!!json.viewAll)
         setApiRole(json.role ?? '')
         setCommentCounts(json.commentCounts ?? {})
+        if (json.viewAll && !personTouched.current) {
+          personTouched.current = true
+          setPersonFilter(userId)
+        }
         setError(null)
       } else setError(json.error ?? `Fehler beim Laden (${res.status}).`)
     } catch (e) {
@@ -144,7 +152,7 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
       setError(`Netzwerkfehler beim Laden${detail}`)
     }
     setLoading(false)
-  }, [])
+  }, [userId])
   useEffect(() => { load() }, [load])
   // App kommt aus dem Hintergrund zurück ODER Netz kehrt zurück → frisch laden
   useEffect(() => {
@@ -283,7 +291,7 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         {viewAll && people.length > 0 && filter !== 'vorschlaege' && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
             {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
-              <button key={id || 'alle'} onClick={() => setPersonFilter(id)} style={{
+              <button key={id || 'alle'} onClick={() => { personTouched.current = true; setPersonFilter(id) }} style={{
                 padding: '5px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0,
                 background: personFilter === id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
                 color: personFilter === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -304,8 +312,8 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
         </div>
       )}
 
-      {/* 🧾 QS-Termine (Halbjahres-Checks) — eigener Block über der Liste */}
-      {filter !== 'vorschlaege' && <QsBlock />}
+      {/* 🧾 QS-Termine (Halbjahres-Checks) — folgt dem Personen-Filter */}
+      {filter !== 'vorschlaege' && <QsBlock personFilter={personFilter} />}
 
       {/* 🤖 Vorschläge-Reiter (nur Admins/Gastgeber) — eigene Ansicht */}
       {apiRole === 'admin' && filter === 'vorschlaege' && (
