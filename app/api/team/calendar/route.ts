@@ -127,7 +127,14 @@ export async function GET() {
         l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
       ])),
     cleaning: {
-      settings: cleaningSettings,
+      settings: { avoidSundays: cleaningSettings.avoidSundays, avoidHolidays: cleaningSettings.avoidHolidays },
+      // 💶 Kosten-Sätze NUR für Admins/Gastgeber (Finanz-Daten!)
+      rates: auth.role === 'admin' ? {
+        hourlyRate: cleaningSettings.hourlyRate,
+        travelFee: cleaningSettings.travelFee,
+        sundaySurchargePct: cleaningSettings.sundaySurchargePct,
+        holidaySurchargePct: cleaningSettings.holidaySurchargePct,
+      } : null,
       holidays: holidaysInRange(start, 70),
       responsible: Object.fromEntries(listings
         .filter((l) => l.cleaning_responsible && (!visibleIds || visibleIds.has(l.id)))
