@@ -27,19 +27,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!(await membership(id, auth.userId))) return NextResponse.json({ error: 'Kein Mitglied.' }, { status: 403 })
 
   // ?media=1 → nur Anhänge (Medien-Galerie der Gruppen-Info), neueste zuerst
-  const mediaOnly = new URL(req.url).searchParams.get('media') === '1'
+  // ?peek=1  → NICHT als gelesen markieren (Hintergrund-Polling, §122-Badge-Fix)
+  const search = new URL(req.url).searchParams
+  const mediaOnly = search.get('media') === '1'
+  const peek = search.get('peek') === '1'
 
-  let query = supabaseAdmin
-    .from('team_messages')
-    .select('id, sender_id, content, attachment_url, attachment_type, attachment_name, reactions, created_at, profiles(display_name, avatar_url)')
-    .eq('chat_id', id)
-  query = mediaOnly
-    ? query.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
-    : query.order('created_at', { ascending: true }).limit(300)
-  const { data: msgs, error } = await query
+  const buildQuery = (withReply: boolean) => {
+    let q = supabaseAdmin
+      .from('team_messages')
+      .select(`id, sender_id, content, attachment_url, attachment_type, attachment_name, reactions${withReply ? ', reply_to_id' : ''}, created_at, profiles(display_name, avatar_url)`)
+      .eq('chat_id', id)
+    return mediaOnly
+      ? q.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
+      : q.order('created_at', { ascending: true }).limit(300)
+  }
+  // Deploy-Retry: reply_to_id existiert erst nach Migration 20260719_team_reply
+  let { data: msgs, error } = await buildQuery(true)
+  if (error) ({ data: msgs, error } = await buildQuery(false))
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  if (!mediaOnly) {
+  if (!mediaOnly && !peek) {
     await supabaseAdmin
       .from('team_chat_members')
       .update({ last_read_at: new Date().toISOString() })
@@ -59,6 +66,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         attachmentType: m.attachment_type,
         attachmentName: m.attachment_name,
         reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
+        replyToId: (m as { reply_to_id?: string | null }).reply_to_id ?? null,
         createdAt: m.created_at,
       }
     }),
@@ -78,14 +86,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const attachmentName = typeof body.attachmentName === 'string' ? body.attachmentName.slice(0, 160) : null
   if (!content && !attachmentUrl) return NextResponse.json({ error: 'Leere Nachricht.' }, { status: 400 })
 
-  const { data: msg, error } = await supabaseAdmin
-    .from('team_messages')
-    .insert({
-      chat_id: id, sender_id: auth.userId, content,
-      attachment_url: attachmentUrl, attachment_type: attachmentUrl ? attachmentType : null, attachment_name: attachmentName,
-    })
-    .select('id').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // ↩︎ Antwort auf eine Nachricht (iMessage-Zitat): nur gültig, wenn die
+  // zitierte Nachricht in DIESEM Chat existiert
+  let replyToId: string | null = null
+  if (typeof body.replyToId === 'string' && body.replyToId) {
+    const { data: orig } = await supabaseAdmin
+      .from('team_messages').select('id').eq('id', body.replyToId).eq('chat_id', id).maybeSingle()
+    if (orig) replyToId = orig.id
+  }
+
+  const row = {
+    chat_id: id, sender_id: auth.userId, content,
+    attachment_url: attachmentUrl, attachment_type: attachmentUrl ? attachmentType : null, attachment_name: attachmentName,
+  }
+  // Deploy-Retry: reply_to_id existiert erst nach Migration 20260719_team_reply
+  let { data: msg, error } = replyToId
+    ? await supabaseAdmin.from('team_messages').insert({ ...row, reply_to_id: replyToId }).select('id').single()
+    : await supabaseAdmin.from('team_messages').insert(row).select('id').single()
+  if (error && replyToId) ({ data: msg, error } = await supabaseAdmin.from('team_messages').insert(row).select('id').single())
+  if (error || !msg) return NextResponse.json({ error: error?.message ?? 'Senden fehlgeschlagen.' }, { status: 500 })
 
   // Eigener Lesestand mitziehen (die eigene Nachricht zählt nicht als ungelesen)
   await supabaseAdmin
@@ -108,7 +127,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     for (const m of members ?? []) {
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
-      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, '/team?tab=intern').catch(() => {})
+      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, '/team?tab=intern', `intern-${id}`).catch(() => {})
     }
   })().catch((e) => console.error('[team-chat] push:', e))
 
