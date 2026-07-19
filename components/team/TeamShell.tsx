@@ -40,7 +40,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+    <div className="team-shell" style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
       {/* Content */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {role === 'team' && (
