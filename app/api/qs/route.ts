@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { QS_TEMPLATE, ensureQsChecks, findFreeDay } from '@/lib/qs'
+import { ensureQsChecks, findFreeDay, getQsTemplateStore, resolveQsTemplate } from '@/lib/qs'
 
 /**
  * 🧾 QS-Termine:
@@ -35,16 +35,21 @@ export async function GET(req: NextRequest) {
 
   const listingIds = [...new Set((checks ?? []).map((c) => c.listing_id))]
   const userIds = [...new Set((checks ?? []).flatMap((c) => [c.assignee_id, c.completed_by]).filter(Boolean))] as string[]
-  const [{ data: listings }, { data: people }] = await Promise.all([
+  const [{ data: listings }, { data: people }, tplStore] = await Promise.all([
     listingIds.length
-      ? supabaseAdmin.from('listings').select('id, title').in('id', listingIds)
-      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+      ? supabaseAdmin.from('listings').select('id, title, location_group').in('id', listingIds)
+      : Promise.resolve({ data: [] as { id: string; title: string; location_group: string | null }[] }),
     userIds.length
       ? supabaseAdmin.from('profiles').select('id, display_name').in('id', userIds)
       : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+    getQsTemplateStore(),
   ])
   const titleOf = Object.fromEntries((listings ?? []).map((l) => [l.id, l.title]))
   const nameOf = Object.fromEntries((people ?? []).map((p) => [p.id, (p.display_name ?? '').split(/\s+/)[0] || '—']))
+  // Aufgelöste Checkliste je betroffener Wohnung (Wohnung > Standort > Standard)
+  const templates = Object.fromEntries(
+    (listings ?? []).map((l) => [l.id, resolveQsTemplate(tplStore, l.id, l.location_group)])
+  )
 
   return NextResponse.json({
     checks: (checks ?? []).map((c) => ({
@@ -61,7 +66,8 @@ export async function GET(req: NextRequest) {
       completedAt: c.completed_at,
       completedByName: c.completed_by ? nameOf[c.completed_by] ?? null : null,
     })),
-    template: QS_TEMPLATE,
+    templates,
+    defaultTemplate: tplStore.base,
     isAdmin: me.role === 'admin',
     me: me.userId,
   }, NO_STORE)
