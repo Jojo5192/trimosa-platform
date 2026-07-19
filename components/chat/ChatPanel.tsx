@@ -218,43 +218,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [isMobile, setIsMobile] = useState(false)
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({})
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('alle')
-  const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
-
-  /* ── PWA push: register SW + reflect subscription state (team only) ── */
-  useEffect(() => {
-    if (!team || typeof window === 'undefined') return
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
-    navigator.serviceWorker.register('/sw.js').then(async (reg) => {
-      const sub = await reg.pushManager.getSubscription()
-      setPushState(sub ? 'on' : 'off')
-    }).catch(() => setPushState('unsupported'))
-  }, [team])
-
-  async function togglePush() {
-    if (pushState === 'unsupported') return
-    try {
-      const reg = await navigator.serviceWorker.ready
-      const existing = await reg.pushManager.getSubscription()
-      if (existing) {
-        await fetch('/api/push', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) })
-        await existing.unsubscribe()
-        setPushState('off')
-        return
-      }
-      const perm = await Notification.requestPermission()
-      if (perm !== 'granted') return
-      const keyRes = await fetch('/api/push')
-      const { publicKey, error } = await keyRes.json()
-      if (!publicKey) { alert(error ?? 'Push ist noch nicht konfiguriert.'); return }
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey })
-      const res = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) })
-      setPushState(res.ok ? 'on' : 'off')
-    } catch (e) {
-      // iOS Safari outside an installed PWA cannot subscribe
-      alert('Push konnte nicht aktiviert werden. Auf dem iPhone: Seite über „Teilen → Zum Home-Bildschirm" installieren und dort erneut versuchen.')
-      console.error('[push] subscribe failed:', e)
-    }
-  }
+  // Push-Einstellungen (Geräte-Subscription + Kategorien) leben jetzt zentral
+  // im ⚙️-Tab der Team-Shell (SettingsPanel) — die Glocke hier ist raus
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
   const [refining, setRefining] = useState(false)
@@ -620,14 +585,6 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 </button>
               )
             })}
-            {pushState !== 'unsupported' && pushState !== 'unknown' && (
-              <button onClick={togglePush} title={pushState === 'on' ? 'Push-Mitteilungen aktiv — tippen zum Deaktivieren' : 'Push-Mitteilungen aktivieren'} style={{
-                flexShrink: 0, marginLeft: 'auto', width: 28, height: 28, borderRadius: '50%',
-                border: '1px solid #E5E1D6', background: pushState === 'on' ? '#FAF5E4' : '#fff',
-                cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: pushState === 'on' ? 1 : 0.55,
-              }}>{pushState === 'on' ? '🔔' : '🔕'}</button>
-            )}
           </div>
         )}
         {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
