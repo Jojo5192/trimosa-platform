@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendPushToTeam } from '@/lib/push'
+import { sendNewBookingPush } from '@/lib/push'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
@@ -63,8 +63,10 @@ export async function POST(req: NextRequest) {
     sendBookingEmail(bookingId).catch(err =>
       console.error('[Webhook] guest confirmation failed (non-fatal):', err))
     sendHostBookingAlert(bookingId)
-    sendPushToTeam('📅 Neue Buchung/Anfrage eingegangen', 'Zahlung bestätigt — Details im Dashboard.', '/dashboard/bookings').catch(() => {}).catch(err =>
-      console.error('[Webhook] host alert failed (non-fatal):', err)
+    // Rollenabhängiger Buchungs-Push (Chefs mit Betrag, Staff ohne),
+    // Tap → Gast-Thread in der Team-Inbox
+    sendNewBookingPush(bookingId).catch(err =>
+      console.error('[Webhook] booking push failed (non-fatal):', err)
     )
 
     // For instant bookings: push to Smoobu immediately
