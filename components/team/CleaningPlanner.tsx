@@ -9,10 +9,14 @@
  *  🗺 Touren — Tages-Einsatzpläne: je Einsatztag Standort-Blöcke mit
  *              Wohnungen, Gesamtdauer und Anfahrts-Zähler.
  *  💶 Kosten — NUR Admins (rates kommen nur für sie von der API): erwartete
- *              „Rechnung" der nächsten 4 Wochen — Stunden × Satz je Wohnung,
- *              Sonn-/Feiertags-Zulagen, Anfahrten, Summe + Monats-Hochrechnung.
+ *              „Rechnung" je KALENDERMONAT, filterbar nach Reinigungskraft,
+ *              zweistufig auffächerbar (Wohnung → einzelne Reinigungen mit
+ *              Datum; Zulagen + Anfahrten ebenso). Dazu Rechnungs-Upload:
+ *              echte Monats-Rechnung (PDF/Foto) → Claude liest sie und
+ *              gleicht sie gegen die Erwartung ab (§116).
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
 export type CleaningInfo = {
@@ -22,6 +26,13 @@ export type CleaningInfo = {
   responsible: Record<string, { id: string; name: string }>
   minutes: Record<string, number>
   mine: string[]
+}
+type Invoice = {
+  id: string; month: string; person_id: string | null
+  file_url: string; file_name: string | null
+  amount_expected: number | null; amount_invoiced: number | null
+  analysis: { betrag_rechnung?: number | null; positionen?: { text: string; betrag: number | null }[]; differenz?: number | null; einschaetzung?: string; auffaelligkeiten?: string[] } | null
+  status: string; created_at: string
 }
 
 const DE_DAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
@@ -39,6 +50,9 @@ function fmtShort(iso: string): string {
   const [, m, d] = iso.split('-')
   return `${Number(d)}.${Number(m)}.`
 }
+function wdShort(iso: string): string {
+  return DE_DAYS[new Date(iso + 'T00:00:00Z').getUTCDay()].slice(0, 2)
+}
 function dayLabel(iso: string, today: string): string {
   const d = new Date(iso + 'T00:00:00Z')
   const base = `${DE_DAYS[d.getUTCDay()]}, ${d.getUTCDate()}. ${DE_MONTHS[d.getUTCMonth()]}`
@@ -52,6 +66,7 @@ function fmtDur(min: number): string {
   return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`
 }
 const eur = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const eurSigned = (n: number) => (n > 0 ? '+' : '') + eur(n)
 
 type Slot = {
   stay: Stay
@@ -76,6 +91,15 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const isAdmin = !!cleaning.rates
   const [scope, setScope] = useState<'meine' | 'alle'>(hasMine ? 'meine' : 'alle')
   const [mode, setMode] = useState<'liste' | 'touren' | 'kosten'>('liste')
+  // 💶: Personen-Filter + Drill-Down + Rechnungs-Abgleich
+  const [costPerson, setCostPerson] = useState<string>('') // '' alle · 'none' ohne · sonst userId
+  const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({})
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invOpen, setInvOpen] = useState<string | null>(null)
+  const [invBusy, setInvBusy] = useState<string | null>(null)
+  const [invError, setInvError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const pendingRef = useRef<{ month: string; expected: Record<string, unknown>; personId: string; personName: string } | null>(null)
 
   const today = isoOffset(0)
   // Slots reichen so weit wie die Kalender-Daten (+56 Tage) — die Kosten-
@@ -142,19 +166,43 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const visible = slots.filter((s) =>
     s.effDay <= listHorizon && (scope === 'alle' || cleaning.mine.includes(s.listingId)))
 
-  /* ── Kosten (nur Admins, immer über ALLE Wohnungen) — echte KALENDERMONATE,
-        weil die Rechnungen der Reinigungskräfte monatsweise kommen ── */
+  /* ── 💶 Personen für den Kosten-Filter (aus den Zuordnungen) ── */
+  const persons = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const r of Object.values(cleaning.responsible)) m.set(r.id, r.name)
+    return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [cleaning.responsible])
+  const hasUnassigned = Object.keys(listings).some((id) => !cleaning.responsible[id])
+  const personLabel = costPerson === '' ? 'alle Wohnungen'
+    : costPerson === 'none' ? 'Wohnungen ohne Zuordnung'
+      : (persons.find((p) => p.id === costPerson)?.name ?? '—')
+
+  const slotCost = (s: Slot) => (s.minutes / 60) * (cleaning.rates?.hourlyRate ?? 0)
+  const slotSurcharge = (s: Slot) => {
+    const br = blockReason(s.effDay)
+    if (!br || !cleaning.rates) return 0
+    return slotCost(s) * ((br === 'feiertag' ? cleaning.rates.holidaySurchargePct : cleaning.rates.sundaySurchargePct) / 100)
+  }
+
+  /* ── Kosten — echte KALENDERMONATE, gefiltert nach Reinigungskraft ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
     const r = cleaning.rates
+    const matchPerson = (lid: string) =>
+      costPerson === '' ? true
+        : costPerson === 'none' ? !cleaning.responsible[lid]
+          : cleaning.responsible[lid]?.id === costPerson
+    const filtered = slots.filter((s) => matchPerson(s.listingId))
+
     type MonthRow = {
       key: string; label: string; partialStart: boolean; partialEnd: boolean
       perListing: Map<string, { count: number; minutes: number; base: number }>
-      surcharge: number; trips: Set<string>
+      surcharge: number; trips: Map<string, { day: string; group: string; count: number }>
+      slots: Slot[]
     }
     const months = new Map<string, MonthRow>()
     let missingMinutes = 0
-    for (const s of slots) {
+    for (const s of filtered) {
       const key = s.effDay.slice(0, 7)
       let m = months.get(key)
       if (!m) {
@@ -164,21 +212,22 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           key, label: `${DE_MONTHS[mo - 1]} ${y}`,
           partialStart: `${key}-01` < today,
           partialEnd: lastDay > horizon,
-          perListing: new Map(), surcharge: 0, trips: new Set(),
+          perListing: new Map(), surcharge: 0, trips: new Map(), slots: [],
         }
         months.set(key, m)
       }
+      m.slots.push(s)
       const row = m.perListing.get(s.listingId) ?? { count: 0, minutes: 0, base: 0 }
-      const cost = (s.minutes / 60) * r.hourlyRate
       row.count++
       row.minutes += s.minutes
-      row.base += cost
+      row.base += slotCost(s)
       m.perListing.set(s.listingId, row)
       if (!s.hasMinutes) missingMinutes++
-      const br = blockReason(s.effDay)
-      if (br === 'feiertag') m.surcharge += cost * (r.holidaySurchargePct / 100)
-      else if (br === 'sonntag') m.surcharge += cost * (r.sundaySurchargePct / 100)
-      m.trips.add(`${s.effDay}|${s.group}`)
+      m.surcharge += slotSurcharge(s)
+      const tKey = `${s.effDay}|${s.group}`
+      const t = m.trips.get(tKey) ?? { day: s.effDay, group: s.group, count: 0 }
+      t.count++
+      m.trips.set(tKey, t)
     }
     const list = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).map((m) => {
       const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
@@ -186,7 +235,78 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       return { ...m, baseSum, travel, tripCount: m.trips.size, total: baseSum + m.surcharge + travel }
     })
     return { months: list, missingMinutes }
-  }, [slots, cleaning.rates]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slots, cleaning.rates, cleaning.responsible, costPerson]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Rechnungen laden (nur Kosten-Ansicht) ── */
+  useEffect(() => {
+    if (mode !== 'kosten' || !isAdmin) return
+    fetch('/api/cleaning-invoices', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setInvoices(d.invoices ?? []))
+      .catch(() => { /* fail-soft */ })
+  }, [mode, isAdmin])
+
+  function startUpload(month: string, expected: Record<string, unknown>) {
+    pendingRef.current = {
+      month, expected,
+      personId: costPerson === '' || costPerson === 'none' ? '' : costPerson,
+      personName: costPerson === '' || costPerson === 'none' ? '' : (persons.find((p) => p.id === costPerson)?.name ?? ''),
+    }
+    fileRef.current?.click()
+  }
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    const ctx = pendingRef.current
+    if (!file || !ctx) return
+    const type = file.type || 'application/pdf'
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(type)) {
+      setInvError('Nur PDF oder Foto (JPG/PNG/WebP).')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) { setInvError('Datei zu groß (max. 15 MB).'); return }
+    setInvError(null)
+    setInvBusy(ctx.month)
+    try {
+      const u = await fetch('/api/cleaning-invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload-url', fileType: type, month: ctx.month }),
+      }).then((r) => r.json())
+      if (!u.token) throw new Error(u.error ?? 'Upload-URL fehlgeschlagen.')
+      const { error: upErr } = await supabase.storage.from(u.bucket)
+        .uploadToSignedUrl(u.path, u.token, file, { contentType: type })
+      if (upErr) throw new Error(upErr.message)
+      const res = await fetch('/api/cleaning-invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'analyze', path: u.path, publicUrl: u.publicUrl,
+          fileName: file.name, fileType: type, month: ctx.month,
+          personId: ctx.personId || undefined, personName: ctx.personName || undefined,
+          expected: ctx.expected,
+        }),
+      }).then((r) => r.json())
+      if (res.error) throw new Error(res.error)
+      // Liste frisch laden + die neue Analyse direkt aufklappen
+      const d = await fetch('/api/cleaning-invoices', { cache: 'no-store' }).then((r) => r.json())
+      setInvoices(d.invoices ?? [])
+      if (res.id) setInvOpen(res.id)
+    } catch (err) {
+      setInvError(err instanceof Error ? err.message : 'Prüfung fehlgeschlagen.')
+    } finally {
+      setInvBusy(null)
+      pendingRef.current = null
+    }
+  }
+
+  async function deleteInvoice(id: string) {
+    if (!confirm('Rechnung und Analyse löschen?')) return
+    await fetch('/api/cleaning-invoices', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    setInvoices((list) => list.filter((x) => x.id !== id))
+  }
 
   /* ── Touren: Einsatztage → Standort-Blöcke ── */
   const tours = useMemo(() => {
@@ -204,9 +324,13 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const chip = (bg: string, color: string, text: string, key?: string) => (
     <span key={key} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: bg, color }}>{text}</span>
   )
+  const toggle = (k: string) => setOpenKeys((o) => ({ ...o, [k]: !o[k] }))
+  const rowStyle = { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' } as const
+  const subRowStyle = { display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0 4px 14px', fontSize: 12, color: '#6B7280' } as const
 
   return (
     <div>
+      <input ref={fileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFile} style={{ display: 'none' }} />
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         {([['liste', '📋 Liste'], ['touren', '🗺 Touren'], ...(isAdmin ? [['kosten', '💶 Kosten']] : [])] as [typeof mode, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setMode(id)} style={{
@@ -224,49 +348,215 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         )}
       </div>
 
-      {/* ═══ 💶 KOSTEN (Admins) — erwartete Rechnung je KALENDERMONAT ═══ */}
+      {/* ═══ 💶 KOSTEN (Admins) — Rechnung je KALENDERMONAT + Person ═══ */}
       {mode === 'kosten' && costs && (
         <div>
-          {costs.months.map((m) => (
-            <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
-              <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE RECHNUNG</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{m.label}</span>
-                <span style={{ fontSize: 12, color: '#9CA3AF' }}>
-                  {[...m.perListing.values()].reduce((a, x) => a + x.count, 0)} Reinigungen · alle Wohnungen
-                </span>
-              </div>
-              {[...m.perListing.entries()].sort((a, b) => b[1].base - a[1].base).map(([id, row]) => (
-                <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                  <span style={{ fontSize: 13, color: '#111', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {listings[id]?.title ?? 'Wohnung'} <span style={{ color: '#9CA3AF', fontSize: 12 }}>· {row.count}× · {fmtDur(row.minutes)}</span>
-                  </span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(row.base)}</span>
-                </div>
+          {/* Personen-Filter: „was stellt Vanessa in Rechnung?" */}
+          {(persons.length > 0) && (
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 6 }}>
+              {[{ id: '', name: 'Alle' }, ...persons, ...(hasUnassigned ? [{ id: 'none', name: 'Ohne Zuordnung' }] : [])].map((p) => (
+                <button key={p.id || 'alle'} onClick={() => setCostPerson(p.id)} style={{
+                  flexShrink: 0, padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+                  background: costPerson === p.id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+                  color: costPerson === p.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>{p.id && p.id !== 'none' ? `👤 ${p.name}` : p.name}</button>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                <span style={{ fontSize: 13, color: '#6B7280' }}>Sonn-/Feiertags-Zulagen</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge ? '#B45309' : '#9CA3AF' }}>{eur(m.surcharge)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                <span style={{ fontSize: 13, color: '#6B7280' }}>Anfahrten ({m.tripCount}× je {eur(cleaning.rates!.travelFee)})</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.travel)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
-                <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}</span>
-                <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(m.total)}</span>
-              </div>
-              {(m.partialStart || m.partialEnd) && (
-                <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
-                  {m.partialStart
-                    ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
-                    : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
-                </p>
-              )}
             </div>
-          ))}
+          )}
+          {invError && (
+            <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 12.5 }}>
+              {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+            </p>
+          )}
+
+          {costs.months.map((m) => {
+            const expectedPayload = {
+              monat: m.label,
+              reinigungskraft: personLabel,
+              saetze: cleaning.rates,
+              total: Math.round(m.total * 100) / 100,
+              basis: Math.round(m.baseSum * 100) / 100,
+              zulagen: Math.round(m.surcharge * 100) / 100,
+              anfahrten: { anzahl: m.tripCount, betrag: m.travel },
+              wohnungen: [...m.perListing.entries()].map(([id, row]) => ({
+                wohnung: listings[id]?.title ?? 'Wohnung', anzahl: row.count,
+                minuten: row.minutes, betrag: Math.round(row.base * 100) / 100,
+              })),
+              einzelne_reinigungen: m.slots.map((s) => ({
+                datum: s.effDay, wohnung: listings[s.listingId]?.title ?? '—',
+                dauer_min: s.minutes, betrag: Math.round(slotCost(s) * 100) / 100,
+                zulage: Math.round(slotSurcharge(s) * 100) / 100 || undefined,
+              })),
+              hinweis: m.partialStart ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.' : undefined,
+            }
+            const monthInvoices = invoices.filter((inv) => inv.month === m.key
+              && (costPerson === '' || (costPerson === 'none' ? inv.person_id === null : inv.person_id === costPerson)))
+            return (
+              <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE RECHNUNG</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{m.label}</span>
+                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>{m.slots.length} Reinigungen · {personLabel}</span>
+                </div>
+
+                {/* Wohnungen — Tap fächert die einzelnen Reinigungen auf */}
+                {[...m.perListing.entries()].sort((a, b) => b[1].base - a[1].base).map(([id, row]) => {
+                  const k = `${m.key}|l|${id}`
+                  const open = !!openKeys[k]
+                  return (
+                    <div key={id}>
+                      <button onClick={() => toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: '#111', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{open ? '▾' : '▸'}</span>
+                          {listings[id]?.title ?? 'Wohnung'} <span style={{ color: '#9CA3AF', fontSize: 12 }}>· {row.count}× · {fmtDur(row.minutes)}</span>
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(row.base)}</span>
+                      </button>
+                      {open && m.slots.filter((s) => s.listingId === id).map((s) => (
+                        <div key={s.stay.id} style={subRowStyle}>
+                          <span>
+                            {wdShort(s.effDay)} {fmtShort(s.effDay)} · {fmtDur(s.minutes)}
+                            {s.sameDayArrival ? ' · Wechseltag' : s.reason === 'buendel' ? ` · gebündelt (Abreise ${fmtShort(s.stay.checkOut)})` : ''}
+                            {slotSurcharge(s) > 0 ? ` · zzgl. ${eur(slotSurcharge(s))} Zulage` : ''}
+                          </span>
+                          <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(slotCost(s))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+
+                {/* Zulagen — aufklappbar */}
+                {(() => {
+                  const k = `${m.key}|z`
+                  const zSlots = m.slots.filter((s) => slotSurcharge(s) > 0)
+                  return (
+                    <div>
+                      <button onClick={() => zSlots.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: zSlots.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: '#6B7280' }}>
+                          {zSlots.length > 0 && <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
+                          Sonn-/Feiertags-Zulagen
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge ? '#B45309' : '#9CA3AF', flexShrink: 0 }}>{eur(m.surcharge)}</span>
+                      </button>
+                      {openKeys[k] && zSlots.map((s) => (
+                        <div key={s.stay.id} style={subRowStyle}>
+                          <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {blockReason(s.effDay) === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
+                          <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0 }}>{eurSigned(slotSurcharge(s))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+
+                {/* Anfahrten — aufklappbar */}
+                {(() => {
+                  const k = `${m.key}|a`
+                  const trips = [...m.trips.values()].sort((a, b) => a.day.localeCompare(b.day))
+                  return (
+                    <div>
+                      <button onClick={() => trips.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: trips.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, color: '#6B7280' }}>
+                          {trips.length > 0 && <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
+                          Anfahrten ({m.tripCount}× je {eur(cleaning.rates!.travelFee)})
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(m.travel)}</span>
+                      </button>
+                      {openKeys[k] && trips.map((t) => {
+                        const s0 = m.slots.find((s) => s.group === t.group)
+                        const info = s0 ? listings[s0.listingId] : null
+                        const label = info?.group ?? info?.title ?? '—'
+                        return (
+                          <div key={`${t.day}|${t.group}`} style={subRowStyle}>
+                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {label} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
+                            <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(cleaning.rates!.travelFee)}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}</span>
+                  <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(m.total)}</span>
+                </div>
+                {(m.partialStart || m.partialEnd) && (
+                  <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
+                    {m.partialStart
+                      ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
+                      : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
+                  </p>
+                )}
+
+                {/* ── Rechnungs-Abgleich ── */}
+                <div style={{ marginTop: 12, paddingTop: 10, boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.15)' }}>
+                  {monthInvoices.map((inv) => {
+                    const diff = inv.amount_invoiced != null && inv.amount_expected != null
+                      ? inv.amount_invoiced - inv.amount_expected : (inv.analysis?.differenz ?? null)
+                    const ok = inv.status === 'geprueft' && diff != null && Math.abs(diff) <= (inv.amount_expected ?? 0) * 0.1
+                    const personName = inv.person_id ? (persons.find((p) => p.id === inv.person_id)?.name ?? 'Person') : null
+                    const open = invOpen === inv.id
+                    return (
+                      <div key={inv.id} style={{ marginBottom: 8 }}>
+                        <button onClick={() => setInvOpen(open ? null : inv.id)} style={{
+                          width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none',
+                          background: inv.status === 'fehler' ? '#FEF2F2' : ok ? '#F0FDF4' : '#FFFBEB',
+                          borderRadius: 12, padding: '9px 12px',
+                          boxShadow: `inset 0 0 0 1px ${inv.status === 'fehler' ? '#FECACA' : ok ? '#BBF7D0' : '#FDE68A'}`,
+                        }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#111', display: 'block' }}>
+                            📄 {inv.file_name ?? 'Rechnung'}{personName ? ` · ${personName}` : ''}
+                          </span>
+                          <span style={{ fontSize: 12, color: '#6B7280' }}>
+                            {inv.status === 'fehler' ? 'Analyse fehlgeschlagen — antippen für Details'
+                              : `Rechnung ${inv.amount_invoiced != null ? eur(inv.amount_invoiced) : '?'} · erwartet ${inv.amount_expected != null ? eur(inv.amount_expected) : '?'}${diff != null ? ` · ${eurSigned(diff)}` : ''}`}
+                          </span>
+                        </button>
+                        {open && (
+                          <div style={{ padding: '10px 12px', fontSize: 12.5, color: '#374151', lineHeight: 1.55 }}>
+                            {inv.analysis?.einschaetzung && <p style={{ margin: '0 0 8px' }}>{inv.analysis.einschaetzung}</p>}
+                            {(inv.analysis?.auffaelligkeiten ?? []).length > 0 && (
+                              <div style={{ margin: '0 0 8px' }}>
+                                {(inv.analysis!.auffaelligkeiten!).map((a, i) => (
+                                  <p key={i} style={{ margin: '0 0 3px', color: '#B45309' }}>⚠️ {a}</p>
+                                ))}
+                              </div>
+                            )}
+                            {(inv.analysis?.positionen ?? []).length > 0 && (
+                              <div style={{ margin: '0 0 8px' }}>
+                                {(inv.analysis!.positionen!).map((p, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0' }}>
+                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.text}</span>
+                                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{p.betrag != null ? eur(p.betrag) : '—'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <span style={{ display: 'inline-flex', gap: 12 }}>
+                              <a href={inv.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#8A7020' }}>Datei öffnen ↗</a>
+                              <button onClick={() => deleteInvoice(inv.id)} style={{ border: 'none', background: 'none', fontSize: 12, fontWeight: 700, color: '#B91C1C', cursor: 'pointer', padding: 0 }}>🗑 Löschen</button>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {invBusy === m.key ? (
+                    <p style={{ fontSize: 12.5, color: '#8A7020', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude liest die Rechnung und gleicht sie ab…</p>
+                  ) : (
+                    <button onClick={() => startUpload(m.key, expectedPayload)} disabled={!!invBusy} style={{
+                      marginTop: 2, padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                      fontSize: 12.5, fontWeight: 700, color: '#fff',
+                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', opacity: invBusy ? 0.5 : 1,
+                    }}>📄 Rechnung hochladen & prüfen{costPerson && costPerson !== 'none' ? ` (${personLabel})` : ''}</button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
           {costs.months.length === 0 && (
-            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine anstehenden Reinigungen im Datenfenster.</p>
+            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine anstehenden Reinigungen für {personLabel} im Datenfenster.</p>
           )}
           {costs.missingMinutes > 0 && (
             <p style={{ fontSize: 11.5, color: '#B45309', margin: '2px 4px 0', lineHeight: 1.5 }}>
