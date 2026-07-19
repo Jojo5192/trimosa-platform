@@ -30,11 +30,11 @@ export async function GET() {
   const [{ data: conversations }, { data: bookings }] = await Promise.all([
     supabaseAdmin
       .from('conversations')
-      .select('*, bookings(check_in, check_out, channel, listing_id, status)')
+      .select('*, bookings(check_in, check_out, channel, listing_id, status, adults, children)')
       .order('last_message_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, listings(title), conversations(id)')
+      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, adults, children, listings(title), conversations(id)')
       .not('smoobu_reservation_id', 'is', null)
       .order('check_in', { ascending: false })
       .limit(400),
@@ -183,7 +183,7 @@ export async function GET() {
   }
 
   const directThreads = (conversations ?? []).map((c) => {
-    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string } | null
+    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string; adults?: number | null; children?: number | null } | null
     const gp = guestProfile.get(c.guest_id)
     const last = lastDirect[c.id]
     return {
@@ -202,6 +202,8 @@ export async function GET() {
       guestLang: dLang[c.id] ?? null,
       noReplyNeeded: last?.noReply ?? false,
       phoneResolved: last?.phone ?? false,
+      adults: b?.adults ?? null,
+      children: b?.children ?? null,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -232,6 +234,8 @@ export async function GET() {
         guestLang: bLang[b.id] ?? null,
         noReplyNeeded: last && 'noReply' in last ? !!last.noReply : false,
         phoneResolved: last && 'phone' in last ? !!last.phone : false,
+        adults: b.adults ?? null,
+        children: b.children ?? null,
         unread: bUnread[b.id] ?? 0,
       }
     })
