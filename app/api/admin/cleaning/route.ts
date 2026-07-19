@@ -63,8 +63,11 @@ export async function PATCH(req: NextRequest) {
     avoidHolidays: typeof src.avoidHolidays === 'boolean' ? src.avoidHolidays : base.avoidHolidays,
     hourlyRate: 'hourlyRate' in src ? num(src.hourlyRate, base.hourlyRate, 500) : base.hourlyRate,
     travelFee: 'travelFee' in src ? num(src.travelFee, base.travelFee, 500) : base.travelFee,
+    travelPerCleaning: typeof src.travelPerCleaning === 'boolean' ? src.travelPerCleaning : (base.travelPerCleaning ?? false),
     sundaySurchargePct: 'sundaySurchargePct' in src ? num(src.sundaySurchargePct, base.sundaySurchargePct, 300) : base.sundaySurchargePct,
     holidaySurchargePct: 'holidaySurchargePct' in src ? num(src.holidaySurchargePct, base.holidaySurchargePct, 300) : base.holidaySurchargePct,
+    specialSurchargePct: 'specialSurchargePct' in src ? num(src.specialSurchargePct, base.specialSurchargePct ?? base.holidaySurchargePct, 300) : (base.specialSurchargePct ?? base.holidaySurchargePct),
+    vatPct: 'vatPct' in src ? num(src.vatPct, base.vatPct ?? 0, 30) : (base.vatPct ?? 0),
   })
 
   if (body.settings && typeof body.settings === 'object') {
