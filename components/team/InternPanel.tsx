@@ -23,6 +23,27 @@ interface TeamMsg {
   attachmentName: string | null; createdAt: string
   /** Tapbacks: { "❤️": [userId, …] } */
   reactions?: Record<string, string[]>
+  /** ↩︎ Antwort auf diese Nachricht (iMessage-Zitat, §122) */
+  replyToId?: string | null
+}
+
+/** Push-Mitteilungen dieses Threads aus der Mitteilungszentrale räumen,
+    sobald in der App gelesen (Dominik §121.3) — best effort, iOS 16.4+. */
+function clearThreadNotifications(tag: string) {
+  try {
+    navigator.serviceWorker?.ready
+      .then((reg) => reg.getNotifications({ tag }))
+      .then((ns) => ns.forEach((n) => n.close()))
+      .catch(() => {})
+  } catch { /* nicht verfügbar */ }
+}
+
+/** Kurz-Label einer Nachricht fürs Zitat / die Antwort-Leiste. */
+function msgLabel(m: TeamMsg): string {
+  if (m.content) return m.content
+  return m.attachmentType === 'image' ? '📷 Foto'
+    : m.attachmentType === 'video' ? '🎬 Video'
+      : m.attachmentType === 'audio' ? '🎙️ Sprachnachricht' : '📄 PDF'
 }
 interface Directory { id: string; name: string; role: string }
 
@@ -91,6 +112,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<TeamChat | null>(null)
   const [msgs, setMsgs] = useState<TeamMsg[]>([])
+  const [replyTo, setReplyTo] = useState<TeamMsg | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -104,6 +126,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  // Schaut der Nutzer den Thread gerade wirklich an? (Basis des markRead-Gates)
+  const viewingRef = useRef(true)
+  useEffect(() => { viewingRef.current = !isMobile || mobileView === 'chat' }, [isMobile, mobileView])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const recRef = useRef<MediaRecorder | null>(null)
   const recChunks = useRef<Blob[]>([])
@@ -152,8 +177,13 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   // mitten in Gesten (Long-Press „fror ein")
   const msgsSigRef = useRef('')
   const loadMsgs = useCallback(async (chatId: string) => {
-    const r = await fetch(`/api/team-chat/${chatId}`, { cache: 'no-store' })
+    // Nur als GELESEN markieren, wenn die App sichtbar ist UND der Thread
+    // wirklich angeschaut wird — Hintergrund-Polls der suspendierten PWA
+    // fraßen sonst den Ungelesen-Badge weg (Dominik §121.2)
+    const markRead = typeof document === 'undefined' || (document.visibilityState === 'visible' && viewingRef.current)
+    const r = await fetch(`/api/team-chat/${chatId}${markRead ? '' : '?peek=1'}`, { cache: 'no-store' })
     if (!r.ok) return
+    if (markRead) clearThreadNotifications(`intern-${chatId}`)
     const d = await r.json()
     const list: TeamMsg[] = d.messages ?? []
     const sig = chatId + '§' + list.map((m) =>
@@ -214,6 +244,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   function openChat(c: TeamChat) {
     if (recording) stopRec(false) // laufende Aufnahme beim Thread-Wechsel verwerfen
     scrolledChatRef.current = '' // jedes Öffnen scrollt frisch ans Ende (mobil remountet der Feed)
+    setReplyTo(null)
+    clearThreadNotifications(`intern-${c.id}`)
     setActive(c)
     setChats((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))
     if (isMobile) setMobileView('chat')
@@ -225,10 +257,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     try {
       const r = await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: draft.trim() }),
+        body: JSON.stringify({ content: draft.trim(), replyToId: replyTo?.id }),
       })
       if (r.ok) {
         setDraft('')
+        setReplyTo(null)
         if (composerRef.current) composerRef.current.style.height = 'auto'
         await loadMsgs(active.id)
         loadChats()
@@ -257,11 +290,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: draft.trim(),
+          content: draft.trim(), replyToId: replyTo?.id,
           attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: file.name,
         }),
       })
       setDraft('')
+      setReplyTo(null)
       await loadMsgs(active.id)
       loadChats()
     } finally { setUploading(false) }
@@ -444,10 +478,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: transcript.slice(0, 1000),
+          content: transcript.slice(0, 1000), replyToId: replyTo?.id,
           attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: fileName,
         }),
       })
+      setReplyTo(null)
       await loadMsgs(active.id)
       loadChats()
     } finally { setUploading(false) }
@@ -613,7 +648,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                 : `${firstOfRun ? 18 : 5}px 18px 18px ${lastOfRun ? 18 : 5}px`
               const reactions = Object.entries(m.reactions ?? {}).filter(([, u]) => u.length)
               return (
-                <div key={m.id} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: reactions.length ? 12 : 0, marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
+                <div key={m.id} id={`tmsg-${m.id}`} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: reactions.length ? 12 : 0, marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
                   {!mine && (lastOfRun
                     ? <Av name={m.senderName} src={m.senderAvatar} size={26} />
                     : <span style={{ width: 26, flexShrink: 0 }} />)}
@@ -645,6 +680,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                             }}>{e}</button>
                           )
                         })}
+                        {/* ↩︎ Antworten (iMessage-Zitat, Dominik §121.1) */}
+                        <button title="Antworten" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); setReplyTo(m); composerRef.current?.focus() }} style={{
+                          width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
+                          background: 'rgba(118,118,128,0.1)', fontSize: 16, cursor: 'pointer', color: '#3C3C43',
+                        }}>↩︎</button>
                       </div>
                     )}
                     {/* Reaktions-Badges an der oberen Ecke (zur Bildschirm-Mitte) */}
@@ -671,6 +711,34 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                       background: mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#E9E9EB',
                       color: mine ? '#fff' : '#1A1814', overflow: 'hidden', position: 'relative',
                     }}>
+                      {/* ↩︎ Zitat der beantworteten Nachricht — Tap springt zum Original */}
+                      {m.replyToId && (() => {
+                        const q = msgs.find((x) => x.id === m.replyToId)
+                        return (
+                          <button
+                            onClick={(ev) => {
+                              ev.stopPropagation()
+                              if (q) document.getElementById(`tmsg-${q.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                            }}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                              cursor: q ? 'pointer' : 'default', fontFamily: 'inherit',
+                              margin: m.attachmentUrl && !m.content ? '2px 2px 4px' : '0 0 6px',
+                              padding: '5px 9px', borderRadius: 10,
+                              background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.055)',
+                              borderLeft: `3px solid ${mine ? 'rgba(255,255,255,0.65)' : 'var(--gold, #AE8D2D)'}`,
+                            }}>
+                            <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: mine ? 'rgba(255,255,255,0.9)' : '#8A7020' }}>
+                              {q?.senderName ?? 'Nachricht'}
+                            </span>
+                            <span style={{
+                              display: 'block', fontSize: 12, lineHeight: 1.35,
+                              color: mine ? 'rgba(255,255,255,0.85)' : '#55524A',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 230,
+                            }}>{q ? msgLabel(q).slice(0, 120) : 'Ursprüngliche Nachricht'}</span>
+                          </button>
+                        )
+                      })()}
                       {m.attachmentType === 'image' && m.attachmentUrl && (
                         <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -747,8 +815,28 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
           </button>
         </div>
       ) : (
+      <div style={{ flexShrink: 0 }}>
+      {/* ↩︎ Antwort-Leiste: worauf gerade geantwortet wird (iMessage-Stil) */}
+      {replyTo && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px',
+          background: 'rgba(255,255,255,0.96)', borderTop: HAIR,
+        }}>
+          <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: 'var(--gold, #AE8D2D)', flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#8A7020' }}>Antwort an {replyTo.senderName}</span>
+            <span style={{ display: 'block', fontSize: 12.5, color: '#55524A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {msgLabel(replyTo).slice(0, 120)}
+            </span>
+          </span>
+          <button onClick={() => setReplyTo(null)} title="Antwort verwerfen" style={{
+            width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)',
+            color: '#3C3C43', fontSize: 13, cursor: 'pointer', flexShrink: 0,
+          }}>✕</button>
+        </div>
+      )}
       <div style={{
-        display: 'flex', gap: 9, alignItems: 'flex-end', padding: '8px 12px', borderTop: HAIR, flexShrink: 0,
+        display: 'flex', gap: 9, alignItems: 'flex-end', padding: '8px 12px', borderTop: replyTo ? 'none' : HAIR,
         background: 'rgba(255,255,255,0.92)',
         paddingBottom: isMobile && mobileView === 'chat' ? 'max(8px, env(safe-area-inset-bottom))' : 8,
       }}>
@@ -793,6 +881,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
             </svg>
           </button>
         )}
+      </div>
       </div>
       )}
     </div>
