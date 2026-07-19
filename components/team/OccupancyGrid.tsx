@@ -20,6 +20,7 @@ const ROW_H = 44
 const NAME_W = 104
 const DE_DAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 const DE_MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+const DE_MONTHS_FULL = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 function isoOffset(days: number): string {
   const d = new Date(Date.now() + days * 86400_000)
@@ -43,13 +44,33 @@ export default function OccupancyGrid({ stays, listings }: {
   listings: Record<string, { title: string; group: string | null }>
 }) {
   const [selected, setSelected] = useState<GridStay | null>(null)
+  // Monat des aktuell links sichtbaren Tages — klebt in der Ecke über der
+  // Namensspalte, damit man beim Wischen immer weiß, wo man ist
+  const [headMonth, setHeadMonth] = useState<{ m: string; y: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const rafRef = useRef(0)
+
+  function updateHeadMonth() {
+    const el = scrollRef.current
+    if (!el) return
+    const idx = Math.min(62, Math.max(0, Math.ceil(el.scrollLeft / DAY_W)))
+    const d = new Date(isoOffset(idx - 7) + 'T00:00:00Z')
+    const m = DE_MONTHS_FULL[d.getUTCMonth()]
+    const y = d.getUTCFullYear()
+    setHeadMonth((prev) => (prev && prev.m === m && prev.y === y ? prev : { m, y }))
+  }
+  const onScroll = () => {
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(updateHeadMonth)
+  }
 
   // Beim Öffnen zu HEUTE scrollen (das Grid beginnt 7 Tage in der
   // Vergangenheit — gestern bleibt eine Wisch-Geste entfernt sichtbar)
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollLeft = 5.5 * DAY_W
-  }, [])
+    updateHeadMonth()
+    return () => cancelAnimationFrame(rafRef.current)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startIso = isoOffset(-7)
   const DAYS = 63
@@ -77,14 +98,23 @@ export default function OccupancyGrid({ stays, listings }: {
 
   return (
     <div>
-      <div ref={scrollRef} style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 14, background: '#fff', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
+      <div ref={scrollRef} onScroll={onScroll} style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 14, background: '#fff', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
         <div style={{ width: NAME_W + DAYS * DAY_W, minWidth: '100%' }}>
           {/* Tages-Header */}
           <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 3, background: '#fff', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.2)' }}>
             <div style={{
               width: NAME_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
               background: '#fff', boxShadow: 'inset -0.5px 0 0 rgba(60,60,67,0.2)',
-            }} />
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 8,
+            }}>
+              {/* aktueller Monat — folgt dem Scrollen */}
+              {headMonth && (
+                <>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: '#8A7020', lineHeight: 1.15, whiteSpace: 'nowrap' }}>{headMonth.m}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#B0AA9C' }}>{headMonth.y}</span>
+                </>
+              )}
+            </div>
             {days.map((d) => (
               <div key={d.iso} style={{
                 width: DAY_W, flexShrink: 0, textAlign: 'center', padding: '6px 0 5px',
