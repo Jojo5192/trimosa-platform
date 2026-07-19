@@ -1,12 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 /**
  * 💼 Interner Team-Messenger (Etappe B, §97): Gruppen-Chats fürs Team —
  * strikt getrennt von der Gäste-Kommunikation. Bilder/Videos/PDFs laufen als
  * Direkt-Upload zu Supabase (signierte URL, kein Vercel-Body-Limit).
+ * Dazu (19.7.): Gruppen-Info (Tap auf den Namen — umbenennen, Mitglieder,
+ * durchsuchbare Medien-Galerie) + 🎙️ Sprachnachrichten (MediaRecorder).
  */
 
 interface TeamChat {
@@ -16,7 +19,7 @@ interface TeamChat {
 }
 interface TeamMsg {
   id: string; senderId: string; senderName: string; senderAvatar: string | null
-  content: string; attachmentUrl: string | null; attachmentType: 'image' | 'video' | 'pdf' | null
+  content: string; attachmentUrl: string | null; attachmentType: 'image' | 'video' | 'pdf' | 'audio' | null
   attachmentName: string | null; createdAt: string
 }
 interface Directory { id: string; name: string; role: string }
@@ -88,8 +91,16 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [showCreate, setShowCreate] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const recRef = useRef<MediaRecorder | null>(null)
+  const recChunks = useRef<Blob[]>([])
+  const recMime = useRef('')
+  const recSend = useRef(false)
+  const recTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 680)
@@ -145,6 +156,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
   function openChat(c: TeamChat) {
+    if (recording) stopRec(false) // laufende Aufnahme beim Thread-Wechsel verwerfen
     setActive(c)
     setChats((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))
     if (isMobile) setMobileView('chat')
@@ -188,6 +200,74 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         }),
       })
       setDraft('')
+      await loadMsgs(active.id)
+      loadChats()
+    } finally { setUploading(false) }
+  }
+
+  /* ── 🎙️ Sprachnachrichten (MediaRecorder; iOS = audio/mp4, Chrome = webm) ── */
+  async function startRec() {
+    if (recording || uploading || !active) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      recMime.current = (rec.mimeType || mime || 'audio/webm').split(';')[0]
+      recChunks.current = []
+      recSend.current = false
+      rec.ondataavailable = (e) => { if (e.data.size) recChunks.current.push(e.data) }
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        if (recTimer.current) clearInterval(recTimer.current)
+        setRecording(false)
+        if (recSend.current && recChunks.current.length) {
+          const blob = new Blob(recChunks.current, { type: recMime.current })
+          if (blob.size > 200) sendVoice(blob)
+        }
+      }
+      recRef.current = rec
+      rec.start()
+      setRecSec(0)
+      setRecording(true)
+      let sec = 0
+      recTimer.current = setInterval(() => {
+        sec++
+        setRecSec(sec)
+        if (sec >= 300) stopRec(true) // Sicherheits-Limit 5 Min
+      }, 1000)
+    } catch {
+      alert('Mikrofon-Zugriff nicht möglich — bitte in den Einstellungen erlauben.')
+    }
+  }
+
+  function stopRec(send: boolean) {
+    recSend.current = send
+    try { recRef.current?.stop() } catch { setRecording(false) }
+  }
+
+  async function sendVoice(blob: Blob) {
+    if (!active) return
+    setUploading(true)
+    try {
+      const mime = recMime.current || 'audio/webm'
+      const ext = mime === 'audio/mp4' ? 'm4a' : mime.split('/')[1] ?? 'webm'
+      const fileName = `Sprachnachricht.${ext}`
+      const r = await fetch(`/api/team-chat/${active.id}/upload`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType: mime, fileName }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error ?? 'Upload fehlgeschlagen.'); return }
+      const { error: upErr } = await supabase.storage
+        .from(d.bucket)
+        .uploadToSignedUrl(d.path, d.token, blob, { contentType: mime })
+      if (upErr) { alert('Upload fehlgeschlagen: ' + upErr.message); return }
+      await fetch(`/api/team-chat/${active.id}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '', attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: fileName }),
+      })
       await loadMsgs(active.id)
       loadChats()
     } finally { setUploading(false) }
@@ -317,13 +397,21 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         {isMobile && (
           <button onClick={() => setMobileView('list')} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: '#F2EFE8', cursor: 'pointer', color: '#555', flexShrink: 0, fontSize: 15 }}>‹</button>
         )}
-        <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{active.emoji}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814' }}>{active.name}</div>
-          <div style={{ fontSize: 11, color: '#AAA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {active.members.map((m) => m.name).join(', ')}
+        {/* Tap auf Emoji/Name → Gruppen-Info (umbenennen, Mitglieder, Medien) */}
+        <button onClick={() => setShowInfo(true)} style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11,
+          border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{active.emoji}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814' }}>
+              {active.name} <span style={{ color: '#C7C7CC', fontSize: 13, fontWeight: 400 }}>›</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#AAA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {active.members.map((m) => m.name).join(', ')}
+            </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Nachrichten */}
@@ -354,6 +442,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                       {m.attachmentType === 'video' && m.attachmentUrl && (
                         <video src={m.attachmentUrl} controls playsInline style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 14, display: 'block' }} />
                       )}
+                      {m.attachmentType === 'audio' && m.attachmentUrl && (
+                        <audio controls preload="metadata" src={m.attachmentUrl} style={{ width: 224, maxWidth: '100%', height: 40, display: 'block' }} />
+                      )}
                       {m.attachmentType === 'pdf' && m.attachmentUrl && (
                         <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer" style={{
                           display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', textDecoration: 'none',
@@ -379,7 +470,34 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer — bei versteckter Tab-Bar übernimmt er die Safe-Area */}
+      {/* Composer — bei versteckter Tab-Bar übernimmt er die Safe-Area;
+          während einer Sprachaufnahme wird er zur Aufnahme-Zeile */}
+      {recording ? (
+        <div style={{
+          display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px', borderTop: HAIR, flexShrink: 0,
+          background: 'rgba(255,255,255,0.96)',
+          paddingBottom: isMobile && mobileView === 'chat' ? 'max(10px, env(safe-area-inset-bottom))' : 10,
+        }}>
+          <span className="rec-pulse" style={{ width: 12, height: 12, borderRadius: '50%', background: '#DC2626', flexShrink: 0 }} />
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1A1814', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+            {Math.floor(recSec / 60)}:{String(recSec % 60).padStart(2, '0')}
+          </span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#8A8578', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Aufnahme läuft…</span>
+          <button onClick={() => stopRec(false)} title="Verwerfen" style={{
+            width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)',
+            color: '#3C3C43', fontSize: 15, cursor: 'pointer', flexShrink: 0,
+          }}>✕</button>
+          <button onClick={() => stopRec(true)} title="Senden" style={{
+            width: 36, height: 36, borderRadius: '50%', border: 'none', padding: 0, flexShrink: 0,
+            background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+            </svg>
+          </button>
+        </div>
+      ) : (
       <div style={{
         display: 'flex', gap: 9, alignItems: 'flex-end', padding: '8px 12px', borderTop: HAIR, flexShrink: 0,
         background: 'rgba(255,255,255,0.92)',
@@ -414,7 +532,19 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
             </button>
           )}
         </div>
+        {!draft.trim() && (
+          <button onClick={startRec} disabled={uploading} title="Sprachnachricht aufnehmen" style={{
+            width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, padding: 0,
+            background: 'rgba(118,118,128,0.12)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A8578" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+            </svg>
+          </button>
+        )}
       </div>
+      )}
     </div>
   )
 
@@ -422,6 +552,272 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     <div style={{ height: '100%', display: 'flex', background: '#fff', overflow: 'hidden' }}>
       {isMobile ? (mobileView === 'list' ? List : Thread) : (<>{List}{Thread}</>)}
       {showCreate && <CreateDialog />}
+      {showInfo && active && (
+        <GroupInfo
+          chat={active}
+          isAdmin={canCreate}
+          directory={directory}
+          userId={userId}
+          onClose={() => setShowInfo(false)}
+          onUpdate={(patch) => {
+            setActive((a) => (a ? { ...a, ...patch } : a))
+            loadChats()
+          }}
+          onDeleted={() => {
+            setShowInfo(false)
+            setActive(null)
+            setMobileView('list')
+            loadChats()
+          }}
+        />
+      )}
     </div>
   )
+}
+
+/* ═══════════ Gruppen-Info: umbenennen · Mitglieder · Medien-Galerie ═══════════ */
+
+const MEDIA_TABS = [
+  ['alle', 'Alle'], ['image', '📷 Fotos'], ['video', '🎬 Videos'], ['audio', '🎙️ Audio'], ['pdf', '📄 Dokumente'],
+] as const
+
+function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDeleted }: {
+  chat: TeamChat
+  isAdmin: boolean
+  directory: Directory[]
+  userId: string
+  onClose: () => void
+  onUpdate: (patch: Partial<TeamChat>) => void
+  onDeleted: () => void
+}) {
+  const [editName, setEditName] = useState(false)
+  const [name, setName] = useState(chat.name)
+  const [emoji, setEmoji] = useState(chat.emoji)
+  const [editMembers, setEditMembers] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set(chat.members.map((m) => m.id)))
+  const [saving, setSaving] = useState(false)
+  const [media, setMedia] = useState<TeamMsg[] | null>(null)
+  const [tab, setTab] = useState<(typeof MEDIA_TABS)[number][0]>('alle')
+  const [q, setQ] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/team-chat/${chat.id}?media=1`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMedia(d?.messages ?? []))
+      .catch(() => setMedia([]))
+  }, [chat.id])
+
+  async function saveName() {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    try {
+      const r = await fetch(`/api/team-chat/${chat.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), emoji: emoji.trim() || '💬' }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern fehlgeschlagen.'); return }
+      onUpdate({ name: name.trim(), emoji: emoji.trim() || '💬' })
+      setEditName(false)
+    } finally { setSaving(false) }
+  }
+
+  async function saveMembers() {
+    if (saving) return
+    if (!selected.has(userId) && !confirm('Du entfernst dich selbst aus der Gruppe — fortfahren?')) return
+    setSaving(true)
+    try {
+      const r = await fetch(`/api/team-chat/${chat.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberIds: [...selected] }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern fehlgeschlagen.'); return }
+      const byId = new Map(directory.map((d) => [d.id, d]))
+      onUpdate({ members: [...selected].map((id) => ({ id, name: byId.get(id)?.name ?? '—', avatar: null })) })
+      setEditMembers(false)
+    } finally { setSaving(false) }
+  }
+
+  async function removeGroup() {
+    if (!confirm(`Gruppe „${chat.name}" mit allen Nachrichten endgültig löschen?`)) return
+    const r = await fetch(`/api/team-chat/${chat.id}`, { method: 'DELETE' })
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Löschen fehlgeschlagen.'); return }
+    onDeleted()
+  }
+
+  const needle = q.trim().toLowerCase()
+  const filtered = (media ?? []).filter((m) => {
+    if (tab !== 'alle' && m.attachmentType !== tab) return false
+    if (!needle) return true
+    return [m.attachmentName, m.content, m.senderName].some((s) => (s ?? '').toLowerCase().includes(needle))
+  })
+
+  const sectionLabel = (t: string) => (
+    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '18px 2px 8px' }}>{t}</div>
+  )
+
+  const overlay = (
+    <div className="team-shell" style={{
+      position: 'fixed', inset: 0, zIndex: 85, background: '#F7F7F8',
+      display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
+    }}>
+      <div style={{
+        padding: '12px 16px', background: 'rgba(255,255,255,0.92)', flexShrink: 0,
+        backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)', cursor: 'pointer', color: '#3C3C43', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <div style={{ fontSize: 16.5, fontWeight: 800, color: '#111' }}>Gruppen-Info</div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '18px 16px 34px' }}>
+        {/* Kopf: Emoji + Name (+ umbenennen für Admins) */}
+        <div style={{ textAlign: 'center' }}>
+          {editName ? (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4}
+                style={{ width: 56, textAlign: 'center', borderRadius: 12, border: '1.5px solid #E0DDD6', padding: '10px 0', fontSize: 18, background: '#fff' }} />
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
+                style={{ flex: '1 1 160px', maxWidth: 260, borderRadius: 12, border: '1.5px solid #E0DDD6', padding: '10px 14px', fontSize: 15, fontWeight: 700, background: '#fff', outline: 'none' }} />
+              <button onClick={saveName} disabled={saving || !name.trim()} style={{
+                padding: '10px 16px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
+                background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))', color: '#fff', cursor: 'pointer',
+              }}>{saving ? '…' : 'OK'}</button>
+              <button onClick={() => { setEditName(false); setName(chat.name); setEmoji(chat.emoji) }} style={{ border: 'none', background: 'none', color: '#8A8578', fontWeight: 700, cursor: 'pointer' }}>✕</button>
+            </div>
+          ) : (
+            <>
+              <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, margin: '0 auto 10px' }}>{chat.emoji}</div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: '#111' }}>{chat.name}</div>
+              {isAdmin && (
+                <button onClick={() => setEditName(true)} style={{
+                  marginTop: 8, padding: '6px 14px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
+                  background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
+                }}>✏️ Umbenennen</button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Mitglieder */}
+        {sectionLabel(`MITGLIEDER (${chat.members.length})`)}
+        <div style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.12)', background: '#fff' }}>
+          {editMembers ? (
+            <div style={{ padding: '10px 12px' }}>
+              {directory.map((d) => (
+                <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selected.has(d.id)}
+                    onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n })}
+                    style={{ width: 17, height: 17, accentColor: 'var(--gold, #AE8D2D)' }} />
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: '#333', flex: 1 }}>{d.name}</span>
+                  <span style={{ fontSize: 11, color: '#A8A292' }}>{d.role}</span>
+                </label>
+              ))}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={saveMembers} disabled={saving || selected.size === 0} style={{
+                  flex: 1, padding: '10px 0', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
+                  background: selected.size ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#E5E1D6',
+                  color: selected.size ? '#fff' : '#999', cursor: 'pointer',
+                }}>{saving ? 'Speichert…' : 'Speichern'}</button>
+                <button onClick={() => { setEditMembers(false); setSelected(new Set(chat.members.map((m) => m.id))) }} style={{
+                  padding: '10px 16px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
+                  background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
+                }}>Abbrechen</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {chat.members.map((m, i) => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 13px', boxShadow: i < chat.members.length - 1 ? `inset 0 -0.5px 0 rgba(60,60,67,0.12)` : 'none' }}>
+                  <Av name={m.name} src={m.avatar} size={30} />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{m.name}{m.id === userId ? ' (du)' : ''}</span>
+                </div>
+              ))}
+              {isAdmin && directory.length > 0 && (
+                <button onClick={() => setEditMembers(true)} style={{
+                  width: '100%', padding: '11px 13px', border: 'none', background: 'none', textAlign: 'left',
+                  fontSize: 13.5, fontWeight: 700, color: '#8A7020', cursor: 'pointer',
+                  boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)',
+                }}>＋ Mitglieder verwalten</button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Medien */}
+        {sectionLabel(`MEDIEN${media ? ` (${media.length})` : ''}`)}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
+          {MEDIA_TABS.map(([id, label]) => (
+            <button key={id} onClick={() => setTab(id)} style={{
+              padding: '5px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700, flexShrink: 0,
+              background: tab === id ? '#1A1814' : 'rgba(120,120,128,0.12)',
+              color: tab === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>{label}</button>
+          ))}
+        </div>
+        <input
+          value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Medien durchsuchen (Name, Text, Absender)"
+          style={{ width: '100%', boxSizing: 'border-box', margin: '8px 0 10px', border: '1px solid #E0DDD6', borderRadius: 12, padding: '9px 12px', fontSize: 14, background: '#fff', color: '#111', outline: 'none' }}
+        />
+        {media === null ? (
+          <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13, padding: 20 }}>Lädt…</p>
+        ) : filtered.length === 0 ? (
+          <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13, padding: 20 }}>
+            {media.length === 0 ? 'Noch keine Medien in dieser Gruppe.' : 'Keine Treffer.'}
+          </p>
+        ) : tab === 'image' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+            {filtered.map((m) => (
+              <a key={m.id} href={m.attachmentUrl!} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '1', borderRadius: 10, overflow: 'hidden' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={m.attachmentUrl!} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {filtered.map((m) => (
+              <div key={m.id} style={{ background: '#fff', borderRadius: 12, padding: '9px 12px', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.12)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                {m.attachmentType === 'image' ? (
+                  <a href={m.attachmentUrl!} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.attachmentUrl!} alt="" loading="lazy" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
+                  </a>
+                ) : (
+                  <span style={{ width: 40, height: 40, borderRadius: 10, background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+                    {m.attachmentType === 'video' ? '🎬' : m.attachmentType === 'audio' ? '🎙️' : '📄'}
+                  </span>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {m.attachmentType === 'audio' ? (
+                    <audio controls preload="metadata" src={m.attachmentUrl!} style={{ width: '100%', maxWidth: 260, height: 36, display: 'block' }} />
+                  ) : (
+                    <a href={m.attachmentUrl!} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: '#111', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.attachmentName ?? (m.attachmentType === 'video' ? 'Video' : 'Datei')}
+                    </a>
+                  )}
+                  <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 2 }}>
+                    {m.senderName} · {fmtTime(m.createdAt)}{m.content ? ` · ${m.content.slice(0, 60)}` : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Gefahrenzone */}
+        {isAdmin && (
+          <>
+            {sectionLabel('VERWALTUNG')}
+            <button onClick={removeGroup} style={{
+              width: '100%', padding: '12px 0', borderRadius: 14, border: 'none',
+              background: '#FEF2F2', color: '#B91C1C', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+            }}>🗑 Gruppe löschen</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null
 }
