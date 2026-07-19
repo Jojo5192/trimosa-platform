@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
+import { getCleaningSettings, holidaysInRange } from '@/lib/cleaning'
 
 /**
  * 📅 Kalender der Team-App: An-/Abreisen aller Wohnungen (heute − 1 Tag bis
@@ -19,8 +20,33 @@ export async function GET() {
   const start = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
   const end = new Date(Date.now() + 56 * 86400_000).toISOString().slice(0, 10)
 
-  // Individuelle Kalender-Sicht (Pascal §99.4): Nicht-Admins sehen nur die
-  // ihnen zugeordneten Wohnungen; ohne Eintrag = alle (Default)
+  const [{ data: bookings }, listingsRes] = await Promise.all([
+    supabaseAdmin
+      .from('bookings')
+      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source')
+      .eq('status', 'confirmed')
+      .lte('check_in', end)
+      .gte('check_out', start)
+      .limit(500),
+    // Reinigungs-Spalten mit Deploy-Retry (Migration 20260719_cleaning evtl. offen)
+    (async () => {
+      const withCleaning = await supabaseAdmin
+        .from('listings').select('id, title, location_group, cleaning_responsible, cleaning_minutes')
+      if (!withCleaning.error) return withCleaning
+      return supabaseAdmin.from('listings').select('id, title, location_group')
+    })(),
+  ])
+  const listings = (listingsRes.data ?? []) as Array<{
+    id: string; title: string; location_group: string | null
+    cleaning_responsible?: string | null; cleaning_minutes?: number | null
+  }>
+
+  /* Sichtbarkeits-Auflösung — HÖCHSTE ROLLE GEWINNT (Inhaber 19.7.):
+     1. Admin/Gastgeber: immer alles.
+     2. Explizite Admin-Zuordnung (calendar_visibility) gewinnt für alle anderen.
+     3. Staff ohne Zuordnung: alles (z. B. Vanessa trotz Reinigungs-Verantwortung).
+     4. Provider ohne Zuordnung: Reinigungs-Verantwortung beschränkt auf die
+        eigenen Wohnungen; ohne Verantwortung (Patrick) → alles. */
   let visibleIds: Set<string> | null = null
   if (auth.role !== 'admin') {
     try {
@@ -29,18 +55,19 @@ export async function GET() {
       const mine = ((setting?.value ?? {}) as Record<string, string[]>)[auth.userId]
       if (Array.isArray(mine) && mine.length) visibleIds = new Set(mine)
     } catch { /* keine Einschränkung */ }
+    if (!visibleIds && auth.role === 'provider') {
+      const owned = listings.filter((l) => l.cleaning_responsible === auth.userId).map((l) => l.id)
+      if (owned.length) visibleIds = new Set(owned)
+    }
   }
 
-  const [{ data: bookings }, { data: listings }] = await Promise.all([
-    supabaseAdmin
-      .from('bookings')
-      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source')
-      .eq('status', 'confirmed')
-      .lte('check_in', end)
-      .gte('check_out', start)
-      .limit(500),
-    supabaseAdmin.from('listings').select('id, title, location_group'),
-  ])
+  /* 🧹 Reinigungs-Kontext für den Planer */
+  const cleaningSettings = await getCleaningSettings()
+  const responsibleIds = [...new Set(listings.map((l) => l.cleaning_responsible).filter(Boolean))] as string[]
+  const { data: respProfiles } = responsibleIds.length
+    ? await supabaseAdmin.from('profiles').select('id, display_name').in('id', responsibleIds)
+    : { data: [] as { id: string; display_name: string | null }[] }
+  const respName = new Map((respProfiles ?? []).map((p) => [p.id, (p.display_name ?? '').trim().split(/\s+/)[0] || '—']))
 
   // Unbezahlte Direkt-Buchungen ausblenden (Geister vor Webhook-Aufräumung)
   const stays = (bookings ?? [])
@@ -94,10 +121,21 @@ export async function GET() {
     stays,
     tasks: tasks ?? [],
     qs,
-    listings: Object.fromEntries((listings ?? [])
+    listings: Object.fromEntries(listings
       .filter((l) => !visibleIds || visibleIds.has(l.id))
       .map((l) => [
         l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
       ])),
+    cleaning: {
+      settings: cleaningSettings,
+      holidays: holidaysInRange(start, 70),
+      responsible: Object.fromEntries(listings
+        .filter((l) => l.cleaning_responsible && (!visibleIds || visibleIds.has(l.id)))
+        .map((l) => [l.id, { id: l.cleaning_responsible, name: respName.get(l.cleaning_responsible!) ?? '—' }])),
+      minutes: Object.fromEntries(listings
+        .filter((l) => l.cleaning_minutes && (!visibleIds || visibleIds.has(l.id)))
+        .map((l) => [l.id, l.cleaning_minutes])),
+      mine: listings.filter((l) => l.cleaning_responsible === auth.userId).map((l) => l.id),
+    },
   }, NO_STORE)
 }
