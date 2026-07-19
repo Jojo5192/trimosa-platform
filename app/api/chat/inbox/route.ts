@@ -54,14 +54,29 @@ export async function GET() {
   const guestIds = [...new Set((conversations ?? []).map((c) => c.guest_id).filter(Boolean))]
   const [{ data: unreadRows }, { data: avatars }] = await Promise.all([
     convIds.length
-      ? supabaseAdmin.from('messages').select('conversation_id').in('conversation_id', convIds).neq('sender_id', user.id).is('read_at', null)
+      ? supabaseAdmin.from('messages')
+          .select('conversation_id, sender_id, read_at, created_at')
+          .in('conversation_id', convIds)
+          .order('created_at', { ascending: false })
+          .limit(800)
       : Promise.resolve({ data: [] }),
     guestIds.length
       ? supabaseAdmin.from('profiles').select('id, avatar_url, display_name').in('id', guestIds)
       : Promise.resolve({ data: [] }),
   ])
+  // „Beantwortet = gelesen" (Pascal-Bug 19.7.): Gast-Nachrichten zählen nur
+  // dann als ungelesen, wenn NACH ihnen keine Host-Antwort mehr kam — sonst
+  // blieben via Smoobu/anderswo beantwortete Threads ewig „ungelesen".
+  const convGuest = new Map((conversations ?? []).map((c) => [c.id as string, c.guest_id as string | null]))
   const unread: Record<string, number> = {}
-  for (const r of unreadRows ?? []) unread[r.conversation_id] = (unread[r.conversation_id] ?? 0) + 1
+  const dAnswered = new Set<string>()
+  for (const r of (unreadRows ?? []) as { conversation_id: string; sender_id: string | null; read_at: string | null }[]) {
+    const isGuest = r.sender_id != null && r.sender_id === convGuest.get(r.conversation_id)
+    if (!isGuest) { dAnswered.add(r.conversation_id); continue }
+    if (!dAnswered.has(r.conversation_id) && !r.read_at) {
+      unread[r.conversation_id] = (unread[r.conversation_id] ?? 0) + 1
+    }
+  }
   const guestProfile = new Map((avatars ?? []).map((p) => [p.id, p]))
 
   // Booking threads: last message + unread from the booking-message world.
@@ -104,6 +119,10 @@ export async function GET() {
     no_reply_needed?: boolean; phone_resolved?: boolean
   }>
   const bLang: Record<string, string> = {}
+  // gleiches „beantwortet = gelesen"-Prinzip wie bei den Direkt-Threads:
+  // bMsgs sind DESC sortiert — sobald eine Host-Nachricht gesehen wurde, sind
+  // alle ÄLTEREN Gast-Nachrichten des Threads beantwortet und zählen nicht
+  const bAnswered = new Set<string>()
   for (const m of bMsgs) {
     if (!m.booking_id) continue
     if (!bLang[m.booking_id] && m.sender_type === 'guest' && m.lang) bLang[m.booking_id] = m.lang
@@ -116,7 +135,8 @@ export async function GET() {
         phone: !!m.phone_resolved,
       }
     }
-    if (m.sender_type === 'guest' && !m.read_at) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
+    if (m.sender_type !== 'guest') { bAnswered.add(m.booking_id); continue }
+    if (!m.read_at && !bAnswered.has(m.booking_id)) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
   }
 
   const lastArchive: Record<number, Last> = {}
