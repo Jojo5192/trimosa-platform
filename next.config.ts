@@ -18,10 +18,9 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
-    // Content-Security-Policy — deliberately REPORT-ONLY first: violations show
-    // up in the browser console ("[Report Only]") without breaking anything.
-    // Once a few days pass without unexpected reports, rename the header to
-    // 'Content-Security-Policy' to enforce it.
+    // Content-Security-Policy — seit 20.07. SCHARF (lief ab 15.07. im
+    // Report-Only ohne Verletzungen; Konsole auf /, Listing, Region und /team
+    // gegengeprüft). Bei neuen Drittanbietern: Inventar unten ergänzen!
     //
     // Origin inventory (keep in sync when adding third parties):
     //  - unpkg.com                 → Leaflet JS + CSS + marker images
@@ -40,6 +39,8 @@ const nextConfig: NextConfig = {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://wccrfgjzxpztfmnqpfiy.supabase.co https://*.basemaps.cartocdn.com",
+      // Sprachnachrichten/Videos im Team-Chat (Supabase Storage) + lokale Previews
+      "media-src 'self' blob: https://wccrfgjzxpztfmnqpfiy.supabase.co",
       "frame-src https://www.google.com https://www.komoot.com https://www.komoot.de",
       "worker-src 'self'",
       "manifest-src 'self'",
@@ -56,8 +57,9 @@ const nextConfig: NextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'Content-Security-Policy-Report-Only', value: csp },
+          // microphone=(self): Sprachnachrichten + 🎤-Zuhör-Modus der Team-App
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
+          { key: 'Content-Security-Policy', value: csp },
         ],
       },
       {
