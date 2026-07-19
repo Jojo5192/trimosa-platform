@@ -122,8 +122,11 @@ export async function POST(request: Request) {
 
   const system = await getPrompt('chat_suggest')
 
+  // Zeiten sind AKTUELL & VERBINDLICH — ältere Chats/Wissensbasis können noch
+  // alte Zeiten nennen (z. B. Check-out 11:00 vor der Umstellung auf 10:00)
   const facts = listing
-    ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}`
+    ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}
+(Diese Check-in-/Check-out-Zeiten sind der AKTUELLE, VERBINDLICHE Stand — sie gehen abweichenden Zeiten aus der Wissensbasis oder früheren Antworten IMMER vor.)`
     : 'Unterkunft: unbekannt'
 
   const prompt = `${facts}
