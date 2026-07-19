@@ -11,6 +11,7 @@
  *    ALLE Geräte des Nutzers (Server filtert beim Senden)
  */
 import { useEffect, useState } from 'react'
+import { QsArchive } from '@/components/team/QsPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -54,6 +55,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
   const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean } | null>(null)
+  const [showQs, setShowQs] = useState(false)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
@@ -109,6 +111,25 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '18px 16px 40px' }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: '#1A1814', margin: '4px 2px 18px' }}>Einstellungen</h1>
 
+        {role === 'team' && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BEREICHE</div>
+            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+              <button onClick={() => setShowQs(true)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+              }}>
+                <span style={{ fontSize: 19 }}>🧾</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Qualitätssicherung</span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Protokolle & Historie je Wohnung</span>
+                </span>
+                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+              </button>
+            </div>
+          </>
+        )}
+
         <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
           <Row
@@ -142,6 +163,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           </div>
         )}
       </div>
+      {showQs && <QsArchive onClose={() => setShowQs(false)} />}
     </div>
   )
 }
