@@ -76,6 +76,8 @@ export default function CalendarPanel() {
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'belegung' | 'agenda' | 'reinigung'>('belegung')
   const [cleaning, setCleaning] = useState<CleaningInfo | null>(null)
+  const [agendaMode, setAgendaMode] = useState<'liste' | 'woche'>('liste')
+  const [selDay, setSelDay] = useState<string>(isoOffset(0))
   const viewInitRef = useRef(false)
 
   const load = useCallback(async (attempt = 0) => {
@@ -245,6 +247,52 @@ export default function CalendarPanel() {
     qs: { icon: '🧾', color: '#0F766E', bg: '#EFFAF7', tag: 'QS-Termin' },
   } as const
 
+  /** Event-Karten (geteilt zwischen Agenda-Liste und Wochenblick). */
+  const renderEventCards = (events: Ev[]) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {events.map((e, i) => {
+        const meta = EVENT_META[e.type]
+        return (
+          <div key={i} style={{
+            background: '#fff', borderRadius: 14, padding: '10px 13px',
+            boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <span style={{
+                width: 32, height: 32, borderRadius: 10, background: meta.bg, color: meta.color,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 800, flexShrink: 0,
+              }}>{meta.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13.5, fontWeight: 700, color: '#111', margin: 0 }}>
+                  {e.label}
+                  {e.wechsel && (
+                    <span style={{
+                      marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
+                      background: '#EDE9FE', color: '#6D28D9', verticalAlign: 'middle',
+                    }}>WECHSEL</span>
+                  )}
+                </p>
+                <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '1px 0 0' }}>
+                  {meta.tag}{e.sub ? ` · ${e.sub}` : ''}{e.gapText ? ` · ${e.gapText}` : ''}
+                </p>
+              </div>
+            </div>
+            {e.gapTasks && e.gapTasks.length > 0 && (
+              <div style={{
+                marginTop: 9, padding: '8px 11px', borderRadius: 10,
+                background: '#FAF5E4', boxShadow: 'inset 0 0 0 0.5px #E8DCB8',
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#8A7020', marginRight: 7 }}>🛠️ Gelegenheit:</span>
+                <TaskChips tasks={e.gapTasks} />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
       <div style={{
@@ -291,6 +339,63 @@ export default function CalendarPanel() {
         </div>
       ) : (
         <div style={{ padding: '12px 16px 40px' }}>
+          {/* Agenda-Zweitansicht: 📆 Wochenblick (14 Tages-Kacheln + Tages-Detail) */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            {([['liste', '📋 Liste'], ['woche', '📆 Wochenblick']] as const).map(([id, label]) => (
+              <button key={id} onClick={() => setAgendaMode(id)} style={{
+                padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+                background: agendaMode === id ? '#1A1814' : 'rgba(120,120,128,0.12)',
+                color: agendaMode === id ? '#fff' : '#3C3C43', cursor: 'pointer',
+              }}>{label}</button>
+            ))}
+          </div>
+
+          {agendaMode === 'woche' ? (() => {
+            const evMap = new Map(days.map((d) => [d.iso, d.events]))
+            const selEvents = evMap.get(selDay) ?? []
+            return (
+              <div>
+                <div style={{ display: 'flex', gap: 7, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 12 }}>
+                  {Array.from({ length: 14 }, (_, i) => isoOffset(i)).map((iso) => {
+                    const evs = evMap.get(iso) ?? []
+                    const types = [...new Set(evs.map((e) => e.type))]
+                    const d = new Date(iso + 'T00:00:00Z')
+                    const sel = iso === selDay
+                    return (
+                      <button key={iso} onClick={() => setSelDay(iso)} style={{
+                        flexShrink: 0, width: 62, padding: '9px 4px 8px', borderRadius: 14, border: 'none', cursor: 'pointer',
+                        background: sel ? '#1A1814' : '#fff',
+                        boxShadow: sel ? 'none' : iso === today
+                          ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)'
+                          : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                      }}>
+                        <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: sel ? 'rgba(255,255,255,0.6)' : '#8E8E93' }}>
+                          {DE_DAYS[d.getUTCDay()].slice(0, 2)}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 17, fontWeight: 800, margin: '1px 0 4px', color: sel ? '#fff' : iso === today ? '#8A7020' : '#111' }}>
+                          {d.getUTCDate()}
+                        </span>
+                        <span style={{ display: 'flex', gap: 3, justifyContent: 'center', minHeight: 6 }}>
+                          {types.slice(0, 4).map((t) => (
+                            <span key={t} style={{ width: 6, height: 6, borderRadius: '50%', background: EVENT_META[t].color }} />
+                          ))}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p style={{
+                  fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
+                  color: selDay === today ? 'var(--gold, #AE8D2D)' : '#6B7280',
+                  textTransform: 'uppercase', letterSpacing: '0.03em',
+                }}>{dayLabel(selDay, today)}</p>
+                {selEvents.length === 0 ? (
+                  <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: '26px 0' }}>Keine Termine an diesem Tag.</p>
+                ) : renderEventCards(selEvents)}
+              </div>
+            )
+          })() : (
+          <>
           {/* Überfällige Aufgaben gesammelt oben */}
           {overdue.length > 0 && (
             <div style={{ marginBottom: 18 }}>
@@ -377,50 +482,11 @@ export default function CalendarPanel() {
                 color: iso === today ? 'var(--gold, #AE8D2D)' : '#6B7280',
                 textTransform: 'uppercase', letterSpacing: '0.03em',
               }}>{dayLabel(iso, today)}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {events.map((e, i) => {
-                  const meta = EVENT_META[e.type]
-                  return (
-                    <div key={i} style={{
-                      background: '#fff', borderRadius: 14, padding: '10px 13px',
-                      boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                        <span style={{
-                          width: 32, height: 32, borderRadius: 10, background: meta.bg, color: meta.color,
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 16, fontWeight: 800, flexShrink: 0,
-                        }}>{meta.icon}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 13.5, fontWeight: 700, color: '#111', margin: 0 }}>
-                            {e.label}
-                            {e.wechsel && (
-                              <span style={{
-                                marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
-                                background: '#EDE9FE', color: '#6D28D9', verticalAlign: 'middle',
-                              }}>WECHSEL</span>
-                            )}
-                          </p>
-                          <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '1px 0 0' }}>
-                            {meta.tag}{e.sub ? ` · ${e.sub}` : ''}{e.gapText ? ` · ${e.gapText}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                      {e.gapTasks && e.gapTasks.length > 0 && (
-                        <div style={{
-                          marginTop: 9, padding: '8px 11px', borderRadius: 10,
-                          background: '#FAF5E4', boxShadow: 'inset 0 0 0 0.5px #E8DCB8',
-                        }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, color: '#8A7020', marginRight: 7 }}>🛠️ Gelegenheit:</span>
-                          <TaskChips tasks={e.gapTasks} />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+              {renderEventCards(events)}
             </div>
           ))}
+          </>
+          )}
         </div>
       )}
     </div>
