@@ -9,7 +9,7 @@ import { getTaskAuth } from '@/lib/tasks'
  */
 export const dynamic = 'force-dynamic'
 
-const ALLOWED: Record<string, { type: 'image' | 'video' | 'pdf'; ext: string }> = {
+const ALLOWED: Record<string, { type: 'image' | 'video' | 'pdf' | 'audio'; ext: string }> = {
   'image/jpeg': { type: 'image', ext: 'jpg' },
   'image/png': { type: 'image', ext: 'png' },
   'image/webp': { type: 'image', ext: 'webp' },
@@ -17,6 +17,12 @@ const ALLOWED: Record<string, { type: 'image' | 'video' | 'pdf'; ext: string }> 
   'video/quicktime': { type: 'video', ext: 'mov' },
   'video/webm': { type: 'video', ext: 'webm' },
   'application/pdf': { type: 'pdf', ext: 'pdf' },
+  // 🎙️ Sprachnachrichten: iOS-MediaRecorder = audio/mp4, Chrome/Android = audio/webm
+  'audio/mp4': { type: 'audio', ext: 'm4a' },
+  'audio/webm': { type: 'audio', ext: 'webm' },
+  'audio/mpeg': { type: 'audio', ext: 'mp3' },
+  'audio/ogg': { type: 'audio', ext: 'ogg' },
+  'audio/wav': { type: 'audio', ext: 'wav' },
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
