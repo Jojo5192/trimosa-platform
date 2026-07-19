@@ -17,7 +17,18 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
 type Rules = { avoidSundays: boolean; avoidHolidays: boolean }
-type Rates = { hourlyRate: number; travelFee: number; sundaySurchargePct: number; holidaySurchargePct: number }
+type Rates = {
+  hourlyRate: number; travelFee: number; travelPerCleaning?: boolean
+  sundaySurchargePct: number; holidaySurchargePct: number
+  specialSurchargePct?: number; vatPct?: number
+}
+
+/** Besondere Feiertage mit eigenem Zuschlag (Vertrag VP Glanzteam §4.3) —
+    lokale Kopie von lib/cleaning (die Datei ist server-only). */
+function isSpecialDay(iso: string): boolean {
+  const md = iso.slice(5)
+  return md === '12-24' || md === '12-25' || md === '12-26' || md === '12-31' || md === '05-01'
+}
 export type CleaningInfo = {
   settings: Rules
   settingsByPerson?: Record<string, Rules>
@@ -77,7 +88,7 @@ type Slot = {
   /** effektiver (empfohlener bzw. Pflicht-)Reinigungstag */
   effDay: string
   recommended: string | null
-  reason: 'sonntag' | 'feiertag' | 'buendel' | null
+  reason: 'sonntag' | 'feiertag' | 'besonders' | 'buendel' | null
   minutes: number
   hasMinutes: boolean
   group: string
@@ -139,12 +150,14 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
     const rules = rulesFor(lid)
     const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
     return (rules.avoidSundays && dow === 0)
-      || (rules.avoidHolidays && cleaning.holidays.includes(iso))
+      || (rules.avoidHolidays && (cleaning.holidays.includes(iso) || isSpecialDay(iso)))
   }
-  /** Kalender-Fakt (unabhängig von Meidungs-Regeln) — Basis der Zulagen. */
-  const dayKind = (iso: string): 'sonntag' | 'feiertag' | null =>
-    cleaning.holidays.includes(iso) ? 'feiertag'
-      : new Date(iso + 'T00:00:00Z').getUTCDay() === 0 ? 'sonntag' : null
+  /** Kalender-Fakt (unabhängig von Meidungs-Regeln) — Basis der Zulagen.
+      'besonders' (Weihnachten/Silvester/1. Mai) schlägt 'feiertag'. */
+  const dayKind = (iso: string): 'besonders' | 'sonntag' | 'feiertag' | null =>
+    isSpecialDay(iso) ? 'besonders'
+      : cleaning.holidays.includes(iso) ? 'feiertag'
+        : new Date(iso + 'T00:00:00Z').getUTCDay() === 0 ? 'sonntag' : null
 
   const slots: Slot[] = useMemo(() => {
     const base = stays.filter((s) => s.checkOut >= today && s.checkOut <= horizon && listings[s.listingId])
@@ -205,19 +218,22 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
     const kind = dayKind(s.effDay)
     const r = ratesFor(s.listingId)
     if (!kind || !r) return 0
-    return slotCost(s) * ((kind === 'feiertag' ? r.holidaySurchargePct : r.sundaySurchargePct) / 100)
+    const pct = kind === 'besonders' ? (r.specialSurchargePct ?? r.holidaySurchargePct)
+      : kind === 'feiertag' ? r.holidaySurchargePct : r.sundaySurchargePct
+    return slotCost(s) * (pct / 100)
   }
+  const vatPctFor = (lid: string) => ratesFor(lid)?.vatPct ?? 0
 
   /* ── Kosten — echte KALENDERMONATE, Sätze je Kraft, gefiltert ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
     const filtered = slots.filter((s) => matchPerson(s.listingId))
 
-    type Trip = { day: string; group: string; personId: string; count: number; fee: number }
+    type Trip = { day: string; group: string; personId: string; listingId: string; count: number; fee: number; vatPct: number }
     type MonthRow = {
       key: string; label: string; partialStart: boolean; partialEnd: boolean
       perListing: Map<string, { count: number; minutes: number; base: number }>
-      surcharge: number; trips: Map<string, Trip>
+      surcharge: number; vat: number; trips: Map<string, Trip>
       slots: Slot[]
     }
     const months = new Map<string, MonthRow>()
@@ -232,7 +248,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           key, label: `${DE_MONTHS[mo - 1]} ${y}`,
           partialStart: `${key}-01` < today,
           partialEnd: lastDay > horizon,
-          perListing: new Map(), surcharge: 0, trips: new Map(), slots: [],
+          perListing: new Map(), surcharge: 0, vat: 0, trips: new Map(), slots: [],
         }
         months.set(key, m)
       }
@@ -244,16 +260,25 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       m.perListing.set(s.listingId, row)
       if (!s.hasMinutes) missingMinutes++
       m.surcharge += slotSurcharge(s)
-      // Anfahrt = Einsatztag × Standort × KRAFT, zum Satz dieser Kraft
-      const tKey = `${s.effDay}|${s.group}|${s.personId}`
-      const t = m.trips.get(tKey) ?? { day: s.effDay, group: s.group, personId: s.personId, count: 0, fee: ratesFor(s.listingId)?.travelFee ?? 0 }
+      m.vat += (slotCost(s) + slotSurcharge(s)) * (vatPctFor(s.listingId) / 100)
+      // Anfahrt: je nach Vertragsmodell der Kraft — je EINZELNER Reinigung
+      // (travelPerCleaning, z. B. VP Glanzteam) oder gebündelt je
+      // Einsatztag × Standort × Kraft; jeweils zum Satz DIESER Kraft
+      const r = ratesFor(s.listingId)
+      const tKey = r?.travelPerCleaning ? `${s.effDay}|${s.stay.id}` : `${s.effDay}|${s.group}|${s.personId}`
+      const t = m.trips.get(tKey) ?? {
+        day: s.effDay, group: s.group, personId: s.personId, listingId: s.listingId,
+        count: 0, fee: r?.travelFee ?? 0, vatPct: r?.vatPct ?? 0,
+      }
       t.count++
       m.trips.set(tKey, t)
     }
     const list = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).map((m) => {
       const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
       const travel = [...m.trips.values()].reduce((a, t) => a + t.fee, 0)
-      return { ...m, baseSum, travel, tripCount: m.trips.size, total: baseSum + m.surcharge + travel }
+      const vat = m.vat + [...m.trips.values()].reduce((a, t) => a + t.fee * (t.vatPct / 100), 0)
+      const net = baseSum + m.surcharge + travel
+      return { ...m, baseSum, travel, tripCount: m.trips.size, net, vat, total: net + vat }
     })
     return { months: list, missingMinutes }
   }, [slots, cleaning.rates, cleaning.ratesByPerson, cleaning.responsible, personFilter]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -394,9 +419,14 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 ? (cleaning.ratesByPerson?.[personFilter] ?? cleaning.rates)
                 : cleaning.rates,
               total: Math.round(m.total * 100) / 100,
+              summe_netto: Math.round(m.net * 100) / 100,
+              umsatzsteuer: Math.round(m.vat * 100) / 100,
               basis: Math.round(m.baseSum * 100) / 100,
               zulagen: Math.round(m.surcharge * 100) / 100,
-              anfahrten: { anzahl: m.tripCount, betrag: m.travel },
+              anfahrten: { anzahl: m.tripCount, betrag: Math.round(m.travel * 100) / 100 },
+              hinweis_anfahrt: m.slots.some((s) => ratesFor(s.listingId)?.travelPerCleaning)
+                ? 'Anfahrtspauschale gilt je Einsatz UND pro eingesetztem Mitarbeiter — die Erwartung rechnet mit 1 Mitarbeiter je Einsatz; mehr Mitarbeiter erhöhen die Anfahrten legitim.'
+                : undefined,
               wohnungen: [...m.perListing.entries()].map(([id, row]) => ({
                 wohnung: listings[id]?.title ?? 'Wohnung', anzahl: row.count,
                 minuten: row.minutes, betrag: Math.round(row.base * 100) / 100,
@@ -458,12 +488,15 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         </span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge ? '#B45309' : '#9CA3AF', flexShrink: 0 }}>{eur(m.surcharge)}</span>
                       </button>
-                      {openKeys[k] && zSlots.map((s) => (
-                        <div key={s.stay.id} style={subRowStyle}>
-                          <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {dayKind(s.effDay) === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
-                          <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0 }}>{eurSigned(slotSurcharge(s))}</span>
-                        </div>
-                      ))}
+                      {openKeys[k] && zSlots.map((s) => {
+                        const zk = dayKind(s.effDay)
+                        return (
+                          <div key={s.stay.id} style={subRowStyle}>
+                            <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {zk === 'besonders' ? 'bes. Feiertag' : zk === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
+                            <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0 }}>{eurSigned(slotSurcharge(s))}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
                 })()}
@@ -481,13 +514,13 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         </span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(m.travel)}</span>
                       </button>
-                      {openKeys[k] && trips.map((t) => {
-                        const s0 = m.slots.find((s) => s.group === t.group && s.personId === t.personId)
-                        const info = s0 ? listings[s0.listingId] : null
+                      {openKeys[k] && trips.map((t, ti) => {
+                        const info = listings[t.listingId]
+                        const perCleaning = t.count === 1 && cleaning.ratesByPerson?.[t.personId]?.travelPerCleaning
                         const pName = t.personId !== '-' ? (persons.find((p) => p.id === t.personId)?.name ?? null) : null
                         return (
-                          <div key={`${t.day}|${t.group}|${t.personId}`} style={subRowStyle}>
-                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · ${pName}` : ''} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
+                          <div key={ti} style={subRowStyle}>
+                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {perCleaning ? info?.title ?? '—' : info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · ${pName}` : ''} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
                             <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(t.fee)}</span>
                           </div>
                         )
@@ -496,8 +529,20 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                   )
                 })()}
 
+                {m.vat > 0.005 && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0' }}>
+                      <span style={{ fontSize: 13, color: '#6B7280' }}>Zwischensumme (netto)</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.net)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 0' }}>
+                      <span style={{ fontSize: 13, color: '#6B7280' }}>zzgl. Umsatzsteuer</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.vat)}</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}</span>
+                  <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}{m.vat > 0.005 ? ' (brutto)' : ''}</span>
                   <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(m.total)}</span>
                 </div>
                 {(m.partialStart || m.partialEnd) && (
@@ -689,7 +734,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         {(s.recommended || partnerTitle) && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {s.reason === 'sonntag' && chip('#EFF6FF', '#1D4ED8', '☀️ Sonntag übersprungen')}
-                            {s.reason === 'feiertag' && chip('#EFF6FF', '#1D4ED8', '🎌 Feiertag übersprungen')}
+                            {(s.reason === 'feiertag' || s.reason === 'besonders') && chip('#EFF6FF', '#1D4ED8', '🎌 Feiertag übersprungen')}
                             {partnerTitle && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt — zusammen mit ${partnerTitle}`)}
                             {s.reason === 'buendel' && !partnerTitle && chip('#F5F3FF', '#6D28D9', '🚗 eine Anfahrt — mit Termin am Standort')}
                           </div>
