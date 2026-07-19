@@ -166,6 +166,7 @@ interface Props {
 
 export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread, onUnread }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
+  const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -263,9 +264,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       const r = await fetch('/api/chat/inbox')
       if (r.status === 401 || r.status === 403) { setAuthExpired(true); return null }
       if (!r.ok) return null
-      const { threads } = await r.json()
+      const { threads, teamNames: tn } = await r.json()
+      if (tn) setTeamNames(tn)
       const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => ({
-        id: t.id, kind: t.kind, guest_id: '', host_id: userId,
+        id: t.id, kind: t.kind, guest_id: (t.guestId as string) ?? '', host_id: userId,
         guest_name: t.guestName, host_name: null,
         listing_title: t.listingTitle, last_message_at: t.lastMessageAt,
         unread: t.unread ?? 0,
@@ -362,7 +364,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   useEffect(() => {
     if (!team || !active || msgs.length === 0 || aiBusy) return
     const last = msgs[msgs.length - 1]
-    if (last.sender_id === userId) return
+    if (isOurSide(last, active)) return
     if (draft.trim() || autoSuggested.current.has(active.id)) return
     autoSuggested.current.add(active.id)
     suggestReply()
@@ -403,12 +405,23 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (isMobile) setMobileView('chat')
   }
 
+  /** Gehört die Nachricht zu UNSERER Seite? Team-Sicht: In Direct-Threads
+      haben Nachrichten echte sender_ids — auch Antworten ANDERER Team-
+      Mitglieder (z. B. Vanessa) sind unsere Seite, nicht die des Gasts. */
+  function isOurSide(m: Message, conv: Conversation | null): boolean {
+    if (team) {
+      if (conv?.kind === 'booking') return m.sender_id !== 'guest'
+      if (conv?.guest_id) return m.sender_id !== conv.guest_id
+    }
+    return m.sender_id === userId
+  }
+
   /* ── guest language of the active thread (latest detected guest message) ── */
   const guestLang = (() => {
     if (!team || !active) return null
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
-      if (m.sender_id !== userId && m.lang) return m.lang
+      if (!isOurSide(m, active) && m.lang) return m.lang
     }
     return null
   })()
@@ -855,7 +868,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               </div>
 
               {items.map((msg, i) => {
-                const isMe     = msg.sender_id === userId
+                const isMe     = isOurSide(msg, active)
                 const prevSame = i > 0 && items[i - 1].sender_id === msg.sender_id
                 const nextSame = i < items.length - 1 && items[i + 1].sender_id === msg.sender_id
                 const isLast   = !nextSame
@@ -881,6 +894,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     </div>
 
                     <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 3 }}>
+                      {/* Absender-Vorname, wenn ein ANDERES Team-Mitglied geantwortet hat */}
+                      {team && isMe && active?.kind !== 'booking' && msg.sender_id !== userId && !prevSame && teamNames[msg.sender_id] && (
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#8E8E93', paddingRight: 4 }}>
+                          {teamNames[msg.sender_id]}
+                        </span>
+                      )}
                       {/* bubble */}
                       <div style={{
                         padding: '10px 14px',
