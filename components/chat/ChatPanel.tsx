@@ -156,13 +156,15 @@ interface Props {
   onClose?: () => void
   /** app only: meldet der Shell, ob mobil ein Thread offen ist (Tab-Bar verstecken) */
   onMobileThread?: (open: boolean) => void
+  /** team: meldet „zu bearbeiten"-Threads (ungelesen ODER unbeantwortet) fürs App-Badge */
+  onUnread?: (n: number) => void
   /** page only: pre-select a conversation (?conv= deep link from emails) */
   initialConvId?: string | null
   /** team mode: unified inbox (all guests incl. Airbnb/Booking via Smoobu) */
   team?: boolean
 }
 
-export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread }: Props) {
+export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread, onUnread }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
@@ -381,17 +383,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.visualViewport?.removeEventListener('resize', grow)
   }, [draft])
 
-  /* App-Icon-Badge (installierte PWA): Anzahl ungelesener THREADS — nicht
-     Nachrichten (Pascal-Bug „23 Notifications, aber 6 ungelesene": die Zahl
-     muss zum Ungelesen-Filter der Liste passen) */
+  /* Gäste-„zu bearbeiten"-Zähler an die Team-Shell melden (Pascal 19.7.):
+     ungelesene ODER unbeantwortete Threads — das App-Icon-Badge berechnet
+     die Shell zentral (Intern + Gäste, gefiltert nach den Push-Einstellungen) */
   useEffect(() => {
-    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
-    const total = convs.filter((c) => (c.unread ?? 0) > 0).length
-    try {
-      if (total > 0) nav.setAppBadge?.(total)?.catch(() => {})
-      else nav.clearAppBadge?.()?.catch(() => {})
-    } catch { /* Badging API nicht verfügbar */ }
-  }, [convs])
+    if (!team || !onUnread) return
+    onUnread(convs.filter((c) => (c.unread ?? 0) > 0 || matchesFilter(c, 'unbeantwortet')).length)
+  }, [convs, team, onUnread])
   useEffect(() => {
     if (variant !== 'overlay' || !onClose) return
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
