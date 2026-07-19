@@ -8,7 +8,7 @@
  * hervorgehoben. Tap auf einen Balken zeigt die Details unterm Grid.
  * Dienstleister sehen keine Gastnamen (API liefert sie gar nicht erst).
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export type GridStay = {
   id: string; listingId: string; checkIn: string; checkOut: string
@@ -44,6 +44,12 @@ export default function OccupancyGrid({ stays, listings }: {
 }) {
   const [selected, setSelected] = useState<GridStay | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Beim Öffnen zu HEUTE scrollen (das Grid beginnt 7 Tage in der
+  // Vergangenheit — gestern bleibt eine Wisch-Geste entfernt sichtbar)
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = 5.5 * DAY_W
+  }, [])
 
   const startIso = isoOffset(-7)
   const DAYS = 63
