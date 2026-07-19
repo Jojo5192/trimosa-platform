@@ -573,3 +573,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 900px) {
   .mappe-grid { grid-template-columns: 1fr !important; }
 }
+
+/* Chat-Werkstatt: pulsierender Aufnahme-Button im Speech-Mode */
+@keyframes rec-pulse-kf {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  70% { box-shadow: 0 0 0 9px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+.rec-pulse { animation: rec-pulse-kf 1.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .rec-pulse { animation: none; }
+}
