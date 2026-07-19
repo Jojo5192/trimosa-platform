@@ -8,7 +8,7 @@
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { QS_TEMPLATE, type QsReport } from '@/lib/qs'
+import type { QsReport, QsSection } from '@/lib/qs'
 
 const A4: [number, number] = [595.28, 841.89]
 const MARGIN = 48
@@ -34,7 +34,7 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 /** WinAnsi verträgt keine Emojis/Sonderzeichen außerhalb Latin-1 — rausfiltern. */
 function safe(text: string): string {
   // eslint-disable-next-line no-control-regex
-  return String(text).replace(/[^\x20-\x7E\xA0-\xFFäöüÄÖÜß€„“”‘’–—·]/g, '').trim()
+  return String(text).replace(/[^\x20-\x7E\xA0-\xFFäöüÄÖÜß€„“”‘’–—·…]/g, '').trim()
 }
 
 export async function generateQsPdf(opts: {
@@ -45,6 +45,8 @@ export async function generateQsPdf(opts: {
   inspectorName: string
   report: QsReport
   photos: { url: string }[]
+  /** Checkliste, mit der das Protokoll ausgefüllt wurde (Snapshot bzw. aufgelöst) */
+  template: QsSection[]
 }): Promise<string | null> {
   try {
     const doc = await PDFDocument.create()
@@ -81,7 +83,7 @@ export async function generateQsPdf(opts: {
 
     /* Sektionen */
     const items = opts.report.items ?? {}
-    for (const sec of QS_TEMPLATE) {
+    for (const sec of opts.template) {
       newPageIfNeeded(60)
       y -= 6
       page.drawRectangle({ x: MARGIN, y: y - 4, width: contentWidth, height: 1.2, color: GOLD })
