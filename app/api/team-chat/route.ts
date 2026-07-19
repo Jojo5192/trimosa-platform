@@ -78,7 +78,11 @@ export async function GET() {
         members: memberNames.get(c.id) ?? [],
         lastAt: last?.at ?? null,
         lastPreview: last
-          ? (last.attachmentType === 'image' ? '📷 Foto' : last.attachmentType === 'video' ? '🎬 Video' : last.attachmentType === 'pdf' ? '📄 PDF' : last.content.slice(0, 90))
+          ? (last.attachmentType === 'image' ? '📷 Foto'
+            : last.attachmentType === 'video' ? '🎬 Video'
+            : last.attachmentType === 'pdf' ? '📄 PDF'
+            : last.attachmentType === 'audio' ? `🎙️ ${last.content.slice(0, 80) || 'Sprachnachricht'}`
+            : last.content.slice(0, 90))
           : null,
         lastFromMe: last?.senderId === auth.userId,
         unread: unread.get(c.id) ?? 0,
