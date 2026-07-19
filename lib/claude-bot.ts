@@ -77,7 +77,7 @@ export async function postAsClaude(
       if (opts.excludeUserId && m.user_id === opts.excludeUserId) continue
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
-      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern').catch(() => {})
+      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern', `intern-${chatId}`).catch(() => {})
     }
   })().catch(() => {})
 
