@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { getCleaningSettings, holidaysInRange } from '@/lib/cleaning'
+import { getCleaningSettings, holidaysInRange, resolveCleaningFor, type CleaningRuleSet } from '@/lib/cleaning'
+
+/** Nur die Kosten-Felder eines RuleSets (Regeln gehen separat an alle Rollen). */
+function pickRates(r: CleaningRuleSet) {
+  return {
+    hourlyRate: r.hourlyRate, travelFee: r.travelFee, travelPerCleaning: r.travelPerCleaning,
+    sundaySurchargePct: r.sundaySurchargePct, holidaySurchargePct: r.holidaySurchargePct,
+    specialSurchargePct: r.specialSurchargePct, vatPct: r.vatPct,
+  }
+}
 
 /**
  * 📅 Kalender der Team-App: An-/Abreisen aller Wohnungen (heute − 1 Tag bis
@@ -133,15 +142,11 @@ export async function GET() {
       settingsByPerson: Object.fromEntries(Object.entries(cleaningSettings.perPerson ?? {}).map(([id, o]) => [
         id, { avoidSundays: o.avoidSundays, avoidHolidays: o.avoidHolidays },
       ])),
-      // 💶 Kosten-Sätze NUR für Admins/Gastgeber (Finanz-Daten!)
-      rates: auth.role === 'admin' ? {
-        hourlyRate: cleaningSettings.hourlyRate,
-        travelFee: cleaningSettings.travelFee,
-        sundaySurchargePct: cleaningSettings.sundaySurchargePct,
-        holidaySurchargePct: cleaningSettings.holidaySurchargePct,
-      } : null,
-      ratesByPerson: auth.role === 'admin' ? Object.fromEntries(Object.entries(cleaningSettings.perPerson ?? {}).map(([id, o]) => [
-        id, { hourlyRate: o.hourlyRate, travelFee: o.travelFee, sundaySurchargePct: o.sundaySurchargePct, holidaySurchargePct: o.holidaySurchargePct },
+      // 💶 Kosten-Sätze NUR für Admins/Gastgeber (Finanz-Daten!) —
+      // resolveCleaningFor merged Overrides über die Defaults (neue Felder §119)
+      rates: auth.role === 'admin' ? pickRates(resolveCleaningFor(cleaningSettings, null)) : null,
+      ratesByPerson: auth.role === 'admin' ? Object.fromEntries(Object.keys(cleaningSettings.perPerson ?? {}).map((id) => [
+        id, pickRates(resolveCleaningFor(cleaningSettings, id)),
       ])) : null,
       holidays: holidaysInRange(start, 70),
       responsible: Object.fromEntries(listings
