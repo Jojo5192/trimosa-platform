@@ -9,6 +9,7 @@
  * nach ganz oben.
  */
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import QsBlock from '@/components/team/QsPanel'
 
 export interface Task {
   id: string
@@ -302,6 +303,9 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
           <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
+
+      {/* 🧾 QS-Termine (Halbjahres-Checks) — eigener Block über der Liste */}
+      {filter !== 'vorschlaege' && <QsBlock />}
 
       {/* 🤖 Vorschläge-Reiter (nur Admins/Gastgeber) — eigene Ansicht */}
       {apiRole === 'admin' && filter === 'vorschlaege' && (
