@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
+type CalQs = { id: string; listingId: string; dueDate: string }
 type ListingInfo = { title: string; group: string | null }
 
 const DE_DAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
@@ -67,6 +68,7 @@ function TaskChips({ tasks, max = 3 }: { tasks: CalTask[]; max?: number }) {
 export default function CalendarPanel() {
   const [stays, setStays] = useState<Stay[]>([])
   const [tasks, setTasks] = useState<CalTask[]>([])
+  const [qs, setQs] = useState<CalQs[]>([])
   const [listings, setListings] = useState<Record<string, ListingInfo>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,7 +86,7 @@ export default function CalendarPanel() {
         return
       }
       if (j.error) setError(j.error)
-      else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setListings(j.listings ?? {}); setError(null) }
+      else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {}); setError(null) }
     } catch {
       // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
       if (attempt < 1) { setTimeout(() => load(1), 1200); return }
@@ -170,14 +172,18 @@ export default function CalendarPanel() {
   const planningVisible = planning.filter((p) => p.tasks.length > 0)
 
   /* ── Agenda: nur Tage mit Ereignissen (heute bis +56) ── */
-  type Ev = { type: 'abreise' | 'anreise' | 'aufgabe'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[] }
+  type Ev = { type: 'abreise' | 'anreise' | 'aufgabe' | 'qs'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[] }
   const days: { iso: string; events: Ev[] }[] = []
   for (let i = 0; i <= 56; i++) {
     const iso = isoOffset(i)
     const outs = stays.filter((s) => s.checkOut === iso)
     const ins = stays.filter((s) => s.checkIn === iso)
     const due = tasks.filter((t) => t.due_date === iso)
+    const qsDue = qs.filter((q) => q.dueDate === iso)
     const events: Ev[] = []
+    for (const q of qsDue) {
+      events.push({ type: 'qs', label: `Qualitätscheck · ${listings[q.listingId]?.title ?? 'Wohnung'}`, sub: 'Protokoll im Aufgaben-Tab ausfüllen' })
+    }
     for (const s of outs) {
       const info = listings[s.listingId]
       const wechsel = ins.some((x) => x.listingId === s.listingId)
@@ -222,6 +228,7 @@ export default function CalendarPanel() {
     abreise: { icon: '↖', color: '#C2410C', bg: '#FFF7ED', tag: 'Abreise' },
     anreise: { icon: '↘', color: '#15803D', bg: '#F0FDF4', tag: 'Anreise' },
     aufgabe: { icon: '✓', color: '#8A7020', bg: '#FAF5E4', tag: 'Aufgabe fällig' },
+    qs: { icon: '🧾', color: '#0F766E', bg: '#EFFAF7', tag: 'QS-Termin' },
   } as const
 
   return (
@@ -229,7 +236,8 @@ export default function CalendarPanel() {
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        padding: '14px 16px 10px', paddingTop: 'max(14px, env(safe-area-inset-top))',
+        // Safe-Area oben liefert seit viewport-fit=cover die TeamShell zentral
+        padding: '14px 16px 10px',
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
       }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: '#111', letterSpacing: '-0.4px' }}>Kalender</h1>
