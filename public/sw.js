@@ -9,6 +9,10 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icon.png',
       badge: '/icon.png',
+      // tag: Mitteilungen desselben Threads stapeln sich und lassen sich beim
+      // Lesen in der App gezielt schließen (§122); renotify hält den Ton an
+      tag: data.tag || data.url || 'trimosa',
+      renotify: true,
       data: { url: data.url || '/team' },
     })
   )
