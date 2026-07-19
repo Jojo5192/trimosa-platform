@@ -414,6 +414,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   function selectConv(c: Conversation) {
     setActive(c)
     if (isMobile) setMobileView('chat')
+    // Push-Mitteilungen dieses Threads aus der Mitteilungszentrale räumen
+    // (Dominik §121.3) — der sw taggt Pushes mit ihrer Ziel-URL
+    try {
+      navigator.serviceWorker?.ready
+        .then((reg) => reg.getNotifications({ tag: `/team?conv=${c.id}` }))
+        .then((ns) => ns.forEach((n) => n.close()))
+        .catch(() => {})
+    } catch { /* nicht verfügbar */ }
   }
 
   /** Gehört die Nachricht zu UNSERER Seite? Team-Sicht: In Direct-Threads
