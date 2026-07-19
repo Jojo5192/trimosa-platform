@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { getClaudeBotId } from '@/lib/claude-bot'
-import { sendPushToUser } from '@/lib/push'
+import { postAsClaude } from '@/lib/claude-bot'
 
 /**
  * 🤖 Claude schreibt als eigenständiges Mitglied in eine interne Gruppe
@@ -29,19 +28,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from('team_chats').select('id, name, emoji').eq('id', id).maybeSingle()
   if (!chat) return NextResponse.json({ error: 'Gruppe nicht gefunden.' }, { status: 404 })
 
-  const claudeId = await getClaudeBotId(true)
-  if (!claudeId) return NextResponse.json({ error: 'Claude-Konto konnte nicht angelegt werden.' }, { status: 500 })
-
-  // Claude als Mitglied sicherstellen (Mitgliederliste + Verwaltbarkeit)
-  await supabaseAdmin
-    .from('team_chat_members')
-    .upsert({ chat_id: id, user_id: claudeId }, { onConflict: 'chat_id,user_id' })
-
-  const { data: msg, error } = await supabaseAdmin
-    .from('team_messages')
-    .insert({ chat_id: id, sender_id: claudeId, content })
-    .select('id').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const msgId = await postAsClaude(id, content, { excludeUserId: me.userId })
+  if (!msgId) return NextResponse.json({ error: 'Senden fehlgeschlagen.' }, { status: 500 })
 
   // Lesestand des Auslösers mitziehen (er hat die Nachricht ja verfasst)
   await supabaseAdmin
@@ -49,19 +37,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .update({ last_read_at: new Date().toISOString() })
     .eq('chat_id', id).eq('user_id', me.userId)
 
-  ;(async () => {
-    const { data: members } = await supabaseAdmin
-      .from('team_chat_members')
-      .select('user_id, profiles(push_team_chats)')
-      .eq('chat_id', id)
-      .neq('user_id', claudeId)
-    for (const m of members ?? []) {
-      if (m.user_id === me.userId) continue
-      const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
-      if (p && p.push_team_chats === false) continue
-      sendPushToUser(m.user_id, `${chat.emoji} ${chat.name} · Claude`, content.slice(0, 160), '/team?tab=intern').catch(() => {})
-    }
-  })().catch(() => {})
-
-  return NextResponse.json({ ok: true, id: msg.id }, NO_STORE)
+  return NextResponse.json({ ok: true, id: msgId }, NO_STORE)
 }
