@@ -1,27 +1,28 @@
 'use client'
 
 /**
- * 🧹 Reinigungsplaner (Kalender-Tab), drei Ansichten:
+ * 🧹 Reinigungsplaner (Kalender-Tab), drei Ansichten mit GLOBALEM Filter
+ * nach Reinigungskraft (Alle · 👤 Vanessa · 👤 Tip-Top · Ohne Zuordnung):
  *  📋 Liste  — jede Abreise ein Slot; Wechseltage = Pflicht, sonst flexibel.
- *              KLUGE EMPFEHLUNG: Sonn-/Feiertage meiden UND Reinigungen
- *              desselben STANDORTS bündeln (eine Anfahrt) — der Planer
- *              schlägt den besten Tag im freien Fenster vor.
- *  🗺 Touren — Tages-Einsatzpläne: je Einsatztag Standort-Blöcke mit
- *              Wohnungen, Gesamtdauer und Anfahrts-Zähler.
- *  💶 Kosten — NUR Admins (rates kommen nur für sie von der API): erwartete
- *              „Rechnung" je KALENDERMONAT, filterbar nach Reinigungskraft,
- *              zweistufig auffächerbar (Wohnung → einzelne Reinigungen mit
- *              Datum; Zulagen + Anfahrten ebenso). Dazu Rechnungs-Upload:
- *              echte Monats-Rechnung (PDF/Foto) → Claude liest sie und
- *              gleicht sie gegen die Erwartung ab (§116).
+ *              KLUGE EMPFEHLUNG: Sonn-/Feiertage meiden (Regeln der
+ *              JEWEILIGEN Reinigungskraft!) UND Reinigungen desselben
+ *              Standorts + derselben Kraft bündeln (eine Anfahrt).
+ *  🗺 Touren — Tages-Einsatzpläne, Blöcke je Standort × Reinigungskraft.
+ *  💶 Kosten — NUR Admins: erwartete „Rechnung" je KALENDERMONAT mit den
+ *              SÄTZEN DER JEWEILIGEN KRAFT (perPerson-Overrides), zweistufig
+ *              auffächerbar; Rechnungs-Upload mit KI-Abgleich (§116/§117).
  */
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
+type Rules = { avoidSundays: boolean; avoidHolidays: boolean }
+type Rates = { hourlyRate: number; travelFee: number; sundaySurchargePct: number; holidaySurchargePct: number }
 export type CleaningInfo = {
-  settings: { avoidSundays: boolean; avoidHolidays: boolean }
-  rates: { hourlyRate: number; travelFee: number; sundaySurchargePct: number; holidaySurchargePct: number } | null
+  settings: Rules
+  settingsByPerson?: Record<string, Rules>
+  rates: Rates | null
+  ratesByPerson?: Record<string, Rates> | null
   holidays: string[]
   responsible: Record<string, { id: string; name: string }>
   minutes: Record<string, number>
@@ -80,6 +81,8 @@ type Slot = {
   minutes: number
   hasMinutes: boolean
   group: string
+  /** verantwortliche Reinigungskraft ('-' = keine Zuordnung) */
+  personId: string
 }
 
 export default function CleaningPlanner({ stays, listings, cleaning }: {
@@ -87,12 +90,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   listings: Record<string, { title: string; group: string | null }>
   cleaning: CleaningInfo
 }) {
-  const hasMine = cleaning.mine.length > 0
   const isAdmin = !!cleaning.rates
-  const [scope, setScope] = useState<'meine' | 'alle'>(hasMine ? 'meine' : 'alle')
   const [mode, setMode] = useState<'liste' | 'touren' | 'kosten'>('liste')
-  // 💶: Personen-Filter + Drill-Down + Rechnungs-Abgleich
-  const [costPerson, setCostPerson] = useState<string>('') // '' alle · 'none' ohne · sonst userId
   const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({})
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [invOpen, setInvOpen] = useState<string | null>(null)
@@ -101,103 +100,123 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const fileRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef<{ month: string; expected: Record<string, unknown>; personId: string; personName: string } | null>(null)
 
-  const today = isoOffset(0)
-  // Slots reichen so weit wie die Kalender-Daten (+56 Tage) — die Kosten-
-  // Ansicht rechnet damit echte KALENDERMONATE; Liste/Touren zeigen 4 Wochen.
-  const horizon = isoOffset(56)
-  const listHorizon = isoOffset(28)
-  const isBlocked = (iso: string) => {
-    const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
-    return (cleaning.settings.avoidSundays && dow === 0)
-      || (cleaning.settings.avoidHolidays && cleaning.holidays.includes(iso))
-  }
-  const blockReason = (iso: string): 'sonntag' | 'feiertag' | null =>
-    cleaning.holidays.includes(iso) ? 'feiertag'
-      : new Date(iso + 'T00:00:00Z').getUTCDay() === 0 ? 'sonntag' : null
-
-  const slots: Slot[] = useMemo(() => {
-    const base = stays.filter((s) => s.checkOut >= today && s.checkOut <= horizon && listings[s.listingId])
-    // Pflicht-Tage je Standort (Wechseltage) — die Bündelungs-Anker
-    const anchorDays = new Set<string>()
-    for (const s of base) {
-      if (stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)) {
-        const g = listings[s.listingId]?.group ?? s.listingId
-        anchorDays.add(`${s.checkOut}|${g}`)
-      }
-    }
-    return base.map((s) => {
-      const group = listings[s.listingId]?.group ?? s.listingId
-      const sameDayArrival = stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)
-      const nextIn = stays
-        .filter((x) => x.listingId === s.listingId && x.checkIn >= s.checkOut)
-        .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]?.checkIn ?? null
-
-      // Kluge Tag-Wahl im freien Fenster: Sonn-/Feiertage meiden + mit
-      // Pflicht-Reinigungen desselben Standorts bündeln (spart Anfahrten)
-      let effDay = s.checkOut
-      let recommended: string | null = null
-      let reason: Slot['reason'] = null
-      if (!sameDayArrival) {
-        const lastDay = nextIn ? (nextIn < addDays(s.checkOut, 7) ? nextIn : addDays(s.checkOut, 7)) : addDays(s.checkOut, 7)
-        let best = { day: s.checkOut, score: (isBlocked(s.checkOut) ? 0 : 2) + (anchorDays.has(`${s.checkOut}|${group}`) ? 1 : 0) }
-        let d = s.checkOut
-        let i = 0
-        while (d < lastDay && i < 8) {
-          d = addDays(d, 1)
-          i++
-          const score = (isBlocked(d) ? 0 : 2) + (anchorDays.has(`${d}|${group}`) ? 1 : 0) - i * 0.05
-          if (score > best.score) best = { day: d, score }
-        }
-        if (best.day !== s.checkOut) {
-          effDay = best.day
-          recommended = best.day
-          reason = anchorDays.has(`${best.day}|${group}`) ? 'buendel' : blockReason(s.checkOut)
-        }
-      }
-      const hasMinutes = cleaning.minutes[s.listingId] != null
-      return {
-        stay: s, listingId: s.listingId, sameDayArrival, nextIn,
-        effDay, recommended, reason,
-        minutes: cleaning.minutes[s.listingId] ?? FALLBACK_MINUTES, hasMinutes, group,
-      }
-    }).sort((a, b) => a.effDay.localeCompare(b.effDay) || a.group.localeCompare(b.group))
-  }, [stays, listings, cleaning, today, horizon]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const visible = slots.filter((s) =>
-    s.effDay <= listHorizon && (scope === 'alle' || cleaning.mine.includes(s.listingId)))
-
-  /* ── 💶 Personen für den Kosten-Filter (aus den Zuordnungen) ── */
+  /* ── Personen (aus den Zuordnungen) + globaler Filter für ALLE Ansichten ── */
   const persons = useMemo(() => {
     const m = new Map<string, string>()
     for (const r of Object.values(cleaning.responsible)) m.set(r.id, r.name)
     return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
   }, [cleaning.responsible])
   const hasUnassigned = Object.keys(listings).some((id) => !cleaning.responsible[id])
-  const personLabel = costPerson === '' ? 'alle Wohnungen'
-    : costPerson === 'none' ? 'Wohnungen ohne Zuordnung'
-      : (persons.find((p) => p.id === costPerson)?.name ?? '—')
+  // Eigene Verantwortung → eigener Chip vorausgewählt (Vanessa/Tip-Top sehen
+  // sofort ihre Touren; Provider bekommen ohnehin nur die eigenen Wohnungen)
+  const myPersonId = cleaning.mine.length ? (cleaning.responsible[cleaning.mine[0]]?.id ?? '') : ''
+  const [personFilter, setPersonFilter] = useState<string>(myPersonId) // '' alle · 'none' ohne · sonst userId
+  const personLabel = personFilter === '' ? 'alle Wohnungen'
+    : personFilter === 'none' ? 'Wohnungen ohne Zuordnung'
+      : (persons.find((p) => p.id === personFilter)?.name ?? '—')
+  const matchPerson = (lid: string) =>
+    personFilter === '' ? true
+      : personFilter === 'none' ? !cleaning.responsible[lid]
+        : cleaning.responsible[lid]?.id === personFilter
 
-  const slotCost = (s: Slot) => (s.minutes / 60) * (cleaning.rates?.hourlyRate ?? 0)
-  const slotSurcharge = (s: Slot) => {
-    const br = blockReason(s.effDay)
-    if (!br || !cleaning.rates) return 0
-    return slotCost(s) * ((br === 'feiertag' ? cleaning.rates.holidaySurchargePct : cleaning.rates.sundaySurchargePct) / 100)
+  /* ── Regeln & Sätze der JEWEILIGEN Kraft (Wohnung erbt über Zuordnung) ── */
+  const personOf = (lid: string) => cleaning.responsible[lid]?.id ?? null
+  const rulesFor = (lid: string): Rules => {
+    const p = personOf(lid)
+    return (p && cleaning.settingsByPerson?.[p]) || cleaning.settings
+  }
+  const ratesFor = (lid: string): Rates | null => {
+    const p = personOf(lid)
+    return (p && cleaning.ratesByPerson?.[p]) || cleaning.rates
   }
 
-  /* ── Kosten — echte KALENDERMONATE, gefiltert nach Reinigungskraft ── */
+  const today = isoOffset(0)
+  // Slots reichen so weit wie die Kalender-Daten (+56 Tage) — die Kosten-
+  // Ansicht rechnet damit echte KALENDERMONATE; Liste/Touren zeigen 4 Wochen.
+  const horizon = isoOffset(56)
+  const listHorizon = isoOffset(28)
+  const isBlockedFor = (iso: string, lid: string) => {
+    const rules = rulesFor(lid)
+    const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
+    return (rules.avoidSundays && dow === 0)
+      || (rules.avoidHolidays && cleaning.holidays.includes(iso))
+  }
+  /** Kalender-Fakt (unabhängig von Meidungs-Regeln) — Basis der Zulagen. */
+  const dayKind = (iso: string): 'sonntag' | 'feiertag' | null =>
+    cleaning.holidays.includes(iso) ? 'feiertag'
+      : new Date(iso + 'T00:00:00Z').getUTCDay() === 0 ? 'sonntag' : null
+
+  const slots: Slot[] = useMemo(() => {
+    const base = stays.filter((s) => s.checkOut >= today && s.checkOut <= horizon && listings[s.listingId])
+    // Pflicht-Tage je Standort × Reinigungskraft (Wechseltage) — Bündelungs-
+    // Anker: gebündelt wird nur, wenn DIESELBE Kraft am selben Ort putzt
+    const anchorDays = new Set<string>()
+    for (const s of base) {
+      if (stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)) {
+        const g = listings[s.listingId]?.group ?? s.listingId
+        anchorDays.add(`${s.checkOut}|${g}|${personOf(s.listingId) ?? '-'}`)
+      }
+    }
+    return base.map((s) => {
+      const group = listings[s.listingId]?.group ?? s.listingId
+      const personId = personOf(s.listingId) ?? '-'
+      const anchorKey = (day: string) => `${day}|${group}|${personId}`
+      const sameDayArrival = stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)
+      const nextIn = stays
+        .filter((x) => x.listingId === s.listingId && x.checkIn >= s.checkOut)
+        .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]?.checkIn ?? null
+
+      // Kluge Tag-Wahl im freien Fenster: Sonn-/Feiertage nach den Regeln
+      // DIESER Kraft meiden + mit ihren Pflicht-Terminen am Ort bündeln
+      let effDay = s.checkOut
+      let recommended: string | null = null
+      let reason: Slot['reason'] = null
+      if (!sameDayArrival) {
+        const lastDay = nextIn ? (nextIn < addDays(s.checkOut, 7) ? nextIn : addDays(s.checkOut, 7)) : addDays(s.checkOut, 7)
+        let best = { day: s.checkOut, score: (isBlockedFor(s.checkOut, s.listingId) ? 0 : 2) + (anchorDays.has(anchorKey(s.checkOut)) ? 1 : 0) }
+        let d = s.checkOut
+        let i = 0
+        while (d < lastDay && i < 8) {
+          d = addDays(d, 1)
+          i++
+          const score = (isBlockedFor(d, s.listingId) ? 0 : 2) + (anchorDays.has(anchorKey(d)) ? 1 : 0) - i * 0.05
+          if (score > best.score) best = { day: d, score }
+        }
+        if (best.day !== s.checkOut) {
+          effDay = best.day
+          recommended = best.day
+          reason = anchorDays.has(anchorKey(best.day)) ? 'buendel' : dayKind(s.checkOut)
+        }
+      }
+      const hasMinutes = cleaning.minutes[s.listingId] != null
+      return {
+        stay: s, listingId: s.listingId, sameDayArrival, nextIn,
+        effDay, recommended, reason,
+        minutes: cleaning.minutes[s.listingId] ?? FALLBACK_MINUTES, hasMinutes, group, personId,
+      }
+    }).sort((a, b) => a.effDay.localeCompare(b.effDay) || a.group.localeCompare(b.group))
+  }, [stays, listings, cleaning, today, horizon]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visible = slots.filter((s) => s.effDay <= listHorizon && matchPerson(s.listingId))
+
+  const slotCost = (s: Slot) => (s.minutes / 60) * (ratesFor(s.listingId)?.hourlyRate ?? 0)
+  const slotSurcharge = (s: Slot) => {
+    const kind = dayKind(s.effDay)
+    const r = ratesFor(s.listingId)
+    if (!kind || !r) return 0
+    return slotCost(s) * ((kind === 'feiertag' ? r.holidaySurchargePct : r.sundaySurchargePct) / 100)
+  }
+
+  /* ── Kosten — echte KALENDERMONATE, Sätze je Kraft, gefiltert ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
-    const r = cleaning.rates
-    const matchPerson = (lid: string) =>
-      costPerson === '' ? true
-        : costPerson === 'none' ? !cleaning.responsible[lid]
-          : cleaning.responsible[lid]?.id === costPerson
     const filtered = slots.filter((s) => matchPerson(s.listingId))
 
+    type Trip = { day: string; group: string; personId: string; count: number; fee: number }
     type MonthRow = {
       key: string; label: string; partialStart: boolean; partialEnd: boolean
       perListing: Map<string, { count: number; minutes: number; base: number }>
-      surcharge: number; trips: Map<string, { day: string; group: string; count: number }>
+      surcharge: number; trips: Map<string, Trip>
       slots: Slot[]
     }
     const months = new Map<string, MonthRow>()
@@ -224,18 +243,19 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       m.perListing.set(s.listingId, row)
       if (!s.hasMinutes) missingMinutes++
       m.surcharge += slotSurcharge(s)
-      const tKey = `${s.effDay}|${s.group}`
-      const t = m.trips.get(tKey) ?? { day: s.effDay, group: s.group, count: 0 }
+      // Anfahrt = Einsatztag × Standort × KRAFT, zum Satz dieser Kraft
+      const tKey = `${s.effDay}|${s.group}|${s.personId}`
+      const t = m.trips.get(tKey) ?? { day: s.effDay, group: s.group, personId: s.personId, count: 0, fee: ratesFor(s.listingId)?.travelFee ?? 0 }
       t.count++
       m.trips.set(tKey, t)
     }
     const list = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).map((m) => {
       const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
-      const travel = m.trips.size * r.travelFee
+      const travel = [...m.trips.values()].reduce((a, t) => a + t.fee, 0)
       return { ...m, baseSum, travel, tripCount: m.trips.size, total: baseSum + m.surcharge + travel }
     })
     return { months: list, missingMinutes }
-  }, [slots, cleaning.rates, cleaning.responsible, costPerson]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slots, cleaning.rates, cleaning.ratesByPerson, cleaning.responsible, personFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Rechnungen laden (nur Kosten-Ansicht) ── */
   useEffect(() => {
@@ -249,8 +269,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   function startUpload(month: string, expected: Record<string, unknown>) {
     pendingRef.current = {
       month, expected,
-      personId: costPerson === '' || costPerson === 'none' ? '' : costPerson,
-      personName: costPerson === '' || costPerson === 'none' ? '' : (persons.find((p) => p.id === costPerson)?.name ?? ''),
+      personId: personFilter === '' || personFilter === 'none' ? '' : personFilter,
+      personName: personFilter === '' || personFilter === 'none' ? '' : (persons.find((p) => p.id === personFilter)?.name ?? ''),
     }
     fileRef.current?.click()
   }
@@ -308,14 +328,15 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
     setInvoices((list) => list.filter((x) => x.id !== id))
   }
 
-  /* ── Touren: Einsatztage → Standort-Blöcke ── */
+  /* ── Touren: Einsatztage → Blöcke je Standort × Reinigungskraft ── */
   const tours = useMemo(() => {
     const byDay = new Map<string, Map<string, Slot[]>>()
     for (const s of visible) {
       const day = byDay.get(s.effDay) ?? new Map<string, Slot[]>()
-      const arr = day.get(s.group) ?? []
+      const bKey = `${s.group}|${s.personId}`
+      const arr = day.get(bKey) ?? []
       arr.push(s)
-      day.set(s.group, arr)
+      day.set(bKey, arr)
       byDay.set(s.effDay, day)
     }
     return [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))
@@ -328,10 +349,22 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const rowStyle = { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' } as const
   const subRowStyle = { display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0 4px 14px', fontSize: 12, color: '#6B7280' } as const
 
+  const personChips = (persons.length > 0 || hasUnassigned) && (
+    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 6 }}>
+      {[{ id: '', name: 'Alle' }, ...persons, ...(hasUnassigned ? [{ id: 'none', name: 'Ohne Zuordnung' }] : [])].map((p) => (
+        <button key={p.id || 'alle'} onClick={() => setPersonFilter(p.id)} style={{
+          flexShrink: 0, padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+          background: personFilter === p.id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+          color: personFilter === p.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>{p.id && p.id !== 'none' ? `👤 ${p.name}` : p.name}</button>
+      ))}
+    </div>
+  )
+
   return (
     <div>
       <input ref={fileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFile} style={{ display: 'none' }} />
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
         {([['liste', '📋 Liste'], ['touren', '🗺 Touren'], ...(isAdmin ? [['kosten', '💶 Kosten']] : [])] as [typeof mode, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setMode(id)} style={{
             padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
@@ -339,30 +372,13 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             color: mode === id ? '#fff' : '#3C3C43', cursor: 'pointer',
           }}>{label}</button>
         ))}
-        {hasMine && mode !== 'kosten' && (
-          <button onClick={() => setScope(scope === 'meine' ? 'alle' : 'meine')} style={{
-            marginLeft: 'auto', padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-            background: scope === 'meine' ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
-            color: scope === 'meine' ? '#fff' : '#3C3C43', cursor: 'pointer',
-          }}>{scope === 'meine' ? '🧹 Meine' : 'Alle'}</button>
-        )}
       </div>
+      {/* 👤 Filter nach Reinigungskraft — gilt für ALLE drei Ansichten */}
+      {personChips}
 
-      {/* ═══ 💶 KOSTEN (Admins) — Rechnung je KALENDERMONAT + Person ═══ */}
+      {/* ═══ 💶 KOSTEN (Admins) — Rechnung je KALENDERMONAT + Kraft ═══ */}
       {mode === 'kosten' && costs && (
         <div>
-          {/* Personen-Filter: „was stellt Vanessa in Rechnung?" */}
-          {(persons.length > 0) && (
-            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 6 }}>
-              {[{ id: '', name: 'Alle' }, ...persons, ...(hasUnassigned ? [{ id: 'none', name: 'Ohne Zuordnung' }] : [])].map((p) => (
-                <button key={p.id || 'alle'} onClick={() => setCostPerson(p.id)} style={{
-                  flexShrink: 0, padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-                  background: costPerson === p.id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
-                  color: costPerson === p.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
-                }}>{p.id && p.id !== 'none' ? `👤 ${p.name}` : p.name}</button>
-              ))}
-            </div>
-          )}
           {invError && (
             <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 12.5 }}>
               {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
@@ -373,7 +389,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             const expectedPayload = {
               monat: m.label,
               reinigungskraft: personLabel,
-              saetze: cleaning.rates,
+              saetze: personFilter && personFilter !== 'none'
+                ? (cleaning.ratesByPerson?.[personFilter] ?? cleaning.rates)
+                : cleaning.rates,
               total: Math.round(m.total * 100) / 100,
               basis: Math.round(m.baseSum * 100) / 100,
               zulagen: Math.round(m.surcharge * 100) / 100,
@@ -390,7 +408,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               hinweis: m.partialStart ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.' : undefined,
             }
             const monthInvoices = invoices.filter((inv) => inv.month === m.key
-              && (costPerson === '' || (costPerson === 'none' ? inv.person_id === null : inv.person_id === costPerson)))
+              && (personFilter === '' || (personFilter === 'none' ? inv.person_id === null : inv.person_id === personFilter)))
             return (
               <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
                 <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE RECHNUNG</p>
@@ -441,7 +459,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       </button>
                       {openKeys[k] && zSlots.map((s) => (
                         <div key={s.stay.id} style={subRowStyle}>
-                          <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {blockReason(s.effDay) === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
+                          <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {dayKind(s.effDay) === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
                           <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0 }}>{eurSigned(slotSurcharge(s))}</span>
                         </div>
                       ))}
@@ -449,7 +467,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                   )
                 })()}
 
-                {/* Anfahrten — aufklappbar */}
+                {/* Anfahrten — aufklappbar (Satz der jeweiligen Kraft) */}
                 {(() => {
                   const k = `${m.key}|a`
                   const trips = [...m.trips.values()].sort((a, b) => a.day.localeCompare(b.day))
@@ -458,18 +476,18 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       <button onClick={() => trips.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: trips.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
                         <span style={{ fontSize: 13, color: '#6B7280' }}>
                           {trips.length > 0 && <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
-                          Anfahrten ({m.tripCount}× je {eur(cleaning.rates!.travelFee)})
+                          Anfahrten ({m.tripCount}×)
                         </span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(m.travel)}</span>
                       </button>
                       {openKeys[k] && trips.map((t) => {
-                        const s0 = m.slots.find((s) => s.group === t.group)
+                        const s0 = m.slots.find((s) => s.group === t.group && s.personId === t.personId)
                         const info = s0 ? listings[s0.listingId] : null
-                        const label = info?.group ?? info?.title ?? '—'
+                        const pName = t.personId !== '-' ? (persons.find((p) => p.id === t.personId)?.name ?? null) : null
                         return (
-                          <div key={`${t.day}|${t.group}`} style={subRowStyle}>
-                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {label} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
-                            <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(cleaning.rates!.travelFee)}</span>
+                          <div key={`${t.day}|${t.group}|${t.personId}`} style={subRowStyle}>
+                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · ${pName}` : ''} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
+                            <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(t.fee)}</span>
                           </div>
                         )
                       })}
@@ -549,7 +567,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       marginTop: 2, padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
                       fontSize: 12.5, fontWeight: 700, color: '#fff',
                       background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', opacity: invBusy ? 0.5 : 1,
-                    }}>📄 Rechnung hochladen & prüfen{costPerson && costPerson !== 'none' ? ` (${personLabel})` : ''}</button>
+                    }}>📄 Rechnung hochladen & prüfen{personFilter && personFilter !== 'none' ? ` (${personLabel})` : ''}</button>
                   )}
                 </div>
               </div>
@@ -568,40 +586,44 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
 
       {/* ═══ 🗺 TOUREN ═══ */}
       {mode === 'touren' && (tours.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Einsätze in den nächsten 4 Wochen.</p>
+        <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Einsätze für {personLabel} in den nächsten 4 Wochen.</p>
       ) : tours.map(([day, groups]) => {
         const all = [...groups.values()].flat()
         const totalMin = all.reduce((a, s) => a + s.minutes, 0)
-        const br = blockReason(day)
+        const kind = dayKind(day)
         return (
           <div key={day} style={{ marginBottom: 14, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '11px 14px', background: day === today ? '#FAF5E4' : '#FCFBF9', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13.5, fontWeight: 800, color: day === today ? '#8A7020' : '#111' }}>{dayLabel(day, today)}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>
-                ⏱ {fmtDur(totalMin)} · 🚗 {groups.size} Anfahrt{groups.size === 1 ? '' : 'en'}{br ? (br === 'sonntag' ? ' · ☀️ Sonntag' : ' · 🎌 Feiertag') : ''}
+                ⏱ {fmtDur(totalMin)} · 🚗 {groups.size} Anfahrt{groups.size === 1 ? '' : 'en'}{kind ? (kind === 'sonntag' ? ' · ☀️ Sonntag' : ' · 🎌 Feiertag') : ''}
               </span>
             </div>
-            {[...groups.entries()].map(([g, items]) => (
-              <div key={g} style={{ padding: '9px 14px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.1)' }}>
-                <p style={{ fontSize: 11.5, fontWeight: 800, color: '#8A7020', margin: '0 0 6px' }}>
-                  📍 {listings[items[0].listingId]?.group ?? listings[items[0].listingId]?.title ?? g} · {fmtDur(items.reduce((a, s) => a + s.minutes, 0))}
-                </p>
-                {items.map((s) => (
-                  <div key={s.stay.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
-                      {listings[s.listingId]?.title}
-                      {cleaning.mine.includes(s.listingId) && <span style={{ color: '#8A7020' }}> · du</span>}
-                    </span>
-                    <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0, alignItems: 'center' }}>
-                      <span style={{ fontSize: 11.5, color: '#6B7280' }}>{fmtDur(s.minutes)}</span>
-                      {s.sameDayArrival
-                        ? chip('#FFF7ED', '#C2410C', 'Wechsel')
-                        : s.recommended ? chip('#EFF6FF', '#1D4ED8', `von ${fmtShort(s.stay.checkOut)}`) : chip('#F0FDF4', '#15803D', 'flexibel')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
+            {[...groups.entries()].map(([g, items]) => {
+              const info = listings[items[0].listingId]
+              const pName = items[0].personId !== '-' ? (persons.find((p) => p.id === items[0].personId)?.name ?? null) : null
+              return (
+                <div key={g} style={{ padding: '9px 14px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.1)' }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 800, color: '#8A7020', margin: '0 0 6px' }}>
+                    📍 {info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · 👤 ${pName}` : ''} · {fmtDur(items.reduce((a, s) => a + s.minutes, 0))}
+                  </p>
+                  {items.map((s) => (
+                    <div key={s.stay.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+                        {listings[s.listingId]?.title}
+                        {cleaning.mine.includes(s.listingId) && <span style={{ color: '#8A7020' }}> · du</span>}
+                      </span>
+                      <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11.5, color: '#6B7280' }}>{fmtDur(s.minutes)}</span>
+                        {s.sameDayArrival
+                          ? chip('#FFF7ED', '#C2410C', 'Wechsel')
+                          : s.recommended ? chip('#EFF6FF', '#1D4ED8', `von ${fmtShort(s.stay.checkOut)}`) : chip('#F0FDF4', '#15803D', 'flexibel')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         )
       }))}
@@ -617,7 +639,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         return days.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>🧹</p>
-            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine anstehenden Reinigungen in den nächsten 4 Wochen.</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine anstehenden Reinigungen für {personLabel} in den nächsten 4 Wochen.</p>
           </div>
         ) : days.map(({ iso, items }) => (
           <div key={iso} style={{ marginBottom: 16 }}>
