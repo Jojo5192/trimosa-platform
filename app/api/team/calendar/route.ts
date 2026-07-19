@@ -15,13 +15,26 @@ export async function GET() {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const start = new Date(Date.now() - 1 * 86400_000).toISOString().slice(0, 10)
+  // −7 Tage Rückblick fürs Belegungs-Grid (Agenda zeigt weiter nur ab heute)
+  const start = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
   const end = new Date(Date.now() + 56 * 86400_000).toISOString().slice(0, 10)
+
+  // Individuelle Kalender-Sicht (Pascal §99.4): Nicht-Admins sehen nur die
+  // ihnen zugeordneten Wohnungen; ohne Eintrag = alle (Default)
+  let visibleIds: Set<string> | null = null
+  if (auth.role !== 'admin') {
+    try {
+      const { data: setting } = await supabaseAdmin
+        .from('app_settings').select('value').eq('key', 'calendar_visibility').maybeSingle()
+      const mine = ((setting?.value ?? {}) as Record<string, string[]>)[auth.userId]
+      if (Array.isArray(mine) && mine.length) visibleIds = new Set(mine)
+    } catch { /* keine Einschränkung */ }
+  }
 
   const [{ data: bookings }, { data: listings }] = await Promise.all([
     supabaseAdmin
       .from('bookings')
-      .select('id, listing_id, check_in, check_out, guest_name, status, payment_status, source')
+      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source')
       .eq('status', 'confirmed')
       .lte('check_in', end)
       .gte('check_out', start)
@@ -32,11 +45,13 @@ export async function GET() {
   // Unbezahlte Direkt-Buchungen ausblenden (Geister vor Webhook-Aufräumung)
   const stays = (bookings ?? [])
     .filter((b) => b.source !== 'trimosa' || b.payment_status === 'paid')
+    .filter((b) => !visibleIds || visibleIds.has(b.listing_id))
     .map((b) => ({
       id: b.id,
       listingId: b.listing_id,
       checkIn: b.check_in,
       checkOut: b.check_out,
+      channel: (b as { channel?: string | null }).channel ?? null,
       // Gastnamen nur fürs interne Team, nie für Dienstleister
       guestName: auth.role === 'provider' ? null : (b.guest_name ?? null),
     }))
@@ -69,7 +84,9 @@ export async function GET() {
       .limit(50)
     if (auth.role !== 'admin') qsQuery = qsQuery.eq('assignee_id', auth.userId)
     const { data } = await qsQuery
-    qs = (data ?? []).map((c) => ({ id: c.id, listingId: c.listing_id, dueDate: c.due_date }))
+    qs = (data ?? [])
+      .filter((c) => !visibleIds || visibleIds.has(c.listing_id))
+      .map((c) => ({ id: c.id, listingId: c.listing_id, dueDate: c.due_date }))
   } catch { /* Tabelle fehlt noch */ }
 
   return NextResponse.json({
@@ -77,8 +94,10 @@ export async function GET() {
     stays,
     tasks: tasks ?? [],
     qs,
-    listings: Object.fromEntries((listings ?? []).map((l) => [
-      l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
-    ])),
+    listings: Object.fromEntries((listings ?? [])
+      .filter((l) => !visibleIds || visibleIds.has(l.id))
+      .map((l) => [
+        l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
+      ])),
   }, NO_STORE)
 }
