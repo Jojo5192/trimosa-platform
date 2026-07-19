@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
-type Rules = { avoidSundays: boolean; avoidHolidays: boolean }
+type Rules = { avoidSundays: boolean; avoidHolidays: boolean; bundleTravel?: boolean }
 type Rates = {
   hourlyRate: number; travelFee: number; travelPerCleaning?: boolean
   sundaySurchargePct: number; holidaySurchargePct: number
@@ -193,7 +193,12 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         const windowDays: string[] = []
         for (let d = s.checkOut; d <= lastDay && windowDays.length < 9; d = addDays(d, 1)) windowDays.push(d)
         const earliest = windowDays.find((d) => !isBlockedFor(d, s.listingId)) ?? s.checkOut
-        const bundle = windowDays.find((d) => !isBlockedFor(d, s.listingId) && anchorDays.has(anchorKey(d))) ?? null
+        // Bündeln nur, wenn es bei DIESER Kraft eine Anfahrt spart (§120):
+        // bei Anfahrt-je-Reinigung (Vanessa) oder 0-€-Anfahrt (Tip-Top) zählt
+        // allein „schnellstmöglich" — keine künstliche Verzögerung
+        const bundle = (rulesFor(s.listingId).bundleTravel ?? true)
+          ? windowDays.find((d) => !isBlockedFor(d, s.listingId) && anchorDays.has(anchorKey(d))) ?? null
+          : null
         effDay = bundle && bundle <= addDays(earliest, 1) ? bundle : earliest
         if (effDay !== s.checkOut) {
           recommended = effDay
@@ -735,7 +740,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {s.reason === 'sonntag' && chip('#EFF6FF', '#1D4ED8', '☀️ Sonntag übersprungen')}
                             {(s.reason === 'feiertag' || s.reason === 'besonders') && chip('#EFF6FF', '#1D4ED8', '🎌 Feiertag übersprungen')}
-                            {partnerTitle && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt — zusammen mit ${partnerTitle}`)}
+                            {partnerTitle && (rulesFor(s.listingId).bundleTravel ?? true) && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt — zusammen mit ${partnerTitle}`)}
                             {s.reason === 'buendel' && !partnerTitle && chip('#F5F3FF', '#6D28D9', '🚗 eine Anfahrt — mit Termin am Standort')}
                           </div>
                         )}
