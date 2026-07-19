@@ -88,6 +88,7 @@ export async function GET(request: Request) {
             `💬 ${flag}${b.guest_name ?? 'Gast'}${listing?.title ? ` · ${listing.title}` : ''}`,
             t?.german ?? g.text,
             '/team',
+            { guestChat: true },
           )
           pushes++
         }
