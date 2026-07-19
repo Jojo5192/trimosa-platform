@@ -34,6 +34,10 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
     tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
+  // Mobil in einem Thread: Tab-Bar versteckt (WhatsApp-Verhalten, §98-Feedback)
+  const [chatThread, setChatThread] = useState(false)
+  const [internThread, setInternThread] = useState(false)
+  const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
@@ -41,11 +45,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {role === 'team' && (
           <div style={{ height: '100%', display: tab === 'chat' ? 'block' : 'none' }}>
-            <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} />
+            <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} />
           </div>
         )}
         <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
-          <InternPanel userId={userId} onUnread={setInternUnread} />
+          <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} />
         </div>
         {tab === 'aufgaben' && (
           <TasksPanel role={role} userId={userId} />
@@ -53,7 +57,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
         {tab === 'kalender' && <CalendarPanel />}
       </div>
 
-      {/* Bottom-Tab-Bar */}
+      {/* Bottom-Tab-Bar — im offenen Thread (mobil) ausgeblendet */}
+      {!navHidden && (
       <nav style={{
         display: 'flex', flexShrink: 0,
         background: 'rgba(249,249,249,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
@@ -86,6 +91,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
           )
         })}
       </nav>
+      )}
     </div>
   )
 }
