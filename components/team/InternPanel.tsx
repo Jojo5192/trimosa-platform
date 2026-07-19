@@ -168,6 +168,15 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
+  // Auto-Grow des Schreibfelds als Effect (Pascal: „passt sich nicht an") —
+  // deckt Tippen, iOS-Diktat UND programmatisches Leeren gleichermaßen ab
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [draft])
+
   function openChat(c: TeamChat) {
     if (recording) stopRec(false) // laufende Aufnahme beim Thread-Wechsel verwerfen
     setActive(c)
@@ -223,7 +232,24 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     } finally { setUploading(false) }
   }
 
-  /* ── ❤️ Tapbacks (iMessage): eine Reaktion pro Person, Toggle ── */
+  /* ── ❤️ Tapbacks (iMessage): eine Reaktion pro Person, Toggle ──
+     Auslöser: Long-Press (mit Wackel-Toleranz — iOS-Finger bewegen sich
+     immer minimal) ODER Doppeltipp (iMessage kennt beides, Doppeltipp ist
+     auf iOS am robustesten) ODER Desktop-Rechtsklick. */
+  const pressPos = useRef<{ x: number; y: number } | null>(null)
+  const lastTap = useRef<{ id: string; t: number } | null>(null)
+
+  function handleBubbleTap(msgId: string) {
+    const now = Date.now()
+    if (lastTap.current && lastTap.current.id === msgId && now - lastTap.current.t < 320) {
+      lastTap.current = null
+      window.getSelection?.()?.removeAllRanges()
+      setReactFor(msgId)
+      return
+    }
+    lastTap.current = { id: msgId, t: now }
+  }
+
   function toggleReaction(msgId: string, emoji: string) {
     if (!active) return
     setReactFor(null)
@@ -246,9 +272,21 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     }).catch(() => {})
   }
 
-  const startPress = (msgId: string) => {
+  const startPress = (msgId: string, e: React.TouchEvent) => {
     if (pressTimer.current) clearTimeout(pressTimer.current)
-    pressTimer.current = setTimeout(() => setReactFor(msgId), 420)
+    const t = e.touches[0]
+    pressPos.current = t ? { x: t.clientX, y: t.clientY } : null
+    pressTimer.current = setTimeout(() => {
+      window.getSelection?.()?.removeAllRanges()
+      setReactFor(msgId)
+    }, 420)
+  }
+  const movePress = (e: React.TouchEvent) => {
+    // Nur bei ECHTER Bewegung (>12px = Scrollen) abbrechen — minimales
+    // Finger-Wackeln beim Long-Press darf den Timer nicht killen
+    const t = e.touches[0]
+    const p = pressPos.current
+    if (t && p && Math.hypot(t.clientX - p.x, t.clientY - p.y) > 12) cancelPress()
   }
   const cancelPress = () => {
     if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null }
@@ -547,12 +585,13 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                   <div style={{ maxWidth: '76%' }}>
                     {!mine && firstOfRun && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#8A7020', margin: '0 0 2px 4px' }}>{m.senderName}</div>}
                     <div
-                      className={lastOfRun ? (mine ? 'imsg-tail-out' : 'imsg-tail-in') : undefined}
+                      className={`imsg-noselect${lastOfRun ? (mine ? ' imsg-tail-out' : ' imsg-tail-in') : ''}`}
                       style={{ position: 'relative', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-                      onTouchStart={() => startPress(m.id)}
-                      onTouchMove={cancelPress}
+                      onTouchStart={(e) => startPress(m.id, e)}
+                      onTouchMove={movePress}
                       onTouchEnd={cancelPress}
                       onTouchCancel={cancelPress}
+                      onClick={() => handleBubbleTap(m.id)}
                       onContextMenu={(e) => { e.preventDefault(); setReactFor(m.id) }}
                     >
                     {/* Tapback-Picker (Long-Press / Rechtsklick) */}
@@ -691,12 +730,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
           <textarea
             ref={composerRef}
             value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              // Auto-Grow (Pascal: „Schreib-Fenster immer noch so klein")
-              e.target.style.height = 'auto'
-              e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
-            }}
+            onChange={(e) => setDraft(e.target.value)}
             rows={1}
             placeholder="Nachricht"
             style={{ flex: 1, resize: 'none', outline: 'none', border: 'none', borderRadius: 18, padding: draft.trim() ? '7px 40px 7px 13px' : '7px 13px', fontSize: 16, lineHeight: '22px', fontFamily: 'inherit', background: 'transparent', color: '#111', maxHeight: 160, overflowY: 'auto' }}
