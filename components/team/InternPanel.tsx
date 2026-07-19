@@ -21,8 +21,13 @@ interface TeamMsg {
   id: string; senderId: string; senderName: string; senderAvatar: string | null
   content: string; attachmentUrl: string | null; attachmentType: 'image' | 'video' | 'pdf' | 'audio' | null
   attachmentName: string | null; createdAt: string
+  /** Tapbacks: { "❤️": [userId, …] } */
+  reactions?: Record<string, string[]>
 }
 interface Directory { id: string; name: string; role: string }
+
+/** iMessage-Tapback-Auswahl (muss zur Server-Whitelist passen) */
+const REACTION_SET = ['❤️', '👍', '👎', '😂', '‼️', '❓']
 
 const HAIR = '0.5px solid rgba(60,60,67,0.15)'
 
@@ -92,6 +97,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [showCreate, setShowCreate] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
+  const [reactFor, setReactFor] = useState<string | null>(null)
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -207,6 +214,37 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       await loadMsgs(active.id)
       loadChats()
     } finally { setUploading(false) }
+  }
+
+  /* ── ❤️ Tapbacks (iMessage): eine Reaktion pro Person, Toggle ── */
+  function toggleReaction(msgId: string, emoji: string) {
+    if (!active) return
+    setReactFor(null)
+    // Optimistisch spiegeln (gleiche Logik wie der Server)
+    setMsgs((ms) => ms.map((m) => {
+      if (m.id !== msgId) return m
+      const next: Record<string, string[]> = {}
+      let hadThis = false
+      for (const [e, users] of Object.entries(m.reactions ?? {})) {
+        if (e === emoji && users.includes(userId)) hadThis = true
+        const rest = users.filter((u) => u !== userId)
+        if (rest.length) next[e] = rest
+      }
+      if (!hadThis) next[emoji] = [...(next[emoji] ?? []), userId]
+      return { ...m, reactions: next }
+    }))
+    fetch(`/api/team-chat/${active.id}/react`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId: msgId, emoji }),
+    }).catch(() => {})
+  }
+
+  const startPress = (msgId: string) => {
+    if (pressTimer.current) clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => setReactFor(msgId), 420)
+  }
+  const cancelPress = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null }
   }
 
   /* ── 🎙️ Sprachnachrichten (MediaRecorder; iOS = audio/mp4, Chrome = webm) ── */
@@ -483,14 +521,60 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
               const radius = mine
                 ? `18px ${firstOfRun ? 18 : 5}px ${lastOfRun ? 18 : 5}px 18px`
                 : `${firstOfRun ? 18 : 5}px 18px 18px ${lastOfRun ? 18 : 5}px`
+              const reactions = Object.entries(m.reactions ?? {}).filter(([, u]) => u.length)
               return (
-                <div key={m.id} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
+                <div key={m.id} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: reactions.length ? 12 : 0, marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
                   {!mine && (lastOfRun
                     ? <Av name={m.senderName} src={m.senderAvatar} size={26} />
                     : <span style={{ width: 26, flexShrink: 0 }} />)}
                   <div style={{ maxWidth: '76%' }}>
                     {!mine && firstOfRun && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#8A7020', margin: '0 0 2px 4px' }}>{m.senderName}</div>}
-                    <div className={lastOfRun ? (mine ? 'imsg-tail-out' : 'imsg-tail-in') : undefined} style={{ position: 'relative' }}>
+                    <div
+                      className={lastOfRun ? (mine ? 'imsg-tail-out' : 'imsg-tail-in') : undefined}
+                      style={{ position: 'relative', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+                      onTouchStart={() => startPress(m.id)}
+                      onTouchMove={cancelPress}
+                      onTouchEnd={cancelPress}
+                      onTouchCancel={cancelPress}
+                      onContextMenu={(e) => { e.preventDefault(); setReactFor(m.id) }}
+                    >
+                    {/* Tapback-Picker (Long-Press / Rechtsklick) */}
+                    {reactFor === m.id && (
+                      <div style={{
+                        position: 'absolute', top: -48, ...(mine ? { right: 0 } : { left: 0 }), zIndex: 6,
+                        display: 'flex', gap: 2, background: '#fff', borderRadius: 999, padding: '5px 7px',
+                        boxShadow: '0 6px 20px rgba(0,0,0,0.18), inset 0 0 0 0.5px rgba(60,60,67,0.1)',
+                      }}>
+                        {REACTION_SET.map((e) => {
+                          const mineHas = (m.reactions?.[e] ?? []).includes(userId)
+                          return (
+                            <button key={e} onClick={() => toggleReaction(m.id, e)} style={{
+                              width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
+                              background: mineHas ? '#FAF5E4' : 'none', fontSize: 19, cursor: 'pointer',
+                            }}>{e}</button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {/* Reaktions-Badges an der oberen Ecke (zur Bildschirm-Mitte) */}
+                    {reactions.length > 0 && (
+                      <div style={{ position: 'absolute', top: -11, ...(mine ? { left: -6 } : { right: -6 }), zIndex: 2, display: 'flex', gap: 3 }}>
+                        {reactions.map(([e, users]) => {
+                          const mineHas = users.includes(userId)
+                          return (
+                            <button key={e} onClick={() => toggleReaction(m.id, e)} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3, borderRadius: 999,
+                              padding: '3px 7px', fontSize: 12, border: 'none', background: '#fff', cursor: 'pointer',
+                              boxShadow: mineHas
+                                ? '0 1px 4px rgba(0,0,0,0.15), inset 0 0 0 1.5px var(--gold, #AE8D2D)'
+                                : '0 1px 4px rgba(0,0,0,0.15), inset 0 0 0 0.5px rgba(60,60,67,0.2)',
+                            }}>
+                              {e}{users.length > 1 && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7280' }}>{users.length}</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                     <div style={{
                       borderRadius: radius, padding: m.attachmentUrl && !m.content ? 4 : '8px 13px',
                       background: mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#E9E9EB',
@@ -625,6 +709,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   return (
     <div style={{ height: '100%', display: 'flex', background: '#fff', overflow: 'hidden' }}>
       {isMobile ? (mobileView === 'list' ? List : Thread) : (<>{List}{Thread}</>)}
+      {/* Tipp daneben schließt den Tapback-Picker (Portal: fixed nie in Touch-Scroller) */}
+      {reactFor && typeof document !== 'undefined' && createPortal(
+        <div onClick={() => setReactFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 5 }} />,
+        document.body
+      )}
       {showCreate && <CreateDialog />}
       {showInfo && active && (
         <GroupInfo
