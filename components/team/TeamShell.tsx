@@ -41,20 +41,22 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   const [internThread, setInternThread] = useState(false)
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
 
-  // Tastatur-Pinning: iOS scrollt bei offener Tastatur das ganze Fenster —
-  // der Header rutscht oben raus und „springt" nach Sekunden zurück. Fix:
-  // Shell-Höhe an den sichtbaren Viewport heften + Fenster-Scroll auf 0 halten.
-  const [vvHeight, setVvHeight] = useState<number | null>(null)
+  // Tastatur-Pinning: iOS verschiebt bei offener Tastatur den SICHTBAREN
+  // Ausschnitt (visualViewport.offsetTop), ohne das Fenster zu scrollen —
+  // der Header „fliegt" oben raus. Fix: Shell-Höhe an den sichtbaren Viewport
+  // heften UND die Shell per top um offsetTop mitschieben (position:relative
+  // bewusst, KEIN transform — das würde fixed-Sheets neu verankern).
+  const [vvBox, setVvBox] = useState<{ h: number; y: number } | null>(null)
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
     const sync = () => {
       const kb = window.innerHeight - vv.height
       if (kb > 100) {
-        setVvHeight(Math.round(vv.height))
+        setVvBox({ h: Math.round(vv.height), y: Math.round(vv.offsetTop) })
         window.scrollTo(0, 0)
       } else {
-        setVvHeight(null)
+        setVvBox(null)
       }
     }
     vv.addEventListener('resize', sync)
@@ -75,9 +77,12 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
 
   return (
     <div className="team-shell" style={{
-      height: vvHeight ?? '100dvh', display: 'flex', flexDirection: 'column',
+      height: vvBox?.h ?? '100dvh', display: 'flex', flexDirection: 'column',
       background: '#fff', overflow: 'hidden', overscrollBehavior: 'none',
-      // viewport-fit=cover zieht die App unter die Statusbar — Inhalt darunter beginnen
+      position: 'relative', top: vvBox?.y ?? 0,
+      // viewport-fit=cover zieht die App unter die Statusbar — Inhalt darunter
+      // beginnen; bei offener Tastatur (vvBox) ist die Statusbar-Zone ohnehin
+      // vom System belegt, das Padding bleibt harmlos
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Content */}
