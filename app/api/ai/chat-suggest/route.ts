@@ -147,6 +147,12 @@ ${currentDraft.slice(0, 2000)}
 ANWEISUNG DES GASTGEBERS: ${instruction.slice(0, 500)}
 
 Überarbeite den Entwurf gemäß der Anweisung (Verlauf + Wissensbasis beachten).`
+  : typeof instruction === 'string' && instruction.trim()
+  ? `DER GASTGEBER SAGT DIR, WAS ER ANTWORTEN WILL (oft diktiert, stichwortartig):
+${instruction.slice(0, 500)}
+
+Formuliere daraus die fertige, freundliche Antwort an den Gast (Verlauf +
+Wissensbasis beachten; die inhaltliche Aussage des Gastgebers ist verbindlich).`
   : 'Entwirf jetzt die nächste Antwort des GASTGEBERS auf die letzte Gast-Nachricht.'}`
 
   try {
