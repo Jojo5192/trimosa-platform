@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
+import { getClaudeBotId } from '@/lib/claude-bot'
 
 /**
  * 💼 Interner Team-Messenger:
@@ -104,6 +105,12 @@ export async function GET() {
       name: (p.display_name as string | null)?.trim() || 'Ohne Namen',
       role: p.is_admin || p.is_host ? 'Chef-Etage' : p.is_staff ? 'Team' : 'Dienstleister',
     }))
+    // Claude (KI-Konto ohne Rollen-Flags) verwaltbar machen — sonst würde er
+    // beim Mitglieder-Bearbeiten (Checkboxen aus dem Verzeichnis) still entfernt
+    const claudeId = await getClaudeBotId(false)
+    if (claudeId && !directory.some((d) => d.id === claudeId)) {
+      directory.push({ id: claudeId, name: 'Claude', role: '🤖 KI' })
+    }
   }
 
   return NextResponse.json({ userId: auth.userId, canCreate: auth.role === 'admin', chats, directory }, NO_STORE)
