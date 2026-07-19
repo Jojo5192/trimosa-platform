@@ -9,11 +9,15 @@ import { useEffect, useState } from 'react'
 
 type Row = { id: string; title: string; cleaning_responsible: string | null; cleaning_minutes: number | null }
 type Person = { id: string; name: string; role: string }
+type Settings = {
+  avoidSundays: boolean; avoidHolidays: boolean
+  hourlyRate: number; travelFee: number; sundaySurchargePct: number; holidaySurchargePct: number
+}
 
 export default function CleaningCard() {
   const [rows, setRows] = useState<Row[]>([])
   const [people, setPeople] = useState<Person[]>([])
-  const [settings, setSettings] = useState<{ avoidSundays: boolean; avoidHolidays: boolean } | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -123,6 +127,36 @@ export default function CleaningCard() {
                 Wirkt als Empfehlung im Planer — bei Wechseltagen (Abreise + Anreise am selben Tag)
                 muss natürlich trotzdem am selben Tag gereinigt werden.
               </p>
+
+              {/* 💶 Kosten-Sätze (Basis der Monats-Prognose — nur Admins sehen die Prognose) */}
+              <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid #F0EDE6' }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 0 8px' }}>💶 KOSTEN-SÄTZE (für die Prognose im Planer)</p>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {([
+                    ['hourlyRate', 'Stundensatz', '€/h'],
+                    ['travelFee', 'Anfahrt', '€ je Einsatz'],
+                    ['sundaySurchargePct', 'Sonntags-Zulage', '%'],
+                    ['holidaySurchargePct', 'Feiertags-Zulage', '%'],
+                  ] as const).map(([key, label, unit]) => (
+                    <label key={key} style={{ flex: '1 1 130px', minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8A8578', marginBottom: 4 }}>{label} ({unit})</span>
+                      <input
+                        type="number" min={0}
+                        defaultValue={settings[key]}
+                        onBlur={async (e) => {
+                          const v = Number(e.target.value)
+                          if (Number.isFinite(v) && v >= 0 && v !== settings[key]) {
+                            const next = { ...settings, [key]: v }
+                            setSettings(next)
+                            await patch({ settings: { [key]: v } })
+                          }
+                        }}
+                        style={{ ...inputStyle, width: '100%' }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           {msg && <p style={{ fontSize: 12.5, margin: '10px 0 0', color: msg.startsWith('✓') ? '#15803D' : '#B45309' }}>{msg}</p>}
