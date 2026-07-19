@@ -20,24 +20,31 @@ async function membership(chatId: string, userId: string) {
   return !!data
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   if (!(await membership(id, auth.userId))) return NextResponse.json({ error: 'Kein Mitglied.' }, { status: 403 })
 
-  const { data: msgs, error } = await supabaseAdmin
+  // ?media=1 → nur Anhänge (Medien-Galerie der Gruppen-Info), neueste zuerst
+  const mediaOnly = new URL(req.url).searchParams.get('media') === '1'
+
+  let query = supabaseAdmin
     .from('team_messages')
     .select('id, sender_id, content, attachment_url, attachment_type, attachment_name, created_at, profiles(display_name, avatar_url)')
     .eq('chat_id', id)
-    .order('created_at', { ascending: true })
-    .limit(300)
+  query = mediaOnly
+    ? query.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
+    : query.order('created_at', { ascending: true }).limit(300)
+  const { data: msgs, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  await supabaseAdmin
-    .from('team_chat_members')
-    .update({ last_read_at: new Date().toISOString() })
-    .eq('chat_id', id).eq('user_id', auth.userId)
+  if (!mediaOnly) {
+    await supabaseAdmin
+      .from('team_chat_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('chat_id', id).eq('user_id', auth.userId)
+  }
 
   return NextResponse.json({
     messages: (msgs ?? []).map((m) => {
@@ -66,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({}))
   const content = typeof body.content === 'string' ? body.content.trim().slice(0, 4000) : ''
   const attachmentUrl = typeof body.attachmentUrl === 'string' && body.attachmentUrl ? body.attachmentUrl : null
-  const attachmentType = ['image', 'video', 'pdf'].includes(body.attachmentType) ? body.attachmentType : null
+  const attachmentType = ['image', 'video', 'pdf', 'audio'].includes(body.attachmentType) ? body.attachmentType : null
   const attachmentName = typeof body.attachmentName === 'string' ? body.attachmentName.slice(0, 160) : null
   if (!content && !attachmentUrl) return NextResponse.json({ error: 'Leere Nachricht.' }, { status: 400 })
 
@@ -93,7 +100,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       supabaseAdmin.from('profiles').select('display_name').eq('id', auth.userId).maybeSingle(),
     ])
     const sender = (me?.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
-    const preview = content || (attachmentType === 'image' ? '📷 Foto' : attachmentType === 'video' ? '🎬 Video' : '📄 PDF')
+    const preview = content || (attachmentType === 'image' ? '📷 Foto' : attachmentType === 'video' ? '🎬 Video' : attachmentType === 'audio' ? '🎙️ Sprachnachricht' : '📄 PDF')
     for (const m of members ?? []) {
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
