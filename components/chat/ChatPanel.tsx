@@ -381,10 +381,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.visualViewport?.removeEventListener('resize', grow)
   }, [draft])
 
-  /* App-Icon-Badge (installierte PWA): Summe ungelesener Nachrichten */
+  /* App-Icon-Badge (installierte PWA): Anzahl ungelesener THREADS — nicht
+     Nachrichten (Pascal-Bug „23 Notifications, aber 6 ungelesene": die Zahl
+     muss zum Ungelesen-Filter der Liste passen) */
   useEffect(() => {
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
-    const total = convs.reduce((s, c) => s + (c.unread ?? 0), 0)
+    const total = convs.filter((c) => (c.unread ?? 0) > 0).length
     try {
       if (total > 0) nav.setAppBadge?.(total)?.catch(() => {})
       else nav.clearAppBadge?.()?.catch(() => {})
@@ -439,7 +441,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
      Diktat. Web Speech API (on-device/Siri bzw. Google): Tipp = Aufnahme mit
      Live-Transkript im Feld, Tipp = Stopp → Claude führt die Ansage direkt aus. ── */
   const [recording, setRecording] = useState(false)
-  const recRef = useRef<{ stop: () => void } | null>(null)
+  const recRef = useRef<{ stop: () => void; finish: () => void } | null>(null)
   // Nach Mount prüfen (nicht im Render) — sonst Hydration-Mismatch Server/Client
   const [speechSupported, setSpeechSupported] = useState(false)
   useEffect(() => {
@@ -447,7 +449,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setSpeechSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
   }, [])
   function toggleDictation() {
-    if (recording) { recRef.current?.stop(); return }
+    if (recording) {
+      // Pascal-Bug 19.7.: iOS feuert onend nach stop() nicht zuverlässig —
+      // die Zuhör-Fläche blieb dann für immer stehen. finish() ist idempotent
+      // und wird notfalls per Timeout erzwungen.
+      const cur = recRef.current
+      try { cur?.stop() } catch { cur?.finish() }
+      setTimeout(() => cur?.finish(), 1200)
+      return
+    }
     const w = window as unknown as Record<string, new () => {
       lang: string; interimResults: boolean; continuous: boolean
       onresult: (e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void
@@ -466,21 +476,26 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     rec.interimResults = false
     rec.continuous = true
     let finalText = ''
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      setRecording(false)
+      recRef.current = null
+      try { rec.stop() } catch { /* schon gestoppt */ }
+      const spoken = finalText.trim()
+      if (spoken) refineDraft(spoken)
+    }
     rec.onresult = (e) => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) finalText = (finalText + ' ' + e.results[i][0].transcript).trim()
       }
     }
-    rec.onend = () => {
-      setRecording(false)
-      recRef.current = null
-      const spoken = finalText.trim()
-      if (spoken) refineDraft(spoken)
-    }
-    rec.onerror = () => { setRecording(false); recRef.current = null }
-    recRef.current = rec
+    rec.onend = finish
+    rec.onerror = finish
+    recRef.current = { stop: () => rec.stop(), finish }
     setRecording(true)
-    try { rec.start() } catch { setRecording(false); recRef.current = null }
+    try { rec.start() } catch { finish() }
   }
 
   /* ── send (with translation preview when the guest speaks another language) ── */
