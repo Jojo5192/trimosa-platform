@@ -88,7 +88,6 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [showCreate, setShowCreate] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -131,10 +130,6 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   useEffect(() => {
     loadChats()
-    fetch('/api/push/prefs', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats }) })
-      .catch(() => {})
     const id = setInterval(loadChats, 20000)
     return () => clearInterval(id)
   }, [loadChats])
@@ -198,16 +193,6 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     } finally { setUploading(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats') {
-    if (!prefs) return
-    const next = { ...prefs, [key]: !prefs[key] }
-    setPrefs(next)
-    await fetch('/api/push/prefs', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key]: next[key] }),
-    }).catch(() => {})
-  }
-
   /* ── Gruppen-Dialog ── */
   function CreateDialog() {
     const [name, setName] = useState('')
@@ -268,18 +253,6 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   /* ── Chat-Liste ── */
   const List = (
     <div style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined }}>
-      {/* Push-Präferenzen */}
-      {prefs && (
-        <div style={{ padding: '10px 14px', borderBottom: HAIR, display: 'flex', gap: 14, alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#8A8578', letterSpacing: '0.04em' }}>PUSH:</span>
-          {([['guestChats', 'Gäste'], ['teamChats', 'Intern']] as const).map(([key, label]) => (
-            <button key={key} onClick={() => togglePref(key)} style={{
-              display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: 12, fontWeight: 700, color: prefs[key] ? '#16A34A' : '#B0AA9C', padding: 0,
-            }}>{prefs[key] ? '🔔' : '🔕'} {label}</button>
-          ))}
-        </div>
-      )}
       {loading && <div style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>Lädt…</div>}
       {error && !loading && (
         <div style={{ margin: 12, padding: '10px 12px', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', fontSize: 12.5 }}>
