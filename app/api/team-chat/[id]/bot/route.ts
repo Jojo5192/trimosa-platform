@@ -28,14 +28,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from('team_chats').select('id, name, emoji').eq('id', id).maybeSingle()
   if (!chat) return NextResponse.json({ error: 'Gruppe nicht gefunden.' }, { status: 404 })
 
-  const msgId = await postAsClaude(id, content, { excludeUserId: me.userId })
+  // Absender ist der BOT — auch der Auslöser bekommt den Push (Inhaber 19.7.:
+  // „will sehen ob ich eine Push bekomme"; vorher war er ausgenommen)
+  const msgId = await postAsClaude(id, content, {})
   if (!msgId) return NextResponse.json({ error: 'Senden fehlgeschlagen.' }, { status: 500 })
-
-  // Lesestand des Auslösers mitziehen (er hat die Nachricht ja verfasst)
-  await supabaseAdmin
-    .from('team_chat_members')
-    .update({ last_read_at: new Date().toISOString() })
-    .eq('chat_id', id).eq('user_id', me.userId)
 
   return NextResponse.json({ ok: true, id: msgId }, NO_STORE)
 }
