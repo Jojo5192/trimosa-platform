@@ -6,8 +6,22 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-export interface CleaningSettings { avoidSundays: boolean; avoidHolidays: boolean }
-export const CLEANING_DEFAULTS: CleaningSettings = { avoidSundays: true, avoidHolidays: true }
+export interface CleaningSettings {
+  avoidSundays: boolean
+  avoidHolidays: boolean
+  /** €/Stunde Reinigung */
+  hourlyRate: number
+  /** € je Anfahrt (ein Einsatztag × Standort = eine Anfahrt) */
+  travelFee: number
+  /** Zuschlag in % für Sonntags-Reinigungen */
+  sundaySurchargePct: number
+  /** Zuschlag in % für Feiertags-Reinigungen */
+  holidaySurchargePct: number
+}
+export const CLEANING_DEFAULTS: CleaningSettings = {
+  avoidSundays: true, avoidHolidays: true,
+  hourlyRate: 30, travelFee: 15, sundaySurchargePct: 50, holidaySurchargePct: 100,
+}
 
 export async function getCleaningSettings(): Promise<CleaningSettings> {
   try {
