@@ -56,9 +56,17 @@ export async function PATCH(req: NextRequest) {
 
   if (body.settings && typeof body.settings === 'object') {
     const current = await getCleaningSettings()
+    const num = (v: unknown, fallback: number, max = 10000) => {
+      const n = Number(v)
+      return Number.isFinite(n) && n >= 0 && n <= max ? n : fallback
+    }
     const value = {
       avoidSundays: typeof body.settings.avoidSundays === 'boolean' ? body.settings.avoidSundays : current.avoidSundays,
       avoidHolidays: typeof body.settings.avoidHolidays === 'boolean' ? body.settings.avoidHolidays : current.avoidHolidays,
+      hourlyRate: 'hourlyRate' in body.settings ? num(body.settings.hourlyRate, current.hourlyRate, 500) : current.hourlyRate,
+      travelFee: 'travelFee' in body.settings ? num(body.settings.travelFee, current.travelFee, 500) : current.travelFee,
+      sundaySurchargePct: 'sundaySurchargePct' in body.settings ? num(body.settings.sundaySurchargePct, current.sundaySurchargePct, 300) : current.sundaySurchargePct,
+      holidaySurchargePct: 'holidaySurchargePct' in body.settings ? num(body.settings.holidaySurchargePct, current.holidaySurchargePct, 300) : current.holidaySurchargePct,
     }
     const { error } = await supabaseAdmin
       .from('app_settings')
