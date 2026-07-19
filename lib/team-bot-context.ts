@@ -6,6 +6,7 @@
  * (gleiche Datensparsamkeit wie der Team-Kalender). 5-Min-Cache je Variante.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { APP_HANDBOOK } from '@/lib/app-handbook'
 
 const g = globalThis as typeof globalThis & {
   __botCtxCache?: Record<string, { at: number; value: string }>
@@ -95,6 +96,9 @@ export async function buildBotContext(includeGuestNames: boolean): Promise<strin
   } catch (e) {
     console.error('[team-bot] context failed:', e)
   }
+
+  // Statisches Funktions-Handbuch — beantwortet „kann die App schon X?"
+  parts.push(APP_HANDBOOK)
 
   const value = parts.join('\n\n')
   cache[key] = { at: Date.now(), value }
