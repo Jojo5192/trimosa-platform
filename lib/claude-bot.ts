@@ -7,6 +7,7 @@
  */
 import { randomUUID } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { sendPushToUser } from '@/lib/push'
 
 const CLAUDE_EMAIL = 'claude-bot@trimosa.de'
 const g = globalThis as typeof globalThis & { __claudeBotId?: string }
@@ -43,4 +44,42 @@ export async function getClaudeBotId(create = false): Promise<string | null> {
   })
   g.__claudeBotId = id
   return id
+}
+
+/**
+ * Nachricht als Claude in eine interne Gruppe posten: stellt Konto +
+ * Mitgliedschaft sicher, insertet mit sender_id=Claude und pusht die
+ * anderen Mitglieder (push_team_chats respektiert). Genutzt von der
+ * admin-gated Bot-Route (Session-Updates) und dem @c-Antwort-Cron.
+ */
+export async function postAsClaude(
+  chatId: string,
+  content: string,
+  opts: { excludeUserId?: string } = {},
+): Promise<string | null> {
+  const claudeId = await getClaudeBotId(true)
+  if (!claudeId) return null
+  await supabaseAdmin
+    .from('team_chat_members')
+    .upsert({ chat_id: chatId, user_id: claudeId }, { onConflict: 'chat_id,user_id' })
+  const { data: msg, error } = await supabaseAdmin
+    .from('team_messages')
+    .insert({ chat_id: chatId, sender_id: claudeId, content: content.slice(0, 4000) })
+    .select('id').single()
+  if (error || !msg) return null
+
+  ;(async () => {
+    const [{ data: chat }, { data: members }] = await Promise.all([
+      supabaseAdmin.from('team_chats').select('name, emoji').eq('id', chatId).maybeSingle(),
+      supabaseAdmin.from('team_chat_members').select('user_id, profiles(push_team_chats)').eq('chat_id', chatId).neq('user_id', claudeId),
+    ])
+    for (const m of members ?? []) {
+      if (opts.excludeUserId && m.user_id === opts.excludeUserId) continue
+      const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
+      if (p && p.push_team_chats === false) continue
+      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern').catch(() => {})
+    }
+  })().catch(() => {})
+
+  return msg.id
 }
