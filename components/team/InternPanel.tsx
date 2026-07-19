@@ -86,6 +86,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [chats, setChats] = useState<TeamChat[]>([])
   const [directory, setDirectory] = useState<Directory[]>([])
   const [canCreate, setCanCreate] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<TeamChat | null>(null)
@@ -134,6 +135,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       setChats(d.chats ?? [])
       setDirectory(d.directory ?? [])
       setCanCreate(!!d.canCreate)
+      setIsAdmin(!!d.isAdmin)
       setError(null)
       // Threads statt Nachrichten zählen (konsistent mit App-Badge, Pascal 19.7.)
       onUnread?.((d.chats ?? []).filter((c: TeamChat) => (c.unread ?? 0) > 0).length)
@@ -793,7 +795,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       {showInfo && active && (
         <GroupInfo
           chat={active}
-          isAdmin={canCreate}
+          isAdmin={isAdmin || active.createdBy === userId}
           directory={directory}
           userId={userId}
           onClose={() => setShowInfo(false)}
