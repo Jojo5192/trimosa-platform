@@ -135,7 +135,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       setDirectory(d.directory ?? [])
       setCanCreate(!!d.canCreate)
       setError(null)
-      onUnread?.((d.chats ?? []).reduce((s: number, c: TeamChat) => s + (c.unread ?? 0), 0))
+      // Threads statt Nachrichten zählen (konsistent mit App-Badge, Pascal 19.7.)
+      onUnread?.((d.chats ?? []).filter((c: TeamChat) => (c.unread ?? 0) > 0).length)
     } catch {
       setError('Keine Verbindung.')
     } finally {
