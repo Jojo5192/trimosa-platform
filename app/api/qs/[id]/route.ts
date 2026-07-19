@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth, type TaskAuth } from '@/lib/tasks'
-import { isDayFree } from '@/lib/qs'
+import { isDayFree, getQsTemplateStore, resolveQsTemplate, type QsSection } from '@/lib/qs'
 import { generateQsPdf } from '@/lib/qs-pdf'
 import { sendPushToTeam, sendPushToUser } from '@/lib/push'
 
@@ -42,11 +42,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (check.status !== 'erledigt') return NextResponse.json({ error: 'Erst nach Abschluss möglich.' }, { status: 400 })
     if (check.pdf_url) return NextResponse.json({ ok: true, pdfUrl: check.pdf_url }, NO_STORE)
     const [{ data: listing }, { data: inspector }] = await Promise.all([
-      supabaseAdmin.from('listings').select('title').eq('id', check.listing_id).maybeSingle(),
+      supabaseAdmin.from('listings').select('title, location_group').eq('id', check.listing_id).maybeSingle(),
       check.completed_by
         ? supabaseAdmin.from('profiles').select('display_name').eq('id', check.completed_by).maybeSingle()
         : Promise.resolve({ data: null as { display_name: string | null } | null }),
     ])
+    // Snapshot der Abschluss-Checkliste bevorzugen — sonst aktuelle Auflösung
+    const snapTpl = (check.report as { template?: QsSection[] } | null)?.template
+    const template = Array.isArray(snapTpl) && snapTpl.length
+      ? snapTpl
+      : resolveQsTemplate(await getQsTemplateStore(), check.listing_id, listing?.location_group)
     const pdfUrl = await generateQsPdf({
       checkId: id,
       listingTitle: listing?.title ?? 'Wohnung',
@@ -55,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       inspectorName: (inspector?.display_name ?? '').trim() || 'Team',
       report: check.report ?? {},
       photos: (Array.isArray(check.photos) ? check.photos : []) as { url: string }[],
+      template,
     })
     if (!pdfUrl) return NextResponse.json({ error: 'PDF-Erzeugung fehlgeschlagen.' }, { status: 500 })
     await supabaseAdmin.from('qs_checks').update({ pdf_url: pdfUrl, updated_at: now.toISOString() }).eq('id', id)
@@ -100,17 +106,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: true }, NO_STORE)
     }
 
-    /* Abschluss: Protokoll fixieren — PDF entsteht erst auf Abruf im Archiv */
-    const [{ data: listing }, { data: inspector }] = await Promise.all([
-      supabaseAdmin.from('listings').select('title').eq('id', check.listing_id).maybeSingle(),
+    /* Abschluss: Protokoll fixieren — PDF entsteht erst auf Abruf im Archiv.
+       Die beim Abschluss gültige Checkliste wird als Snapshot mitgespeichert,
+       damit spätere Vorlagen-Änderungen alte Protokolle nicht verfälschen. */
+    const [{ data: listing }, { data: inspector }, tplStore] = await Promise.all([
+      supabaseAdmin.from('listings').select('title, location_group').eq('id', check.listing_id).maybeSingle(),
       supabaseAdmin.from('profiles').select('display_name').eq('id', me.userId).maybeSingle(),
+      getQsTemplateStore(),
     ])
     const inspectorName = (inspector?.display_name ?? '').trim() || 'Team'
+    const snapshot = {
+      ...report,
+      template: resolveQsTemplate(tplStore, check.listing_id, listing?.location_group),
+    }
 
     const { error } = await supabaseAdmin
       .from('qs_checks')
       .update({
-        report, status: 'erledigt',
+        report: snapshot, status: 'erledigt',
         completed_at: now.toISOString(), completed_by: me.userId, updated_at: now.toISOString(),
       })
       .eq('id', id)
