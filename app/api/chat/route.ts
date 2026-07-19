@@ -339,6 +339,7 @@ export async function POST(req: NextRequest) {
           `💬 ${flag}${convMeta.guest_name ?? 'Gast'}${convMeta.listing_title ? ` · ${convMeta.listing_title}` : ''}`,
           t?.german ?? content.trim(),
           '/team',
+          { guestChat: true },
         )
       })().catch((e) => console.error('[push] chat trigger:', e))
     }
