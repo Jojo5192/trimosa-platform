@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { askClaude } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 import { getClaudeBotId, postAsClaude } from '@/lib/claude-bot'
+import { buildBotContext } from '@/lib/team-bot-context'
 
 /**
  * 🤖 @c-Antwort-Bot (Inhaber-Wunsch 19.07.): minütlicher Cron scannt neue
@@ -46,6 +47,21 @@ export async function GET(req: NextRequest) {
     if (!TRIGGER.test(m.content ?? '')) continue
     if (claudeId && m.sender_id === claudeId) continue
 
+    // Datensparsamkeit: sitzt ein Dienstleister in der Gruppe, bekommt der
+    // Bot die Belegung OHNE Gastnamen (wie der Team-Kalender)
+    let includeGuestNames = true
+    try {
+      const { data: members } = await supabaseAdmin
+        .from('team_chat_members')
+        .select('user_id, profiles(is_provider)')
+        .eq('chat_id', m.chat_id)
+      includeGuestNames = !(members ?? []).some((x) => {
+        const p = (Array.isArray(x.profiles) ? x.profiles[0] : x.profiles) as { is_provider?: boolean } | null
+        return !!p?.is_provider
+      })
+    } catch { includeGuestNames = false }
+    const liveData = await buildBotContext(includeGuestNames)
+
     // Gesprächskontext: die letzten 15 Nachrichten bis einschließlich dieser
     const { data: ctx } = await supabaseAdmin
       .from('team_messages')
@@ -64,9 +80,9 @@ export async function GET(req: NextRequest) {
 
     try {
       const system = await getPrompt('team_bot')
-      const user = `Heutiges Datum: ${new Date().toLocaleDateString('de-DE')}
+      const user = `${liveData}
 
-Chat-Verlauf (neueste unten):
+═══ Chat-Verlauf (neueste unten):
 ${lines.join('\n')}
 
 DIE AN DICH GERICHTETE NACHRICHT: ${question || m.content}`
