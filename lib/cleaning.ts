@@ -6,17 +6,24 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-export interface CleaningSettings {
+/** Voller Regel-/Satz-Block — Standard UND je-Person-Override (§117). */
+export interface CleaningRuleSet {
   avoidSundays: boolean
   avoidHolidays: boolean
   /** €/Stunde Reinigung */
   hourlyRate: number
-  /** € je Anfahrt (ein Einsatztag × Standort = eine Anfahrt) */
+  /** € je Anfahrt (ein Einsatztag × Standort × Person = eine Anfahrt) */
   travelFee: number
   /** Zuschlag in % für Sonntags-Reinigungen */
   sundaySurchargePct: number
   /** Zuschlag in % für Feiertags-Reinigungen */
   holidaySurchargePct: number
+}
+export interface CleaningSettings extends CleaningRuleSet {
+  /** Abweichende Regeln/Sätze je Reinigungskraft (profiles-id) —
+      z. B. Vanessa mit Sonntags-Zulage, Tip-Top ohne. Fehlt der Eintrag,
+      gilt der Standard. */
+  perPerson?: Record<string, CleaningRuleSet>
 }
 export const CLEANING_DEFAULTS: CleaningSettings = {
   avoidSundays: true, avoidHolidays: true,
@@ -31,6 +38,14 @@ export async function getCleaningSettings(): Promise<CleaningSettings> {
   } catch {
     return CLEANING_DEFAULTS
   }
+}
+
+/** Effektive Regeln/Sätze für eine Person (null/unbekannt → Standard). */
+export function resolveCleaningFor(all: CleaningSettings, personId: string | null | undefined): CleaningRuleSet {
+  const o = personId ? all.perPerson?.[personId] : undefined
+  if (o) return o
+  const { avoidSundays, avoidHolidays, hourlyRate, travelFee, sundaySurchargePct, holidaySurchargePct } = all
+  return { avoidSundays, avoidHolidays, hourlyRate, travelFee, sundaySurchargePct, holidaySurchargePct }
 }
 
 /** Ostersonntag (Gauß / anonymer gregorianischer Algorithmus). */
