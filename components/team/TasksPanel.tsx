@@ -259,7 +259,8 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        padding: '14px 16px 10px', paddingTop: 'max(14px, env(safe-area-inset-top))',
+        // Safe-Area oben liefert seit viewport-fit=cover die TeamShell zentral
+        padding: '14px 16px 10px',
         boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.15)`,
       }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Aufgaben</h1>
