@@ -70,3 +70,60 @@ export async function sendPushToUser(userId: string, title: string, body: string
   if (!subs?.length) return
   await sendToSubs(subs, title, body, url)
 }
+
+/**
+ * 🎉 Neue Buchung/Anfrage (Pascal §99.1): rollenabhängiger Push aus der
+ * eigenen App — Admins/Gastgeber MIT Buchungsbetrag, Mitarbeiter (Staff)
+ * OHNE; Dienstleister nie. Tap öffnet direkt den Gast-Thread in der Inbox
+ * (/team?conv=<bookingId>). Präferenz profiles.push_bookings (⚙️-Tab);
+ * fehlt die Spalte noch (Migration ausstehend), wird ungefiltert gesendet.
+ */
+export async function sendNewBookingPush(bookingId: string): Promise<void> {
+  if (!ensureConfigured()) return
+  try {
+    const { data: b } = await supabaseAdmin
+      .from('bookings')
+      .select('id, listing_id, guest_id, guest_name, check_in, check_out, total_price, channel, source, booking_type, status')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (!b) return
+    const [{ data: listing }, { data: subs }, { data: team }] = await Promise.all([
+      supabaseAdmin.from('listings').select('title').eq('id', b.listing_id).maybeSingle(),
+      supabaseAdmin.from('push_subscriptions').select('id, endpoint, p256dh, auth, user_id'),
+      supabaseAdmin.from('profiles').select('*').or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true'),
+    ])
+    if (!subs?.length) return
+
+    let guest = (b.guest_name ?? '').trim()
+    if (!guest && b.guest_id) {
+      const { data: gp } = await supabaseAdmin.from('profiles').select('display_name').eq('id', b.guest_id).maybeSingle()
+      guest = (gp?.display_name ?? '').trim()
+    }
+    const fmtD = (iso: string) => { const [, m, d] = String(iso).split('-'); return `${Number(d)}.${Number(m)}.` }
+    const channel = (b.channel as string | null) ?? (b.source === 'trimosa' ? 'Website' : 'Smoobu')
+    const isRequest = b.booking_type === 'request' || b.status === 'pending'
+    const title = isRequest ? `🔔 Neue Anfrage · ${channel}` : `🎉 Neue Buchung · ${channel}`
+    const base = `${listing?.title ?? 'Wohnung'} · ${guest || 'Gast'} · ${fmtD(b.check_in)}–${fmtD(b.check_out)}`
+    const amount = Number(b.total_price) > 0
+      ? ` · ${Number(b.total_price).toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
+      : ''
+    const url = '/team?conv=' + b.id
+
+    const info = new Map((team ?? []).map((p) => [p.id as string, p as Record<string, unknown>]))
+    const chefSubs: Sub[] = []
+    const staffSubs: Sub[] = []
+    for (const s of subs as (Sub & { user_id: string | null })[]) {
+      const p = s.user_id ? info.get(s.user_id) : undefined
+      if (!p) continue
+      if (p.push_bookings === false) continue
+      if (p.is_admin || p.is_host) chefSubs.push(s)
+      else if (p.is_staff) staffSubs.push(s)
+    }
+    await Promise.all([
+      chefSubs.length ? sendToSubs(chefSubs, title, base + amount, url) : Promise.resolve(),
+      staffSubs.length ? sendToSubs(staffSubs, title, base, url) : Promise.resolve(),
+    ])
+  } catch (e) {
+    console.error('[push] booking push failed:', e)
+  }
+}
