@@ -92,9 +92,10 @@ export async function GET() {
     .filter(Boolean)
     .sort((a, b) => (b!.lastAt ?? '').localeCompare(a!.lastAt ?? ''))
 
-  // Team-Verzeichnis für die Gruppen-Erstellung (nur Verwalter brauchen es)
+  // Team-Verzeichnis für die Gruppen-Erstellung — Admins UND Mitarbeiter
+  // dürfen Gruppen anlegen (Inhaber 19.7.), Dienstleister nicht
   let directory: { id: string; name: string; role: string }[] = []
-  if (auth.role === 'admin') {
+  if (auth.role === 'admin' || auth.role === 'staff') {
     const { data: team } = await supabaseAdmin
       .from('profiles')
       .select('id, display_name, is_admin, is_host, is_staff, is_provider')
@@ -113,12 +114,17 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ userId: auth.userId, canCreate: auth.role === 'admin', chats, directory }, NO_STORE)
+  return NextResponse.json({
+    userId: auth.userId,
+    canCreate: auth.role === 'admin' || auth.role === 'staff',
+    isAdmin: auth.role === 'admin',
+    chats, directory,
+  }, NO_STORE)
 }
 
 export async function POST(req: NextRequest) {
   const auth = await getTaskAuth()
-  if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nur Admins/Gastgeber können Gruppen anlegen.' }, { status: 403 })
+  if (!auth || auth.role === 'provider') return NextResponse.json({ error: 'Dienstleister können keine Gruppen anlegen.' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : ''
