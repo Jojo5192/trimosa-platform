@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages } from '@/lib/smoobu'
+import { sendNewBookingPush } from '@/lib/push'
 
 /**
  * POST /api/smoobu/webhook
@@ -193,8 +194,16 @@ export async function POST(request: Request) {
     return new Response('OK', { status: 200 })
   }
 
+  // War die Reservierung schon bekannt? (Update/Echo unserer eigenen
+  // Website-Buchungen ODER 'modified'-Events → dann KEIN Buchungs-Push)
+  const { data: known } = await supabaseAdmin
+    .from('bookings')
+    .select('id')
+    .eq('smoobu_reservation_id', reservationId)
+    .maybeSingle()
+
   // Upsert the external booking
-  const { error } = await supabaseAdmin
+  const { data: upserted, error } = await supabaseAdmin
     .from('bookings')
     .upsert(
       {
@@ -212,12 +221,19 @@ export async function POST(request: Request) {
       },
       { onConflict: 'smoobu_reservation_id', ignoreDuplicates: false },
     )
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     console.error('[Smoobu Webhook] Upsert error:', error)
     // Still return 200 to prevent Smoobu from retrying indefinitely
   } else {
     console.log(`[Smoobu Webhook] Upserted reservation ${reservationId} for listing ${listing.id}`)
+    // NEUE externe Buchung (Airbnb/Booking/…) → rollenabhängiger Team-Push
+    if (!known && upserted?.id) {
+      sendNewBookingPush(upserted.id).catch((err) =>
+        console.error('[Smoobu Webhook] booking push failed (non-fatal):', err))
+    }
   }
 
   return new Response('OK', { status: 200 })
