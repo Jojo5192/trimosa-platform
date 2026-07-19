@@ -136,12 +136,17 @@ export async function GET() {
         l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
       ])),
     cleaning: {
-      settings: { avoidSundays: cleaningSettings.avoidSundays, avoidHolidays: cleaningSettings.avoidHolidays },
-      // Meidungs-Regeln je Reinigungskraft (unkritisch — steuert nur die
-      // Empfehlung; die Wohnung erbt über ihre zugeordnete Person, §117)
-      settingsByPerson: Object.fromEntries(Object.entries(cleaningSettings.perPerson ?? {}).map(([id, o]) => [
-        id, { avoidSundays: o.avoidSundays, avoidHolidays: o.avoidHolidays },
-      ])),
+      // Meidungs-/Planungs-Regeln (unkritisch, KEINE Beträge — alle Rollen):
+      // bundleTravel = „Bündeln spart eine Anfahrt" (travelFee > 0 und nicht
+      // je Reinigung abgerechnet) — sonst plant der Planer strikt schnellstmöglich
+      settings: (() => {
+        const base = resolveCleaningFor(cleaningSettings, null)
+        return { avoidSundays: base.avoidSundays, avoidHolidays: base.avoidHolidays, bundleTravel: base.travelFee > 0 && !base.travelPerCleaning }
+      })(),
+      settingsByPerson: Object.fromEntries(Object.keys(cleaningSettings.perPerson ?? {}).map((id) => {
+        const r = resolveCleaningFor(cleaningSettings, id)
+        return [id, { avoidSundays: r.avoidSundays, avoidHolidays: r.avoidHolidays, bundleTravel: r.travelFee > 0 && !r.travelPerCleaning }]
+      })),
       // 💶 Kosten-Sätze NUR für Admins/Gastgeber (Finanz-Daten!) —
       // resolveCleaningFor merged Overrides über die Defaults (neue Felder §119)
       rates: auth.role === 'admin' ? pickRates(resolveCleaningFor(cleaningSettings, null)) : null,
