@@ -20,8 +20,10 @@ function ensureConfigured(): boolean {
 
 type Sub = { id: string; endpoint: string; p256dh: string; auth: string }
 
-async function sendToSubs(subs: Sub[], title: string, body: string, url: string): Promise<void> {
-  const payload = JSON.stringify({ title, body: body.slice(0, 180), url })
+async function sendToSubs(subs: Sub[], title: string, body: string, url: string, tag?: string): Promise<void> {
+  // tag: gleiche Mitteilungen stapeln sich je Thread und lassen sich beim
+  // Lesen in der App gezielt aus der Mitteilungszentrale räumen (§122)
+  const payload = JSON.stringify({ title, body: body.slice(0, 180), url, tag: tag ?? url })
   await Promise.all(subs.map(async (s) => {
     try {
       await webpush.sendNotification(
@@ -61,14 +63,14 @@ export async function sendPushToTeam(title: string, body: string, url = '/team',
 }
 
 /** Push to ONE user's devices (e.g. task assignment to a provider). */
-export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben'): Promise<void> {
+export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben', tag?: string): Promise<void> {
   if (!ensureConfigured()) return
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
     .eq('user_id', userId)
   if (!subs?.length) return
-  await sendToSubs(subs, title, body, url)
+  await sendToSubs(subs, title, body, url, tag)
 }
 
 /**
