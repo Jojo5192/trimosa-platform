@@ -8,8 +8,9 @@
  * Fenster („danach 4 Nächte frei") samt Aufgaben-Gelegenheiten.
  * Dienstleister sehen keine Gastnamen (kommen von der API gar nicht erst).
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
+import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
@@ -73,7 +74,9 @@ export default function CalendarPanel() {
   const [listings, setListings] = useState<Record<string, ListingInfo>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [view, setView] = useState<'belegung' | 'agenda'>('belegung')
+  const [view, setView] = useState<'belegung' | 'agenda' | 'reinigung'>('belegung')
+  const [cleaning, setCleaning] = useState<CleaningInfo | null>(null)
+  const viewInitRef = useRef(false)
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -88,7 +91,16 @@ export default function CalendarPanel() {
         return
       }
       if (j.error) setError(j.error)
-      else { setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {}); setError(null) }
+      else {
+        setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
+        setCleaning(j.cleaning ?? null)
+        setError(null)
+        // Reinigungs-Verantwortliche starten direkt im Planer (einmalig)
+        if (!viewInitRef.current) {
+          viewInitRef.current = true
+          if ((j.cleaning?.mine ?? []).length && j.role === 'provider') setView('reinigung')
+        }
+      }
     } catch {
       // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
       if (attempt < 1) { setTimeout(() => load(1), 1200); return }
@@ -243,13 +255,13 @@ export default function CalendarPanel() {
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
       }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Kalender</h1>
-        {/* Ansichts-Umschalter: Smoobu-Style-Belegung vs. Agenda */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([['belegung', '📊 Belegung'], ['agenda', '📋 Agenda']] as const).map(([id, label]) => (
+        {/* Ansichts-Umschalter: Belegung · Agenda · Reinigungsplaner */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          {([['belegung', '📊 Belegung'], ['agenda', '📋 Agenda'], ['reinigung', '🧹 Reinigung']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setView(id)} style={{
-              padding: '6px 14px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
+              padding: '6px 14px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700, flexShrink: 0,
               background: view === id ? '#111' : 'rgba(120,120,128,0.12)',
-              color: view === id ? '#fff' : '#3C3C43', cursor: 'pointer',
+              color: view === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
             }}>{label}</button>
           ))}
         </div>
@@ -259,6 +271,16 @@ export default function CalendarPanel() {
         <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
       ) : error ? (
         <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>{error}</p>
+      ) : view === 'reinigung' ? (
+        <div style={{ padding: '12px 16px 40px' }}>
+          {cleaning ? (
+            <CleaningPlanner stays={stays} listings={listings} cleaning={cleaning} />
+          ) : (
+            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>
+              Reinigungsdaten noch nicht verfügbar — im Admin-Bereich unter „🧹 Reinigung" einrichten.
+            </p>
+          )}
+        </div>
       ) : view === 'belegung' ? (
         <div style={{ padding: '12px 12px 40px' }}>
           <OccupancyGrid stays={stays} listings={listings} />
