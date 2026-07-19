@@ -115,10 +115,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({ id: msg.id })
 }
 
+/** Verwalten dürfen Admins ODER der Ersteller der Gruppe (Staff, 19.7.). */
+async function canManageChat(chatId: string, userId: string, role: string): Promise<boolean> {
+  if (role === 'admin') return true
+  if (role === 'provider') return false
+  const { data } = await supabaseAdmin.from('team_chats').select('created_by').eq('id', chatId).maybeSingle()
+  return data?.created_by === userId
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const auth = await getTaskAuth()
-  if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  if (!auth || !(await canManageChat(id, auth.userId, auth.role))) {
+    return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => ({}))
   if (typeof body.name === 'string' && body.name.trim()) {
@@ -147,7 +157,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const auth = await getTaskAuth()
-  if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  if (!auth || !(await canManageChat(id, auth.userId, auth.role))) {
+    return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  }
   const { error } = await supabaseAdmin.from('team_chats').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
