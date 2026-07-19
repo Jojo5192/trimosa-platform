@@ -2,20 +2,22 @@
 
 /**
  * Die Team-App-Shell: Bottom-Tabs wie WhatsApp/iOS.
- *  team (admin|host|staff): 💬 Chat · ✅ Aufgaben · 📅 Kalender
- *  provider (Dienstleister): ✅ Aufgaben · 📅 Kalender (KEIN Chat)
- * ChatPanel bleibt gemountet (Polling/State), die anderen Tabs werden
- * per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
+ *  team (admin|host|staff): 💬 Chat (Gäste) · 💼 Intern · ✅ Aufgaben · 📅 Kalender
+ *  provider (Dienstleister): 💼 Intern · ✅ Aufgaben · 📅 Kalender (KEIN Gäste-Chat)
+ * ChatPanel/InternPanel bleiben gemountet (Polling/State), die anderen Tabs
+ * werden per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
  */
 import { useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
+import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 
-type Tab = 'chat' | 'aufgaben' | 'kalender'
+type Tab = 'chat' | 'intern' | 'aufgaben' | 'kalender'
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'chat', icon: '💬', label: 'Chat' },
+  { id: 'intern', icon: '💼', label: 'Intern' },
   { id: 'aufgaben', icon: '✅', label: 'Aufgaben' },
   { id: 'kalender', icon: '📅', label: 'Kalender' },
 ]
@@ -27,10 +29,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   initialTab?: string
 }) {
   const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat') : TABS
-  const fallback: Tab = role === 'provider' ? 'aufgaben' : 'chat'
+  const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
   const [tab, setTab] = useState<Tab>(
     tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
   )
+  const [internUnread, setInternUnread] = useState(0)
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
@@ -41,6 +44,9 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
             <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} />
           </div>
         )}
+        <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
+          <InternPanel userId={userId} onUnread={setInternUnread} />
+        </div>
         {tab === 'aufgaben' && (
           <TasksPanel role={role} userId={userId} />
         )}
@@ -61,7 +67,17 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
               flex: 1, border: 'none', background: 'none', cursor: 'pointer',
               padding: '7px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
-              <span style={{ fontSize: 22, filter: active ? 'none' : 'grayscale(1) opacity(0.55)' }}>{t.icon}</span>
+              <span style={{ position: 'relative', fontSize: 22, filter: active ? 'none' : 'grayscale(1) opacity(0.55)' }}>
+                {t.icon}
+                {t.id === 'intern' && internUnread > 0 && (
+                  <span style={{
+                    position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
+                    background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
+                    filter: 'none',
+                  }}>{internUnread > 9 ? '9+' : internUnread}</span>
+                )}
+              </span>
               <span style={{
                 fontSize: 10, fontWeight: active ? 700 : 500,
                 color: active ? 'var(--gold, #AE8D2D)' : '#8E8E93',
