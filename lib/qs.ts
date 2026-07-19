@@ -20,7 +20,9 @@ export interface QsItem {
 }
 export interface QsSection { id: string; title: string; emoji: string; items: QsItem[] }
 export interface QsItemValue { s?: 'ok' | 'mangel' | 'na'; note?: string; count?: number }
-export interface QsReport { items?: Record<string, QsItemValue>; note?: string }
+/** template = Snapshot der beim ABSCHLUSS gültigen Checkliste — alte
+ *  Protokolle bleiben damit auch nach Vorlagen-Änderungen korrekt lesbar. */
+export interface QsReport { items?: Record<string, QsItemValue>; note?: string; template?: QsSection[] }
 
 export const QS_TEMPLATE: QsSection[] = [
   {
@@ -86,6 +88,85 @@ export const QS_TEMPLATE: QsSection[] = [
 
 export function qsItemCount(): number {
   return QS_TEMPLATE.reduce((s, sec) => s + sec.items.length, 0)
+}
+
+/* ── Editierbare Vorlagen mit Vererbung (Wohnung > Standort > Standard) ──
+   Ablage in app_settings (kein Schema-Change):
+   'qs_template' = Standard-Override · 'qs_template:group:<Name>' je Standort ·
+   'qs_template:listing:<uuid>' je Wohnung. Ohne Overrides gilt QS_TEMPLATE. */
+
+export interface QsTemplateStore {
+  base: QsSection[]
+  groups: Record<string, QsSection[]>
+  listings: Record<string, QsSection[]>
+}
+
+/** Server-Validierung/Bereinigung einer Vorlage aus dem Editor. */
+export function cleanTemplate(raw: unknown): QsSection[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 12) return null
+  const usedIds = new Set<string>()
+  const genId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  const sections: QsSection[] = []
+  for (const s of raw) {
+    if (!s || typeof s !== 'object') return null
+    const sec = s as Partial<QsSection>
+    const items: QsItem[] = []
+    if (!Array.isArray(sec.items) || sec.items.length === 0 || sec.items.length > 20) return null
+    for (const i of sec.items) {
+      const it = i as Partial<QsItem>
+      const label = String(it.label ?? '').trim().slice(0, 120)
+      if (!label) continue
+      let id = String(it.id ?? '').trim().slice(0, 60)
+      if (!id || usedIds.has(id)) id = genId()
+      usedIds.add(id)
+      items.push({
+        id, label,
+        type: it.type === 'anzahl' ? 'anzahl' : 'zustand',
+        ...(String(it.hint ?? '').trim() ? { hint: String(it.hint).trim().slice(0, 160) } : {}),
+      })
+    }
+    if (!items.length) continue
+    let sid = String(sec.id ?? '').trim().slice(0, 60)
+    if (!sid || usedIds.has(sid)) sid = genId()
+    usedIds.add(sid)
+    sections.push({
+      id: sid,
+      title: String(sec.title ?? '').trim().slice(0, 60) || 'Bereich',
+      emoji: String(sec.emoji ?? '').trim().slice(0, 4) || '📋',
+      items,
+    })
+  }
+  return sections.length ? sections : null
+}
+
+const gq = globalThis as typeof globalThis & { __qsTplCache?: { at: number; value: QsTemplateStore } }
+
+export async function getQsTemplateStore(): Promise<QsTemplateStore> {
+  const hit = gq.__qsTplCache
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value
+  const store: QsTemplateStore = { base: QS_TEMPLATE, groups: {}, listings: {} }
+  try {
+    const { data } = await supabaseAdmin
+      .from('app_settings').select('key, value').like('key', 'qs_template%')
+    for (const row of data ?? []) {
+      const tpl = cleanTemplate(row.value)
+      if (!tpl) continue
+      if (row.key === 'qs_template') store.base = tpl
+      else if (row.key.startsWith('qs_template:group:')) store.groups[row.key.slice('qs_template:group:'.length)] = tpl
+      else if (row.key.startsWith('qs_template:listing:')) store.listings[row.key.slice('qs_template:listing:'.length)] = tpl
+    }
+  } catch { /* Defaults */ }
+  gq.__qsTplCache = { at: Date.now(), value: store }
+  return store
+}
+
+export function invalidateQsTemplateCache() { gq.__qsTplCache = undefined }
+
+/** Aufgelöste Checkliste für eine Wohnung: eigene > Standort > Standard. */
+export function resolveQsTemplate(store: QsTemplateStore, listingId: string, locationGroup?: string | null): QsSection[] {
+  return store.listings[listingId]
+    ?? (locationGroup ? store.groups[locationGroup.trim()] : undefined)
+    ?? store.base
 }
 
 /* ── Terminplanung ── */
