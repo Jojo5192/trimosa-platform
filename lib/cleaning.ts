@@ -6,18 +6,25 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-/** Voller Regel-/Satz-Block — Standard UND je-Person-Override (§117). */
+/** Voller Regel-/Satz-Block — Standard UND je-Person-Override (§117/§119). */
 export interface CleaningRuleSet {
   avoidSundays: boolean
   avoidHolidays: boolean
-  /** €/Stunde Reinigung */
+  /** €/Stunde Reinigung (Pauschale = Ø-Minuten der Wohnung × Satz) */
   hourlyRate: number
-  /** € je Anfahrt (ein Einsatztag × Standort × Person = eine Anfahrt) */
+  /** € je Anfahrt */
   travelFee: number
-  /** Zuschlag in % für Sonntags-Reinigungen */
+  /** Anfahrt je EINZELNER Reinigung abrechnen (Vertragsmodell VP Glanzteam)
+      statt je Einsatztag × Standort gebündelt */
+  travelPerCleaning: boolean
+  /** Zuschlag in % für Sonntags-Reinigungen (auf die Pauschale) */
   sundaySurchargePct: number
-  /** Zuschlag in % für Feiertags-Reinigungen */
+  /** Zuschlag in % für gesetzliche Feiertage */
   holidaySurchargePct: number
+  /** Zuschlag in % für BESONDERE Feiertage (24.12., 25./26.12., 31.12., 1.5.) */
+  specialSurchargePct: number
+  /** Umsatzsteuer in % (0 = Kleinunternehmer/brutto vereinbart) */
+  vatPct: number
 }
 export interface CleaningSettings extends CleaningRuleSet {
   /** Abweichende Regeln/Sätze je Reinigungskraft (profiles-id) —
@@ -27,7 +34,15 @@ export interface CleaningSettings extends CleaningRuleSet {
 }
 export const CLEANING_DEFAULTS: CleaningSettings = {
   avoidSundays: true, avoidHolidays: true,
-  hourlyRate: 30, travelFee: 15, sundaySurchargePct: 50, holidaySurchargePct: 100,
+  hourlyRate: 30, travelFee: 15, travelPerCleaning: false,
+  sundaySurchargePct: 50, holidaySurchargePct: 100, specialSurchargePct: 100, vatPct: 0,
+}
+
+/** Besondere Feiertage mit eigenem Zuschlag (VP-Glanzteam-Vertrag §4.3):
+    Heiligabend, 1./2. Weihnachtstag, Silvester, Tag der Arbeit. */
+export function isSpecialDay(iso: string): boolean {
+  const md = iso.slice(5) // 'MM-DD'
+  return md === '12-24' || md === '12-25' || md === '12-26' || md === '12-31' || md === '05-01'
 }
 
 export async function getCleaningSettings(): Promise<CleaningSettings> {
@@ -40,12 +55,20 @@ export async function getCleaningSettings(): Promise<CleaningSettings> {
   }
 }
 
-/** Effektive Regeln/Sätze für eine Person (null/unbekannt → Standard). */
+/** Effektive Regeln/Sätze für eine Person (null/unbekannt → Standard).
+    Overrides werden über die Defaults gemerged — ältere Overrides ohne die
+    neuen Felder (§119) bekommen so automatisch sinnvolle Werte. */
 export function resolveCleaningFor(all: CleaningSettings, personId: string | null | undefined): CleaningRuleSet {
+  const base: CleaningRuleSet = {
+    avoidSundays: all.avoidSundays, avoidHolidays: all.avoidHolidays,
+    hourlyRate: all.hourlyRate, travelFee: all.travelFee,
+    travelPerCleaning: all.travelPerCleaning ?? false,
+    sundaySurchargePct: all.sundaySurchargePct, holidaySurchargePct: all.holidaySurchargePct,
+    specialSurchargePct: all.specialSurchargePct ?? all.holidaySurchargePct,
+    vatPct: all.vatPct ?? 0,
+  }
   const o = personId ? all.perPerson?.[personId] : undefined
-  if (o) return o
-  const { avoidSundays, avoidHolidays, hourlyRate, travelFee, sundaySurchargePct, holidaySurchargePct } = all
-  return { avoidSundays, avoidHolidays, hourlyRate, travelFee, sundaySurchargePct, holidaySurchargePct }
+  return o ? { ...base, ...o } : base
 }
 
 /** Ostersonntag (Gauß / anonymer gregorianischer Algorithmus). */
