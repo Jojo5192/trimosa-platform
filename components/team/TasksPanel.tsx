@@ -343,8 +343,12 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
                       {(PRIO_META[t.prio] ?? PRIO_META.mittel).label}
                     </span>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#374151' }}>{scopeChip(t)}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#EDE9FE', color: '#6D28D9' }}>
-                      {t.source === 'ki_bewertung' ? 'aus Bewertung' : 'aus Nachricht'}
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+                      background: t.source === 'qs' ? '#EFFAF7' : '#EDE9FE',
+                      color: t.source === 'qs' ? '#0F766E' : '#6D28D9',
+                    }}>
+                      {t.source === 'qs' ? '🧾 aus QS-Protokoll' : t.source === 'ki_bewertung' ? 'aus Bewertung' : 'aus Nachricht'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
