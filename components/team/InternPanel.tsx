@@ -101,6 +101,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const recMime = useRef('')
   const recSend = useRef(false)
   const recTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 🗒️ Live-Transkription (iMessage-Stil): Web Speech API läuft best-effort
+  // PARALLEL zur Aufnahme mit — Transkript wird als content mitgesendet
+  const recTranscript = useRef('')
+  const recRecog = useRef<{ stop: () => void; onend: (() => void) | null } | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 680)
@@ -217,14 +221,59 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       recMime.current = (rec.mimeType || mime || 'audio/webm').split(';')[0]
       recChunks.current = []
       recSend.current = false
+      // Parallel-Transkription (best-effort — scheitert sie, geht die
+      // Sprachnachricht einfach ohne Text raus)
+      recTranscript.current = ''
+      try {
+        type SRResult = { isFinal: boolean; 0: { transcript: string } }
+        type SR = {
+          lang: string; continuous: boolean; interimResults: boolean
+          onresult: ((e: { resultIndex: number; results: ArrayLike<SRResult> }) => void) | null
+          onend: (() => void) | null; onerror: (() => void) | null
+          start: () => void; stop: () => void
+        }
+        const w = window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }
+        const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+        if (Ctor) {
+          const sr = new Ctor()
+          sr.lang = 'de-DE'
+          sr.continuous = true
+          sr.interimResults = false
+          sr.onresult = (e) => {
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+              const res = e.results[i]
+              if (res.isFinal && res[0]?.transcript) {
+                recTranscript.current += (recTranscript.current ? ' ' : '') + res[0].transcript.trim()
+              }
+            }
+          }
+          sr.onerror = () => {}
+          sr.start()
+          recRecog.current = sr
+        }
+      } catch { /* keine Transkription verfügbar */ }
       rec.ondataavailable = (e) => { if (e.data.size) recChunks.current.push(e.data) }
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
         if (recTimer.current) clearInterval(recTimer.current)
         setRecording(false)
-        if (recSend.current && recChunks.current.length) {
-          const blob = new Blob(recChunks.current, { type: recMime.current })
-          if (blob.size > 200) sendVoice(blob)
+        // Der Erkennung kurz Zeit geben, den letzten Satz zu finalisieren
+        const finish = () => {
+          if (recSend.current && recChunks.current.length) {
+            const blob = new Blob(recChunks.current, { type: recMime.current })
+            if (blob.size > 200) sendVoice(blob, recTranscript.current.trim())
+          }
+        }
+        const sr = recRecog.current
+        recRecog.current = null
+        if (sr) {
+          let done = false
+          const go = () => { if (!done) { done = true; finish() } }
+          sr.onend = go
+          try { sr.stop() } catch { go() }
+          setTimeout(go, 1500)
+        } else {
+          finish()
         }
       }
       recRef.current = rec
@@ -247,7 +296,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     try { recRef.current?.stop() } catch { setRecording(false) }
   }
 
-  async function sendVoice(blob: Blob) {
+  async function sendVoice(blob: Blob, transcript = '') {
     if (!active) return
     setUploading(true)
     try {
@@ -266,7 +315,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       if (upErr) { alert('Upload fehlgeschlagen: ' + upErr.message); return }
       await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: '', attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: fileName }),
+        body: JSON.stringify({
+          content: transcript.slice(0, 1000),
+          attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: fileName,
+        }),
       })
       await loadMsgs(active.id)
       loadChats()
@@ -455,7 +507,15 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                         </a>
                       )}
                       {m.content && (
-                        <div style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: m.attachmentUrl ? '6px 9px 4px' : 0 }}>{m.content}</div>
+                        <div style={{
+                          fontSize: m.attachmentType === 'audio' ? 13 : 15, lineHeight: 1.45,
+                          whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+                          padding: m.attachmentUrl ? '6px 9px 4px' : 0,
+                          // Transkript einer Sprachnachricht: dezent wie bei iMessage
+                          fontStyle: m.attachmentType === 'audio' ? 'italic' : undefined,
+                          opacity: m.attachmentType === 'audio' ? 0.85 : 1,
+                          maxWidth: m.attachmentType === 'audio' ? 224 : undefined,
+                        }}>{m.content}</div>
                       )}
                     </div>
                     <div style={{ fontSize: 10, color: '#B5B0A6', margin: mine ? '2px 4px 0 0' : '2px 0 0 4px', textAlign: mine ? 'right' : 'left' }}>
