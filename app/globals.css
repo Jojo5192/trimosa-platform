@@ -28,6 +28,16 @@ html {
   background-color: #ECEEF4;
 }
 
+/* Tapback-Bubbles: iOS-Textauswahl/Link-Callout beim Long-Press hart
+   unterbinden (inline user-select reichte auf dem iPhone nicht — !important
+   auf ALLE Kinder, sonst markiert iOS den Text statt den Picker zu öffnen) */
+.imsg-noselect,
+.imsg-noselect * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
 /* iMessage-Sprechblasen-Schwänzchen (Intern-Chat): sitzt nur an der LETZTEN
    Bubble einer Absender-Folge. ::before = Blasenfarbe, ::after = Ausschnitt in
    Feed-Hintergrundfarbe (#fff). Eigene Bubbles enden im Gold-Verlauf unten
