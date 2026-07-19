@@ -2,6 +2,8 @@
 self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { title: 'TRIMOSA', body: event.data ? event.data.text() : '' } }
+  // App-Icon-Badge als Signal setzen (echte Zahl setzt die App beim Öffnen)
+  try { if (navigator.setAppBadge) navigator.setAppBadge() } catch (e) { /* nicht verfügbar */ }
   event.waitUntil(
     self.registration.showNotification(data.title || 'TRIMOSA', {
       body: data.body || '',
