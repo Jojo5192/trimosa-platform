@@ -21,7 +21,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 
 💼 INTERN (eigener Team-Messenger, getrennt von Gäste-Chats):
 - Gruppen anlegen (Admins, Gastgeber UND Mitarbeiter; Ersteller verwaltet seine Gruppe), Mitglieder verwalten, umbenennen.
-- Nachrichten mit Fotos, Videos, PDFs; 🎙️ Sprachnachrichten mit automatischem Transkript (wie iMessage); ❤️👍-Reaktionen per Doppeltipp oder Gedrückthalten; iMessage-Design mit Sprechblasen.
+- Nachrichten mit Fotos, Videos, PDFs; 🎙️ Sprachnachrichten mit automatischem Transkript (wie iMessage); ❤️👍-Reaktionen per Doppeltipp oder Gedrückthalten; ↩︎ Antworten auf eine Nachricht (im Reaktions-Menü) mit verbundenem Zitat — Tipp aufs Zitat springt zum Original; iMessage-Design mit Sprechblasen.
 - Gruppen-Info (Tipp auf den Namen): Mitglieder, Medien-Galerie mit Suche (Fotos/Videos/Audio/PDF-Tabs).
 - @c am Nachrichtenanfang: Claude-Bot antwortet binnen ~1 Minute (Wissens-/Betriebsfragen; er kann KEINEN Code ändern — Änderungswünsche holt die nächste Dev-Session ab).
 
@@ -45,7 +45,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 - Neue Gast-Nachricht (alle Kanäle, ~10-Min-Takt via Smoobu-Abgleich; Website sofort) — deutsch übersetzt mit Sprach-Flagge.
 - NEUE BUCHUNG/ANFRAGE: JA, eingebaut (seit 19.07.) — aus ALLEN Kanälen (Website sofort via Stripe, extern via Smoobu-Webhook). Admins/Gastgeber sehen den Betrag, Mitarbeiter nicht, Dienstleister bekommen keinen. Tipp öffnet den Gast-Thread. Abschaltbar unter ⚙️ Mehr → „Neue Buchungen".
 - Interne Gruppen-Nachrichten, Aufgaben-Zuweisung, Aufgaben-Kommentar, QS-Termin/-Abschluss, Reaktions-Push, KI-Vorschlags-Digest.
-- App-Icon-Badge zählt zu bearbeitende Threads und respektiert die Push-Kategorien.
+- App-Icon-Badge zählt zu bearbeitende Threads und respektiert die Push-Kategorien. Ungelesen-Markierungen bleiben erhalten, bis man den Thread wirklich ansieht (Hintergrund-Aktualisierung markiert nichts mehr als gelesen). Push-Mitteilungen verschwinden automatisch aus der iOS-Mitteilungszentrale, sobald der zugehörige Thread in der App geöffnet wird.
 
 👥 ROLLEN: Admin/Gastgeber (alles, inkl. Kosten & Beträgen) · Mitarbeiter/Staff (Chat, Aufgaben, Kalender — ohne Finanzdaten; Rechte im Admin-Bereich einstellbar) · Dienstleister/Provider (nur Intern-Chat, eigene Aufgaben, Kalender ohne Gastnamen).
 
