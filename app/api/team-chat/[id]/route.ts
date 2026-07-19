@@ -41,10 +41,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? q.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
       : q.order('created_at', { ascending: true }).limit(300)
   }
-  // Deploy-Retry: reply_to_id existiert erst nach Migration 20260719_team_reply
-  let { data: msgs, error } = await buildQuery(true)
-  if (error) ({ data: msgs, error } = await buildQuery(false))
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Deploy-Retry: reply_to_id existiert erst nach Migration 20260719_team_reply.
+  // Breiter Typ nötig: supabase-js kann den DYNAMISCHEN Select-String nicht
+  // parsen (ParserError-Typ, §95-Lektion)
+  type MsgRow = {
+    id: string; sender_id: string; content: string
+    attachment_url: string | null; attachment_type: string | null; attachment_name: string | null
+    reactions?: Record<string, string[]>; reply_to_id?: string | null; created_at: string
+    profiles: { display_name?: string; avatar_url?: string } | { display_name?: string; avatar_url?: string }[] | null
+  }
+  type MsgRes = { data: MsgRow[] | null; error: { message: string } | null }
+  let res = (await buildQuery(true)) as unknown as MsgRes
+  if (res.error) res = (await buildQuery(false)) as unknown as MsgRes
+  if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
+  const msgs = res.data
 
   if (!mediaOnly && !peek) {
     await supabaseAdmin
@@ -55,7 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return NextResponse.json({
     messages: (msgs ?? []).map((m) => {
-      const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { display_name?: string; avatar_url?: string } | null
+      const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles
       return {
         id: m.id,
         senderId: m.sender_id,
@@ -65,8 +75,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         attachmentUrl: m.attachment_url,
         attachmentType: m.attachment_type,
         attachmentName: m.attachment_name,
-        reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
-        replyToId: (m as { reply_to_id?: string | null }).reply_to_id ?? null,
+        reactions: m.reactions ?? {},
+        replyToId: m.reply_to_id ?? null,
         createdAt: m.created_at,
       }
     }),
