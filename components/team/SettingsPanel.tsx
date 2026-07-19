@@ -104,6 +104,8 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [key]: next[key] }),
     }).catch(() => {})
+    // App-Badge-Berechnung der Shell sofort nachziehen
+    window.dispatchEvent(new Event('trimosa-prefs-changed'))
   }
 
   return (
