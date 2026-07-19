@@ -128,6 +128,11 @@ export async function GET() {
       ])),
     cleaning: {
       settings: { avoidSundays: cleaningSettings.avoidSundays, avoidHolidays: cleaningSettings.avoidHolidays },
+      // Meidungs-Regeln je Reinigungskraft (unkritisch — steuert nur die
+      // Empfehlung; die Wohnung erbt über ihre zugeordnete Person, §117)
+      settingsByPerson: Object.fromEntries(Object.entries(cleaningSettings.perPerson ?? {}).map(([id, o]) => [
+        id, { avoidSundays: o.avoidSundays, avoidHolidays: o.avoidHolidays },
+      ])),
       // 💶 Kosten-Sätze NUR für Admins/Gastgeber (Finanz-Daten!)
       rates: auth.role === 'admin' ? {
         hourlyRate: cleaningSettings.hourlyRate,
@@ -135,6 +140,9 @@ export async function GET() {
         sundaySurchargePct: cleaningSettings.sundaySurchargePct,
         holidaySurchargePct: cleaningSettings.holidaySurchargePct,
       } : null,
+      ratesByPerson: auth.role === 'admin' ? Object.fromEntries(Object.entries(cleaningSettings.perPerson ?? {}).map(([id, o]) => [
+        id, { hourlyRate: o.hourlyRate, travelFee: o.travelFee, sundaySurchargePct: o.sundaySurchargePct, holidaySurchargePct: o.holidaySurchargePct },
+      ])) : null,
       holidays: holidaysInRange(start, 70),
       responsible: Object.fromEntries(listings
         .filter((l) => l.cleaning_responsible && (!visibleIds || visibleIds.has(l.id)))
