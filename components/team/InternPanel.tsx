@@ -145,11 +145,21 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Poll-Diffing (Ruckel-Fix 19.7.): setMsgs NUR bei echter Änderung — sonst
+  // re-rendert das 5s-Polling den ganzen Thread und der Scroll-Effect feuert
+  // mitten in Gesten (Long-Press „fror ein")
+  const msgsSigRef = useRef('')
   const loadMsgs = useCallback(async (chatId: string) => {
     const r = await fetch(`/api/team-chat/${chatId}`, { cache: 'no-store' })
     if (!r.ok) return
     const d = await r.json()
-    setMsgs(d.messages ?? [])
+    const list: TeamMsg[] = d.messages ?? []
+    const sig = chatId + '§' + list.map((m) =>
+      m.id + ':' + Object.entries(m.reactions ?? {}).map(([e, u]) => e + u.length).join(',')
+    ).join('|')
+    if (sig === msgsSigRef.current) return
+    msgsSigRef.current = sig
+    setMsgs(list)
   }, [])
 
   useEffect(() => {
@@ -166,7 +176,15 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     return () => { if (timer.current) clearInterval(timer.current) }
   }, [active, loadMsgs])
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  // Nur bei NEUER letzter Nachricht ans Ende scrollen — nicht bei
+  // Reaktions-Updates oder Poll-Refreshes (Ruckel-Fix 19.7.)
+  const lastMsgIdRef = useRef('')
+  useEffect(() => {
+    const last = msgs[msgs.length - 1]
+    if (!last || last.id === lastMsgIdRef.current) return
+    lastMsgIdRef.current = last.id
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs])
 
   // Auto-Grow des Schreibfelds als Effect (Pascal: „passt sich nicht an") —
   // deckt Tippen, iOS-Diktat UND programmatisches Leeren gleichermaßen ab
@@ -604,7 +622,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                         {REACTION_SET.map((e) => {
                           const mineHas = (m.reactions?.[e] ?? []).includes(userId)
                           return (
-                            <button key={e} onClick={() => toggleReaction(m.id, e)} style={{
+                            <button key={e} onClick={(ev) => { ev.stopPropagation(); toggleReaction(m.id, e) }} style={{
                               width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
                               background: mineHas ? '#FAF5E4' : 'none', fontSize: 19, cursor: 'pointer',
                             }}>{e}</button>
@@ -618,7 +636,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                         {reactions.map(([e, users]) => {
                           const mineHas = users.includes(userId)
                           return (
-                            <button key={e} onClick={() => toggleReaction(m.id, e)} style={{
+                            <button key={e} onClick={(ev) => { ev.stopPropagation(); toggleReaction(m.id, e) }} style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3, borderRadius: 999,
                               padding: '3px 7px', fontSize: 12, border: 'none', background: '#fff', cursor: 'pointer',
                               boxShadow: mineHas
