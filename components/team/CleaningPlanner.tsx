@@ -166,26 +166,27 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         .filter((x) => x.listingId === s.listingId && x.checkIn >= s.checkOut)
         .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]?.checkIn ?? null
 
-      // Kluge Tag-Wahl im freien Fenster: Sonn-/Feiertage nach den Regeln
-      // DIESER Kraft meiden + mit ihren Pflicht-Terminen am Ort bündeln
+      // Kluge Tag-Wahl (Inhaber-Doktrin §118): IMMER SCHNELLSTMÖGLICH reinigen
+      // (kurzfristige Buchungen können jederzeit reinkommen!) — nur Sonn-/
+      // Feiertage nach den Regeln DIESER Kraft überspringen, und mit ihren
+      // Pflicht-Terminen am selben Ort bündeln, wenn das höchstens EINEN Tag
+      // Verzögerung kostet (eine Anfahrt gespart, Wohnung bleibt trotzdem
+      // schnell wieder bezugsfertig).
       let effDay = s.checkOut
       let recommended: string | null = null
       let reason: Slot['reason'] = null
       if (!sameDayArrival) {
         const lastDay = nextIn ? (nextIn < addDays(s.checkOut, 7) ? nextIn : addDays(s.checkOut, 7)) : addDays(s.checkOut, 7)
-        let best = { day: s.checkOut, score: (isBlockedFor(s.checkOut, s.listingId) ? 0 : 2) + (anchorDays.has(anchorKey(s.checkOut)) ? 1 : 0) }
-        let d = s.checkOut
-        let i = 0
-        while (d < lastDay && i < 8) {
-          d = addDays(d, 1)
-          i++
-          const score = (isBlockedFor(d, s.listingId) ? 0 : 2) + (anchorDays.has(anchorKey(d)) ? 1 : 0) - i * 0.05
-          if (score > best.score) best = { day: d, score }
-        }
-        if (best.day !== s.checkOut) {
-          effDay = best.day
-          recommended = best.day
-          reason = anchorDays.has(anchorKey(best.day)) ? 'buendel' : dayKind(s.checkOut)
+        const windowDays: string[] = []
+        for (let d = s.checkOut; d <= lastDay && windowDays.length < 9; d = addDays(d, 1)) windowDays.push(d)
+        const earliest = windowDays.find((d) => !isBlockedFor(d, s.listingId)) ?? s.checkOut
+        const bundle = windowDays.find((d) => !isBlockedFor(d, s.listingId) && anchorDays.has(anchorKey(d))) ?? null
+        effDay = bundle && bundle <= addDays(earliest, 1) ? bundle : earliest
+        if (effDay !== s.checkOut) {
+          recommended = effDay
+          // Hauptgrund: Abreisetag war Sonn-/Feiertag → das erklärt die
+          // Verschiebung; sonst wurde rein für die gemeinsame Anfahrt gebündelt
+          reason = dayKind(s.checkOut) ?? 'buendel'
         }
       }
       const hasMinutes = cleaning.minutes[s.listingId] != null
@@ -653,27 +654,48 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 const info = listings[s.listingId]
                 const resp = cleaning.responsible[s.listingId]
                 const isMine = cleaning.mine.includes(s.listingId)
+                // Namen nur zeigen, wenn man MEHRERE Kräfte sieht (Team-Sicht
+                // „Alle") — wer nur die eigenen Reinigungen sieht, weiß es eh
+                const showName = personFilter === '' && persons.length > 1 && !!resp
+                // Bündel-Partner: der Pflicht-Termin derselben Kraft am selben
+                // Tag & Standort (für den „eine Anfahrt"-Chip)
+                const partner = slots.find((x) => x.sameDayArrival && x.effDay === s.effDay
+                  && x.group === s.group && x.personId === s.personId && x.listingId !== s.listingId)
+                const partnerTitle = partner ? listings[partner.listingId]?.title ?? null : null
+                const fromLabel = s.stay.checkOut === today ? 'heute' : `${wdShort(s.stay.checkOut)} ${fmtShort(s.stay.checkOut)}`
                 return (
                   <div key={s.stay.id} style={{
                     background: '#fff', borderRadius: 14, padding: '11px 13px',
                     boxShadow: s.sameDayArrival
                       ? 'inset 0 0 0 1.5px #C2410C'
-                      : isMine ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)' : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                      : showName && isMine ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)' : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>🧹 {info?.title ?? 'Wohnung'}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: s.sameDayArrival ? '#C2410C' : '#15803D', flexShrink: 0 }}>
-                        {s.sameDayArrival
-                          ? 'WECHSELTAG — bis zur Anreise fertig'
-                          : s.nextIn ? `flexibel · nächste Anreise ${fmtShort(s.nextIn)}` : 'flexibel · nichts geplant'}
-                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🧹 {info?.title ?? 'Wohnung'}</span>
+                      {showName && chip(isMine ? '#FAF5E4' : '#F3F4F6', isMine ? '#8A7020' : '#374151', `👤 ${isMine ? 'Du' : resp!.name}`)}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                      {chip('#F3F4F6', '#374151', `⏱ Ø ${fmtDur(s.minutes)}${s.hasMinutes ? '' : ' (Schätzung)'}`)}
-                      {resp && chip(isMine ? '#FAF5E4' : '#F3F4F6', isMine ? '#8A7020' : '#374151', `👤 ${isMine ? 'Du' : resp.name}`)}
-                      {s.recommended && s.reason === 'buendel' && chip('#F5F3FF', '#6D28D9', `🚗 gebündelt: ${fmtShort(s.recommended)} (Abreise ${fmtShort(s.stay.checkOut)})`)}
-                      {s.recommended && s.reason !== 'buendel' && chip('#EFF6FF', '#1D4ED8', `🔔 ${s.reason === 'sonntag' ? 'Sonntag' : 'Feiertag'} — empfohlen: ${fmtShort(s.recommended)}`)}
-                    </div>
+                    {s.sameDayArrival ? (
+                      <p style={{ fontSize: 12.5, fontWeight: 800, color: '#C2410C', margin: '7px 0 0' }}>
+                        ⏰ WECHSELTAG — bis zur Anreise fertig
+                      </p>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: 12.5, fontWeight: 600, color: '#374151', margin: '7px 0 0' }}>
+                          🟢 Reinigen möglich: {fromLabel}
+                          {s.nextIn
+                            ? ` – ${wdShort(s.nextIn)} ${fmtShort(s.nextIn)} (Anreise)`
+                            : ' — nichts gebucht, jederzeit'}
+                        </p>
+                        {(s.recommended || partnerTitle) && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
+                            {s.reason === 'sonntag' && chip('#EFF6FF', '#1D4ED8', '☀️ Sonntag übersprungen')}
+                            {s.reason === 'feiertag' && chip('#EFF6FF', '#1D4ED8', '🎌 Feiertag übersprungen')}
+                            {partnerTitle && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt — zusammen mit ${partnerTitle}`)}
+                            {s.reason === 'buendel' && !partnerTitle && chip('#F5F3FF', '#6D28D9', '🚗 eine Anfahrt — mit Termin am Standort')}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )
               })}
