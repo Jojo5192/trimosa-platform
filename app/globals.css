@@ -584,3 +584,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (prefers-reduced-motion: reduce) {
   .rec-pulse { animation: none; }
 }
+
+/* Team-App: Zoom komplett unterbinden —
+   1) touch-action ohne pinch-zoom (Pinch), manipulation (Doppeltipp-Zoom)
+   2) Eingabefelder mindestens 16px: verhindert den iOS-Auto-Zoom beim Fokussieren
+      (!important schlägt die Inline-Styles der Komponenten) */
+.team-shell {
+  touch-action: pan-x pan-y;
+}
+.team-shell button, .team-shell a {
+  touch-action: manipulation;
+}
+.team-shell input, .team-shell textarea, .team-shell select {
+  font-size: 16px !important;
+}
