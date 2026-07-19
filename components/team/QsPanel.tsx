@@ -389,6 +389,9 @@ function QsProtocol({ check, template, onClose }: {
 function countMaengel(report: QsReport | null): number {
   return Object.values(report?.items ?? {}).filter((v) => v?.s === 'mangel').length
 }
+function maengelLabel(m: number): string {
+  return m === 1 ? '1 Mangel' : `${m} Mängel`
+}
 
 export function QsView({ check, template, onClose }: {
   check: QsCheck; template: QsSection[]; onClose: () => void
@@ -445,7 +448,7 @@ export function QsView({ check, template, onClose }: {
           </div>
         </div>
         <span style={{ fontSize: 12, fontWeight: 800, color: countMaengel(check.report) ? '#B91C1C' : '#15803D', flexShrink: 0 }}>
-          {countMaengel(check.report) ? `${countMaengel(check.report)} Mängel` : 'ohne Mängel'}
+          {countMaengel(check.report) ? maengelLabel(countMaengel(check.report)) : 'ohne Mängel'}
         </span>
       </div>
 
@@ -643,7 +646,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
                       <span style={{
                         fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '4px 10px',
                         background: m ? '#FEF2F2' : '#F0FDF4', color: m ? '#B91C1C' : '#15803D',
-                      }}>{m ? `${m} Mängel` : '✓ ohne Mängel'}</span>
+                      }}>{m ? maengelLabel(m) : '✓ ohne Mängel'}</span>
                       <span style={{ color: '#C7C7CC', fontSize: 15 }}>›</span>
                     </span>
                   </button>
