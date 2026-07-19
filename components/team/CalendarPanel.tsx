@@ -9,8 +9,9 @@
  * Dienstleister sehen keine Gastnamen (kommen von der API gar nicht erst).
  */
 import { useState, useEffect, useCallback } from 'react'
+import OccupancyGrid from '@/components/team/OccupancyGrid'
 
-type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null }
+type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
 type CalQs = { id: string; listingId: string; dueDate: string }
 type ListingInfo = { title: string; group: string | null }
@@ -72,6 +73,7 @@ export default function CalendarPanel() {
   const [listings, setListings] = useState<Record<string, ListingInfo>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'belegung' | 'agenda'>('belegung')
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -240,13 +242,31 @@ export default function CalendarPanel() {
         padding: '14px 16px 10px',
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
       }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: '#111', letterSpacing: '-0.4px' }}>Kalender</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Kalender</h1>
+        {/* Ansichts-Umschalter: Smoobu-Style-Belegung vs. Agenda */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([['belegung', '📊 Belegung'], ['agenda', '📋 Agenda']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setView(id)} style={{
+              padding: '6px 14px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
+              background: view === id ? '#111' : 'rgba(120,120,128,0.12)',
+              color: view === id ? '#fff' : '#3C3C43', cursor: 'pointer',
+            }}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
       ) : error ? (
         <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>{error}</p>
+      ) : view === 'belegung' ? (
+        <div style={{ padding: '12px 12px 40px' }}>
+          <OccupancyGrid stays={stays} listings={listings} />
+          <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '10px 4px 0', lineHeight: 1.5 }}>
+            Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
+            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: '#1A4FA0', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#8B5CF6', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: '#8A7020', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
+          </p>
+        </div>
       ) : (
         <div style={{ padding: '12px 16px 40px' }}>
           {/* Überfällige Aufgaben gesammelt oben */}
