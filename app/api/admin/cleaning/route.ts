@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getCleaningSettings, CLEANING_DEFAULTS } from '@/lib/cleaning'
+import { getCleaningSettings, resolveCleaningFor, CLEANING_DEFAULTS, type CleaningRuleSet } from '@/lib/cleaning'
 
 /**
  * 🧹 Admin: Reinigungs-Verantwortliche + Ø-Dauer je Wohnung und globale
@@ -54,20 +54,45 @@ export async function PATCH(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const body = await req.json().catch(() => ({}))
 
+  const num = (v: unknown, fallback: number, max = 10000) => {
+    const n = Number(v)
+    return Number.isFinite(n) && n >= 0 && n <= max ? n : fallback
+  }
+  const cleanRuleSet = (src: Record<string, unknown>, base: CleaningRuleSet): CleaningRuleSet => ({
+    avoidSundays: typeof src.avoidSundays === 'boolean' ? src.avoidSundays : base.avoidSundays,
+    avoidHolidays: typeof src.avoidHolidays === 'boolean' ? src.avoidHolidays : base.avoidHolidays,
+    hourlyRate: 'hourlyRate' in src ? num(src.hourlyRate, base.hourlyRate, 500) : base.hourlyRate,
+    travelFee: 'travelFee' in src ? num(src.travelFee, base.travelFee, 500) : base.travelFee,
+    sundaySurchargePct: 'sundaySurchargePct' in src ? num(src.sundaySurchargePct, base.sundaySurchargePct, 300) : base.sundaySurchargePct,
+    holidaySurchargePct: 'holidaySurchargePct' in src ? num(src.holidaySurchargePct, base.holidaySurchargePct, 300) : base.holidaySurchargePct,
+  })
+
   if (body.settings && typeof body.settings === 'object') {
     const current = await getCleaningSettings()
-    const num = (v: unknown, fallback: number, max = 10000) => {
-      const n = Number(v)
-      return Number.isFinite(n) && n >= 0 && n <= max ? n : fallback
+    // perPerson MITNEHMEN — sonst löscht ein Standard-Save alle Overrides
+    const value = { ...cleanRuleSet(body.settings, current), perPerson: current.perPerson ?? {} }
+    const { error } = await supabaseAdmin
+      .from('app_settings')
+      .upsert({ key: 'cleaning_settings', value, updated_at: new Date().toISOString() })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, settings: { ...CLEANING_DEFAULTS, ...value } }, NO_STORE)
+  }
+
+  // 👤 Abweichende Regeln/Sätze je Reinigungskraft: { personId, values | null }
+  if (body.personSettings && typeof body.personSettings === 'object') {
+    const { personId, values } = body.personSettings
+    if (typeof personId !== 'string' || !personId) {
+      return NextResponse.json({ error: 'personId fehlt.' }, { status: 400 })
     }
-    const value = {
-      avoidSundays: typeof body.settings.avoidSundays === 'boolean' ? body.settings.avoidSundays : current.avoidSundays,
-      avoidHolidays: typeof body.settings.avoidHolidays === 'boolean' ? body.settings.avoidHolidays : current.avoidHolidays,
-      hourlyRate: 'hourlyRate' in body.settings ? num(body.settings.hourlyRate, current.hourlyRate, 500) : current.hourlyRate,
-      travelFee: 'travelFee' in body.settings ? num(body.settings.travelFee, current.travelFee, 500) : current.travelFee,
-      sundaySurchargePct: 'sundaySurchargePct' in body.settings ? num(body.settings.sundaySurchargePct, current.sundaySurchargePct, 300) : current.sundaySurchargePct,
-      holidaySurchargePct: 'holidaySurchargePct' in body.settings ? num(body.settings.holidaySurchargePct, current.holidaySurchargePct, 300) : current.holidaySurchargePct,
+    const current = await getCleaningSettings()
+    const perPerson = { ...(current.perPerson ?? {}) }
+    if (values === null) delete perPerson[personId]
+    else if (values && typeof values === 'object') {
+      perPerson[personId] = cleanRuleSet(values, resolveCleaningFor(current, personId))
+    } else {
+      return NextResponse.json({ error: 'values fehlt.' }, { status: 400 })
     }
+    const value = { ...cleanRuleSet(current as unknown as Record<string, unknown>, current), perPerson }
     const { error } = await supabaseAdmin
       .from('app_settings')
       .upsert({ key: 'cleaning_settings', value, updated_at: new Date().toISOString() })
