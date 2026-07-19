@@ -54,7 +54,7 @@ function Row({ title, subtitle, last, children }: {
 export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean } | null>(null)
+  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats, bookings: d.bookings !== false }) })
       .catch(() => {})
   }, [])
 
@@ -96,7 +96,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     } finally { setBusy(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats') {
+  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings') {
     if (!prefs) return
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
@@ -142,6 +142,11 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               ? <span style={{ fontSize: 13, color: '#B0AA9C' }}>…</span>
               : <Switch on={pushState === 'on'} disabled={pushState === 'unsupported' || busy} onChange={toggleDevice} />}
           </Row>
+          {role === 'team' && (
+            <Row title="Neue Buchungen" subtitle="Buchungen & Anfragen aus allen Kanälen">
+              <Switch on={prefs?.bookings ?? true} disabled={!prefs} onChange={() => togglePref('bookings')} />
+            </Row>
+          )}
           {role === 'team' && (
             <Row title="Gäste-Chats" subtitle="Neue Nachrichten von Gästen">
               <Switch on={prefs?.guestChats ?? true} disabled={!prefs} onChange={() => togglePref('guestChats')} />
