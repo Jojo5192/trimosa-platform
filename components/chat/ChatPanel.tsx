@@ -93,6 +93,17 @@ const LANG_LABEL: Record<string, string> = {
 }
 const flag = (l?: string | null) => (l ? FLAGS[l] ?? '🌐' : '🌐')
 
+/** Telefon-Vorwahl → wahrscheinliche Gastsprache (Schätzung, Pascal 19.7.).
+    Längere Vorwahlen zuerst prüfen (352 vor 35 vor 3). */
+const PHONE_LANG: Record<string, string> = {
+  '49': 'de', '43': 'de', '41': 'de',
+  '31': 'nl', '32': 'nl',
+  '33': 'fr', '352': 'fr',
+  '44': 'en', '1': 'en', '353': 'en', '47': 'en', '358': 'en', '36': 'en', '30': 'en',
+  '39': 'it', '34': 'es', '351': 'pt', '45': 'da', '46': 'sv',
+  '48': 'pl', '420': 'cs', '90': 'tr', '7': 'ru',
+}
+
 /* ── helpers ── */
 function ava(name: string) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?'
@@ -417,14 +428,28 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }
 
   /* ── guest language of the active thread (latest detected guest message) ── */
-  const guestLang = (() => {
+  const guestLangInfo = (() => {
     if (!team || !active) return null
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
-      if (!isOurSide(m, active) && m.lang) return m.lang
+      if (!isOurSide(m, active) && m.lang) return { lang: m.lang, guessed: false }
+    }
+    // Pascal (19.7.): Ohne erkannte Sprache aus der TELEFON-VORWAHL schätzen —
+    // Smoobu legt „Guest Phone Number: +32…" als Nachricht in den Thread.
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      const match = (m.content ?? '').match(/\+\s?(\d{6,15})/)
+      if (!match) continue
+      const digits = match[1]
+      for (const len of [3, 2, 1]) {
+        const lang = PHONE_LANG[digits.slice(0, len)]
+        if (lang) return { lang, guessed: true }
+      }
     }
     return null
   })()
+  const guestLang = guestLangInfo?.lang ?? null
+  const guestLangGuessed = guestLangInfo?.guessed ?? false
   const needsTranslation = team && guestLang != null && guestLang !== 'de'
 
   /* ── KI-Werkstatt: Anweisung → Claude überarbeitet den Entwurf ODER schreibt
@@ -765,7 +790,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             {(active.platform || active.guestStatus || guestLang) && (
               <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {guestLang && guestLang !== 'de' && (
-                  <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}`} style={{ fontSize: 15 }}>{flag(guestLang)}</span>
+                  <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}`} style={{ fontSize: 15 }}>
+                    {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 10, color: '#8E8E93', verticalAlign: 'super' }}>~</span> : null}
+                  </span>
                 )}
                 <ThreadBadges c={active} size={10.5} />
                 {team && active.lastSender === 'guest' && (
@@ -825,7 +852,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {row('📅', 'Aufenthalt:', `${fmtFull(active.check_in)} – ${fmtFull(active.check_out)}${nights ? ` · ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'}` : ''}`)}
               {row('👥', 'Personen:', persons > 0 ? `${persons}${active.children ? ` (${active.adults} Erw. + ${active.children} Kind${active.children === 1 ? '' : 'er'})` : ''}` : '— (Plattform-Buchung)')}
               {row('🏠', 'Wohnung:', active.listing_title ?? '—')}
-              {row('🛎️', 'Kanal:', `${active.platform ?? '—'}${guestLang && guestLang !== 'de' ? ` · Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}` : ''}`)}
+              {row('🛎️', 'Kanal:', `${active.platform ?? '—'}${guestLang && guestLang !== 'de' ? ` · Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}` : ''}`)}
             </div>
           )
         })()}
