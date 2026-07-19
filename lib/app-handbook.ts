@@ -34,7 +34,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 📅 KALENDER — drei Ansichten:
 - 📊 Belegung: Smoobu-Stil-Grid, alle Wohnungen × Tage, Balken in Kanal-Farben mit Gastnamen, Wechseltage als Halbzellen, Tipp → Details + Chat-Link.
 - 📋 Agenda: An-/Abreisen, Wechsel-Badges, fällige Aufgaben, QS-Termine, „Gerade frei"-Karten + Planungs-Vorschläge (Aufgaben in Frei-Fenster legen). Zweitansicht 📆 Wochenblick: 14 Tages-Kacheln mit Ereignis-Punkten.
-- 🧹 Reinigung: jede Abreise als Slot (Wechseltag = Pflicht, sonst flexibel), kluge Empfehlung (Sonn-/Feiertage meiden, Reinigungen am selben Standort bündeln = eine Anfahrt), 🗺 Touren-Ansicht (Tages-Einsatzpläne je Standort mit Gesamtdauer), 💶 Kosten-Prognose (NUR Admins/Gastgeber: erwartete Rechnung mit Stundensatz, Zulagen, Anfahrten — Sätze im Admin-Bereich einstellbar).
+- 🧹 Reinigung: jede Abreise als Slot (Wechseltag = Pflicht, sonst flexibel), kluge Empfehlung (Sonn-/Feiertage meiden, Reinigungen am selben Standort bündeln = eine Anfahrt), 🗺 Touren-Ansicht (Tages-Einsatzpläne je Standort mit Gesamtdauer), 💶 Kosten-Prognose (NUR Admins/Gastgeber): erwartete Rechnung je KALENDERMONAT, filterbar nach Reinigungskraft („was stellt Vanessa in Rechnung?"), zweistufig auffächerbar (Wohnung → einzelne Reinigungen mit Datum; Zulagen und Anfahrten ebenso) — Sätze (Stundensatz/Anfahrt/Zulagen) im Admin-Bereich einstellbar. Dazu „📄 Rechnung hochladen & prüfen": echte Monats-Rechnung (PDF/Foto) hochladen → Claude liest sie, vergleicht mit der Erwartung und zeigt Abweichung, Positionen und Auffälligkeiten.
 - Admins können pro Person einstellen, wer welche Wohnungen im Kalender sieht; Dienstleister sehen nie Gastnamen.
 
 ⚙️ MEHR:
