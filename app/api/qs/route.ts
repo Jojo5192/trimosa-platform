@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { ensureQsChecks, findFreeDay, getQsTemplateStore, resolveQsTemplate } from '@/lib/qs'
+import { ensureQsChecks, rescheduleConflictingChecks, findFreeDay, getQsTemplateStore, resolveQsTemplate } from '@/lib/qs'
 
 /**
  * 🧾 QS-Termine:
@@ -14,11 +14,12 @@ export const maxDuration = 60
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
 export async function GET(req: NextRequest) {
-  // Cron-Pfad
+  // Cron-Pfad: neue Termine planen + belegte Termine ausweichen lassen
   const auth = req.headers.get('authorization')
   if (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) {
     const result = await ensureQsChecks()
-    return NextResponse.json({ ok: true, ...result })
+    const conflicts = await rescheduleConflictingChecks()
+    return NextResponse.json({ ok: true, ...result, ...conflicts })
   }
 
   const me = await getTaskAuth()
