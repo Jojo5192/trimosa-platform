@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth, type TaskAuth } from '@/lib/tasks'
-import { isDayFree, getQsTemplateStore, resolveQsTemplate, type QsSection } from '@/lib/qs'
+import { isDayFree, getQsTemplateStore, resolveQsTemplate, QS_MAX_SHIFT_DAYS, type QsSection } from '@/lib/qs'
 import { generateQsPdf } from '@/lib/qs-pdf'
 import { sendPushToTeam, sendPushToUser } from '@/lib/push'
 
@@ -71,6 +71,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.dueDate === 'string') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)) return NextResponse.json({ error: 'Ungültiges Datum.' }, { status: 400 })
     if (check.status !== 'geplant') return NextResponse.json({ error: 'Termin ist bereits abgeschlossen.' }, { status: 400 })
+    // „Nicht zu weit verschiebbar": Nicht-Admins max. 6 Wochen im Voraus
+    if (me.role !== 'admin') {
+      const maxIso = new Date(Date.now() + QS_MAX_SHIFT_DAYS * 86400_000).toISOString().slice(0, 10)
+      if (body.dueDate > maxIso) {
+        return NextResponse.json({ error: `Maximal ${QS_MAX_SHIFT_DAYS / 7} Wochen im Voraus verschiebbar — bei Dauerbelegung bitte kurz mit dem Team abstimmen.` }, { status: 400 })
+      }
+    }
     if (!body.force) {
       const free = await isDayFree(check.listing_id, body.dueDate)
       if (!free) {
@@ -129,9 +136,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    /* Festgestellte Mängel → Aufgaben-VORSCHLÄGE (Admin reviewt/priorisiert/
+       weist zu — wie bei den KI-Vorschlägen). Elektro/Sicherheit = prio hoch.
+       Dedupe gegen bestehende offene Aufgaben/Vorschläge derselben Wohnung. */
+    let maengelCount = 0
+    try {
+      const items = (report.items ?? {}) as Record<string, { s?: string; note?: string }>
+      const defects: { title: string; description: string; prio: string }[] = []
+      for (const sec of snapshot.template) {
+        for (const item of sec.items) {
+          const v = items[item.id]
+          if (v?.s !== 'mangel') continue
+          defects.push({
+            title: `${item.label} — ${listing?.title ?? 'Wohnung'}`.slice(0, 120),
+            description: `Aus dem QS-Protokoll vom ${now.toLocaleDateString('de-DE')} (geprüft von ${inspectorName}):\n„${(v.note ?? '').trim() || 'Mangel festgestellt'}“\nBereich: ${sec.title}`,
+            prio: sec.id === 'elektro' || sec.id === 'sicherheit' ? 'hoch' : 'mittel',
+          })
+        }
+      }
+      maengelCount = defects.length
+      if (defects.length) {
+        const { data: existing } = await supabaseAdmin
+          .from('tasks').select('title')
+          .eq('listing_id', check.listing_id)
+          .in('status', ['vorschlag', 'offen', 'in_arbeit'])
+        const have = new Set((existing ?? []).map((t) => t.title))
+        const rows = defects.filter((d) => !have.has(d.title)).map((d) => ({
+          title: d.title, description: d.description,
+          source: 'qs', source_ref: id,
+          listing_id: check.listing_id, prio: d.prio,
+          status: 'vorschlag', visibility: 'admin', created_by: me.userId,
+        }))
+        if (rows.length) await supabaseAdmin.from('tasks').insert(rows)
+      }
+    } catch (e) { console.error('[qs] defect suggestions failed:', e) }
+
     sendPushToTeam(
       '🧾 QS-Protokoll abgeschlossen',
-      `${listing?.title ?? 'Wohnung'} — geprüft von ${inspectorName.split(/\s+/)[0]}`,
+      `${listing?.title ?? 'Wohnung'} — geprüft von ${inspectorName.split(/\s+/)[0]}${maengelCount ? ` · ${maengelCount === 1 ? '1 Mangel' : `${maengelCount} Mängel`} → Aufgaben-Vorschläge` : ' · ohne Mängel'}`,
       '/team?tab=aufgaben'
     ).catch(() => {})
     return NextResponse.json({ ok: true }, NO_STORE)
