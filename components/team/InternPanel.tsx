@@ -102,6 +102,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const recRef = useRef<MediaRecorder | null>(null)
   const recChunks = useRef<Blob[]>([])
@@ -181,7 +182,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: draft.trim() }),
       })
-      if (r.ok) { setDraft(''); await loadMsgs(active.id); loadChats() }
+      if (r.ok) {
+        setDraft('')
+        if (composerRef.current) composerRef.current.style.height = 'auto'
+        await loadMsgs(active.id)
+        loadChats()
+      }
     } finally { setBusy(false) }
   }
 
@@ -250,8 +256,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   /* ── 🎙️ Sprachnachrichten (MediaRecorder; iOS = audio/mp4, Chrome = webm) ── */
   async function startRec() {
     if (recording || uploading || !active) return
+    let stream: MediaStream | null = null
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')
         ? 'audio/mp4'
         : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
@@ -325,6 +332,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         if (sec >= 300) stopRec(true) // Sicherheits-Limit 5 Min
       }, 1000)
     } catch {
+      // Pascal-Bug 19.7.: Stream unbedingt freigeben, sonst bleibt das Mikro
+      // an, obwohl keine Aufnahme-UI erscheint („kann nicht beenden")
+      stream?.getTracks().forEach((t) => t.stop())
+      if (recTimer.current) clearInterval(recTimer.current)
+      setRecording(false)
       alert('Mikrofon-Zugriff nicht möglich — bitte in den Einstellungen erlauben.')
     }
   }
@@ -332,6 +344,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   function stopRec(send: boolean) {
     recSend.current = send
     try { recRef.current?.stop() } catch { setRecording(false) }
+    // Failsafe: feuert onstop nicht (iOS-Zicken), UI trotzdem freigeben —
+    // wenn onstop normal lief, ist recording längst false (idempotent)
+    setTimeout(() => setRecording(false), 2500)
   }
 
   async function sendVoice(blob: Blob, transcript = '') {
@@ -672,8 +687,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         </label>
         <div style={{ flex: 1, position: 'relative', display: 'flex', border: '1px solid rgba(60,60,67,0.28)', borderRadius: 18, background: '#fff', minHeight: 36 }}>
           <textarea
+            ref={composerRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              // Auto-Grow (Pascal: „Schreib-Fenster immer noch so klein")
+              e.target.style.height = 'auto'
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
+            }}
             rows={1}
             placeholder="Nachricht"
             style={{ flex: 1, resize: 'none', outline: 'none', border: 'none', borderRadius: 18, padding: draft.trim() ? '7px 40px 7px 13px' : '7px 13px', fontSize: 16, lineHeight: '22px', fontFamily: 'inherit', background: 'transparent', color: '#111', maxHeight: 160, overflowY: 'auto' }}
