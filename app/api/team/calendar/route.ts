@@ -57,10 +57,26 @@ export async function GET() {
   }
   const { data: tasks } = await taskQuery
 
+  // 🧾 Geplante QS-Termine (Admins alle, sonst nur die eigenen) — fail-soft,
+  // falls die qs_checks-Migration noch nicht gelaufen ist
+  let qs: { id: string; listingId: string; dueDate: string }[] = []
+  try {
+    let qsQuery = supabaseAdmin
+      .from('qs_checks')
+      .select('id, listing_id, due_date, assignee_id')
+      .eq('status', 'geplant')
+      .lte('due_date', end)
+      .limit(50)
+    if (auth.role !== 'admin') qsQuery = qsQuery.eq('assignee_id', auth.userId)
+    const { data } = await qsQuery
+    qs = (data ?? []).map((c) => ({ id: c.id, listingId: c.listing_id, dueDate: c.due_date }))
+  } catch { /* Tabelle fehlt noch */ }
+
   return NextResponse.json({
     role: auth.role,
     stays,
     tasks: tasks ?? [],
+    qs,
     listings: Object.fromEntries((listings ?? []).map((l) => [
       l.id, { title: l.title, group: (l.location_group ?? '').trim() || null },
     ])),
