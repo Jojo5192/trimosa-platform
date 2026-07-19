@@ -154,13 +154,15 @@ interface Props {
   /** overlay only */
   open?: boolean
   onClose?: () => void
+  /** app only: meldet der Shell, ob mobil ein Thread offen ist (Tab-Bar verstecken) */
+  onMobileThread?: (open: boolean) => void
   /** page only: pre-select a conversation (?conv= deep link from emails) */
   initialConvId?: string | null
   /** team mode: unified inbox (all guests incl. Airbnb/Booking via Smoobu) */
   team?: boolean
 }
 
-export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false }: Props) {
+export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
@@ -281,6 +283,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  /* Mobil + Thread offen → Shell versteckt die Tab-Bar (WhatsApp-Verhalten) */
+  useEffect(() => {
+    onMobileThread?.(isMobile && mobileView === 'chat')
+  }, [isMobile, mobileView, onMobileThread])
 
   /* ── data fetching ── */
   const CACHE_KEY = team ? 'trimosa-inbox-v1' : 'trimosa-chats-v1'
@@ -1003,8 +1010,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           borderTop: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.92)',
           backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           padding: '8px 12px',
-          // In der Tab-Shell (app) übernimmt die Tab-Leiste die Safe-Area
-          paddingBottom: variant === 'app' ? 8 : 'max(8px, env(safe-area-inset-bottom))',
+          // In der Tab-Shell (app) übernimmt die Tab-Leiste die Safe-Area —
+          // AUSSER die Bar ist im Thread versteckt, dann braucht sie der Composer
+          paddingBottom: variant === 'app' && !(isMobile && mobileView === 'chat')
+            ? 8 : 'max(8px, env(safe-area-inset-bottom))',
           display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
           {active && isHost(active) && msgs.length > 0 && (
