@@ -69,7 +69,12 @@ function Av({ name, src, size = 34 }: { name: string; src: string | null; size?:
   )
 }
 
-export default function InternPanel({ userId, onUnread }: { userId: string; onUnread?: (n: number) => void }) {
+export default function InternPanel({ userId, onUnread, onMobileThread }: {
+  userId: string
+  onUnread?: (n: number) => void
+  /** meldet der Shell, ob mobil ein Thread offen ist (Tab-Bar verstecken) */
+  onMobileThread?: (open: boolean) => void
+}) {
   const [chats, setChats] = useState<TeamChat[]>([])
   const [directory, setDirectory] = useState<Directory[]>([])
   const [canCreate, setCanCreate] = useState(false)
@@ -93,6 +98,11 @@ export default function InternPanel({ userId, onUnread }: { userId: string; onUn
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  /* Mobil + Thread offen → Shell versteckt die Tab-Bar (WhatsApp-Verhalten) */
+  useEffect(() => {
+    onMobileThread?.(isMobile && mobileView === 'chat')
+  }, [isMobile, mobileView, onMobileThread])
 
   const loadChats = useCallback(async () => {
     try {
@@ -396,8 +406,12 @@ export default function InternPanel({ userId, onUnread }: { userId: string; onUn
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer */}
-      <div style={{ display: 'flex', gap: 9, alignItems: 'flex-end', padding: '8px 12px', borderTop: HAIR, flexShrink: 0, background: 'rgba(255,255,255,0.92)' }}>
+      {/* Composer — bei versteckter Tab-Bar übernimmt er die Safe-Area */}
+      <div style={{
+        display: 'flex', gap: 9, alignItems: 'flex-end', padding: '8px 12px', borderTop: HAIR, flexShrink: 0,
+        background: 'rgba(255,255,255,0.92)',
+        paddingBottom: isMobile && mobileView === 'chat' ? 'max(8px, env(safe-area-inset-bottom))' : 8,
+      }}>
         <label title="Bild, Video oder PDF anhängen" style={{
           width: 34, height: 34, borderRadius: '50%', background: 'rgba(118,118,128,0.12)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
