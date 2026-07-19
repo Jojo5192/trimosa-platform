@@ -55,7 +55,7 @@ function tplFor(check: QsCheck, templates: Record<string, QsSection[]>, fallback
   return templates[check.listingId] ?? fallback
 }
 
-export default function QsBlock() {
+export default function QsBlock({ personFilter = '' }: { personFilter?: string }) {
   const [checks, setChecks] = useState<QsCheck[]>([])
   const [templates, setTemplates] = useState<Record<string, QsSection[]>>({})
   const [defaultTpl, setDefaultTpl] = useState<QsSection[]>([])
@@ -97,8 +97,12 @@ export default function QsBlock() {
   }
 
   const today = todayIso()
-  const planned = checks.filter((c) => c.status === 'geplant')
-  const done = checks.filter((c) => c.status === 'erledigt')
+  // Personen-Filter des Aufgaben-Tabs gilt auch hier (Inhaber-Wunsch 19.7.):
+  // '' = alle · 'none' = ohne Zuweisung · sonst nur Checks dieser Person
+  const matchesPerson = (c: QsCheck) =>
+    !personFilter ? true : personFilter === 'none' ? !c.assigneeId : c.assigneeId === personFilter
+  const planned = checks.filter((c) => c.status === 'geplant' && matchesPerson(c))
+  const done = checks.filter((c) => c.status === 'erledigt' && matchesPerson(c))
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
     .slice(0, 3)
   if (!planned.length && !done.length) return null
