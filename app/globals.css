@@ -28,6 +28,15 @@ html {
   background-color: #ECEEF4;
 }
 
+/* iOS 26 tönt die Statusbar-Zone („forehead") einer installierten Web-App nach
+   der SEITEN-Hintergrundfarbe — theme-color wird dort ignoriert. Für die
+   Team-App muss html/body deshalb weiß sein, sonst bleibt die Uhrzeit-Zone
+   im globalen Grau (#ECEEF4). */
+html:has(.team-shell),
+html:has(.team-shell) body {
+  background-color: #ffffff;
+}
+
 body {
   color: #1D1D1F;
 }
