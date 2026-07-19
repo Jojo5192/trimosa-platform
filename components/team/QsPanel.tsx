@@ -48,9 +48,17 @@ async function compressToJpeg(file: File): Promise<Blob> {
   } catch { return file }
 }
 
+/** Checkliste eines Checks auflösen: Abschluss-Snapshot > Wohnungs-Vorlage > Standard. */
+function tplFor(check: QsCheck, templates: Record<string, QsSection[]>, fallback: QsSection[]): QsSection[] {
+  const snap = check.report?.template
+  if (check.status === 'erledigt' && Array.isArray(snap) && snap.length) return snap
+  return templates[check.listingId] ?? fallback
+}
+
 export default function QsBlock() {
   const [checks, setChecks] = useState<QsCheck[]>([])
-  const [template, setTemplate] = useState<QsSection[]>([])
+  const [templates, setTemplates] = useState<Record<string, QsSection[]>>({})
+  const [defaultTpl, setDefaultTpl] = useState<QsSection[]>([])
   const [openCheck, setOpenCheck] = useState<QsCheck | null>(null)
   const [viewCheck, setViewCheck] = useState<QsCheck | null>(null)
   const [moveFor, setMoveFor] = useState<string | null>(null)
@@ -63,7 +71,8 @@ export default function QsBlock() {
       if (!r.ok) return
       const d = await r.json()
       setChecks(d.checks ?? [])
-      setTemplate(d.template ?? [])
+      setTemplates(d.templates ?? {})
+      setDefaultTpl(d.defaultTemplate ?? [])
     } catch { /* still — Block bleibt einfach leer */ }
   }, [])
   useEffect(() => { load() }, [load])
@@ -154,15 +163,15 @@ export default function QsBlock() {
           </button>
         ))}
       </div>
-      {openCheck && template.length > 0 && (
+      {openCheck && (
         <QsProtocol
           check={openCheck}
-          template={template}
+          template={tplFor(openCheck, templates, defaultTpl)}
           onClose={() => { setOpenCheck(null); load() }}
         />
       )}
-      {viewCheck && template.length > 0 && (
-        <QsView check={viewCheck} template={template} onClose={() => setViewCheck(null)} />
+      {viewCheck && (
+        <QsView check={viewCheck} template={tplFor(viewCheck, templates, defaultTpl)} onClose={() => setViewCheck(null)} />
       )}
     </div>
   )
@@ -534,7 +543,8 @@ export function QsView({ check, template, onClose }: {
 
 export function QsArchive({ onClose }: { onClose: () => void }) {
   const [checks, setChecks] = useState<QsCheck[]>([])
-  const [template, setTemplate] = useState<QsSection[]>([])
+  const [templates, setTemplates] = useState<Record<string, QsSection[]>>({})
+  const [defaultTpl, setDefaultTpl] = useState<QsSection[]>([])
   const [sel, setSel] = useState('')
   const [view, setView] = useState<QsCheck | null>(null)
   const [loading, setLoading] = useState(true)
@@ -545,7 +555,8 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
       .then((d) => {
         if (!d) return
         setChecks(d.checks ?? [])
-        setTemplate(d.template ?? [])
+        setTemplates(d.templates ?? {})
+        setDefaultTpl(d.defaultTemplate ?? [])
         const first = (d.checks ?? [])[0]
         if (first) setSel((prev: string) => prev || first.listingId)
       })
@@ -657,8 +668,8 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {view && template.length > 0 && (
-        <QsView check={view} template={template} onClose={() => setView(null)} />
+      {view && (
+        <QsView check={view} template={tplFor(view, templates, defaultTpl)} onClose={() => setView(null)} />
       )}
     </div>
   )
