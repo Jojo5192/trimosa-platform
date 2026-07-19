@@ -55,9 +55,11 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
     : await getCursor()
   const runStart = new Date().toISOString()
 
-  const { data: listingRows } = await supabaseAdmin.from('listings').select('id, title')
+  const { data: listingRows } = await supabaseAdmin.from('listings').select('id, title, location_group')
   const listingByTitle = new Map((listingRows ?? []).map((l) => [String(l.title).toLowerCase(), l.id]))
   const listingTitle = new Map((listingRows ?? []).map((l) => [l.id, String(l.title)]))
+  const listingGroup = new Map((listingRows ?? []).map((l) => [l.id, (l.location_group ?? '').trim() || null]))
+  const knownGroups = new Set((listingRows ?? []).map((l) => (l.location_group ?? '').trim().toLowerCase()).filter(Boolean))
 
   // ── Neue Gastnachrichten (Buchungs-Welt: Airbnb/Booking/… via Smoobu) ──
   const { data: bookingMsgs } = await supabaseAdmin
@@ -110,12 +112,35 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   // ── Neue Bewertungen ──
   const { data: reviewRows } = await supabaseAdmin
     .from('reviews')
-    .select('review_text, rating, listing_id, source, created_at')
+    .select('review_text, rating, listing_id, source, source_review_id, created_at')
     .gt('created_at', since)
     .not('review_text', 'is', null)
     .order('created_at', { ascending: false })
     .limit(MAX_REVIEWS)
-  const reviews = (reviewRows ?? []).filter((r) => String(r.review_text).trim().length >= 25)
+  // Property-Dubletten deduplizieren (§124): Booking-Reviews geteilter
+  // Properties hängen an MEHREREN Listings — hier nur EINMAL zählen und dem
+  // STANDORT zuschreiben statt einer (womöglich falschen) Wohnung.
+  const rawReviews = (reviewRows ?? []).filter((r) => String(r.review_text).trim().length >= 25)
+  const seenRid = new Map<string, { listing_ids: Set<string> }>()
+  for (const r of rawReviews) {
+    if (!r.source_review_id) continue
+    const k = `${r.source}|${r.source_review_id}`
+    const e = seenRid.get(k) ?? { listing_ids: new Set<string>() }
+    if (r.listing_id) e.listing_ids.add(r.listing_id)
+    seenRid.set(k, e)
+  }
+  const emitted = new Set<string>()
+  const reviews: { review_text: unknown; rating: unknown; source: string; label: string }[] = []
+  for (const r of rawReviews) {
+    const k = r.source_review_id ? `${r.source}|${r.source_review_id}` : null
+    if (k && emitted.has(k)) continue
+    if (k) emitted.add(k)
+    const shared = k ? (seenRid.get(k)?.listing_ids.size ?? 0) > 1 : false
+    const label = shared
+      ? `${(r.listing_id && listingGroup.get(r.listing_id)) || 'Standort'} (mehrere Wohnungen möglich)`
+      : (r.listing_id ? listingTitle.get(r.listing_id) ?? 'unbekannt' : 'unbekannt')
+    reviews.push({ review_text: r.review_text, rating: r.rating, source: r.source, label })
+  }
 
   if (messages.length === 0 && reviews.length === 0) {
     await setCursor(runStart)
@@ -140,8 +165,12 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
     '',
     'BEWERTUNGEN:',
     reviews.length
-      ? reviews.map((r) => `[${r.listing_id ? listingTitle.get(r.listing_id) ?? 'unbekannt' : 'unbekannt'} · ${r.source} · ${r.rating}/5] "${String(r.review_text).slice(0, 800)}"`).join('\n')
+      ? reviews.map((r) => `[${r.label} · ${r.source} · ${r.rating}/5] "${String(r.review_text).slice(0, 800)}"`).join('\n')
       : '(keine)',
+    '',
+    'HINWEIS: Bei "[<Standort> (mehrere Wohnungen möglich)]" ist die konkrete',
+    'Wohnung NICHT bekannt — gib dann als wohnung den STANDORT-Namen an',
+    '(z. B. "Sirzenich" oder "Minden"), NIE eine geratene Wohnung.',
   ].join('\n')
 
   const system = await getPrompt('task_suggest')
@@ -156,14 +185,19 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   for (const s of suggestions) {
     const title = String(s.titel ?? '').trim().slice(0, 200)
     if (!title || existingLower.has(title.toLowerCase())) continue
-    const listingId = s.wohnung ? listingByTitle.get(String(s.wohnung).toLowerCase()) ?? null : null
+    const wohnungRaw = String(s.wohnung ?? '').trim().toLowerCase()
+    const listingId = wohnungRaw ? listingByTitle.get(wohnungRaw) ?? null : null
+    // Standort-Zuordnung (§124): „Sirzenich"/„Minden" statt geratener Wohnung
+    const groupName = !listingId && wohnungRaw && knownGroups.has(wohnungRaw)
+      ? (listingRows ?? []).find((l) => (l.location_group ?? '').trim().toLowerCase() === wohnungRaw)?.location_group ?? null
+      : null
     const { error } = await supabaseAdmin.from('tasks').insert({
       title,
       description: String(s.beschreibung ?? '').trim().slice(0, 2000),
       source: s.quelle === 'bewertung' ? 'ki_bewertung' : 'ki_nachricht',
       listing_id: listingId,
-      location_group: null,
-      is_general: !listingId,
+      location_group: groupName,
+      is_general: !listingId && !groupName,
       prio: ['hoch', 'mittel', 'niedrig'].includes(s.prio) ? s.prio : 'mittel',
       status: 'vorschlag',
       visibility: 'admin',
