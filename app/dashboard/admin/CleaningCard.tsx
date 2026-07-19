@@ -11,7 +11,9 @@ type Row = { id: string; title: string; cleaning_responsible: string | null; cle
 type Person = { id: string; name: string; role: string }
 type RuleSet = {
   avoidSundays: boolean; avoidHolidays: boolean
-  hourlyRate: number; travelFee: number; sundaySurchargePct: number; holidaySurchargePct: number
+  hourlyRate: number; travelFee: number; travelPerCleaning?: boolean
+  sundaySurchargePct: number; holidaySurchargePct: number
+  specialSurchargePct?: number; vatPct?: number
 }
 type Settings = RuleSet & { perPerson?: Record<string, RuleSet> }
 
@@ -135,15 +137,17 @@ export default function CleaningCard() {
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {([
                     ['hourlyRate', 'Stundensatz', '€/h'],
-                    ['travelFee', 'Anfahrt', '€ je Einsatz'],
+                    ['travelFee', 'Anfahrt', '€'],
                     ['sundaySurchargePct', 'Sonntags-Zulage', '%'],
                     ['holidaySurchargePct', 'Feiertags-Zulage', '%'],
+                    ['specialSurchargePct', 'Bes. Feiertage¹', '%'],
+                    ['vatPct', 'USt', '%'],
                   ] as const).map(([key, label, unit]) => (
-                    <label key={key} style={{ flex: '1 1 130px', minWidth: 0 }}>
+                    <label key={key} style={{ flex: '1 1 110px', minWidth: 0 }}>
                       <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8A8578', marginBottom: 4 }}>{label} ({unit})</span>
                       <input
                         type="number" min={0}
-                        defaultValue={settings[key]}
+                        defaultValue={settings[key] ?? 0}
                         onBlur={async (e) => {
                           const v = Number(e.target.value)
                           if (Number.isFinite(v) && v >= 0 && v !== settings[key]) {
@@ -157,6 +161,10 @@ export default function CleaningCard() {
                     </label>
                   ))}
                 </div>
+                <p style={{ fontSize: 10.5, color: '#999', margin: '6px 0 0' }}>
+                  ¹ Besondere Feiertage: Heiligabend, 1./2. Weihnachtstag, Silvester, 1. Mai.
+                  USt 0 % = Betrag gilt brutto/Kleinunternehmer.
+                </p>
               </div>
 
               {/* 👤 Abweichende Regeln & Sätze je Reinigungskraft (Vererbung wie
@@ -190,7 +198,10 @@ export default function CleaningCard() {
                               const copy: RuleSet = {
                                 avoidSundays: settings.avoidSundays, avoidHolidays: settings.avoidHolidays,
                                 hourlyRate: settings.hourlyRate, travelFee: settings.travelFee,
+                                travelPerCleaning: settings.travelPerCleaning ?? false,
                                 sundaySurchargePct: settings.sundaySurchargePct, holidaySurchargePct: settings.holidaySurchargePct,
+                                specialSurchargePct: settings.specialSurchargePct ?? settings.holidaySurchargePct,
+                                vatPct: settings.vatPct ?? 0,
                               }
                               const ok = await patch({ personSettings: { personId: pid, values: copy } })
                               if (ok) setSettings((s) => s ? { ...s, perPerson: { ...(s.perPerson ?? {}), [pid as string]: copy } } : s)
@@ -204,16 +215,20 @@ export default function CleaningCard() {
                       {own && (
                         <div style={{ marginTop: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
-                            {([['avoidSundays', 'Sonntage möglichst vermeiden'], ['avoidHolidays', 'Feiertage (RLP) möglichst vermeiden']] as const).map(([key, label]) => (
+                            {([
+                              ['avoidSundays', 'Sonntage möglichst vermeiden'],
+                              ['avoidHolidays', 'Feiertage (RLP) möglichst vermeiden'],
+                              ['travelPerCleaning', 'Anfahrt je einzelner Reinigung abrechnen (statt je Einsatztag & Standort)'],
+                            ] as const).map(([key, label]) => (
                               <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                                 <input
-                                  type="checkbox" checked={eff[key]}
+                                  type="checkbox" checked={!!eff[key]}
                                   onChange={async () => {
                                     const next = { ...own, [key]: !own[key] }
                                     const ok = await patch({ personSettings: { personId: pid, values: next } })
                                     if (ok) setSettings((s) => s ? { ...s, perPerson: { ...(s.perPerson ?? {}), [pid as string]: next } } : s)
                                   }}
-                                  style={{ width: 15, height: 15, accentColor: 'var(--gold, #AE8D2D)' }}
+                                  style={{ width: 15, height: 15, accentColor: 'var(--gold, #AE8D2D)', flexShrink: 0 }}
                                 />
                                 <span style={{ fontSize: 12.5, color: '#333' }}>{label}</span>
                               </label>
@@ -225,11 +240,13 @@ export default function CleaningCard() {
                               ['travelFee', 'Anfahrt €'],
                               ['sundaySurchargePct', 'So-Zulage %'],
                               ['holidaySurchargePct', 'Feiertag %'],
+                              ['specialSurchargePct', 'Bes. Feiertag %'],
+                              ['vatPct', 'USt %'],
                             ] as const).map(([key, label]) => (
-                              <label key={key} style={{ flex: '1 1 110px', minWidth: 0 }}>
+                              <label key={key} style={{ flex: '1 1 100px', minWidth: 0 }}>
                                 <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#8A8578', marginBottom: 3 }}>{label}</span>
                                 <input
-                                  type="number" min={0} defaultValue={own[key]}
+                                  type="number" min={0} step="0.1" defaultValue={own[key] ?? 0}
                                   onBlur={async (e) => {
                                     const v = Number(e.target.value)
                                     if (Number.isFinite(v) && v >= 0 && v !== own[key]) {
