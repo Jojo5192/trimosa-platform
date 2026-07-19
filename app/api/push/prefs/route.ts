@@ -12,11 +12,13 @@ const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 export async function GET() {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  // select('*'): robust, auch solange die push_bookings-Migration aussteht
   const { data } = await supabaseAdmin
-    .from('profiles').select('push_guest_chats, push_team_chats').eq('id', auth.userId).maybeSingle()
+    .from('profiles').select('*').eq('id', auth.userId).maybeSingle()
   return NextResponse.json({
     guestChats: data?.push_guest_chats !== false,
     teamChats: data?.push_team_chats !== false,
+    bookings: data?.push_bookings !== false,
   }, NO_STORE)
 }
 
@@ -27,6 +29,7 @@ export async function PATCH(req: NextRequest) {
   const upd: Record<string, boolean> = {}
   if (typeof body.guestChats === 'boolean') upd.push_guest_chats = body.guestChats
   if (typeof body.teamChats === 'boolean') upd.push_team_chats = body.teamChats
+  if (typeof body.bookings === 'boolean') upd.push_bookings = body.bookings
   if (!Object.keys(upd).length) return NextResponse.json({ error: 'Nichts zu ändern.' }, { status: 400 })
   const { error } = await supabaseAdmin.from('profiles').update(upd).eq('id', auth.userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
