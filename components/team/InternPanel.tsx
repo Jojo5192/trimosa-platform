@@ -259,6 +259,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     let stream: MediaStream | null = null
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaStream = stream // non-null für die Callbacks (TS-Narrowing)
       const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')
         ? 'audio/mp4'
         : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
@@ -299,7 +300,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       } catch { /* keine Transkription verfügbar */ }
       rec.ondataavailable = (e) => { if (e.data.size) recChunks.current.push(e.data) }
       rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop())
+        mediaStream.getTracks().forEach((t) => t.stop())
         if (recTimer.current) clearInterval(recTimer.current)
         setRecording(false)
         // Der Erkennung kurz Zeit geben, den letzten Satz zu finalisieren
