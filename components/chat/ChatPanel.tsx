@@ -17,6 +17,8 @@ interface Conversation {
   lastSender?: 'guest' | 'host' | null
   noReplyNeeded?: boolean
   phoneResolved?: boolean
+  adults?: number | null
+  children?: number | null
   guestLang?: string | null
 }
 
@@ -251,10 +253,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       console.error('[push] subscribe failed:', e)
     }
   }
-  const [pendingSend, setPendingSend] = useState<{ original: string; translated: string; lang: string } | null>(null)
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
   const [refining, setRefining] = useState(false)
+  const [showGuestInfo, setShowGuestInfo] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const bottomRef     = useRef<HTMLDivElement>(null)
@@ -299,6 +301,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
         noReplyNeeded: t.noReplyNeeded ?? false,
         phoneResolved: t.phoneResolved ?? false,
+        adults: (t.adults as number | null) ?? null,
+        children: (t.children as number | null) ?? null,
         guestLang: t.guestLang ?? null,
       }))
       setConvs(data)
@@ -361,9 +365,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   /* Thread switch: the composer belongs to ONE conversation — reset it */
   useEffect(() => {
     setDraft('')
-    setPendingSend(null)
     setInstruction('')
     setShowOriginal({})
+    setShowGuestInfo(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id])
 
@@ -385,7 +389,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (!team || !active || msgs.length === 0 || aiBusy) return
     const last = msgs[msgs.length - 1]
     if (last.sender_id === userId) return
-    if (draft.trim() || pendingSend || autoSuggested.current.has(active.id)) return
+    if (draft.trim() || autoSuggested.current.has(active.id)) return
     autoSuggested.current.add(active.id)
     suggestReply()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,9 +397,27 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
-    const maxH = Math.max(160, Math.round(window.innerHeight * 0.4))
-    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px'
+    const grow = () => {
+      // visualViewport statt innerHeight: bei offener iOS-Tastatur stimmt sonst
+      // die Bezugshöhe nicht und das Feld bleibt einzeilig (Pascal-Bug §97)
+      const vh = window.visualViewport?.height ?? window.innerHeight
+      const maxH = Math.max(160, Math.round(vh * 0.4))
+      ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px'
+    }
+    grow()
+    window.visualViewport?.addEventListener('resize', grow)
+    return () => window.visualViewport?.removeEventListener('resize', grow)
   }, [draft])
+
+  /* App-Icon-Badge (installierte PWA): Summe ungelesener Nachrichten */
+  useEffect(() => {
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    const total = convs.reduce((s, c) => s + (c.unread ?? 0), 0)
+    try {
+      if (total > 0) nav.setAppBadge?.(total)?.catch(() => {})
+      else nav.clearAppBadge?.()?.catch(() => {})
+    } catch { /* Badging API nicht verfügbar */ }
+  }, [convs])
   useEffect(() => {
     if (variant !== 'overlay' || !onClose) return
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -420,16 +442,18 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   })()
   const needsTranslation = team && guestLang != null && guestLang !== 'de'
 
-  /* ── refine the draft with an instruction (two-step AI workshop) ── */
+  /* ── KI-Werkstatt: Anweisung → Claude überarbeitet den Entwurf ODER schreibt
+     die komplette Antwort neu (ohne Entwurf) — Pascals Diktier-Workflow ── */
   async function refineDraft() {
-    if (!active || !draft.trim() || !instruction.trim() || refining) return
+    if (!active || !instruction.trim() || refining) return
     setRefining(true)
     try {
       const res = await fetch('/api/ai/chat-suggest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(active.kind === 'booking' ? { bookingId: active.id } : { conversationId: active.id }),
-          instruction, currentDraft: draft,
+          instruction,
+          ...(draft.trim() ? { currentDraft: draft } : {}),
         }),
       })
       const data = await res.json()
@@ -453,7 +477,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         body: JSON.stringify(payload),
       })
       if (r.ok) {
-        setDraft(''); setPendingSend(null)
+        setDraft('')
         await getMsgs(active.id, active.kind); getConvs()
       } else if (r.status === 401 || r.status === 403) {
         setAuthExpired(true)
@@ -471,7 +495,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   async function send() {
     if (!draft.trim() || !active || busy || translating) return
     if (needsTranslation && guestLang) {
-      // Step 1: translate + show the preview — nothing is sent yet
+      // Direktversand (Pascal-Feedback §97): automatisch übersetzen und sofort
+      // senden — das deutsche Original bleibt in der Bubble einsehbar
+      // („Gesendet auf 🇳🇱"). Schlägt die Übersetzung fehl → deutsch senden.
       setTranslating(true)
       try {
         const res = await fetch('/api/ai/translate', {
@@ -480,11 +506,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         })
         const data = await res.json()
         if (res.ok && data.translation) {
-          setPendingSend({ original: draft, translated: data.translation, lang: guestLang })
+          await reallySend(data.translation, draft, guestLang)
         } else {
-          // Translation down → offer sending the German original via preview
-          setPendingSend({ original: draft, translated: draft, lang: 'de' })
+          await reallySend(draft)
         }
+      } catch {
+        setSendError('Übersetzung fehlgeschlagen — Entwurf bleibt erhalten, bitte erneut senden.')
       } finally { setTranslating(false) }
       return
     }
@@ -682,9 +709,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </button>
             )}
             <Av name={partner(active)} src={partnerAvatar(active)} size={36} />
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Tipp auf Name/Zeile klappt die Gast-Karte auf (Pascal-Feedback §97) */}
+            <div
+              onClick={team ? () => setShowGuestInfo(v => !v) : undefined}
+              style={{ flex: 1, minWidth: 0, cursor: team ? 'pointer' : 'default' }}
+            >
               <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {partner(active)}
+                {team && <span style={{ fontSize: 10, color: '#B5A97F', marginLeft: 6 }}>{showGuestInfo ? '▲' : '▼'}</span>}
               </div>
               <div style={{ fontSize: 11, color: '#AAA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {active.listing_title}
@@ -727,6 +759,37 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             )}
           </div>
         )}
+        {/* Ausklappbare Gast-Karte: die Fakten, die man beim Antworten braucht */}
+        {team && showGuestInfo && active && (() => {
+          const nights = active.check_in && active.check_out
+            ? Math.max(0, Math.round((new Date(active.check_out + 'T00:00:00Z').getTime() - new Date(active.check_in + 'T00:00:00Z').getTime()) / 86400_000))
+            : null
+          const fmtFull = (iso: string | null) => {
+            if (!iso) return '—'
+            const [y, m, d] = iso.split('-')
+            return `${d}.${m}.${y}`
+          }
+          const persons = (active.adults ?? 0) + (active.children ?? 0)
+          const row = (icon: string, label: string, value: string) => (
+            <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12.5, lineHeight: 1.5 }}>
+              <span style={{ flexShrink: 0 }}>{icon}</span>
+              <span style={{ color: '#8A8578', flexShrink: 0 }}>{label}</span>
+              <span style={{ color: '#1A1814', fontWeight: 600, overflowWrap: 'anywhere' }}>{value}</span>
+            </div>
+          )
+          return (
+            <div style={{
+              padding: '10px 16px 12px', background: '#FDFCF8', flexShrink: 0,
+              borderBottom: '0.5px solid rgba(60,60,67,0.15)',
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              {row('📅', 'Aufenthalt:', `${fmtFull(active.check_in)} – ${fmtFull(active.check_out)}${nights ? ` · ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'}` : ''}`)}
+              {row('👥', 'Personen:', persons > 0 ? `${persons}${active.children ? ` (${active.adults} Erw. + ${active.children} Kind${active.children === 1 ? '' : 'er'})` : ''}` : '— (Plattform-Buchung)')}
+              {row('🏠', 'Wohnung:', active.listing_title ?? '—')}
+              {row('🛎️', 'Kanal:', `${active.platform ?? '—'}${guestLang && guestLang !== 'de' ? ` · Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}` : ''}`)}
+            </div>
+          )
+        })()}
         {sendError && (
           <div style={{
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
@@ -840,56 +903,32 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           <div ref={bottomRef} />
         </div>
 
-        {/* Translation send preview — nothing goes out until confirmed */}
-        {pendingSend && (
-          <div style={{ borderTop: '1px solid #E8E4DB', background: '#FDFAF0', padding: '12px 14px', flexShrink: 0 }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 7px' }}>
-              {flag(pendingSend.lang)} Wird auf {LANG_LABEL[pendingSend.lang] ?? pendingSend.lang} gesendet — bitte prüfen
-            </p>
+        {/* ✏️ KI-Werkstatt — immer sichtbar (Pascal-Feedback §97): Anweisung
+            diktieren/tippen → Claude schreibt/überarbeitet die Antwort im Feld */}
+        {team && active && (
+          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, flexShrink: 0, marginBottom: 7 }}>✏️</span>
             <textarea
-              value={pendingSend.translated}
-              onChange={e => setPendingSend(ps => ps ? { ...ps, translated: e.target.value } : ps)}
-              rows={3}
-              style={{
-                width: '100%', boxSizing: 'border-box', resize: 'vertical', outline: 'none',
-                border: '1.5px solid #E6C15A', borderRadius: 12, padding: '9px 12px',
-                fontSize: 14, lineHeight: 1.5, fontFamily: 'inherit', background: '#fff', color: '#1A1814',
-              }}
-            />
-            <p style={{ fontSize: 11, color: '#9A8F6E', margin: '6px 0 8px' }}>🇩🇪 Dein Original: {pendingSend.original.slice(0, 160)}{pendingSend.original.length > 160 ? '…' : ''}</p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => reallySend(pendingSend.translated, pendingSend.lang !== 'de' ? pendingSend.original : undefined, pendingSend.lang !== 'de' ? pendingSend.lang : undefined)} disabled={busy} style={{
-                padding: '8px 20px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 13, fontWeight: 700,
-              }}>{busy ? 'Sendet…' : 'Jetzt senden'}</button>
-              <button onClick={() => setPendingSend(null)} style={{
-                padding: '8px 14px', borderRadius: 999, border: '1px solid #E0DCD2', background: '#fff',
-                color: '#777', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}>Zurück zum Entwurf</button>
-            </div>
-          </div>
-        )}
-
-        {/* AI instruction field (two-step workshop): refine the current draft */}
-        {team && draft.trim().length > 0 && !pendingSend && (
-          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 13, flexShrink: 0 }}>✏️</span>
-            <input
               value={instruction}
               onChange={e => setInstruction(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
-              placeholder="Anweisung an Claude… (z. B. „kürzer“ oder „biete Late-Checkout an“) — 🎤 über die Tastatur diktierbar"
+              rows={1}
+              placeholder={draft.trim()
+                ? 'Antwort anpassen… (z. B. „kürzer" oder „biete Late-Checkout an") — 🎤 diktierbar'
+                : 'Sag Claude, was du antworten willst — er schreibt den Text unten ins Feld. 🎤 diktierbar'}
               style={{
-                flex: 1, border: '1px solid #EBE5D5', borderRadius: 999, padding: '7px 14px',
-                fontSize: 12.5, outline: 'none', background: '#fff', color: '#1A1814', fontFamily: 'inherit',
+                flex: 1, border: '1px solid #EBE5D5', borderRadius: 14, padding: '7px 14px',
+                fontSize: 12.5, lineHeight: '18px', outline: 'none', background: '#fff', color: '#1A1814',
+                fontFamily: 'inherit', resize: 'none', maxHeight: 90, overflowY: 'auto',
+                height: instruction.length > 70 ? 'auto' : undefined, minHeight: 32, boxSizing: 'border-box',
               }}
             />
             <button onClick={refineDraft} disabled={refining || !instruction.trim()} style={{
-              padding: '7px 14px', borderRadius: 999, border: 'none', flexShrink: 0,
+              padding: '7px 14px', borderRadius: 999, border: 'none', flexShrink: 0, marginBottom: 1,
               background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#EDE9E0',
               color: instruction.trim() && !refining ? '#fff' : '#BBB',
               fontSize: 12, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
-            }}>{refining ? '⏳' : 'Anpassen'}</button>
+            }}>{refining ? '⏳' : draft.trim() ? 'Anpassen' : '✨ Schreiben'}</button>
           </div>
         )}
 
@@ -937,7 +976,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 borderRadius: 18, padding: draft.trim() ? '7px 62px 7px 13px' : '7px 13px',
                 fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
                 background: 'transparent', color: '#111',
-                maxHeight: '40dvh', overflowY: 'auto',
+                overflowY: 'auto',
               }}
             />
             {draft.trim().length > 0 && (
@@ -954,12 +993,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 >✕</button>
                 <button
                   onClick={send}
-                  disabled={busy}
+                  disabled={busy || translating}
                   title="Senden"
                   style={{
                     position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
                     borderRadius: '50%', border: 'none', padding: 0,
-                    background: busy ? '#EDE9E0' : 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
+                    background: busy || translating ? '#EDE9E0' : 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
                     color: '#fff', cursor: busy ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
