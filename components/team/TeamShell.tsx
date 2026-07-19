@@ -7,19 +7,21 @@
  * ChatPanel/InternPanel bleiben gemountet (Polling/State), die anderen Tabs
  * werden per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
+import SettingsPanel from '@/components/team/SettingsPanel'
 
-type Tab = 'chat' | 'intern' | 'aufgaben' | 'kalender'
+type Tab = 'chat' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'chat', icon: '💬', label: 'Chat' },
   { id: 'intern', icon: '💼', label: 'Intern' },
   { id: 'aufgaben', icon: '✅', label: 'Aufgaben' },
   { id: 'kalender', icon: '📅', label: 'Kalender' },
+  { id: 'einstellungen', icon: '⚙️', label: 'Mehr' },
 ]
 
 export default function TeamShell({ userId, role, initialConvId, initialTab }: {
@@ -39,8 +41,45 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   const [internThread, setInternThread] = useState(false)
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
 
+  // Tastatur-Pinning: iOS scrollt bei offener Tastatur das ganze Fenster —
+  // der Header rutscht oben raus und „springt" nach Sekunden zurück. Fix:
+  // Shell-Höhe an den sichtbaren Viewport heften + Fenster-Scroll auf 0 halten.
+  const [vvHeight, setVvHeight] = useState<number | null>(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const sync = () => {
+      const kb = window.innerHeight - vv.height
+      if (kb > 100) {
+        setVvHeight(Math.round(vv.height))
+        window.scrollTo(0, 0)
+      } else {
+        setVvHeight(null)
+      }
+    }
+    vv.addEventListener('resize', sync)
+    vv.addEventListener('scroll', sync)
+    window.addEventListener('scroll', sync)
+    return () => {
+      vv.removeEventListener('resize', sync)
+      vv.removeEventListener('scroll', sync)
+      window.removeEventListener('scroll', sync)
+    }
+  }, [])
+
+  // Service Worker früh registrieren (Push-Empfang) — die Einstellungen dazu
+  // liegen im ⚙️-Tab; so bekommen auch Dienstleister ohne Chat-Tab Push
+  useEffect(() => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+  }, [])
+
   return (
-    <div className="team-shell" style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+    <div className="team-shell" style={{
+      height: vvHeight ?? '100dvh', display: 'flex', flexDirection: 'column',
+      background: '#fff', overflow: 'hidden', overscrollBehavior: 'none',
+      // viewport-fit=cover zieht die App unter die Statusbar — Inhalt darunter beginnen
+      paddingTop: 'env(safe-area-inset-top)',
+    }}>
       {/* Content */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {role === 'team' && (
@@ -55,6 +94,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
           <TasksPanel role={role} userId={userId} />
         )}
         {tab === 'kalender' && <CalendarPanel />}
+        {tab === 'einstellungen' && <SettingsPanel role={role} />}
       </div>
 
       {/* Bottom-Tab-Bar — im offenen Thread (mobil) ausgeblendet */}
