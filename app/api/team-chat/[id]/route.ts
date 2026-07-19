@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   let query = supabaseAdmin
     .from('team_messages')
-    .select('id, sender_id, content, attachment_url, attachment_type, attachment_name, created_at, profiles(display_name, avatar_url)')
+    .select('id, sender_id, content, attachment_url, attachment_type, attachment_name, reactions, created_at, profiles(display_name, avatar_url)')
     .eq('chat_id', id)
   query = mediaOnly
     ? query.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
@@ -58,6 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         attachmentUrl: m.attachment_url,
         attachmentType: m.attachment_type,
         attachmentName: m.attachment_name,
+        reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
         createdAt: m.created_at,
       }
     }),
