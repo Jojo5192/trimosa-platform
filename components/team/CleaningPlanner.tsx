@@ -78,7 +78,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   const [mode, setMode] = useState<'liste' | 'touren' | 'kosten'>('liste')
 
   const today = isoOffset(0)
-  const horizon = isoOffset(28)
+  // Slots reichen so weit wie die Kalender-Daten (+56 Tage) — die Kosten-
+  // Ansicht rechnet damit echte KALENDERMONATE; Liste/Touren zeigen 4 Wochen.
+  const horizon = isoOffset(56)
+  const listHorizon = isoOffset(28)
   const isBlocked = (iso: string) => {
     const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
     return (cleaning.settings.avoidSundays && dow === 0)
@@ -136,33 +139,53 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
     }).sort((a, b) => a.effDay.localeCompare(b.effDay) || a.group.localeCompare(b.group))
   }, [stays, listings, cleaning, today, horizon]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visible = slots.filter((s) => scope === 'alle' || cleaning.mine.includes(s.listingId))
+  const visible = slots.filter((s) =>
+    s.effDay <= listHorizon && (scope === 'alle' || cleaning.mine.includes(s.listingId)))
 
-  /* ── Kosten (nur Admins, immer über ALLE Wohnungen) ── */
+  /* ── Kosten (nur Admins, immer über ALLE Wohnungen) — echte KALENDERMONATE,
+        weil die Rechnungen der Reinigungskräfte monatsweise kommen ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
     const r = cleaning.rates
-    const perListing = new Map<string, { count: number; minutes: number; base: number }>()
-    let surcharge = 0
-    const trips = new Set<string>()
+    type MonthRow = {
+      key: string; label: string; partialStart: boolean; partialEnd: boolean
+      perListing: Map<string, { count: number; minutes: number; base: number }>
+      surcharge: number; trips: Set<string>
+    }
+    const months = new Map<string, MonthRow>()
     let missingMinutes = 0
     for (const s of slots) {
-      const row = perListing.get(s.listingId) ?? { count: 0, minutes: 0, base: 0 }
+      const key = s.effDay.slice(0, 7)
+      let m = months.get(key)
+      if (!m) {
+        const [y, mo] = key.split('-').map(Number)
+        const lastDay = `${key}-${String(new Date(Date.UTC(y, mo, 0)).getUTCDate()).padStart(2, '0')}`
+        m = {
+          key, label: `${DE_MONTHS[mo - 1]} ${y}`,
+          partialStart: `${key}-01` < today,
+          partialEnd: lastDay > horizon,
+          perListing: new Map(), surcharge: 0, trips: new Set(),
+        }
+        months.set(key, m)
+      }
+      const row = m.perListing.get(s.listingId) ?? { count: 0, minutes: 0, base: 0 }
       const cost = (s.minutes / 60) * r.hourlyRate
       row.count++
       row.minutes += s.minutes
       row.base += cost
-      perListing.set(s.listingId, row)
+      m.perListing.set(s.listingId, row)
       if (!s.hasMinutes) missingMinutes++
       const br = blockReason(s.effDay)
-      if (br === 'feiertag') surcharge += cost * (r.holidaySurchargePct / 100)
-      else if (br === 'sonntag') surcharge += cost * (r.sundaySurchargePct / 100)
-      trips.add(`${s.effDay}|${s.group}`)
+      if (br === 'feiertag') m.surcharge += cost * (r.holidaySurchargePct / 100)
+      else if (br === 'sonntag') m.surcharge += cost * (r.sundaySurchargePct / 100)
+      m.trips.add(`${s.effDay}|${s.group}`)
     }
-    const baseSum = [...perListing.values()].reduce((a, x) => a + x.base, 0)
-    const travel = trips.size * r.travelFee
-    const total = baseSum + surcharge + travel
-    return { perListing, baseSum, surcharge, trips: trips.size, travel, total, missingMinutes, monthly: (total / 28) * 30.4 }
+    const list = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).map((m) => {
+      const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
+      const travel = m.trips.size * r.travelFee
+      return { ...m, baseSum, travel, tripCount: m.trips.size, total: baseSum + m.surcharge + travel }
+    })
+    return { months: list, missingMinutes }
   }, [slots, cleaning.rates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Touren: Einsatztage → Standort-Blöcke ── */
@@ -201,34 +224,52 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         )}
       </div>
 
-      {/* ═══ 💶 KOSTEN (Admins) ═══ */}
+      {/* ═══ 💶 KOSTEN (Admins) — erwartete Rechnung je KALENDERMONAT ═══ */}
       {mode === 'kosten' && costs && (
-        <div style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
-          <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE REINIGUNGSKOSTEN</p>
-          <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 14px' }}>Nächste 4 Wochen · {slots.length} Reinigungen · alle Wohnungen</p>
-          {[...costs.perListing.entries()].sort((a, b) => b[1].base - a[1].base).map(([id, row]) => (
-            <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-              <span style={{ fontSize: 13, color: '#111', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {listings[id]?.title ?? 'Wohnung'} <span style={{ color: '#9CA3AF', fontSize: 12 }}>· {row.count}× · {fmtDur(row.minutes)}</span>
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(row.base)}</span>
+        <div>
+          {costs.months.map((m) => (
+            <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
+              <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE RECHNUNG</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{m.label}</span>
+                <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+                  {[...m.perListing.values()].reduce((a, x) => a + x.count, 0)} Reinigungen · alle Wohnungen
+                </span>
+              </div>
+              {[...m.perListing.entries()].sort((a, b) => b[1].base - a[1].base).map(([id, row]) => (
+                <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                  <span style={{ fontSize: 13, color: '#111', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {listings[id]?.title ?? 'Wohnung'} <span style={{ color: '#9CA3AF', fontSize: 12 }}>· {row.count}× · {fmtDur(row.minutes)}</span>
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(row.base)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                <span style={{ fontSize: 13, color: '#6B7280' }}>Sonn-/Feiertags-Zulagen</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge ? '#B45309' : '#9CA3AF' }}>{eur(m.surcharge)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                <span style={{ fontSize: 13, color: '#6B7280' }}>Anfahrten ({m.tripCount}× je {eur(cleaning.rates!.travelFee)})</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.travel)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}</span>
+                <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(m.total)}</span>
+              </div>
+              {(m.partialStart || m.partialEnd) && (
+                <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
+                  {m.partialStart
+                    ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
+                    : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
+                </p>
+              )}
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-            <span style={{ fontSize: 13, color: '#6B7280' }}>Sonn-/Feiertags-Zulagen</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: costs.surcharge ? '#B45309' : '#9CA3AF' }}>{eur(costs.surcharge)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-            <span style={{ fontSize: 13, color: '#6B7280' }}>Anfahrten ({costs.trips}× je {eur(cleaning.rates!.travelFee)})</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(costs.travel)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 4px' }}>
-            <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe (4 Wochen)</span>
-            <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(costs.total)}</span>
-          </div>
-          <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0, textAlign: 'right' }}>≈ {eur(costs.monthly)} pro Monat</p>
+          {costs.months.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine anstehenden Reinigungen im Datenfenster.</p>
+          )}
           {costs.missingMinutes > 0 && (
-            <p style={{ fontSize: 11.5, color: '#B45309', margin: '10px 0 0', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 11.5, color: '#B45309', margin: '2px 4px 0', lineHeight: 1.5 }}>
               ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung — gerechnet mit {FALLBACK_MINUTES} Min. (Admin → 🧹 Reinigung pflegen).
             </p>
           )}
