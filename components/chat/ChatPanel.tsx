@@ -444,15 +444,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   /* ── KI-Werkstatt: Anweisung → Claude überarbeitet den Entwurf ODER schreibt
      die komplette Antwort neu (ohne Entwurf) — Pascals Diktier-Workflow ── */
-  async function refineDraft() {
-    if (!active || !instruction.trim() || refining) return
+  async function refineDraft(instructionText?: string) {
+    const instr = (instructionText ?? instruction).trim()
+    if (!active || !instr || refining) return
     setRefining(true)
     try {
       const res = await fetch('/api/ai/chat-suggest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(active.kind === 'booking' ? { bookingId: active.id } : { conversationId: active.id }),
-          instruction,
+          instruction: instr,
           ...(draft.trim() ? { currentDraft: draft } : {}),
         }),
       })
@@ -460,6 +461,56 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       if (res.ok && data.suggestion) { setDraft(data.suggestion); setInstruction('') }
     } catch { /* draft stays */ }
     finally { setRefining(false) }
+  }
+
+  /* ── 🎤 Speech-Mode (Pascal-Wunsch): eigener Aufnahme-Button statt Tastatur-
+     Diktat. Web Speech API (on-device/Siri bzw. Google): Tipp = Aufnahme mit
+     Live-Transkript im Feld, Tipp = Stopp → Claude führt die Ansage direkt aus. ── */
+  const [recording, setRecording] = useState(false)
+  const recRef = useRef<{ stop: () => void } | null>(null)
+  // Nach Mount prüfen (nicht im Render) — sonst Hydration-Mismatch Server/Client
+  const [speechSupported, setSpeechSupported] = useState(false)
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    setSpeechSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
+  }, [])
+  function toggleDictation() {
+    if (recording) { recRef.current?.stop(); return }
+    const w = window as unknown as Record<string, new () => {
+      lang: string; interimResults: boolean; continuous: boolean
+      onresult: (e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void
+      onend: () => void; onerror: (e: unknown) => void
+      start: () => void; stop: () => void
+    }>
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition
+    if (!SR) {
+      alert('Spracherkennung wird von diesem Browser nicht unterstützt — bitte das 🎤 der Tastatur nutzen.')
+      return
+    }
+    const rec = new SR()
+    rec.lang = 'de-DE'
+    rec.interimResults = true
+    rec.continuous = true
+    let finalText = ''
+    rec.onresult = (e) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) finalText = (finalText + ' ' + t).trim()
+        else interim += t
+      }
+      setInstruction((finalText + ' ' + interim).trim())
+    }
+    rec.onend = () => {
+      setRecording(false)
+      recRef.current = null
+      const spoken = finalText.trim()
+      if (spoken) { setInstruction(spoken); refineDraft(spoken) }
+    }
+    rec.onerror = () => { setRecording(false); recRef.current = null }
+    recRef.current = rec
+    setRecording(true)
+    try { rec.start() } catch { setRecording(false); recRef.current = null }
   }
 
   /* ── send (with translation preview when the guest speaks another language) ── */
@@ -907,23 +958,38 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             diktieren/tippen → Claude schreibt/überarbeitet die Antwort im Feld */}
         {team && active && (
           <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
-            <span style={{ fontSize: 13, flexShrink: 0, marginBottom: 7 }}>✏️</span>
+            {/* 🎤 Speech-Mode: Tipp = aufnehmen (Live-Transkript), Tipp = Stopp → KI schreibt */}
+            {speechSupported && (
+              <button
+                onClick={toggleDictation}
+                title={recording ? 'Aufnahme stoppen — Claude schreibt dann die Antwort' : 'Ansage aufnehmen: sprich, was du antworten willst'}
+                className={recording ? 'rec-pulse' : undefined}
+                style={{
+                  width: 32, height: 32, borderRadius: '50%', border: 'none', flexShrink: 0, marginBottom: 1,
+                  background: recording ? '#DC2626' : 'rgba(118,118,128,0.12)',
+                  color: recording ? '#fff' : '#8A8578', fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                }}
+              >{recording ? '■' : '🎤'}</button>
+            )}
             <textarea
               value={instruction}
               onChange={e => setInstruction(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
               rows={1}
-              placeholder={draft.trim()
-                ? 'Antwort anpassen… (z. B. „kürzer" oder „biete Late-Checkout an") — 🎤 diktierbar'
-                : 'Sag Claude, was du antworten willst — er schreibt den Text unten ins Feld. 🎤 diktierbar'}
+              placeholder={recording
+                ? '🔴 Sprich jetzt… — zum Stoppen aufs Quadrat tippen'
+                : draft.trim()
+                  ? 'Antwort anpassen… (z. B. „kürzer" oder „biete Late-Checkout an")'
+                  : 'Sag Claude, was du antworten willst — 🎤 antippen und einfach sprechen'}
               style={{
-                flex: 1, border: '1px solid #EBE5D5', borderRadius: 14, padding: '7px 14px',
+                flex: 1, border: recording ? '1.5px solid #DC2626' : '1px solid #EBE5D5', borderRadius: 14, padding: '7px 14px',
                 fontSize: 12.5, lineHeight: '18px', outline: 'none', background: '#fff', color: '#1A1814',
                 fontFamily: 'inherit', resize: 'none', maxHeight: 90, overflowY: 'auto',
                 height: instruction.length > 70 ? 'auto' : undefined, minHeight: 32, boxSizing: 'border-box',
               }}
             />
-            <button onClick={refineDraft} disabled={refining || !instruction.trim()} style={{
+            <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
               padding: '7px 14px', borderRadius: 999, border: 'none', flexShrink: 0, marginBottom: 1,
               background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#EDE9E0',
               color: instruction.trim() && !refining ? '#fff' : '#BBB',
