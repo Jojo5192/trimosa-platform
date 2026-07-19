@@ -10,6 +10,7 @@ import TaskPermissionsCard from './TaskPermissionsCard'
 import QsSettingsCard from './QsSettingsCard'
 import QsTemplateEditor from './QsTemplateEditor'
 import CalendarVisibilityCard from './CalendarVisibilityCard'
+import CleaningCard from './CleaningCard'
 
 export default async function AdminPage() {
   const supabase = await createSupabaseServerClient()
@@ -43,6 +44,8 @@ export default async function AdminPage() {
         <TaskPermissionsCard />
 
         <CalendarVisibilityCard />
+
+        <CleaningCard />
 
         <QsSettingsCard />
 
