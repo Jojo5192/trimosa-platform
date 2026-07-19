@@ -473,17 +473,28 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
             <div style={{ textAlign: 'center', margin: '10px 0' }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: '#A9A499', background: '#F5F3EE', borderRadius: 999, padding: '3px 11px' }}>{g.day}</span>
             </div>
-            {g.items.map((m) => {
+            {g.items.map((m, idx) => {
               const mine = m.senderId === userId
+              // iMessage-Gruppierung: aufeinanderfolgende Nachrichten desselben
+              // Absenders — Name nur über der ersten, Avatar + Sprechblasen-
+              // Schwänzchen nur an der letzten, kleine Ecken dazwischen
+              const firstOfRun = idx === 0 || g.items[idx - 1].senderId !== m.senderId
+              const lastOfRun = idx === g.items.length - 1 || g.items[idx + 1].senderId !== m.senderId
+              const radius = mine
+                ? `18px ${firstOfRun ? 18 : 5}px ${lastOfRun ? 18 : 5}px 18px`
+                : `${firstOfRun ? 18 : 5}px 18px 18px ${lastOfRun ? 18 : 5}px`
               return (
-                <div key={m.id} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: 7, alignItems: 'flex-end' }}>
-                  {!mine && <Av name={m.senderName} src={m.senderAvatar} size={26} />}
+                <div key={m.id} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
+                  {!mine && (lastOfRun
+                    ? <Av name={m.senderName} src={m.senderAvatar} size={26} />
+                    : <span style={{ width: 26, flexShrink: 0 }} />)}
                   <div style={{ maxWidth: '76%' }}>
-                    {!mine && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#8A7020', margin: '0 0 2px 4px' }}>{m.senderName}</div>}
+                    {!mine && firstOfRun && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#8A7020', margin: '0 0 2px 4px' }}>{m.senderName}</div>}
+                    <div className={lastOfRun ? (mine ? 'imsg-tail-out' : 'imsg-tail-in') : undefined} style={{ position: 'relative' }}>
                     <div style={{
-                      borderRadius: 18, padding: m.attachmentUrl && !m.content ? 4 : '8px 13px',
+                      borderRadius: radius, padding: m.attachmentUrl && !m.content ? 4 : '8px 13px',
                       background: mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#E9E9EB',
-                      color: mine ? '#fff' : '#1A1814', overflow: 'hidden',
+                      color: mine ? '#fff' : '#1A1814', overflow: 'hidden', position: 'relative',
                     }}>
                       {m.attachmentType === 'image' && m.attachmentUrl && (
                         <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer">
@@ -518,9 +529,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
                         }}>{m.content}</div>
                       )}
                     </div>
-                    <div style={{ fontSize: 10, color: '#B5B0A6', margin: mine ? '2px 4px 0 0' : '2px 0 0 4px', textAlign: mine ? 'right' : 'left' }}>
-                      {new Date(m.createdAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                     </div>
+                    {lastOfRun && (
+                      <div style={{ fontSize: 10, color: '#B5B0A6', margin: mine ? '3px 4px 0 0' : '3px 0 0 4px', textAlign: mine ? 'right' : 'left' }}>
+                        {new Date(m.createdAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )
