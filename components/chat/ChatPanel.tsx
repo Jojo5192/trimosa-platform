@@ -496,23 +496,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     }
     const rec = new SR()
     rec.lang = 'de-DE'
-    rec.interimResults = true
+    // Kein Live-Transkript (Inhaber-Wunsch): der Nutzer sieht eine Zuhör-Fläche,
+    // das Gesprochene wird nur intern gesammelt und nach dem Stopp ausgeführt.
+    rec.interimResults = false
     rec.continuous = true
     let finalText = ''
     rec.onresult = (e) => {
-      let interim = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript
-        if (e.results[i].isFinal) finalText = (finalText + ' ' + t).trim()
-        else interim += t
+        if (e.results[i].isFinal) finalText = (finalText + ' ' + e.results[i][0].transcript).trim()
       }
-      setInstruction((finalText + ' ' + interim).trim())
     }
     rec.onend = () => {
       setRecording(false)
       recRef.current = null
       const spoken = finalText.trim()
-      if (spoken) { setInstruction(spoken); refineDraft(spoken) }
+      if (spoken) refineDraft(spoken)
     }
     rec.onerror = () => { setRecording(false); recRef.current = null }
     recRef.current = rec
@@ -961,47 +959,66 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           <div ref={bottomRef} />
         </div>
 
-        {/* ✏️ KI-Werkstatt — immer sichtbar (Pascal-Feedback §97): Anweisung
-            diktieren/tippen → Claude schreibt/überarbeitet die Antwort im Feld */}
-        {team && active && (
-          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
-            {/* 🎤 Speech-Mode: Tipp = aufnehmen (Live-Transkript), Tipp = Stopp → KI schreibt */}
+        {/* 🎙️ Zuhör-Modus: ersetzt den kompletten Antwortbereich — kein sichtbares
+            Transkript; erneuter Tipp stoppt und Claude schreibt die Antwort */}
+        {team && active && recording && (
+          <button
+            onClick={toggleDictation}
+            style={{
+              borderTop: '1px solid #F0ECE2', background: '#FDFCF8', border: 'none', cursor: 'pointer',
+              padding: '22px 16px', flexShrink: 0, width: '100%',
+              paddingBottom: variant === 'app' && !(isMobile && mobileView === 'chat') ? 22 : 'max(22px, env(safe-area-inset-bottom))',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span className="rec-pulse" style={{
+              width: 64, height: 64, borderRadius: '50%', background: '#DC2626',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+              </svg>
+            </span>
+            <span style={{ fontSize: 14.5, fontWeight: 700, color: '#1A1814' }}>Ich höre zu…</span>
+            <span style={{ fontSize: 12, color: '#8A8578' }}>Sag, was du antworten willst — zum Fertigstellen antippen</span>
+          </button>
+        )}
+
+        {/* ✏️ KI-Werkstatt — Anweisung tippen ODER 🎙️ sprechen → Claude schreibt */}
+        {team && active && !recording && (
+          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
             {speechSupported && (
               <button
                 onClick={toggleDictation}
-                title={recording ? 'Aufnahme stoppen — Claude schreibt dann die Antwort' : 'Ansage aufnehmen: sprich, was du antworten willst'}
-                className={recording ? 'rec-pulse' : undefined}
+                title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
                 style={{
-                  width: 32, height: 32, borderRadius: '50%', border: 'none', flexShrink: 0, marginBottom: 1,
-                  background: recording ? '#DC2626' : 'rgba(118,118,128,0.12)',
-                  color: recording ? '#fff' : '#8A8578', fontSize: 14, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0,
+                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                 }}
-              >{recording ? '■' : '🎤'}</button>
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+                </svg>
+              </button>
             )}
-            <textarea
+            <input
               value={instruction}
               onChange={e => setInstruction(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
-              rows={1}
-              placeholder={recording
-                ? '🔴 Sprich jetzt… — zum Stoppen aufs Quadrat tippen'
-                : draft.trim()
-                  ? 'Antwort anpassen… (z. B. „kürzer" oder „biete Late-Checkout an")'
-                  : 'Sag Claude, was du antworten willst — 🎤 antippen und einfach sprechen'}
+              placeholder={refining ? 'Claude schreibt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
               style={{
-                flex: 1, border: recording ? '1.5px solid #DC2626' : '1px solid #EBE5D5', borderRadius: 14, padding: '7px 14px',
-                fontSize: 12.5, lineHeight: '18px', outline: 'none', background: '#fff', color: '#1A1814',
-                fontFamily: 'inherit', resize: 'none', maxHeight: 90, overflowY: 'auto',
-                height: instruction.length > 70 ? 'auto' : undefined, minHeight: 32, boxSizing: 'border-box',
+                flex: 1, minWidth: 0, border: '1px solid #EBE5D5', borderRadius: 999, padding: '8px 14px',
+                fontSize: 13, outline: 'none', background: '#fff', color: '#1A1814', fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
             <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
-              padding: '7px 14px', borderRadius: 999, border: 'none', flexShrink: 0, marginBottom: 1,
+              padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, whiteSpace: 'nowrap',
               background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#EDE9E0',
               color: instruction.trim() && !refining ? '#fff' : '#BBB',
-              fontSize: 12, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
-            }}>{refining ? '⏳' : draft.trim() ? 'Anpassen' : '✨ Schreiben'}</button>
+              fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
+            }}>{refining ? '⏳' : '✨'}</button>
           </div>
         )}
 
@@ -1014,7 +1031,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           // AUSSER die Bar ist im Thread versteckt, dann braucht sie der Composer
           paddingBottom: variant === 'app' && !(isMobile && mobileView === 'chat')
             ? 8 : 'max(8px, env(safe-area-inset-bottom))',
-          display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
+          display: recording ? 'none' : 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
           {active && isHost(active) && msgs.length > 0 && (
             <button
