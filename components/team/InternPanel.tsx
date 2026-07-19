@@ -179,14 +179,28 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   }, [active, loadMsgs])
 
   // Nur bei NEUER letzter Nachricht ans Ende scrollen — nicht bei
-  // Reaktions-Updates oder Poll-Refreshes (Ruckel-Fix 19.7.)
+  // Reaktions-Updates oder Poll-Refreshes (Ruckel-Fix 19.7.). Beim ÖFFNEN
+  // eines Threads: INSTANT ans Ende + Nachläufer, weil Bilder/Audio-Player
+  // das Layout nachträglich strecken (Pascal: „Chat beginnt oben").
   const lastMsgIdRef = useRef('')
+  const scrolledChatRef = useRef('')
   useEffect(() => {
     const last = msgs[msgs.length - 1]
-    if (!last || last.id === lastMsgIdRef.current) return
+    if (!last || !active) return
+    // msgs können beim Wechsel noch zum ALTEN Thread gehören (Signatur prüfen)
+    if (!msgsSigRef.current.startsWith(active.id + '§')) return
+    const freshThread = scrolledChatRef.current !== active.id
+    if (!freshThread && last.id === lastMsgIdRef.current) return
     lastMsgIdRef.current = last.id
+    if (freshThread) {
+      scrolledChatRef.current = active.id
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+      const t1 = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 250)
+      const t2 = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 800)
+      return () => { clearTimeout(t1); clearTimeout(t2) }
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [msgs])
+  }, [msgs, active])
 
   // Auto-Grow des Schreibfelds als Effect (Pascal: „passt sich nicht an") —
   // deckt Tippen, iOS-Diktat UND programmatisches Leeren gleichermaßen ab
@@ -199,6 +213,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   function openChat(c: TeamChat) {
     if (recording) stopRec(false) // laufende Aufnahme beim Thread-Wechsel verwerfen
+    scrolledChatRef.current = '' // jedes Öffnen scrollt frisch ans Ende (mobil remountet der Feed)
     setActive(c)
     setChats((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))
     if (isMobile) setMobileView('chat')
