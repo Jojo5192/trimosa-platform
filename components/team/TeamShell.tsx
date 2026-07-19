@@ -36,10 +36,41 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
     tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
+  const [guestUnread, setGuestUnread] = useState(0)
   // Mobil in einem Thread: Tab-Bar versteckt (WhatsApp-Verhalten, §98-Feedback)
   const [chatThread, setChatThread] = useState(false)
   const [internThread, setInternThread] = useState(false)
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
+
+  // App-Icon-Badge ZENTRAL (Pascal 19.7.): folgt den Push-Einstellungen —
+  // Gäste stumm ⇒ nur Intern-Threads zählen (und umgekehrt). Zahlen = THREADS
+  // (Gäste: ungelesen ODER unbeantwortet · Intern: ungelesen).
+  const [badgePrefs, setBadgePrefs] = useState<{ guestChats: boolean; teamChats: boolean } | null>(null)
+  useEffect(() => {
+    const loadPrefs = () => {
+      fetch('/api/push/prefs', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setBadgePrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false }) })
+        .catch(() => {})
+    }
+    loadPrefs()
+    const onVis = () => { if (document.visibilityState === 'visible') loadPrefs() }
+    window.addEventListener('trimosa-prefs-changed', loadPrefs)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('trimosa-prefs-changed', loadPrefs)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [])
+  useEffect(() => {
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    const total = (badgePrefs?.guestChats !== false ? guestUnread : 0)
+      + (badgePrefs?.teamChats !== false ? internUnread : 0)
+    try {
+      if (total > 0) nav.setAppBadge?.(total)?.catch(() => {})
+      else nav.clearAppBadge?.()?.catch(() => {})
+    } catch { /* Badging API nicht verfügbar */ }
+  }, [guestUnread, internUnread, badgePrefs])
 
   // Tastatur-Pinning (iOS-26-fest): iOS verschiebt bei offener Tastatur den
   // sichtbaren Ausschnitt — je nach Build via window-Scroll ODER visualViewport-
@@ -109,7 +140,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {role === 'team' && (
           <div style={{ height: '100%', display: tab === 'chat' ? 'block' : 'none' }}>
-            <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} />
+            <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
           </div>
         )}
         <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
