@@ -64,6 +64,19 @@ export async function POST(request: Request) {
 
   const { action, page, key, content, instruction } = await request.json()
 
+  // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
+  // { action: 'review-match', dryRun?: true }
+  if (action === 'review-match') {
+    const { matchPropertyReviews } = await import('@/lib/review-match')
+    const report = await matchPropertyReviews(false)
+    return NextResponse.json(report)
+  }
+  if (action === 'review-match-dry') {
+    const { matchPropertyReviews } = await import('@/lib/review-match')
+    const report = await matchPropertyReviews(true)
+    return NextResponse.json(report)
+  }
+
   if (action === 'backfill') {
     const p = Number.isInteger(page) && page > 0 ? page : 1
     const result = await backfillSmoobuMessages(p)
