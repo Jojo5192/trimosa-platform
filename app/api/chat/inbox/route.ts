@@ -209,6 +209,9 @@ export async function GET() {
     return {
       kind: 'direct' as const,
       id: c.id,
+      // guestId: Client-Seite braucht sie, um Antworten ANDERER Team-Mitglieder
+      // korrekt auf UNSERER Bubble-Seite zu rendern (§115-Fix)
+      guestId: c.guest_id as string | null,
       guestName: gp?.display_name || c.guest_name || 'Gast',
       guestAvatar: gp?.avatar_url ?? null,
       listingTitle: b?.listing_id ? listingTitle.get(b.listing_id) ?? null : null,
@@ -268,7 +271,18 @@ export async function GET() {
     .sort((a, b) => (a.checkIn ?? '9999').localeCompare(b.checkIn ?? '9999'))
   const threads = [...withMsg, ...withoutMsg]
 
-  return NextResponse.json({ userId: user.id, threads })
+  // Vornamen aller Team-Konten — die Bubbles zeigen, WER geantwortet hat
+  let teamNames: Record<string, string> = {}
+  try {
+    const { data: teamProfiles } = await supabaseAdmin
+      .from('profiles').select('id, display_name')
+      .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
+    teamNames = Object.fromEntries((teamProfiles ?? []).map((p) => [
+      p.id, ((p.display_name ?? '').trim().split(/\s+/)[0] || 'Team'),
+    ]))
+  } catch { /* fail-soft */ }
+
+  return NextResponse.json({ userId: user.id, threads, teamNames })
 }
 
 /**
