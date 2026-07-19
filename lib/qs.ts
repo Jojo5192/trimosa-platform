@@ -9,7 +9,7 @@
  *   nichts angelegt.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendPushToUser } from '@/lib/push'
+import { sendPushToUser, sendPushToTeam } from '@/lib/push'
 
 export interface QsItem {
   id: string
@@ -209,21 +209,87 @@ export async function isDayFree(listingId: string, iso: string): Promise<boolean
 }
 
 /**
- * Erster komplett freier Tag ab fromIso (bis +90 Tage): keine laufende
- * Belegung und auch kein An-/Abreisetag (die gehören der Reinigung).
- * Fallback: fromIso, falls nichts frei ist (dauerbelegt).
+ * Erster komplett freier Tag in [fromIso, maxIso]: keine laufende Belegung
+ * und auch kein An-/Abreisetag (die gehören der Reinigung). null = nichts frei.
  */
-export async function findFreeDay(listingId: string, fromIso: string): Promise<string> {
-  const horizon = new Date(new Date(fromIso + 'T00:00:00Z').getTime() + 90 * 86400_000).toISOString().slice(0, 10)
-  const stays = await loadStays(listingId, fromIso, horizon)
+export async function findFreeDayUntil(listingId: string, fromIso: string, maxIso: string): Promise<string | null> {
+  const stays = await loadStays(listingId, fromIso, maxIso)
   const d = new Date(fromIso + 'T00:00:00Z')
-  for (let i = 0; i <= 90; i++) {
+  for (let i = 0; i <= 120; i++) {
     const iso = d.toISOString().slice(0, 10)
+    if (iso > maxIso) return null
     const blocked = stays.some((s) => (s.check_in <= iso && s.check_out > iso) || s.check_in === iso || s.check_out === iso)
     if (!blocked) return iso
     d.setUTCDate(d.getUTCDate() + 1)
   }
-  return fromIso
+  return null
+}
+
+/** Wie findFreeDayUntil (+90 Tage), Fallback fromIso bei Dauerbelegung. */
+export async function findFreeDay(listingId: string, fromIso: string): Promise<string> {
+  const horizon = new Date(new Date(fromIso + 'T00:00:00Z').getTime() + 90 * 86400_000).toISOString().slice(0, 10)
+  return (await findFreeDayUntil(listingId, fromIso, horizon)) ?? fromIso
+}
+
+/* Verschiebe-Grenzen (Inhaber-Vorgabe „nicht zu weit verschiebbar"):
+   - Auto-Ausweichen & Nicht-Admins: max. 6 Wochen ab heute
+   - harte Deckelung je Termin: 10 Wochen ab Anlage — danach kein
+     Auto-Schieben mehr, stattdessen Team-Alarm */
+export const QS_MAX_SHIFT_DAYS = 42
+export const QS_DEADLINE_DAYS = 70
+
+/**
+ * Cron: Termine, deren Tag NACHTRÄGLICH belegt wurde (neue Buchung), auf den
+ * nächsten freien Tag ausweichen — bevorzugt auch nach VORN. Kein freier Tag
+ * innerhalb der Grenzen → Termin bleibt stehen; kurz vor knapp (≤ 1 Tag)
+ * geht ein Team-Alarm raus, damit manuell gelegt wird (z. B. nach Reinigung
+ * an einem Abreisetag).
+ */
+export async function rescheduleConflictingChecks(): Promise<{ moved: number; alerts: number }> {
+  const { data: planned } = await supabaseAdmin
+    .from('qs_checks')
+    .select('id, listing_id, assignee_id, due_date, created_at')
+    .eq('status', 'geplant')
+  const today = isoOffset(0)
+  let moved = 0
+  let alerts = 0
+  for (const c of planned ?? []) {
+    if (c.due_date < today) continue // überfällig — rot im UI, nicht anfassen
+    if (await isDayFree(c.listing_id, c.due_date)) continue
+
+    const deadline = new Date(new Date(c.created_at).getTime() + QS_DEADLINE_DAYS * 86400_000).toISOString().slice(0, 10)
+    const horizon = isoOffset(QS_MAX_SHIFT_DAYS)
+    const limit = deadline < horizon ? deadline : horizon
+    const next = await findFreeDayUntil(c.listing_id, isoOffset(1), limit)
+    const { data: listing } = await supabaseAdmin.from('listings').select('title').eq('id', c.listing_id).maybeSingle()
+    const title = listing?.title ?? 'Wohnung'
+
+    if (next) {
+      const { error } = await supabaseAdmin
+        .from('qs_checks')
+        .update({ due_date: next, updated_at: new Date().toISOString() })
+        .eq('id', c.id)
+      if (!error) {
+        moved++
+        if (c.assignee_id) {
+          sendPushToUser(
+            c.assignee_id,
+            '🧾 QS-Termin automatisch verschoben',
+            `${title}: Am bisherigen Termin ist jetzt eine Buchung. Neu: ${fmtDe(next)}`,
+            '/team?tab=aufgaben'
+          ).catch(() => {})
+        }
+      }
+    } else if (c.due_date <= isoOffset(1)) {
+      alerts++
+      sendPushToTeam(
+        '⚠️ QS-Termin braucht Hilfe',
+        `${title}: kein freier Tag bis ${fmtDe(limit)} — bitte manuell legen (z. B. nach der Reinigung an einem Abreisetag).`,
+        '/team?tab=aufgaben'
+      ).catch(() => {})
+    }
+  }
+  return { moved, alerts }
 }
 
 function fmtDe(iso: string): string {
