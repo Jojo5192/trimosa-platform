@@ -100,7 +100,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       supabaseAdmin.from('profiles').select('display_name').eq('id', auth.userId).maybeSingle(),
     ])
     const sender = (me?.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
-    const preview = content || (attachmentType === 'image' ? '📷 Foto' : attachmentType === 'video' ? '🎬 Video' : attachmentType === 'audio' ? '🎙️ Sprachnachricht' : '📄 PDF')
+    // Sprachnachricht: Push zeigt das Transkript MIT 🎙️-Hinweis (iMessage-Stil)
+    const preview = attachmentType === 'audio'
+      ? `🎙️ ${content || 'Sprachnachricht'}`
+      : content || (attachmentType === 'image' ? '📷 Foto' : attachmentType === 'video' ? '🎬 Video' : '📄 PDF')
     for (const m of members ?? []) {
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
