@@ -38,6 +38,26 @@ function matchesFilter(c: Conversation, f: InboxFilter): boolean {
   return true
 }
 
+// Inbox-API-Thread → internes Conversation-Shape (geteilt von der Live-Liste
+// und der „Ältere Chats"-Nachladung, §129)
+function mapInboxThread(t: Record<string, unknown>, userId: string): Conversation {
+  return {
+    id: t.id, kind: t.kind, guest_id: (t.guestId as string) ?? '', host_id: userId,
+    guest_name: t.guestName, host_name: null,
+    listing_title: t.listingTitle, last_message_at: t.lastMessageAt,
+    unread: (t.unread as number) ?? 0,
+    guest_avatar_url: t.guestAvatar ?? null, host_avatar_url: null,
+    check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
+    platform: t.platform, guestStatus: t.guestStatus,
+    lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
+    noReplyNeeded: (t.noReplyNeeded as boolean) ?? false,
+    phoneResolved: (t.phoneResolved as boolean) ?? false,
+    adults: (t.adults as number | null) ?? null,
+    children: (t.children as number | null) ?? null,
+    guestLang: t.guestLang ?? null,
+  } as unknown as Conversation
+}
+
 /* ── Badges (platform + guest status), team inbox only ── */
 const PLATFORM_COLORS: Record<string, string> = {
   TRIMOSA: '#A8862F', Airbnb: '#FF5A5F', 'Booking.com': '#003580', Booking: '#003580',
@@ -178,6 +198,10 @@ interface Props {
 export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread, onUnread }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
+  // „Ältere Chats" (§129): einmalige Nachladung aller vergangenen Buchungen
+  // mit Archiv-Verlauf — null = noch nicht geladen, kein Polling
+  const [archivThreads, setArchivThreads] = useState<Conversation[] | null>(null)
+  const [archivLoading, setArchivLoading] = useState(false)
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -277,21 +301,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       if (!r.ok) return null
       const { threads, teamNames: tn } = await r.json()
       if (tn) setTeamNames(tn)
-      const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => ({
-        id: t.id, kind: t.kind, guest_id: (t.guestId as string) ?? '', host_id: userId,
-        guest_name: t.guestName, host_name: null,
-        listing_title: t.listingTitle, last_message_at: t.lastMessageAt,
-        unread: t.unread ?? 0,
-        guest_avatar_url: t.guestAvatar ?? null, host_avatar_url: null,
-        check_in: t.checkIn ?? null, check_out: t.checkOut ?? null,
-        platform: t.platform, guestStatus: t.guestStatus,
-        lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
-        noReplyNeeded: t.noReplyNeeded ?? false,
-        phoneResolved: t.phoneResolved ?? false,
-        adults: (t.adults as number | null) ?? null,
-        children: (t.children as number | null) ?? null,
-        guestLang: t.guestLang ?? null,
-      }))
+      const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => mapInboxThread(t, userId))
       setConvs(data)
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
       return data
@@ -302,6 +312,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setConvs(data)
     return data
   }, [team, userId])
+
+  // Ältere Chats einmalig nachladen (§129) — dedupe gegen die Live-Liste
+  // passiert beim Rendern, damit der 20s-Poll die Archiv-Daten nie anfasst
+  const loadArchiv = useCallback(async () => {
+    setArchivLoading(true)
+    try {
+      const r = await fetch('/api/chat/inbox?archiv=1')
+      if (r.ok) {
+        const { threads } = await r.json()
+        setArchivThreads(((threads ?? []) as Record<string, unknown>[]).map((t) => mapInboxThread(t, userId)))
+      }
+    } catch { /* Netz — Button bleibt stehen, erneut versuchbar */ }
+    finally { setArchivLoading(false) }
+  }, [userId])
 
   const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking') => {
     if (kind === 'booking') {
@@ -616,6 +640,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   ═══════════════════════════════════════════════════════════ */
   function ConvList({ fullWidth = false }: { fullWidth?: boolean }) {
     const filtered = team ? convs.filter(c => matchesFilter(c, inboxFilter)) : convs
+    // Nachgeladene ältere Chats (§129) — nur im „Alle"-Filter, unterhalb der
+    // Live-Liste, dedupliziert gegen deren Threads
+    const archivExtra = team && inboxFilter === 'alle' && archivThreads
+      ? archivThreads.filter(a => !convs.some(cc => cc.id === a.id))
+      : []
+    type ListRow = Conversation | { divider: string }
+    const rows: ListRow[] = archivExtra.length
+      ? [...filtered, { divider: `📁 Ältere Chats (${archivExtra.length})` }, ...archivExtra]
+      : filtered
     return (
       <div style={{
         width: fullWidth ? '100%' : 270,
@@ -670,7 +703,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </div>
           </div>
         )}
-        {filtered.map(c => {
+        {rows.map(c => {
+          if ('divider' in c) return (
+            <div key="archiv-divider" style={{
+              padding: '14px 16px 6px', fontSize: 11, fontWeight: 800,
+              letterSpacing: '0.06em', textTransform: 'uppercase', color: '#A9A499',
+              borderTop: '0.5px solid rgba(60,60,67,0.15)', marginTop: 8,
+            }}>{c.divider}</div>
+          )
           const isSel = !isMobile && active?.id === c.id
           return (
             <button key={c.id} onClick={() => selectConv(c)} style={{
@@ -742,6 +782,25 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </button>
           )
         })}
+        {/* „Ältere Chats laden" — einmalige Nachladung der Archiv-Threads (§129) */}
+        {team && inboxFilter === 'alle' && !loading && archivThreads === null && convs.length > 0 && (
+          <button
+            onClick={loadArchiv}
+            disabled={archivLoading}
+            style={{
+              margin: '14px 16px 20px', padding: '11px 16px', borderRadius: 12,
+              border: '1px solid #E5E1D6', background: '#FAF8F3', cursor: archivLoading ? 'default' : 'pointer',
+              fontSize: 13, fontWeight: 700, color: '#6B6455', flexShrink: 0,
+            }}
+          >
+            {archivLoading ? 'Lädt ältere Chats…' : '📁 Ältere Chats laden'}
+          </button>
+        )}
+        {team && inboxFilter === 'alle' && archivThreads !== null && archivThreads.length === 0 && (
+          <div style={{ padding: '12px 16px 20px', fontSize: 12, color: '#A9A499', textAlign: 'center' }}>
+            Keine älteren Chats gefunden.
+          </div>
+        )}
       </div>
     )
   }
