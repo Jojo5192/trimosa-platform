@@ -121,13 +121,24 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   // Properties hängen an MEHREREN Listings — hier nur EINMAL zählen und dem
   // STANDORT zuschreiben statt einer (womöglich falschen) Wohnung.
   const rawReviews = (reviewRows ?? []).filter((r) => String(r.review_text).trim().length >= 25)
+  // Property-Zugehörigkeit gegen die GESAMTE Tabelle prüfen (nicht nur das
+  // created_at-Fenster!) — re-importierte Kopien einer geteilten Property
+  // sähen sonst wie eindeutige Wohnungs-Reviews aus (§126-Nachtcron-Vorfall)
   const seenRid = new Map<string, { listing_ids: Set<string> }>()
-  for (const r of rawReviews) {
-    if (!r.source_review_id) continue
-    const k = `${r.source}|${r.source_review_id}`
-    const e = seenRid.get(k) ?? { listing_ids: new Set<string>() }
-    if (r.listing_id) e.listing_ids.add(r.listing_id)
-    seenRid.set(k, e)
+  const ridList = [...new Set(rawReviews.map((r) => r.source_review_id).filter(Boolean))] as string[]
+  if (ridList.length) {
+    const { data: allRows } = await supabaseAdmin
+      .from('reviews')
+      .select('source, source_review_id, listing_id')
+      .in('source_review_id', ridList)
+      .limit(2000)
+    for (const r of allRows ?? []) {
+      if (!r.source_review_id) continue
+      const k = `${r.source}|${r.source_review_id}`
+      const e = seenRid.get(k) ?? { listing_ids: new Set<string>() }
+      if (r.listing_id) e.listing_ids.add(r.listing_id)
+      seenRid.set(k, e)
+    }
   }
   const emitted = new Set<string>()
   const reviews: { review_text: unknown; rating: unknown; source: string; label: string }[] = []
