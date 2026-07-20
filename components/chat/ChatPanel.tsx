@@ -73,17 +73,28 @@ function statusInfo(c: Conversation): { dot: string; label: string } | null {
   }
   return { dot: '#9CA3AF', label: 'Ehemalig' }
 }
+// Lange Smoobu-Kanalnamen („FeWo-direkt / HomeAway") kompakt anzeigen —
+// normalisiert auch auf die Farb-Schlüssel in PLATFORM_COLORS
+function shortPlatform(p: string): string {
+  if (/fewo|homeaway|vrbo|abritel/i.test(p)) return 'FeWo-direkt'
+  if (/booking/i.test(p)) return 'Booking.com'
+  if (/airbnb/i.test(p)) return 'Airbnb'
+  if (/hometogo/i.test(p)) return 'HomeToGo'
+  return p
+}
 function ThreadBadges({ c, size = 10 }: { c: Conversation; size?: number }) {
   if (!c.platform && !c.guestStatus) return null
   const st = statusInfo(c)
-  const pc = c.platform ? (PLATFORM_COLORS[c.platform] ?? '#5A6B7B') : null
+  const label = c.platform ? shortPlatform(c.platform) : null
+  const pc = label ? (PLATFORM_COLORS[label] ?? '#5A6B7B') : null
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {c.platform && pc && (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+      {label && pc && (
         <span style={{
           fontSize: size, fontWeight: 800, color: '#fff', background: pc,
           padding: '2px 7px', borderRadius: 999, letterSpacing: '0.02em', whiteSpace: 'nowrap',
-        }}>{c.platform}</span>
+          display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{label}</span>
       )}
       {st && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: size, fontWeight: 600, color: '#777', whiteSpace: 'nowrap' }}>
@@ -855,7 +866,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               </div>
             </div>
             {(active.platform || active.guestStatus || guestLang) && (
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              // minWidth: 0 statt flexShrink: 0 — bei langen Badges schrumpft
+              // die Badge-Zeile (Ellipse), statt 📞/✓ aus dem Screen zu drücken
+              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                 {guestLang && guestLang !== 'de' && (
                   <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}`} style={{ fontSize: 15 }}>
                     {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 10, color: '#8E8E93', verticalAlign: 'super' }}>~</span> : null}
