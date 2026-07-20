@@ -108,6 +108,7 @@ export function defaultTemplate(): GuideBlock[] {
     { id: newBlockId(), type: 'times' },
     { id: newBlockId(), type: 'map' },
     { id: newBlockId(), type: 'steps', title: 'So kommst du rein', steps: ['Beispiel: Parke direkt vor dem Haus.', 'Beispiel: Die Wohnung findest du im 1. OG links.', 'Beispiel: Den Schlüssel bekommst du …'] },
+    { id: newBlockId(), type: 'door', title: 'Schlüssel & Zugang', text: '' },
     { id: newBlockId(), type: 'wifi', ssid: '', password: '' },
     { id: newBlockId(), type: 'info', emoji: '🅿️', title: 'Parken', text: '' },
     { id: newBlockId(), type: 'rules' },
