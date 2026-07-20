@@ -75,10 +75,29 @@ export async function POST(req: NextRequest) {
   const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
   if (!relevant) return NextResponse.json({ ok: true, skipped: 'kein Portal-Absender' })
 
-  const rawText = String(data.text ?? '') || stripHtml(String(data.html ?? ''))
+  // Resend-Webhooks enthalten NUR Metadaten — der Mail-Body wird über die
+  // Received-Emails-API nachgeladen (GET /emails/receiving/:email_id)
+  let rawText = String(data.text ?? '') || stripHtml(String(data.html ?? ''))
+  const emailId = String(data.email_id ?? '')
+  if (rawText.trim().length < 80 && emailId && process.env.RESEND_API_KEY) {
+    try {
+      const r = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      })
+      if (r.ok) {
+        const full = await r.json() as Record<string, unknown>
+        rawText = String(full.text ?? '') || stripHtml(String(full.html ?? ''))
+        if (!rawText.trim()) console.error('[inbound-mail] Body-Nachladen leer — Keys:', Object.keys(full))
+      } else {
+        console.error('[inbound-mail] Body-Nachladen HTTP', r.status)
+      }
+    } catch (e) {
+      console.error('[inbound-mail] Body-Nachladen fehlgeschlagen:', e)
+    }
+  }
   if (rawText.trim().length < 80) {
     console.error('[inbound-mail] Mail-Body leer/zu kurz — Payload-Keys:', Object.keys(data))
-    return NextResponse.json({ ok: true, skipped: 'kein Mail-Text im Webhook' })
+    return NextResponse.json({ ok: true, skipped: 'kein Mail-Text verfügbar' })
   }
 
   // ── Claude extrahiert die Buchungsdaten ──
