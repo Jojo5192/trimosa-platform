@@ -514,6 +514,30 @@ export async function sendMessageToHost(
   return smoobuMsgId
 }
 
+/**
+ * Bestehende Reservierung in Smoobu ERGÄNZEN (§127 Mail-Anreicherung):
+ * PUT /api/reservations/{id} mit den übergebenen Feldern (z. B. price,
+ * adults, children, phone) — Smoobu übernimmt nur die mitgeschickten Felder.
+ * Rückgabe: null bei Erfolg, sonst Fehlertext.
+ */
+export async function updateReservation(
+  reservationId: number,
+  fields: Record<string, unknown>,
+  apiKey?: string,
+): Promise<string | null> {
+  const res = await fetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
+    method: 'PUT',
+    headers: smoobuHeaders(apiKey),
+    body: JSON.stringify(fields),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    console.error('[Smoobu] updateReservation failed:', res.status, detail.slice(0, 200))
+    return `HTTP ${res.status}: ${detail.slice(0, 150)}`
+  }
+  return null
+}
+
 /* ── Helpers ────────────────────────────────────────────────── */
 
 /** Returns all calendar days from startDate (inclusive) to endDate (exclusive, = checkout day). */
