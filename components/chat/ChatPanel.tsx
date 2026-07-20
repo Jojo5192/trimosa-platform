@@ -314,6 +314,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       if (tn) setTeamNames(tn)
       const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => mapInboxThread(t, userId))
       setConvs(data)
+      // Der offene Thread übernimmt Markierungen (📞/✓) und Status sofort,
+      // auch wenn ein ANDERES Team-Mitglied sie gesetzt hat — active ist eine
+      // Kopie und würde sonst erst beim Thread-Wechsel nachziehen (§130).
+      // unread bleibt bewusst lokal (sonst flackert das Badge beim Lesen).
+      setActive(a => {
+        if (!a) return a
+        const fresh = data.find(c => c.id === a.id)
+        return fresh
+          ? { ...a, noReplyNeeded: fresh.noReplyNeeded, phoneResolved: fresh.phoneResolved, lastSender: fresh.lastSender, guestStatus: fresh.guestStatus }
+          : a
+      })
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
       return data
     }
