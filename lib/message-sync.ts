@@ -31,22 +31,22 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
   for (const sm of msgs) {
     if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
     const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
-    if (isHost) {
-      // Web-app sent message coming back from Smoobu: claim the local
-      // row instead of importing a duplicate (see messages/[bookingId])
-      const { data: twin } = await supabaseAdmin
-        .from('messages')
-        .select('id')
-        .eq('booking_id', b.id)
-        .eq('sender_type', 'host')
-        .is('smoobu_message_id', null)
-        .eq('content', sm.message.trim())
-        .limit(1)
-        .maybeSingle()
-      if (twin) {
-        await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
-        continue
-      }
+    // Zwillings-Claim für BEIDE Richtungen: Host-Nachrichten aus der Web-App
+    // (POST speichert lokal ohne smoobu_message_id) UND Gast-Nachrichten aus
+    // der FeWo-Mail-Pipeline (§129 saveGuestMessage — dieselbe Nachricht kann
+    // danach auch über Smoobu ankommen). Statt Duplikat: lokale Zeile claimen.
+    const { data: twin } = await supabaseAdmin
+      .from('messages')
+      .select('id')
+      .eq('booking_id', b.id)
+      .eq('sender_type', isHost ? 'host' : 'guest')
+      .is('smoobu_message_id', null)
+      .eq('content', sm.message.trim())
+      .limit(1)
+      .maybeSingle()
+    if (twin) {
+      await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
+      continue
     }
     const { data: inserted, error } = await supabaseAdmin.from('messages').insert({
       booking_id: b.id,
