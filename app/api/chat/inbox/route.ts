@@ -31,29 +31,37 @@ export async function GET(request: Request) {
   // Chat-Verlauf im Smoobu-Archiv, als einmalige Nachladung (kein Polling,
   // keine Unread-/Preview-Logik — der volle Verlauf kommt beim Öffnen). §129
   if (new URL(request.url).searchParams.get('archiv') === '1') {
-    const { data: oldRows } = await supabaseAdmin
+    // Auch hier 1000er-Seiten (PostgREST-Cap) — inzwischen ~1.400+ vergangene
+    const fetchPage = (off: number) => supabaseAdmin
       .from('bookings')
       .select('id, guest_name, check_in, check_out, channel, source, status, smoobu_reservation_id, adults, children, listings(title)')
       .not('smoobu_reservation_id', 'is', null)
       .lt('check_out', today)
       .order('check_in', { ascending: false })
-      .limit(2000)
-    const rows = oldRows ?? []
-    const resIds = [...new Set(rows.map((b) => Number(b.smoobu_reservation_id)).filter(Number.isFinite))]
-    // Neueste Archiv-Nachricht je Reservierung — in ID-Chunks (URL-Länge!)
+      .range(off, off + 999)
+    const rows: NonNullable<Awaited<ReturnType<typeof fetchPage>>['data']> = []
+    for (let off = 0; off < 6000; off += 1000) {
+      const { data: page } = await fetchPage(off)
+      rows.push(...(page ?? []))
+      if (!page || page.length < 1000) break
+    }
+    // Neueste Archiv-Nachricht je Reservierung — Vollscan der Archiv-Tabelle
+    // in 1000er-Seiten (PostgREST cappt jede Antwort serverseitig bei 1000;
+    // .in()-Chunks mit höherem limit liefen deshalb ins Leere und ließen alte
+    // Threads verschwinden). ~9 Seiten bei 8.800 Nachrichten, Deckel 20k.
     const lastByRes: Record<number, { at: string; sender: 'guest' | 'host' }> = {}
-    for (let i = 0; i < resIds.length; i += 300) {
+    for (let off = 0; off < 20000; off += 1000) {
       const { data: ms } = await supabaseAdmin
         .from('smoobu_message_archive')
         .select('smoobu_reservation_id, sent_at, sender_type')
-        .in('smoobu_reservation_id', resIds.slice(i, i + 300))
         .order('sent_at', { ascending: false })
-        .limit(5000)
+        .range(off, off + 999)
       for (const m of ms ?? []) {
         if (!lastByRes[m.smoobu_reservation_id] && m.sent_at) {
           lastByRes[m.smoobu_reservation_id] = { at: m.sent_at, sender: m.sender_type === 'guest' ? 'guest' : 'host' }
         }
       }
+      if (!ms || ms.length < 1000) break
     }
     const threads = rows
       .filter((b) => lastByRes[Number(b.smoobu_reservation_id)])
