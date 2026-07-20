@@ -128,7 +128,27 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
             return wrap(
               <div style={{ ...CARD, background: '#12222E', border: 'none' }}>
                 <div style={{ fontSize: 14.5, fontWeight: 700, color: '#E3C878', marginBottom: 6 }}>🔑 {b.title || '…'}</div>
-                <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'rgba(245,240,232,0.85)', whiteSpace: 'pre-line' }}>{b.text || '…'}</p>
+                {/* Türcode-Automatik (§132): Code groß, sobald das Anzeige-
+                    Fenster erreicht ist; vorher der Hinweis, ab wann er kommt */}
+                {ctx.doorCode && (
+                  <div style={{ margin: '4px 0 10px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(245,240,232,0.55)', marginBottom: 4 }}>
+                      {labels.doorCodeLabel}
+                    </div>
+                    <div style={{
+                      display: 'inline-block', padding: '10px 22px', borderRadius: 14,
+                      background: 'rgba(227,200,120,0.12)', border: '1px solid rgba(227,200,120,0.4)',
+                      fontSize: 30, fontWeight: 800, letterSpacing: '0.35em', color: '#E3C878',
+                      fontVariantNumeric: 'tabular-nums', paddingRight: 12,
+                    }}>{ctx.doorCode}</div>
+                  </div>
+                )}
+                {!ctx.doorCode && ctx.doorNote && (
+                  <p style={{ margin: '0 0 8px', fontSize: 13, lineHeight: 1.6, color: 'rgba(227,200,120,0.85)' }}>⏳ {ctx.doorNote}</p>
+                )}
+                {(b.text || (!ctx.doorCode && !ctx.doorNote)) && (
+                  <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'rgba(245,240,232,0.85)', whiteSpace: 'pre-line' }}>{b.text || '…'}</p>
+                )}
               </div>
             )
           case 'contact':
