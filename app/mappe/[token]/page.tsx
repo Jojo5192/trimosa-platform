@@ -7,6 +7,7 @@ import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { parseGuide, collectGuideTexts, translateBlocks, DE_LABELS, type GuideCtx, type GuideLabels } from '@/lib/guide'
+import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 
 /**
@@ -69,6 +70,26 @@ export default async function MappePage({ params, searchParams }: {
 
   const blocksDe = parseGuide(listing.guide)
 
+  // ── Türcode-Automatik (§132): Code on-demand erzeugen, sobald das
+  //    Anzeige-Fenster erreicht ist (deckt kurzfristige Buchungen ohne
+  //    nächtlichen Cron-Lauf ab); vorher nur der Hinweis, ab wann er kommt ──
+  let doorCode: string | null = null
+  let doorNoteDe: string | null = null
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const locksArr = (listing.locks as { provider: string }[] | null) ?? []
+  if (locksArr.length && String(booking.check_out ?? '') >= todayIso) {
+    const revealDays = await getRevealDays()
+    const daysToArrival = Math.ceil((new Date(String(booking.check_in) + 'T00:00:00Z').getTime() - Date.now()) / 86400_000)
+    if (daysToArrival <= revealDays) {
+      doorCode = (booking.door_code as string | null) ?? null
+      if (!doorCode) {
+        try { doorCode = await ensureDoorCode(String(booking.id)) } catch (e) { console.error('[mappe] door-code:', e) }
+      }
+    } else {
+      doorNoteDe = `Dein Türcode erscheint hier ${revealDays} Tage vor Anreise.`
+    }
+  }
+
   const ctxDe: GuideCtx = {
     listingTitle: String(listing.title ?? ''),
     address: (listing.address as string | null) ?? null,
@@ -80,6 +101,8 @@ export default async function MappePage({ params, searchParams }: {
     regionName: region ? region[1].name : null,
     regionSlug: region ? region[0] : null,
     regionClaim: region ? region[1].claim : null,
+    doorCode,
+    doorNote: doorNoteDe,
   }
 
   // ── Übersetzung (Blöcke + Labels + UI + Hausregeln) in einem Batch ──
@@ -95,10 +118,14 @@ export default async function MappePage({ params, searchParams }: {
     const tr = await makeTr(lang, [
       ...collectGuideTexts(blocksDe), ...rules,
       ...Object.values(DE_LABELS), ...Object.values(UI_DE),
-      ctxDe.regionClaim ?? '',
+      ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
     blocks = translateBlocks(blocksDe, tr)
-    ctx = { ...ctxDe, rules: rules.map(tr), regionClaim: ctxDe.regionClaim ? tr(ctxDe.regionClaim) : null }
+    ctx = {
+      ...ctxDe, rules: rules.map(tr),
+      regionClaim: ctxDe.regionClaim ? tr(ctxDe.regionClaim) : null,
+      doorNote: ctxDe.doorNote ? tr(ctxDe.doorNote) : null,
+    }
     labels = Object.fromEntries(Object.entries(DE_LABELS).map(([k, v]) => [k, tr(v)])) as unknown as GuideLabels
     ui = Object.fromEntries(Object.entries(UI_DE).map(([k, v]) => [k, tr(v)])) as typeof UI_DE
   }
