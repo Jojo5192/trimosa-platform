@@ -5,6 +5,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/reviews/match",
+      "schedule": "25 4 * * *"
+    },
+    {
       "path": "/api/ai/knowledge",
       "schedule": "30 4 * * *"
     },
