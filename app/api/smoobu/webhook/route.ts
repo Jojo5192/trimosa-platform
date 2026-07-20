@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     // Find the booking + linked conversation
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('id, conversations(id, host_id, guest_id)')
+      .select('id, guest_name, conversations(id, host_id, guest_id), listings(title)')
       .eq('smoobu_reservation_id', smoobuBookingId)
       .maybeSingle()
 
@@ -61,7 +61,23 @@ export async function POST(request: Request) {
     const conv = Array.isArray(convArr) ? convArr[0] : (convArr as unknown as { id: string; host_id: string; guest_id: string } | null)
 
     if (!conv?.id) {
-      console.warn('[Smoobu Webhook] newMessage: no conversation linked to booking', booking.id)
+      // Portal-Buchung (Airbnb/Booking/FeWo) ohne Plattform-Konto — die Welt
+      // der Team-Inbox. Vorher wurde das Event hier VERWORFEN und die
+      // Nachricht kam erst per 10-Min-Poll oder beim Thread-Öffnen (§131);
+      // jetzt: sofort syncen + übersetzt pushen (gleiche Logik wie der Poll).
+      try {
+        const { syncBookingMessages } = await import('@/lib/message-sync')
+        const listing = (Array.isArray(booking.listings) ? booking.listings[0] : booking.listings) as { title: string } | null
+        const r = await syncBookingMessages({
+          id: booking.id,
+          guest_name: (booking.guest_name as string | null) ?? null,
+          smoobu_reservation_id: smoobuBookingId,
+          listingTitle: listing?.title ?? null,
+        })
+        console.log('[Smoobu Webhook] newMessage → booking-sync:', booking.id, JSON.stringify(r))
+      } catch (err) {
+        console.error('[Smoobu Webhook] newMessage booking-sync failed:', err)
+      }
       return new Response('OK', { status: 200 })
     }
 
