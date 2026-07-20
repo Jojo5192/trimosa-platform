@@ -170,9 +170,15 @@ export async function POST(request: Request) {
     const { data: listings } = await supabaseAdmin
       .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
     const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
-    const { data: existingRows } = await supabaseAdmin
-      .from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null)
-    const existing = new Set((existingRows ?? []).map((b) => Number(b.smoobu_reservation_id)))
+    // 1000er-Seiten — PostgREST cappt jede Antwort bei 1000, und die Tabelle
+    // hat seit dem Historien-Backfill (§129) deutlich mehr Zeilen
+    const existing = new Set<number>()
+    for (let off = 0; off < 10000; off += 1000) {
+      const { data: existingRows } = await supabaseAdmin
+        .from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null).range(off, off + 999)
+      for (const b of existingRows ?? []) existing.add(Number(b.smoobu_reservation_id))
+      if (!existingRows || existingRows.length < 1000) break
+    }
 
     // historic: alle ALTEN Reservierungen (2019 → Standardfenster-Beginn),
     // aber NUR solche mit Chat-Verlauf im Smoobu-Archiv — alte Buchungen ohne
