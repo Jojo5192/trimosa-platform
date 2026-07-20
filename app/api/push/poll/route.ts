@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages } from '@/lib/smoobu'
-import { sendPushToTeam } from '@/lib/push'
-import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
+import { syncBookingMessages } from '@/lib/message-sync'
 
 /**
- * Cron (every 10 min): polls Smoobu messages for RELEVANT bookings (guests
- * currently in house, arriving within 14 days, or departed within the last
- * 3 days), stores new ones and pushes a notification for new GUEST messages.
- * This is what makes the team's phone buzz when an Airbnb/Booking guest
- * writes — without anyone having the app open.
+ * Cron (every 10 min): polls Smoobu messages for RELEVANT bookings, stores
+ * new ones and pushes a notification for new GUEST messages. Seit §131 ist
+ * das nur noch das SICHERHEITSNETZ — die Sofort-Zustellung übernimmt der
+ * Smoobu-newMessage-Webhook (app/api/smoobu/webhook); der Poll fängt
+ * verpasste Events ab (Webhook-Ausfall, Deploy-Lücken).
  */
 export const maxDuration = 300
 
@@ -19,9 +17,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 401 })
   }
 
+  // Zwei Fenster (§130 — ERZ-Vorfall: Nachricht 3+ Tage nach Abreise wurde
+  // nie gepollt): Das SCHMALE Fenster (Anreise ≤14 Tg. / Abreise vor ≤3 Tg.)
+  // läuft bei jedem 10-Min-Lauf; zweimal pro Stunde (Minute 0 + 30) weitet
+  // sich das Fenster auf Anreise ≤60 / Abreise vor ≤21 Tagen — deckt frühe
+  // Vorfreude-Fragen und späte Nachfragen (Rechnung, Fundsachen) mit max.
+  // 30 Min Verzögerung ab, ohne die Smoobu-API-Last zu vervielfachen.
   const today = new Date()
-  const soon = new Date(today.getTime() + 14 * 86400_000).toISOString().slice(0, 10)
-  const recent = new Date(today.getTime() - 3 * 86400_000).toISOString().slice(0, 10)
+  const wide = today.getUTCMinutes() < 10 || (today.getUTCMinutes() >= 30 && today.getUTCMinutes() < 40)
+  const soon = new Date(today.getTime() + (wide ? 60 : 14) * 86400_000).toISOString().slice(0, 10)
+  const recent = new Date(today.getTime() - (wide ? 21 : 3) * 86400_000).toISOString().slice(0, 10)
 
   const { data: bookings } = await supabaseAdmin
     .from('bookings')
@@ -30,69 +35,22 @@ export async function GET(request: Request) {
     .neq('status', 'cancelled')
     .lte('check_in', soon)
     .gte('check_out', recent)
-    .limit(60)
+    .order('check_in', { ascending: true })
+    .limit(wide ? 120 : 60)
 
   let newMessages = 0
   let pushes = 0
   for (const b of bookings ?? []) {
     try {
-      const msgs = await getReservationMessages(Number(b.smoobu_reservation_id))
-      if (!msgs.length) continue
-      const ids = msgs.map((m) => String(m.id))
-      const { data: known } = await supabaseAdmin
-        .from('messages').select('smoobu_message_id').in('smoobu_message_id', ids)
-      const knownSet = new Set((known ?? []).map((m) => m.smoobu_message_id))
-      const newGuestMsgs: { id: string; text: string }[] = []
-      for (const sm of msgs) {
-        if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
-        const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
-        if (isHost) {
-          // Web-app sent message coming back from Smoobu: claim the local
-          // row instead of importing a duplicate (see messages/[bookingId])
-          const { data: twin } = await supabaseAdmin
-            .from('messages')
-            .select('id')
-            .eq('booking_id', b.id)
-            .eq('sender_type', 'host')
-            .is('smoobu_message_id', null)
-            .eq('content', sm.message.trim())
-            .limit(1)
-            .maybeSingle()
-          if (twin) {
-            await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
-            continue
-          }
-        }
-        const { data: inserted, error } = await supabaseAdmin.from('messages').insert({
-          booking_id: b.id,
-          smoobu_message_id: String(sm.id),
-          sender_type: isHost ? 'host' : 'guest',
-          content: sm.message.trim(),
-          created_at: sm.date || undefined,
-        }).select('id').single()
-        if (error || !inserted) continue
-        newMessages++
-        if (!isHost) newGuestMsgs.push({ id: inserted.id, text: sm.message.trim() })
-      }
-
-      // Translate new guest messages BEFORE pushing — the notification (and
-      // the inbox preview, via the cached content_de) shows German, with the
-      // guest's language as a flag. Fail-soft: untranslated original.
-      if (newGuestMsgs.length) {
-        const tr = await translateIncoming(newGuestMsgs)
-        const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null
-        for (const g of newGuestMsgs) {
-          const t = tr.get(g.id)
-          const flag = t?.lang && t.lang !== 'de' ? `${LANG_FLAGS[t.lang] ?? '🌐'} ` : ''
-          await sendPushToTeam(
-            `💬 ${flag}${b.guest_name ?? 'Gast'}${listing?.title ? ` · ${listing.title}` : ''}`,
-            t?.german ?? g.text,
-            '/team',
-            { guestChat: true },
-          )
-          pushes++
-        }
-      }
+      const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null
+      const r = await syncBookingMessages({
+        id: b.id,
+        guest_name: b.guest_name,
+        smoobu_reservation_id: Number(b.smoobu_reservation_id),
+        listingTitle: listing?.title ?? null,
+      })
+      newMessages += r.newMessages
+      pushes += r.pushes
     } catch (err) {
       console.error('[push-poll]', b.smoobu_reservation_id, err)
     }
