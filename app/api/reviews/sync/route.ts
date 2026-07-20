@@ -63,17 +63,8 @@ export async function GET(req: NextRequest) {
     out.push({ listingId: listing.id, results: await syncListingReviews(listing) })
   }
 
-  // 🎯 Danach Property-Reviews den richtigen Wohnungen zuordnen (§124):
-  // Der Sync stellt Booking-Property-Kopien an allen Geschwister-Listings
-  // wieder her — das Matching (Smoobu-Historie: Gast+Apartment+Abreise)
-  // räumt eindeutige Reviews direkt wieder um. Best effort.
-  let match: unknown = null
-  try {
-    const { matchPropertyReviews } = await import('@/lib/review-match')
-    match = await matchPropertyReviews(false)
-  } catch (err) {
-    console.error('[reviews/sync] review-match:', err)
-  }
-
-  return NextResponse.json({ synced: out.length, details: out, match })
+  // 🎯 Das Property-Review-Matching läuft als EIGENER Cron um 4:25
+  // (/api/reviews/match, §126) — als Anhang hier riss der Lauf das
+  // 300s-Limit und ließ re-importierte Kopien liegen.
+  return NextResponse.json({ synced: out.length, details: out })
 }
