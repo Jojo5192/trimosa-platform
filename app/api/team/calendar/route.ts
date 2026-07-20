@@ -125,11 +125,21 @@ export async function GET() {
       .map((c) => ({ id: c.id, listingId: c.listing_id, dueDate: c.due_date }))
   } catch { /* Tabelle fehlt noch */ }
 
+  // 🔑 Service-PINs (Reinigung/Handwerker, §132) — gefiltert auf die für
+  // diese Person sichtbaren Wohnungen; gerade Dienstleister brauchen sie
+  let servicePins: Record<string, string> = {}
+  try {
+    const { data: pinRow } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'service_pins').maybeSingle()
+    const all = (pinRow?.value as Record<string, string> | null) ?? {}
+    servicePins = Object.fromEntries(Object.entries(all).filter(([lid]) => !visibleIds || visibleIds.has(lid)))
+  } catch { /* fail-soft */ }
+
   return NextResponse.json({
     role: auth.role,
     stays,
     tasks: tasks ?? [],
     qs,
+    servicePins,
     listings: Object.fromEntries(listings
       .filter((l) => !visibleIds || visibleIds.has(l.id))
       .map((l) => [
