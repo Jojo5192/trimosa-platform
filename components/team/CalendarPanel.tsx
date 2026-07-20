@@ -76,6 +76,8 @@ export default function CalendarPanel() {
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'belegung' | 'agenda' | 'reinigung'>('belegung')
   const [cleaning, setCleaning] = useState<CleaningInfo | null>(null)
+  // 🔑 Service-PINs (Reinigung/Handwerker, §132) — API filtert nach Sichtbarkeit
+  const [servicePins, setServicePins] = useState<Record<string, string>>({})
   const [agendaMode, setAgendaMode] = useState<'liste' | 'woche'>('liste')
   const [selDay, setSelDay] = useState<string>(isoOffset(0))
   const viewInitRef = useRef(false)
@@ -96,6 +98,7 @@ export default function CalendarPanel() {
       else {
         setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
         setCleaning(j.cleaning ?? null)
+        setServicePins(j.servicePins ?? {})
         setError(null)
         // Reinigungs-Verantwortliche starten direkt im Planer (einmalig)
         if (!viewInitRef.current) {
@@ -314,6 +317,24 @@ export default function CalendarPanel() {
           ))}
         </div>
       </div>
+
+      {/* 🔑 Service-PINs über dem Kalender (Pascal, §99.5) — Navy-Karte,
+          erscheint nur, wenn im Admin-Bereich PINs gepflegt sind */}
+      {!loading && !error && Object.keys(servicePins).length > 0 && (
+        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: '#12222E' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#E3C878', marginBottom: 8 }}>
+            🔑 Service-PINs (Keypad)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(servicePins).map(([lid, pin]) => (
+              <div key={lid} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: 'rgba(227,200,120,0.12)', border: '1px solid rgba(227,200,120,0.35)' }}>
+                <span style={{ fontSize: 12, color: 'rgba(245,240,232,0.8)', fontWeight: 600 }}>{listings[lid]?.title ?? '—'}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#E3C878', letterSpacing: '0.12em', fontVariantNumeric: 'tabular-nums' }}>{pin}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
