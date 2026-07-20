@@ -90,6 +90,24 @@ export default async function MappePage({ params, searchParams }: {
     }
   }
 
+  // Hat die Mappe (noch) keinen door-Block, wird er bei aktiver Türcode-
+  // Automatik SYNTHETISCH eingefügt — sonst hätte der Code keinen Platz zum
+  // Erscheinen (auch bei komplett leerer Mappe bekommt der Gast so den Code)
+  let blocksAll = blocksDe
+  if ((doorCode || doorNoteDe) && !blocksDe.some((b) => b.type === 'door')) {
+    let idx = -1
+    for (const t of ['steps', 'map', 'times'] as const) {
+      const i = blocksDe.findIndex((b) => b.type === t)
+      if (i >= 0) { idx = i + 1; break }
+    }
+    if (idx < 0) idx = Math.min(1, blocksDe.length)
+    blocksAll = [
+      ...blocksDe.slice(0, idx),
+      { id: 'auto-door', type: 'door' as const, title: 'Schlüssel & Zugang', text: '' },
+      ...blocksDe.slice(idx),
+    ]
+  }
+
   const ctxDe: GuideCtx = {
     listingTitle: String(listing.title ?? ''),
     address: (listing.address as string | null) ?? null,
@@ -110,17 +128,17 @@ export default async function MappePage({ params, searchParams }: {
     hallo: 'Hallo', deinAufenthalt: 'Dein Aufenthalt im', zeitraum: 'Zeitraum',
     untitled: 'Deine Gästemappe', fallback: 'Der Gastgeber hat diese Mappe noch nicht befüllt — bei Fragen melde dich gern direkt.',
   }
-  let blocks = blocksDe
+  let blocks = blocksAll
   let ctx = ctxDe
   let labels: GuideLabels = DE_LABELS
   let ui = UI_DE
   if (lang !== 'de') {
     const tr = await makeTr(lang, [
-      ...collectGuideTexts(blocksDe), ...rules,
+      ...collectGuideTexts(blocksAll), ...rules,
       ...Object.values(DE_LABELS), ...Object.values(UI_DE),
       ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
-    blocks = translateBlocks(blocksDe, tr)
+    blocks = translateBlocks(blocksAll, tr)
     ctx = {
       ...ctxDe, rules: rules.map(tr),
       regionClaim: ctxDe.regionClaim ? tr(ctxDe.regionClaim) : null,
