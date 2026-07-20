@@ -14,7 +14,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
  * Access: team only (is_admin | is_host | is_staff). Guests keep using the
  * classic /api/chat endpoint through their own chat views.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Nicht angemeldet.' }, { status: 401 })
@@ -26,6 +26,63 @@ export async function GET() {
   }
 
   const today = new Date().toISOString().slice(0, 10)
+
+  // ?archiv=1 — „Ältere Chats laden": ALLE vergangenen Buchungen mit
+  // Chat-Verlauf im Smoobu-Archiv, als einmalige Nachladung (kein Polling,
+  // keine Unread-/Preview-Logik — der volle Verlauf kommt beim Öffnen). §129
+  if (new URL(request.url).searchParams.get('archiv') === '1') {
+    const { data: oldRows } = await supabaseAdmin
+      .from('bookings')
+      .select('id, guest_name, check_in, check_out, channel, source, status, smoobu_reservation_id, adults, children, listings(title)')
+      .not('smoobu_reservation_id', 'is', null)
+      .lt('check_out', today)
+      .order('check_in', { ascending: false })
+      .limit(2000)
+    const rows = oldRows ?? []
+    const resIds = [...new Set(rows.map((b) => Number(b.smoobu_reservation_id)).filter(Number.isFinite))]
+    // Neueste Archiv-Nachricht je Reservierung — in ID-Chunks (URL-Länge!)
+    const lastByRes: Record<number, { at: string; sender: 'guest' | 'host' }> = {}
+    for (let i = 0; i < resIds.length; i += 300) {
+      const { data: ms } = await supabaseAdmin
+        .from('smoobu_message_archive')
+        .select('smoobu_reservation_id, sent_at, sender_type')
+        .in('smoobu_reservation_id', resIds.slice(i, i + 300))
+        .order('sent_at', { ascending: false })
+        .limit(5000)
+      for (const m of ms ?? []) {
+        if (!lastByRes[m.smoobu_reservation_id] && m.sent_at) {
+          lastByRes[m.smoobu_reservation_id] = { at: m.sent_at, sender: m.sender_type === 'guest' ? 'guest' : 'host' }
+        }
+      }
+    }
+    const threads = rows
+      .filter((b) => lastByRes[Number(b.smoobu_reservation_id)])
+      .map((b) => {
+        const last = lastByRes[Number(b.smoobu_reservation_id)]
+        return {
+          kind: 'booking' as const,
+          id: b.id,
+          guestName: b.guest_name || 'Gast',
+          guestAvatar: null,
+          listingTitle: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? null,
+          platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
+          checkIn: b.check_in,
+          checkOut: b.check_out,
+          guestStatus: (b.status === 'cancelled' ? 'cancelled' : 'past') as 'past' | 'cancelled',
+          lastMessageAt: last.at,
+          lastPreview: null,
+          lastSender: last.sender,
+          guestLang: null,
+          noReplyNeeded: false,
+          phoneResolved: false,
+          adults: b.adults ?? null,
+          children: b.children ?? null,
+          unread: 0,
+        }
+      })
+      .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
+    return NextResponse.json({ archiv: true, threads })
+  }
 
   const [{ data: conversations }, { data: bookings }] = await Promise.all([
     supabaseAdmin
