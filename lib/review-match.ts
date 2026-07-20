@@ -80,8 +80,10 @@ export async function matchPropertyReviews(dryRun = false): Promise<MatchReport>
   const today = new Date().toISOString().slice(0, 10)
   type Res = { listingId: string; first: string; departure: string }
   const history: Res[] = []
-  for (let page = 1; page <= 150; page++) {
-    const { reservations, hasMore } = await listReservations('2019-01-01', today, page)
+  // pageSize 100: ~16 statt 64+ Smoobu-Requests — der Lauf muss zuverlässig
+  // in den Cron-Zeitrahmen passen (§126: 300s-Riss ließ Kopien liegen)
+  for (let page = 1; page <= 40; page++) {
+    const { reservations, hasMore } = await listReservations('2019-01-01', today, page, 100)
     for (const r of reservations) {
       if (r.cancelled || r.blocked || !r.departure || !r.apartmentId) continue
       const listingId = smoobuToListing.get(Number(r.apartmentId))
