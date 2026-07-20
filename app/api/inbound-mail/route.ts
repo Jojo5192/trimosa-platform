@@ -112,6 +112,12 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     console.error('[inbound-mail] KI-Extraktion fehlgeschlagen:', e)
     return NextResponse.json({ ok: false, error: 'Extraktion fehlgeschlagen' })
   }
+  // STORNO-Mails komplett ignorieren — Stornierungen laufen wie gehabt
+  // über den Smoobu-Webhook (der setzt die Buchung auf cancelled); eine
+  // Storno-Bestätigung darf hier nichts anreichern
+  if (parsed.storniert === true) {
+    return NextResponse.json({ ok: true, skipped: 'Storno-Mail — wird vom Smoobu-Webhook behandelt' })
+  }
   const checkin = String(parsed.checkin ?? '')
   const checkout = String(parsed.checkout ?? '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkin) || !/^\d{4}-\d{2}-\d{2}$/.test(checkout)) {
@@ -133,11 +139,12 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     .eq('check_in', checkin).eq('check_out', checkout).neq('status', 'cancelled')
   if (listing) q = q.eq('listing_id', listing.id)
   const { data: cands } = await q.limit(5)
-  let booking = (cands ?? [])[0] ?? null
-  if ((cands ?? []).length > 1) {
+  const candList = cands ?? []
+  let booking: (typeof candList)[number] | null = candList[0] ?? null
+  if (candList.length > 1) {
     // mehrere Buchungen im Zeitraum → über den Vornamen des Buchenden eingrenzen
     const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
-    booking = (cands ?? []).find((b) => (b.guest_name ?? '').toLowerCase().startsWith(first)) ?? null
+    booking = candList.find((b) => (b.guest_name ?? '').toLowerCase().startsWith(first)) ?? null
   }
   if (!booking) {
     console.log('[inbound-mail] keine passende Buchung:', { checkin, checkout, objektNr, kandidaten: (cands ?? []).length })
