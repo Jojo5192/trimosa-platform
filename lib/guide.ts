@@ -36,6 +36,10 @@ export interface GuideCtx {
   regionName: string | null
   regionSlug: string | null
   regionClaim: string | null
+  /** Türcode-Automatik (§132): gesetzter Code, sobald das Anzeige-Fenster
+   *  erreicht ist — sonst doorNote („erscheint X Tage vor Anreise"). */
+  doorCode?: string | null
+  doorNote?: string | null
 }
 
 /** Anzeige-Labels der Mappe — HIER (server-safe) statt in der Client-Datei:
@@ -45,7 +49,7 @@ export interface GuideLabels {
   wifi: string; network: string; password: string; copy: string; copied: string
   checkInFrom: string; checkOutUntil: string; addressTitle: string; route: string
   rulesTitle: string; regionTitle: string; regionCta: string; contactTitle: string
-  emptyBlock: string
+  emptyBlock: string; doorCodeLabel: string
 }
 
 export const DE_LABELS: GuideLabels = {
@@ -55,6 +59,7 @@ export const DE_LABELS: GuideLabels = {
   rulesTitle: 'Hausregeln', regionTitle: 'Region entdecken',
   regionCta: 'Zum Reiseführer', contactTitle: 'Dein Gastgeber-Team',
   emptyBlock: 'Noch nicht ausgefüllt — erscheint erst mit Inhalt.',
+  doorCodeLabel: 'Dein Türcode',
 }
 
 export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: string; hint: string; smart?: boolean }> = {
@@ -64,7 +69,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   warning: { icon: '⚠️', label: 'Hinweis-Box', hint: 'Hervorgehobener wichtiger Hinweis' },
   steps: { icon: '1.', label: 'Schritt-für-Schritt', hint: 'Nummerierte Anleitung (z. B. Check-in)' },
   wifi: { icon: '📶', label: 'WLAN', hint: 'Netzwerkname + Passwort mit Kopier-Knopf' },
-  door: { icon: '🔑', label: 'Schlüssel & Zugang', hint: 'Zugangs-Infos (später: automatischer Türcode)' },
+  door: { icon: '🔑', label: 'Schlüssel & Zugang', hint: 'Zugangs-Infos — zeigt automatisch den Türcode der Buchung, sobald der Wohnung Schlösser zugeordnet sind (Admin → 🔑 Türcodes)' },
   contact: { icon: '📞', label: 'Kontakt', hint: 'Telefonnummer + Hinweis, wann erreichbar' },
   map: { icon: '📍', label: 'Adresse & Anfahrt', hint: 'Aus dem Inserat: Adresse + Google-Maps-Route', smart: true },
   times: { icon: '🕓', label: 'Check-in/-out-Zeiten', hint: 'Aus dem Inserat: An- und Abreisezeit', smart: true },
@@ -128,7 +133,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'info': return (b.title.trim() + b.text.trim()).length > 0
     case 'steps': return b.steps.some((s) => s.trim().length > 0)
     case 'wifi': return b.ssid.trim().length > 0
-    case 'door': return b.text.trim().length > 0
+    case 'door': return b.text.trim().length > 0 || !!ctx.doorCode || !!ctx.doorNote
     case 'contact': return b.phone.trim().length > 0 || b.note.trim().length > 0
     case 'map': return !!ctx.address
     case 'times': return !!(ctx.checkIn || ctx.checkOut)
