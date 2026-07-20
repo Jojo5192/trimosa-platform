@@ -78,16 +78,29 @@ export async function POST(req: NextRequest) {
   // Resend-Webhooks enthalten NUR Metadaten — der Mail-Body wird über die
   // Received-Emails-API nachgeladen (GET /emails/receiving/:email_id)
   let rawText = String(data.text ?? '') || stripHtml(String(data.html ?? ''))
+  // Gast-RELAY-Adresse (FeWo/Vrbo-Mail-Bridge, §128): Bei „Umleiten"-Regeln
+  // bleiben die Original-Header erhalten — Reply-To trägt die buchungs-
+  // spezifische Adresse, über die Smoobu den Gast anschreiben kann
+  let relayEmail = ''
   const emailId = String(data.email_id ?? '')
-  if (rawText.trim().length < 80 && emailId && process.env.RESEND_API_KEY) {
+  if (emailId && process.env.RESEND_API_KEY) {
     try {
       const r = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
       })
       if (r.ok) {
         const full = await r.json() as Record<string, unknown>
-        rawText = String(full.text ?? '') || stripHtml(String(full.html ?? ''))
-        if (!rawText.trim()) console.error('[inbound-mail] Body-Nachladen leer — Keys:', Object.keys(full))
+        if (rawText.trim().length < 80) {
+          rawText = String(full.text ?? '') || stripHtml(String(full.html ?? ''))
+          if (!rawText.trim()) console.error('[inbound-mail] Body-Nachladen leer — Keys:', Object.keys(full))
+        }
+        // Reply-To aus allen plausiblen Feldern einsammeln (Schema defensiv)
+        const headers = (full.headers ?? {}) as Record<string, unknown>
+        const replyRaw = [full.reply_to, full.replyTo, headers['reply-to'], headers['Reply-To'], full.from, data.from]
+          .flat().filter(Boolean).map(String).join(' ')
+        const m = replyRaw.match(/[\w.+-]+@messages\.homeaway\.com/i)
+        if (m && !/^(sender|no-?reply)@/i.test(m[0])) relayEmail = m[0]
+        console.log('[inbound-mail] reply-to-ernte:', { replyRaw: replyRaw.slice(0, 160), relayEmail: relayEmail || '—' })
       } else {
         console.error('[inbound-mail] Body-Nachladen HTTP', r.status)
       }
@@ -137,9 +150,37 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   if (parsed.storniert === true) {
     return NextResponse.json({ ok: true, skipped: 'Storno-Mail — wird vom Smoobu-Webhook behandelt' })
   }
+  // Die Relay-Adresse aus dem Reply-To ist die Adresse, über die der Gast
+  // tatsächlich erreichbar ist — sie schlägt eine evtl. im Text gefundene
+  if (relayEmail) parsed.email = relayEmail
+
   const checkin = String(parsed.checkin ?? '')
   const checkout = String(parsed.checkout ?? '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkin) || !/^\d{4}-\d{2}-\d{2}$/.test(checkout)) {
+    // Gast-NACHRICHT statt Buchungsbestätigung: kein Zeitraum in der Mail,
+    // aber ggf. eine Relay-Adresse im Reply-To → Buchung über den Gastnamen
+    // zuordnen (nur bei EINDEUTIGEM Treffer unter laufenden/kommenden Buchungen)
+    if (relayEmail) {
+      const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
+      if (first) {
+        const today = new Date().toISOString().slice(0, 10)
+        const { data: open } = await supabaseAdmin
+          .from('bookings')
+          .select('id, guest_name, guest_email, smoobu_reservation_id')
+          .gte('check_out', today).neq('status', 'cancelled').limit(200)
+        const hits = (open ?? []).filter((b) => (b.guest_name ?? '').toLowerCase().startsWith(first))
+        if (hits.length === 1) {
+          const b = hits[0]
+          if (!b.guest_email) await supabaseAdmin.from('bookings').update({ guest_email: relayEmail }).eq('id', b.id)
+          const sm = b.smoobu_reservation_id
+            ? await updateReservation(Number(b.smoobu_reservation_id), { email: relayEmail })
+            : 'keine smoobu_reservation_id'
+          console.log('[inbound-mail] Relay-Adresse aus Gastnachricht:', { booking: b.id, relayEmail, smoobu: sm ?? 'ok' })
+          return NextResponse.json({ ok: true, bookingId: b.id, relay: relayEmail, smoobu: sm ?? 'ok' })
+        }
+        console.log('[inbound-mail] Relay ohne eindeutige Buchung:', { first, treffer: hits.length, relayEmail })
+      }
+    }
     return NextResponse.json({ ok: true, skipped: 'kein Zeitraum erkannt', parsed })
   }
 
