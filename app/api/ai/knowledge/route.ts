@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page, key, content, instruction } = await request.json()
+  const { action, page, key, content, instruction, historic } = await request.json()
 
   // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
   // { action: 'review-match', dryRun?: true }
@@ -174,13 +174,30 @@ export async function POST(request: Request) {
       .from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null)
     const existing = new Set((existingRows ?? []).map((b) => Number(b.smoobu_reservation_id)))
 
-    const from = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 10)
-    const to = new Date(Date.now() + 540 * 86400_000).toISOString().slice(0, 10)
+    // historic: alle ALTEN Reservierungen (2019 → Standardfenster-Beginn),
+    // aber NUR solche mit Chat-Verlauf im Smoobu-Archiv — alte Buchungen ohne
+    // je eine Nachricht braucht niemand als Inbox-Thread (§129)
+    const withChat = new Set<number>()
+    if (historic === true) {
+      for (let off = 0; off < 20000; off += 1000) {
+        const { data: rows } = await supabaseAdmin
+          .from('smoobu_message_archive').select('smoobu_reservation_id').range(off, off + 999)
+        for (const row of rows ?? []) withChat.add(Number(row.smoobu_reservation_id))
+        if (!rows || rows.length < 1000) break
+      }
+    }
+    const from = historic === true
+      ? '2019-01-01'
+      : new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 10)
+    const to = historic === true
+      ? new Date(Date.now() - 59 * 86400_000).toISOString().slice(0, 10)
+      : new Date(Date.now() + 540 * 86400_000).toISOString().slice(0, 10)
     let imported = 0, skipped = 0, failed = 0
     for (let p = 1; p <= 40; p++) {
-      const { reservations, hasMore } = await listReservations(from, to, p)
+      const { reservations, hasMore } = await listReservations(from, to, p, 100)
       for (const r of reservations) {
         if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id)) { skipped++; continue }
+        if (historic === true && !withChat.has(r.id)) { skipped++; continue }
         const { error } = await supabaseAdmin.from('bookings').insert({
           smoobu_reservation_id: r.id,
           listing_id: r.apartmentId != null ? bySmoobuId.get(r.apartmentId) ?? null : null,
