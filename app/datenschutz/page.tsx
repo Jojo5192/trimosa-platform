@@ -100,6 +100,14 @@ export default function DatenschutzPage() {
           angeboten wird – zur Vermeidung von Doppelbuchungen mit diesen Kanälen abgeglichen.
           Rechtsgrundlage ist die Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO).
         </LegalP>
+        <LegalP>
+          Für den Zugang zur Unterkunft setzen wir elektronische Türschlösser der Nuki Home
+          Solutions GmbH (Graz, Österreich) ein. Zur Bereitstellung eines persönlichen
+          Zugangscodes für den Aufenthaltszeitraum übermitteln wir an Nuki ausschließlich den
+          Gültigkeitszeitraum des Codes und eine interne Buchungskennung – keinen Namen und
+          keine Kontaktdaten des Gastes. Rechtsgrundlage ist die Vertragserfüllung
+          (Art. 6 Abs. 1 lit. b DSGVO).
+        </LegalP>
       </LegalSection>
 
       <LegalSection heading="7. Zahlungsabwicklung (Stripe)">
