@@ -43,6 +43,29 @@ function verifySvix(req: NextRequest, payload: string): boolean {
   })
 }
 
+/** Gast-Nachricht aus einer Portal-Mail in den Chat-Thread der Buchung
+ *  einsortieren (Dedupe über identischen Inhalt — dieselbe Nachricht kann
+ *  auch über den Smoobu-Sync ankommen) + Team-Push. §129 */
+async function saveGuestMessage(bookingId: string, guestName: string | null, text: string): Promise<boolean> {
+  const { data: dupe } = await supabaseAdmin
+    .from('messages').select('id')
+    .eq('booking_id', bookingId).eq('sender_type', 'guest').eq('content', text).limit(1)
+  if (dupe?.length) return false
+  const { error } = await supabaseAdmin.from('messages')
+    .insert({ booking_id: bookingId, sender_type: 'guest', content: text })
+  if (error) { console.error('[inbound-mail] Nachricht-Insert:', error.message); return false }
+  try {
+    const { sendPushToTeam } = await import('@/lib/push')
+    await sendPushToTeam(
+      `💬 ${guestName ?? 'Gast'} · FeWo-Mail`,
+      text.replace(/\s+/g, ' ').slice(0, 120),
+      '/team?conv=' + bookingId,
+      { guestChat: true },
+    )
+  } catch { /* Push best effort */ }
+  return true
+}
+
 const stripHtml = (html: string) =>
   html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -129,6 +152,7 @@ Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Markdown):
   "kinder": <Zahl|null>,
   "telefon": "<mit Ländervorwahl, null>",
   "email": "<null wenn nicht da>",
+  "nachricht": "<NUR wenn die Mail eine persönliche NACHRICHT oder Anfrage des GASTS enthält: deren reiner Text ohne Fußzeilen/Buttons/Systemtext, sonst null>",
   "buchungsbetrag": <Zahl in Euro — der Betrag OHNE Gäste-Servicegebühr, den der Vermieter ansetzt ("Buchungsbetrag"), null>,
   "auszahlung": <geschätzte Auszahlung an den Vermieter, null>,
   "storniert": <true wenn die Mail eine STORNIERUNG bestätigt, sonst false>
@@ -158,9 +182,11 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   const checkout = String(parsed.checkout ?? '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkin) || !/^\d{4}-\d{2}-\d{2}$/.test(checkout)) {
     // Gast-NACHRICHT statt Buchungsbestätigung: kein Zeitraum in der Mail,
-    // aber ggf. eine Relay-Adresse im Reply-To → Buchung über den Gastnamen
-    // zuordnen (nur bei EINDEUTIGEM Treffer unter laufenden/kommenden Buchungen)
-    if (relayEmail) {
+    // aber ggf. eine Relay-Adresse im Reply-To und/oder ein Nachrichtentext →
+    // Buchung über den Gastnamen zuordnen (nur bei EINDEUTIGEM Treffer unter
+    // laufenden/kommenden Buchungen), Relay nach Smoobu, Text in den Chat (§129)
+    const msgText = typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
+    if (relayEmail || msgText.length >= 3) {
       const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
       if (first) {
         const today = new Date().toISOString().slice(0, 10)
@@ -171,14 +197,17 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
         const hits = (open ?? []).filter((b) => (b.guest_name ?? '').toLowerCase().startsWith(first))
         if (hits.length === 1) {
           const b = hits[0]
-          if (!b.guest_email) await supabaseAdmin.from('bookings').update({ guest_email: relayEmail }).eq('id', b.id)
-          const sm = b.smoobu_reservation_id
-            ? await updateReservation(Number(b.smoobu_reservation_id), { email: relayEmail })
-            : 'keine smoobu_reservation_id'
-          console.log('[inbound-mail] Relay-Adresse aus Gastnachricht:', { booking: b.id, relayEmail, smoobu: sm ?? 'ok' })
-          return NextResponse.json({ ok: true, bookingId: b.id, relay: relayEmail, smoobu: sm ?? 'ok' })
+          if (relayEmail && !b.guest_email) await supabaseAdmin.from('bookings').update({ guest_email: relayEmail }).eq('id', b.id)
+          const sm = relayEmail
+            ? b.smoobu_reservation_id
+              ? await updateReservation(Number(b.smoobu_reservation_id), { email: relayEmail })
+              : 'keine smoobu_reservation_id'
+            : 'keine relay-adresse'
+          const saved = msgText.length >= 3 ? await saveGuestMessage(b.id, b.guest_name, msgText) : false
+          console.log('[inbound-mail] Gastnachricht/Relay:', { booking: b.id, relayEmail: relayEmail || '—', nachricht: saved, smoobu: sm ?? 'ok' })
+          return NextResponse.json({ ok: true, bookingId: b.id, relay: relayEmail || null, nachricht: saved, smoobu: sm ?? 'ok' })
         }
-        console.log('[inbound-mail] Relay ohne eindeutige Buchung:', { first, treffer: hits.length, relayEmail })
+        console.log('[inbound-mail] Gastnachricht/Relay ohne eindeutige Buchung:', { first, treffer: hits.length, relayEmail })
       }
     }
     return NextResponse.json({ ok: true, skipped: 'kein Zeitraum erkannt', parsed })
@@ -236,9 +265,13 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
       : 'nichts zu übertragen'
   }
 
+  // Persönliche Gast-Nachricht (z. B. Anfrage-Mails MIT Zeitraum) → Chat-Thread
+  const mainMsg = typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
+  const savedMsg = mainMsg.length >= 3 ? await saveGuestMessage(booking.id, booking.guest_name, mainMsg) : false
+
   console.log('[inbound-mail] verarbeitet:', {
     booking: booking.id, felder: Object.keys(upd), smoobu: smoobu ?? 'ok',
-    portal: parsed.portal, preis,
+    portal: parsed.portal, preis, nachricht: savedMsg,
   })
-  return NextResponse.json({ ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), smoobu: smoobu ?? 'ok' })
+  return NextResponse.json({ ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok' })
 }
