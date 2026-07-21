@@ -154,15 +154,13 @@ export async function sendGuestChatEmail(opts: {
   lang?: string | null
 }) {
   const lang: UiLang = isUiLang(opts.lang ?? '') ? (opts.lang as UiLang) : 'de'
-  const L = [
+  const T = await makeTr(lang, lang === 'de' ? [] : [
     'Neue Nachricht von deinen Gastgebern',
     'Hallo {name},',
     'du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:',
     'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
     'Unterkunft',
-  ]
-  const tr = lang === 'de' ? null : await makeTr(lang, L).catch(() => null)
-  const T = (s: string) => tr?.get(s) ?? s
+  ])
   const firstName = (opts.guestName ?? '').trim().split(/\s+/)[0] || 'Gast'
   const safeText = opts.text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
