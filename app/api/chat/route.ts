@@ -348,16 +348,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Forward to Smoobu if host is sending and booking has smoobu_reservation_id
+  type ConvForSend = { host_id: string | null; guest_id: string | null; guest_name: string | null; listing_title: string | null }
   let smoobuDelivered = false
   let teamSender = false
-  let convForSend: { host_id: string | null; guest_id: string | null; guest_name: string | null; listing_title: string | null } | null = null
+  let convForSend: ConvForSend | null = null
   try {
     const { data: conv } = await supabaseAdmin
       .from('conversations')
       .select('host_id, guest_id, guest_name, listing_title, bookings(smoobu_reservation_id)')
       .eq('id', convId)
       .maybeSingle()
-    convForSend = conv as unknown as typeof convForSend
+    // NICHT `typeof convForSend`: TS nähme dort den GENARROWTEN Typ (null)
+    // und machte die Variable dauerhaft null → never nach dem Guard (§140)
+    convForSend = conv as unknown as ConvForSend | null
 
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
     // TEAM-Absender (nicht nur der Listing-Host): die Unified Inbox lässt
