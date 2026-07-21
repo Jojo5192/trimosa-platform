@@ -69,7 +69,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Zugewiesenen informieren (falls jemand anderes kommentiert)
   const assignee = access.task.assignee_id as string | null
   if (assignee && assignee !== access.auth.userId) {
-    sendPushToUser(assignee, `💬 Kommentar zu: ${access.task.title}`, content, '/team?tab=aufgaben')
+    // await Pflicht (§135): fire-and-forget stirbt nach dem Response-Return
+    await sendPushToUser(assignee, `💬 Kommentar zu: ${access.task.title}`, content, '/team?tab=aufgaben')
       .catch((e) => console.error('[tasks] comment push:', e))
   }
 
