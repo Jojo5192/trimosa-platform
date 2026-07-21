@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Neu-/Umzuweisung → Push an den Empfänger
   const newAssignee = upd.assignee_id as string | null | undefined
   if (typeof newAssignee === 'string' && newAssignee && newAssignee !== task.assignee_id && newAssignee !== auth.userId) {
-    sendPushToUser(newAssignee, '✅ Neue Aufgabe für dich', saved.title, '/team?tab=aufgaben')
+    await sendPushToUser(newAssignee, '✅ Neue Aufgabe für dich', saved.title, '/team?tab=aufgaben')
       .catch((e) => console.error('[tasks] assign push:', e))
   }
 
