@@ -61,7 +61,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
 /* ── Badges (platform + guest status), team inbox only ── */
 const PLATFORM_COLORS: Record<string, string> = {
   TRIMOSA: '#A8862F', Airbnb: '#FF5A5F', 'Booking.com': '#003580', Booking: '#003580',
-  'FeWo-direkt': '#245ABC', Vrbo: '#245ABC', Smoobu: '#5A6B7B',
+  'FeWo-direkt': '#245ABC', Vrbo: '#245ABC', Smoobu: '#5A6B7B', Direktbuchung: '#A8862F',
 }
 function statusInfo(c: Conversation): { dot: string; label: string } | null {
   if (!c.guestStatus) return null
@@ -77,6 +77,9 @@ function statusInfo(c: Conversation): { dot: string; label: string } | null {
 // normalisiert auch auf die Farb-Schlüssel in PLATFORM_COLORS
 function shortPlatform(p: string): string {
   if (/fewo|homeaway|vrbo|abritel/i.test(p)) return 'FeWo-direkt'
+  // VOR dem booking-Match: Smoobus Direktkanal heißt „Direct booking" —
+  // der Substring „booking" machte daraus fälschlich ein Booking.com-Badge
+  if (/direct|direkt/i.test(p)) return 'Direktbuchung'
   if (/booking/i.test(p)) return 'Booking.com'
   if (/airbnb/i.test(p)) return 'Airbnb'
   if (/hometogo/i.test(p)) return 'HomeToGo'
@@ -235,8 +238,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setConvs(cs => cs.map(c => c.id === active.id ? { ...c, [key]: value } : c))
     setActive(a => (a ? { ...a, [key]: value } : a))
     // Booking.com wertet die Antwortquote separat — dort muss der Haken
-    // weiterhin in der Booking-App gesetzt werden (Smoobu reicht ihn nicht durch)
-    if (value && /booking/i.test(active.platform ?? '')) {
+    // weiterhin in der Booking-App gesetzt werden (Smoobu reicht ihn nicht
+    // durch). shortPlatform statt Substring: „Direct booking" ist KEIN Booking.com!
+    if (value && shortPlatform(active.platform ?? '') === 'Booking.com') {
       setBookingHintFor(active.id)
       setTimeout(() => setBookingHintFor((cur) => (cur === active.id ? null : cur)), 8000)
     } else {
