@@ -90,20 +90,23 @@ async function handleWebsiteGuestReply(fromRaw: string, rawText: string): Promis
     }
   } catch { /* fail-soft — guest_email-Match unten bleibt */ }
 
-  // Passende Buchung: laufend/kommend bevorzugt, sonst jüngste (Abreise ≤30 Tage her)
+  // Passende Buchung: aktive laufend/kommend bevorzugt, sonst jüngste (Abreise
+  // ≤30 Tage her). Stornierte Buchungen sind LETZTER Fallback — Gäste schreiben
+  // auch nach einem Storno (Erstattungsfragen), die Mail soll nicht verschwinden.
   const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10)
-  const baseSelect = 'id, guest_id, guest_name, check_in, check_out, conversations(id, guest_id)'
+  const baseSelect = 'id, guest_id, guest_name, status, check_in, check_out, conversations(id, guest_id)'
   const [byId, byEmail] = await Promise.all([
     guestId
-      ? supabaseAdmin.from('bookings').select(baseSelect).neq('status', 'cancelled').gte('check_out', since).eq('guest_id', guestId).order('check_in', { ascending: true }).limit(10)
+      ? supabaseAdmin.from('bookings').select(baseSelect).gte('check_out', since).eq('guest_id', guestId).order('check_in', { ascending: true }).limit(10)
       : Promise.resolve({ data: [] as never[] }),
-    supabaseAdmin.from('bookings').select(baseSelect).neq('status', 'cancelled').gte('check_out', since).eq('guest_email', email).order('check_in', { ascending: true }).limit(10),
+    supabaseAdmin.from('bookings').select(baseSelect).gte('check_out', since).eq('guest_email', email).order('check_in', { ascending: true }).limit(10),
   ])
-  type BRow = { id: string; guest_id: string | null; guest_name: string | null; check_in: string; check_out: string; conversations: unknown }
+  type BRow = { id: string; guest_id: string | null; guest_name: string | null; status: string; check_in: string; check_out: string; conversations: unknown }
   const seen = new Set<string>()
   const cands = ([...(byId.data ?? []), ...(byEmail.data ?? [])] as BRow[]).filter((b) => !seen.has(b.id) && seen.add(b.id))
   const today = new Date().toISOString().slice(0, 10)
-  const booking = cands.find((b) => b.check_out >= today) ?? cands[cands.length - 1] ?? null
+  const pick = (list: BRow[]) => list.find((b) => b.check_out >= today) ?? list[list.length - 1] ?? null
+  const booking = pick(cands.filter((b) => b.status !== 'cancelled')) ?? pick(cands)
   if (!booking) {
     console.log('[inbound-mail] Gast-Mail ohne zuordenbare Buchung:', email)
     return NextResponse.json({ ok: true, skipped: 'Absender keiner Buchung zuordenbar' })
