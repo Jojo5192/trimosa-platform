@@ -119,19 +119,22 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
     .select('id, status, payment_status, check_in, check_out, door_code, listing_id, listings(locks)')
     .eq('id', bookingId)
     .maybeSingle()
-  if (!b) return null
+  // Stille Ausstiege LOGGEN — ein Gast ohne Code vor der Tür ist zu teuer
+  // für eine stumme Diagnose (§41-Lektion)
+  const skip = (reason: string) => { console.log('[locks] skip:', reason, bookingId.slice(0, 8)); return null }
+  if (!b) return skip('buchung fehlt')
   if (b.door_code) return b.door_code
-  if (b.status !== 'confirmed') return null
-  if (b.payment_status && b.payment_status !== 'paid') return null
-  if (!b.check_in || !b.check_out) return null
+  if (b.status !== 'confirmed') return skip(`status=${b.status}`)
+  if (b.payment_status && b.payment_status !== 'paid') return skip(`payment=${b.payment_status}`)
+  if (!b.check_in || !b.check_out) return skip('kein zeitraum')
 
   const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { locks?: LockRef[] } | null
   const nukiIds = ((listing?.locks ?? []) as LockRef[])
     .filter((l) => l.provider === 'nuki')
     .map((l) => Number(l.id))
     .filter(Number.isFinite)
-  if (!nukiIds.length) return null
-  if (!nukiConfigured()) return null
+  if (!nukiIds.length) return skip('keine nuki-schlösser')
+  if (!nukiConfigured()) return skip('kein NUKI_API_TOKEN')
 
   const code = generateDoorCode()
   const from = new Date(new Date(b.check_in + 'T20:00:00.000Z').getTime() - 86400_000).toISOString()
