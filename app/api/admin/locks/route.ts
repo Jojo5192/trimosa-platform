@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { listNukiLocks, nukiConfigured, getRevealDays, type LockRef } from '@/lib/locks'
+import { listNukiLocks, nukiConfigured, getLockSettings, type LockRef } from '@/lib/locks'
 
 /**
  * 🔑 Admin: Türschloss-Zuordnung je Wohnung + Service-PINs + Einstellungen.
@@ -24,10 +24,10 @@ async function requireAdmin() {
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const [{ data: listings, error: lErr }, { data: pinRow }, revealDays] = await Promise.all([
+  const [{ data: listings, error: lErr }, { data: pinRow }, settings] = await Promise.all([
     supabaseAdmin.from('listings').select('id, title, locks').eq('is_active', true).order('title'),
     supabaseAdmin.from('app_settings').select('value').eq('key', 'service_pins').maybeSingle(),
-    getRevealDays(),
+    getLockSettings(),
   ])
   if (lErr) {
     return NextResponse.json({ error: 'Migration 20260720_door_codes.sql fehlt noch (listings.locks).' }, { status: 500 })
@@ -46,7 +46,9 @@ export async function GET() {
     nuki,
     nukiError,
     servicePins: (pinRow?.value as Record<string, string> | null) ?? {},
-    revealDays,
+    revealDays: settings.revealDays,
+    validFromHour: settings.validFromHour,
+    validUntilHour: settings.validUntilHour,
   })
 }
 
@@ -88,13 +90,22 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
 
   if (body.settings) {
-    const rd = Number(body.settings.revealDays)
-    if (!Number.isFinite(rd) || rd < 0 || rd > 30) return NextResponse.json({ error: 'revealDays 0–30.' }, { status: 400 })
+    // Bestehende Werte laden und nur die mitgeschickten Felder ändern
+    const cur = await getLockSettings()
+    const num = (v: unknown, min: number, max: number, fallback: number) => {
+      const n = Number(v)
+      return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : fallback
+    }
+    const next = {
+      revealDays: 'revealDays' in body.settings ? num(body.settings.revealDays, 0, 30, cur.revealDays) : cur.revealDays,
+      validFromHour: 'validFromHour' in body.settings ? num(body.settings.validFromHour, 0, 23, cur.validFromHour) : cur.validFromHour,
+      validUntilHour: 'validUntilHour' in body.settings ? num(body.settings.validUntilHour, 1, 24, cur.validUntilHour) : cur.validUntilHour,
+    }
     const { error } = await supabaseAdmin.from('app_settings').upsert(
-      { key: 'lock_settings', value: { revealDays: Math.round(rd) } }, { onConflict: 'key' },
+      { key: 'lock_settings', value: next }, { onConflict: 'key' },
     )
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, settings: next })
   }
 
   const listingId = String(body.listingId ?? '')
