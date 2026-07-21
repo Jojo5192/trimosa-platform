@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   // 🛟 Buchungs-Sicherheitsnetz (§137, 2×/Std.): fängt Reservierungen ab,
   // die der Smoobu-Webhook verpasst hat (Ausfall 21.7. — 10 fehlende
   // Buchungen inkl. Same-Day-Anreise), inkl. nachgeholtem Buchungs-Push
-  let bookingImport: { imported: number; skipped: number; failed: number } | null = null
+  let bookingImport: { imported: number; skipped: number; failed: number; cancelled: number } | null = null
   if (wide) {
     try {
       const { importMissingReservations } = await import('@/lib/booking-import')
