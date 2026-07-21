@@ -244,11 +244,29 @@ export async function POST(request: Request) {
     .eq('smoobu_reservation_id', reservationId)
     .maybeSingle()
 
-  // Upsert the external booking
-  const { data: upserted, error } = await supabaseAdmin
-    .from('bookings')
-    .upsert(
-      {
+  // Select-then-insert/update statt upsert: bookings hat KEINEN
+  // Unique-Constraint auf smoobu_reservation_id — der alte onConflict-
+  // Upsert scheiterte deshalb IMMER mit 42P10 (§138, zweiter Sargnagel
+  // des seit jeher toten Buchungszweigs).
+  if (known?.id) {
+    // Update-Event: Zeitraum/Preis/Status aktualisieren, aber angereicherte
+    // Felder (Mail-Pipeline §127!) nie mit Leerwerten überschreiben
+    const upd: Record<string, unknown> = {
+      check_in: checkIn,
+      check_out: checkOut,
+      status: 'confirmed',
+      channel: channel,
+    }
+    if (totalPrice > 0) upd.total_price = totalPrice
+    if (guestName && guestName !== 'Externer Gast') upd.guest_name = guestName
+    if (guestEmail) upd.guest_email = guestEmail
+    const { error } = await supabaseAdmin.from('bookings').update(upd).eq('id', known.id)
+    if (error) console.error('[Smoobu Webhook] Update error:', error)
+    else console.log(`[Smoobu Webhook] Updated reservation ${reservationId} for listing ${listing.id}`)
+  } else {
+    const { data: inserted, error } = await supabaseAdmin
+      .from('bookings')
+      .insert({
         listing_id: listing.id,
         guest_id: null,                         // No TRIMOSA account for external guests
         smoobu_reservation_id: reservationId,
@@ -260,22 +278,19 @@ export async function POST(request: Request) {
         guest_name: guestName,
         guest_email: guestEmail,
         source: 'smoobu_webhook',
-      },
-      { onConflict: 'smoobu_reservation_id', ignoreDuplicates: false },
-    )
-    .select('id')
-    .maybeSingle()
+      })
+      .select('id')
+      .single()
 
-  if (error) {
-    console.error('[Smoobu Webhook] Upsert error:', error)
-    // Still return 200 to prevent Smoobu from retrying indefinitely
-  } else {
-    console.log(`[Smoobu Webhook] Upserted reservation ${reservationId} for listing ${listing.id}`)
-    // NEUE externe Buchung (Airbnb/Booking/…) → rollenabhängiger Team-Push.
-    // AWAIT ist Pflicht (§135): Nach dem Response-Return friert Vercel die
-    // Function ein — fire-and-forget-Promises sterben, der Push kam nie an.
-    if (!known && upserted?.id) {
-      await sendNewBookingPush(upserted.id).catch((err) =>
+    if (error || !inserted) {
+      console.error('[Smoobu Webhook] Insert error:', error)
+      // Still return 200 to prevent Smoobu from retrying indefinitely
+    } else {
+      console.log(`[Smoobu Webhook] Inserted reservation ${reservationId} for listing ${listing.id}`)
+      // NEUE externe Buchung (Airbnb/Booking/…) → rollenabhängiger Team-Push.
+      // AWAIT ist Pflicht (§135): Nach dem Response-Return friert Vercel die
+      // Function ein — fire-and-forget-Promises sterben, der Push kam nie an.
+      await sendNewBookingPush(inserted.id).catch((err) =>
         console.error('[Smoobu Webhook] booking push failed (non-fatal):', err))
     }
   }
