@@ -171,12 +171,20 @@ export async function POST(request: Request) {
   }
 
   // ── Handle reservation events ─────────────────────────────────
-  const reservationId = payload.id ?? payload.reservationId
-  const apartment = payload.apartment as Record<string, unknown> | undefined
-  const smoobuApartmentId = apartment?.id ?? payload.apartmentId
+  // Smoobu verpackt die Reservierung in einem data-Umschlag:
+  // { action: 'newReservation'|'updateReservation'|'cancelReservation'|…,
+  //   user: N, data: { id, apartment: {id,name}, arrival, departure,
+  //   'guest-name', channel: {name}, price, type, … } }
+  // Der alte Handler las die Felder von der OBERSTEN Ebene → „Missing
+  // reservationId" bei JEDEM Event — der Reservierungs-Zweig war seit je
+  // tot (§138-Diagnose am Live-Storno-Event). Top-Level bleibt Fallback.
+  const resData = (payload.data ?? payload) as Record<string, unknown>
+  const reservationId = resData.id ?? payload.id ?? payload.reservationId
+  const apartment = (resData.apartment ?? payload.apartment) as Record<string, unknown> | undefined
+  const smoobuApartmentId = apartment?.id ?? resData.apartmentId ?? payload.apartmentId
 
   if (!reservationId || !smoobuApartmentId) {
-    console.warn('[Smoobu Webhook] Missing reservationId or apartmentId')
+    console.warn('[Smoobu Webhook] Missing reservationId or apartmentId — Payload-Keys:', Object.keys(payload), 'data-Keys:', Object.keys((payload.data as object) ?? {}))
     return new Response('OK', { status: 200 }) // Return 200 so Smoobu doesn't retry
   }
 
@@ -192,14 +200,21 @@ export async function POST(request: Request) {
     return new Response('OK', { status: 200 })
   }
 
-  const checkIn = (payload.arrivalDate ?? payload.arrival_date) as string
-  const checkOut = (payload.departureDate ?? payload.departure_date) as string
-  const channel = (payload.channel as Record<string, unknown>)?.name ?? 'Smoobu'
-  const guestName = [payload.firstName, payload.lastName].filter(Boolean).join(' ') || 'Externer Gast'
-  const guestEmail = (payload.email as string) ?? ''
-  const totalPrice = Number(payload.price ?? payload.totalPrice ?? 0)
+  const checkIn = (resData.arrival ?? payload.arrivalDate ?? payload.arrival_date) as string
+  const checkOut = (resData.departure ?? payload.departureDate ?? payload.departure_date) as string
+  const channel = ((resData.channel ?? payload.channel) as Record<string, unknown>)?.name ?? 'Smoobu'
+  const guestName = (typeof resData['guest-name'] === 'string' && resData['guest-name'])
+    || [resData.firstname ?? payload.firstName, resData.lastname ?? payload.lastName].filter(Boolean).join(' ')
+    || 'Externer Gast'
+  const guestEmail = (resData.email ?? payload.email ?? '') as string
+  const totalPrice = Number(resData.price ?? payload.price ?? payload.totalPrice ?? 0)
 
-  if (action === 'cancelled' || payload.status === 'cancelled') {
+  // Storno: Smoobu-Action 'cancelReservation'/'deleteReservation' bzw.
+  // type-Feld mit „cancel" (gleiche Semantik wie listReservations)
+  const isCancelled = /cancel|delete/i.test(action)
+    || String(resData.type ?? '').toLowerCase().includes('cancel')
+    || payload.status === 'cancelled'
+  if (isCancelled) {
     // Mark existing external booking as cancelled
     await supabaseAdmin
       .from('bookings')
@@ -207,6 +222,17 @@ export async function POST(request: Request) {
       .eq('smoobu_reservation_id', reservationId)
 
     console.log(`[Smoobu Webhook] Cancelled reservation ${reservationId}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  // Kalender-SPERREN (blocked bookings) sind keine Gäste-Buchungen —
+  // ohne den Guard würde jede Sperre als Buchung upserten UND pushen
+  if (resData['is-blocked-booking'] === true) {
+    console.log(`[Smoobu Webhook] Blocked-Booking (Kalendersperre) ignoriert: ${reservationId}`)
+    return new Response('OK', { status: 200 })
+  }
+  if (!checkIn || !checkOut) {
+    console.warn('[Smoobu Webhook] Reservierung ohne Zeitraum ignoriert:', reservationId)
     return new Response('OK', { status: 200 })
   }
 
