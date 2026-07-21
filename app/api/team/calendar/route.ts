@@ -32,7 +32,7 @@ export async function GET() {
   const [{ data: bookings }, listingsRes] = await Promise.all([
     supabaseAdmin
       .from('bookings')
-      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source')
+      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source, adults, children')
       .eq('status', 'confirmed')
       .lte('check_in', end)
       .gte('check_out', start)
@@ -90,6 +90,9 @@ export async function GET() {
       channel: (b as { channel?: string | null }).channel ?? null,
       // Gastnamen nur fürs interne Team, nie für Dienstleister
       guestName: auth.role === 'provider' ? null : (b.guest_name ?? null),
+      // Personenzahl für die Balken (Pascal §133.9) — arbeitsrelevant für
+      // ALLE Rollen (Betten/Handtücher vorbereiten), keine Personendaten
+      persons: ((b.adults ?? 0) + (b.children ?? 0)) || null,
     }))
 
   // ALLE offenen Aufgaben (auch ohne Rotfrist) — Panel nutzt fällige für die
