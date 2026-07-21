@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BLOCK_META, defaultTemplate, emptyBlock, DE_LABELS, type GuideBlock, type GuideCtx,
+  BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, DE_LABELS, type GuideBlock, type GuideCtx,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 
@@ -325,6 +325,35 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
           <textarea style={{ ...INPUT, resize: 'vertical' }} rows={2} placeholder="Hinweis (z. B. wann ihr erreichbar seid)" value={block.note} onChange={(e) => onChange({ note: e.target.value })} />
         </div>
       )}
+
+      {/* §136: Sichtbarkeits-Phase je Baustein + optional Mindest-Nächte */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', color: '#A8A292' }}>⏰ SICHTBAR:</span>
+        {PHASE_META.map((p) => {
+          const active = (block.phase ?? 'immer') === p.id
+          return (
+            <button key={p.id} type="button" title={p.label}
+              onClick={() => onChange({ phase: p.id === 'immer' ? undefined : p.id } as Partial<GuideBlock>)}
+              style={{
+                padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                border: active ? '1px solid transparent' : '1px solid #E5E1D6',
+                background: active ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                color: active ? '#fff' : '#8A857B',
+              }}>{p.short}</button>
+          )
+        })}
+        <span style={{ fontSize: 11, color: '#A8A292', marginLeft: 4 }}>ab</span>
+        <input
+          type="number" min={0} max={30} value={block.minNights ?? ''}
+          placeholder="–"
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            onChange({ minNights: Number.isFinite(v) && v > 0 ? v : undefined } as Partial<GuideBlock>)
+          }}
+          style={{ width: 44, border: '1px solid #E5E1D6', borderRadius: 8, padding: '3px 6px', fontSize: 11.5, textAlign: 'center' }}
+        />
+        <span style={{ fontSize: 11, color: '#A8A292' }}>Nächten</span>
+      </div>
     </div>
   )
 }
