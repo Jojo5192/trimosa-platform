@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 export type GridStay = {
   id: string; listingId: string; checkIn: string; checkOut: string
   guestName: string | null; channel?: string | null
+  /** Erwachsene + Kinder — direkt im Balken sichtbar (Pascal §133.9) */
+  persons?: number | null
 }
 
 const DAY_W = 46
@@ -171,6 +173,7 @@ export default function OccupancyGrid({ stays, listings }: {
                         boxShadow: isSel ? '0 0 0 2px #1A1814' : '0 1px 3px rgba(0,0,0,0.18)',
                       }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {s.persons ? <span style={{ background: 'rgba(255,255,255,0.28)', borderRadius: 999, padding: '1px 5px', marginRight: 5, fontWeight: 800 }}>{s.persons}P</span> : null}
                           {s.guestName ?? 'Belegt'}
                         </span>
                       </button>
@@ -196,6 +199,7 @@ export default function OccupancyGrid({ stays, listings }: {
             </div>
             <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
               {fmt(selected.checkIn)} – {fmt(selected.checkOut)} · {dayDiff(selected.checkIn, selected.checkOut)} {dayDiff(selected.checkIn, selected.checkOut) === 1 ? 'Nacht' : 'Nächte'}
+              {selected.persons ? ` · ${selected.persons} ${selected.persons === 1 ? 'Person' : 'Personen'}` : ''}
               {selected.channel ? ` · ${selected.channel}` : ''}
             </div>
           </div>
