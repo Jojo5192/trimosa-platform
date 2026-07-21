@@ -3,15 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { redirect, notFound } from 'next/navigation'
 import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
-import AdminUsersClient from './AdminUsersClient'
-import KnowledgeAdmin from './KnowledgeAdmin'
-import PromptStudio from './PromptStudio'
-import TaskPermissionsCard from './TaskPermissionsCard'
-import QsSettingsCard from './QsSettingsCard'
-import QsTemplateEditor from './QsTemplateEditor'
-import CalendarVisibilityCard from './CalendarVisibilityCard'
-import CleaningCard from './CleaningCard'
-import LocksCard from './LocksCard'
+import AdminSections from './AdminSections'
 
 export default async function AdminPage() {
   const supabase = await createSupabaseServerClient()
@@ -35,28 +27,12 @@ export default async function AdminPage() {
           Einstellungen
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px' }}>Admin-Verwaltung</h1>
-        <p style={{ fontSize: '13px', color: '#888', margin: '0 0 28px' }}>
-          Admins verwalten Einstellungen und Rollen. Gastgeber können Inserate anlegen und
-          verwalten. Nur bereits registrierte Nutzer können zu Admins oder Gastgebern gemacht werden.
+        <p style={{ fontSize: '13px', color: '#888', margin: '0 0 20px' }}>
+          Alle Plattform-Einstellungen, thematisch sortiert. Der Reiter „👁 Wer sieht was"
+          erklärt, welche Rolle welche Bereiche der App sieht.
         </p>
 
-        <AdminUsersClient />
-
-        <TaskPermissionsCard />
-
-        <CalendarVisibilityCard />
-
-        <CleaningCard />
-
-        <LocksCard />
-
-        <QsSettingsCard />
-
-        <QsTemplateEditor />
-
-        <KnowledgeAdmin />
-
-        <PromptStudio />
+        <AdminSections />
       </div>
     </main>
   )
