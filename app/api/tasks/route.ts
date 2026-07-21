@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (task.assignee_id && task.assignee_id !== auth.userId) {
-    sendPushToUser(task.assignee_id, '✅ Neue Aufgabe für dich', task.title, '/team?tab=aufgaben')
+    await sendPushToUser(task.assignee_id, '✅ Neue Aufgabe für dich', task.title, '/team?tab=aufgaben')
       .catch((e) => console.error('[tasks] assign push:', e))
   }
 
