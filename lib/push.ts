@@ -80,7 +80,7 @@ export async function sendPushToUser(userId: string, title: string, body: string
  * (/team?conv=<bookingId>). Präferenz profiles.push_bookings (⚙️-Tab);
  * fehlt die Spalte noch (Migration ausstehend), wird ungefiltert gesendet.
  */
-export async function sendNewBookingPush(bookingId: string): Promise<void> {
+export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cancelled' = 'new'): Promise<void> {
   if (!ensureConfigured()) return
   try {
     const { data: b } = await supabaseAdmin
@@ -103,8 +103,11 @@ export async function sendNewBookingPush(bookingId: string): Promise<void> {
     }
     const fmtD = (iso: string) => { const [, m, d] = String(iso).split('-'); return `${Number(d)}.${Number(m)}.` }
     const channel = (b.channel as string | null) ?? (b.source === 'trimosa' ? 'Website' : 'Smoobu')
-    const isRequest = b.booking_type === 'request' || b.status === 'pending'
-    const title = isRequest ? `🔔 Neue Anfrage · ${channel}` : `🎉 Neue Buchung · ${channel}`
+    // „Anfrage" nur für Website-Buchungen — externe sind immer fix (§139)
+    const isRequest = b.source === 'trimosa' && (b.booking_type === 'request' || b.status === 'pending')
+    const title = kind === 'cancelled'
+      ? `❌ Stornierung · ${channel}`
+      : isRequest ? `🔔 Neue Anfrage · ${channel}` : `🎉 Neue Buchung · ${channel}`
     const base = `${listing?.title ?? 'Wohnung'} · ${guest || 'Gast'} · ${fmtD(b.check_in)}–${fmtD(b.check_out)}`
     const amount = Number(b.total_price) > 0
       ? ` · ${Number(b.total_price).toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
