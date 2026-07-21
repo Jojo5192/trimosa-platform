@@ -161,6 +161,14 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ resolved: out })
   }
+  if (action === 'booking-sync') {
+    // §139: kompletter Kalender-Abgleich mit Smoobu — fehlende Buchungen
+    // importieren (MIT Push), stornierte/gelöschte austragen. Fenster bis
+    // 540 Tage in die Zukunft.
+    const { importMissingReservations } = await import('@/lib/booking-import')
+    const result = await importMissingReservations(540)
+    return NextResponse.json(result)
+  }
   if (action === 'bookings-backfill') {
     // One-off: import Smoobu reservations (recent past + future) into the
     // bookings table so external guests (Airbnb/Booking) appear as inbox
