@@ -96,13 +96,31 @@ export async function cleanupNukiAuths(smartlockId: number): Promise<number> {
   return removed
 }
 
-/** Wie viele Tage vor Anreise der Code in der Gästemappe erscheint. */
-export async function getRevealDays(): Promise<number> {
+export interface LockSettings {
+  /** Tage vor Anreise, ab denen der Code in der Gästemappe erscheint */
+  revealDays: number
+  /** Code gültig ab dieser Stunde (lokal) am ANREISETAG — 0 = Mitternacht */
+  validFromHour: number
+  /** Code gültig bis zu dieser Stunde (lokal) am ABREISETAG — 24 = Mitternacht */
+  validUntilHour: number
+}
+
+export async function getLockSettings(): Promise<LockSettings> {
+  const def: LockSettings = { revealDays: 3, validFromHour: 0, validUntilHour: 24 }
   try {
     const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'lock_settings').maybeSingle()
-    const v = (data?.value as { revealDays?: number } | null)?.revealDays
-    return typeof v === 'number' && v >= 0 && v <= 30 ? v : 3
-  } catch { return 3 }
+    const v = (data?.value as Partial<LockSettings> | null) ?? {}
+    return {
+      revealDays: typeof v.revealDays === 'number' && v.revealDays >= 0 && v.revealDays <= 30 ? v.revealDays : def.revealDays,
+      validFromHour: typeof v.validFromHour === 'number' && v.validFromHour >= 0 && v.validFromHour <= 23 ? v.validFromHour : def.validFromHour,
+      validUntilHour: typeof v.validUntilHour === 'number' && v.validUntilHour >= 1 && v.validUntilHour <= 24 ? v.validUntilHour : def.validUntilHour,
+    }
+  } catch { return def }
+}
+
+/** Wie viele Tage vor Anreise der Code in der Gästemappe erscheint. */
+export async function getRevealDays(): Promise<number> {
+  return (await getLockSettings()).revealDays
 }
 
 /**
@@ -141,8 +159,12 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   if (!nukiConfigured()) return skip('kein NUKI_API_TOKEN')
 
   const code = generateDoorCode()
-  const from = new Date(new Date(b.check_in + 'T20:00:00.000Z').getTime() - 86400_000).toISOString()
-  const until = b.check_out + 'T22:00:00.000Z'
+  // Gültigkeitsfenster aus den Admin-Einstellungen (lokale Stunden am
+  // An-/Abreisetag; −2h ≈ UTC-Umrechnung für Europe/Berlin — im Winter
+  // öffnet der Code eine Stunde früher, was bewusst tolerant ist)
+  const s = await getLockSettings()
+  const from = new Date(new Date(b.check_in + 'T00:00:00.000Z').getTime() + (s.validFromHour - 2) * 3600_000).toISOString()
+  const until = new Date(new Date(b.check_out + 'T00:00:00.000Z').getTime() + (s.validUntilHour - 2) * 3600_000).toISOString()
   await setNukiCode(nukiIds, `TRIMOSA ${b.id.slice(0, 8)}`, code, from, until)
   await supabaseAdmin.from('bookings').update({ door_code: code }).eq('id', b.id)
   console.log('[locks] Code gesetzt:', { booking: b.id, locks: nukiIds.length })
