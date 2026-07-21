@@ -9,7 +9,7 @@ import { sendNewBookingPush } from '@/lib/push'
  * Anreise am selben Tag. Läuft 2×/Stunde im Poll-Cron: idempotent,
  * NEUE Buchungen lösen (verspätet, aber sicher) den Buchungs-Push aus.
  */
-export async function importMissingReservations(): Promise<{ imported: number; skipped: number; failed: number }> {
+export async function importMissingReservations(): Promise<{ imported: number; skipped: number; failed: number; cancelled: number }> {
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
   const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
@@ -26,9 +26,13 @@ export async function importMissingReservations(): Promise<{ imported: number; s
   const from = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
   const to = new Date(Date.now() + 120 * 86400_000).toISOString().slice(0, 10)
   let imported = 0, skipped = 0, failed = 0
+  // Für den Storno-Abgleich: alles merken, was Smoobu im Fenster kennt
+  const seen = new Map<number, boolean>() // id → in Smoobu storniert?
+  let windowComplete = true
   for (let p = 1; p <= 5; p++) {
     const { reservations, hasMore } = await listReservations(from, to, p, 100)
     for (const r of reservations) {
+      seen.set(r.id, r.cancelled)
       if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id)) { skipped++; continue }
       const { data: inserted, error } = await supabaseAdmin.from('bookings').insert({
         smoobu_reservation_id: r.id,
@@ -49,9 +53,37 @@ export async function importMissingReservations(): Promise<{ imported: number; s
       await sendNewBookingPush(inserted.id).catch((e) => console.error('[booking-import] push:', e))
     }
     if (!hasMore) break
+    if (p === 5 && hasMore) windowComplete = false
   }
   if (imported > 0) {
     console.warn(`[booking-import] ⚠️ ${imported} Buchung(en) kamen NICHT per Webhook — Smoobu-Webhook-Konfiguration prüfen!`)
   }
-  return { imported, skipped, failed }
+
+  // 🧹 STORNO-Abgleich (§138 — der Webhook-Storno-Zweig war seit jeher tot,
+  // Altlasten wie „Hanna Kütt" blieben als confirmed liegen): Buchungen,
+  // die Smoobu als storniert führt ODER die (bei vollständigem Fenster)
+  // gar nicht mehr in Smoobu existieren (gelöscht) → bei uns cancelled.
+  let cancelled = 0
+  const { data: ours } = await supabaseAdmin
+    .from('bookings')
+    .select('id, smoobu_reservation_id, guest_name, check_in, check_out')
+    .eq('status', 'confirmed')
+    .not('smoobu_reservation_id', 'is', null)
+    .gte('check_in', from)
+    .lte('check_out', to)
+    .limit(1000)
+  for (const b of ours ?? []) {
+    const sid = Number(b.smoobu_reservation_id)
+    const smoobuCancelled = seen.get(sid) === true
+    const missingInSmoobu = windowComplete && !seen.has(sid)
+    if (smoobuCancelled || missingInSmoobu) {
+      const { error } = await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', b.id)
+      if (!error) {
+        cancelled++
+        console.log('[booking-import] Storno-Abgleich → cancelled:', b.guest_name, b.check_in, smoobuCancelled ? '(in Smoobu storniert)' : '(in Smoobu gelöscht)')
+      }
+    }
+  }
+
+  return { imported, skipped, failed, cancelled }
 }
