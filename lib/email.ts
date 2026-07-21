@@ -115,10 +115,19 @@ export async function sendViaResend(to: string, subject: string, html: string): 
     return { ok: true, note: 'RESEND_API_KEY fehlt, E-Mail nicht gesendet' }
   }
 
+  // Reply-To auf die Resend-Empfangsadresse (§134): Antworten der Gäste
+  // fließen damit DIREKT in die Inbound-Pipeline → Chat-Thread + Push —
+  // ganz ohne M365-Alias/Outlook-Regel. Aktiviert über die Vercel-Env
+  // BOOKING_REPLY_TO (z. B. buchung@antworten.trimosa.de, sobald die
+  // Empfangs-Subdomain in Resend verifiziert ist); ohne Env wie bisher.
+  const replyTo = process.env.BOOKING_REPLY_TO
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendKey}` },
-    body: JSON.stringify({ from: 'TRIMOSA <buchung@trimosa.de>', to, subject, html }),
+    body: JSON.stringify({
+      from: 'TRIMOSA <buchung@trimosa.de>', to, subject, html,
+      ...(replyTo ? { reply_to: replyTo } : {}),
+    }),
   })
 
   if (!res.ok) {
