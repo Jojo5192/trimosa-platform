@@ -272,7 +272,7 @@ export async function rescheduleConflictingChecks(): Promise<{ moved: number; al
       if (!error) {
         moved++
         if (c.assignee_id) {
-          sendPushToUser(
+          await sendPushToUser(
             c.assignee_id,
             '🧾 QS-Termin automatisch verschoben',
             `${title}: Am bisherigen Termin ist jetzt eine Buchung. Neu: ${fmtDe(next)}`,
@@ -282,7 +282,7 @@ export async function rescheduleConflictingChecks(): Promise<{ moved: number; al
       }
     } else if (c.due_date <= isoOffset(1)) {
       alerts++
-      sendPushToTeam(
+      await sendPushToTeam(
         '⚠️ QS-Termin braucht Hilfe',
         `${title}: kein freier Tag bis ${fmtDe(limit)} — bitte manuell legen (z. B. nach der Reinigung an einem Abreisetag).`,
         '/team?tab=aufgaben'
@@ -338,7 +338,7 @@ export async function ensureQsChecks(): Promise<{ created: number; skipped: numb
     })
     if (!error) {
       created++
-      sendPushToUser(
+      await sendPushToUser(
         settings.assigneeId,
         '🧾 Qualitätscheck geplant',
         `${l.title} · ${fmtDe(due)} — Termin bei Bedarf verschiebbar.`,
