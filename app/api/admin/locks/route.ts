@@ -50,6 +50,39 @@ export async function GET() {
   })
 }
 
+/** POST { action: 'diagnose', bookingId } — zeigt Guard-Felder + das
+ *  konkrete Ergebnis von ensureDoorCode (inkl. Nuki-Fehlertext) als JSON.
+ *  Diagnose-Werkzeug, weil die stillen skip-Pfade sonst nur im Log stehen. */
+export async function POST(req: NextRequest) {
+  if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  const body = await req.json()
+  if (body.action !== 'diagnose' || !body.bookingId) {
+    return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
+  }
+  const { data: b } = await supabaseAdmin
+    .from('bookings')
+    .select('id, status, payment_status, check_in, check_out, door_code, guest_name, listings(title, locks)')
+    .eq('id', String(body.bookingId))
+    .maybeSingle()
+  if (!b) return NextResponse.json({ error: 'Buchung nicht gefunden.' }, { status: 404 })
+  const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title?: string; locks?: LockRef[] } | null
+  let result: string | null = null
+  let error: string | null = null
+  try {
+    const { ensureDoorCode } = await import('@/lib/locks')
+    result = await ensureDoorCode(b.id)
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err)
+  }
+  return NextResponse.json({
+    guest: b.guest_name, status: b.status, payment: b.payment_status,
+    checkIn: b.check_in, checkOut: b.check_out,
+    doorCodeVorher: b.door_code, locks: listing?.locks ?? [],
+    nukiConfigured: nukiConfigured(),
+    ergebnis: result, fehler: error,
+  })
+}
+
 export async function PATCH(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const body = await req.json()
