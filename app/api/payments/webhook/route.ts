@@ -58,14 +58,17 @@ export async function POST(req: NextRequest) {
       .eq('id', bookingId)
 
     // Notify the host now that payment is confirmed — requests ask for
-    // accept/decline, instant bookings just inform (fire-and-forget).
-    // The guest confirmation also goes out HERE (only after payment).
-    sendBookingEmail(bookingId).catch(err =>
+    // accept/decline, instant bookings just inform. AWAIT ist Pflicht
+    // (§135): fire-and-forget stirbt, sobald die Function nach der
+    // Response eingefroren wird. The guest confirmation also goes out
+    // HERE (only after payment).
+    await sendBookingEmail(bookingId).catch(err =>
       console.error('[Webhook] guest confirmation failed (non-fatal):', err))
-    sendHostBookingAlert(bookingId)
+    await Promise.resolve(sendHostBookingAlert(bookingId)).catch(err =>
+      console.error('[Webhook] host alert failed (non-fatal):', err))
     // Rollenabhängiger Buchungs-Push (Chefs mit Betrag, Staff ohne),
     // Tap → Gast-Thread in der Team-Inbox
-    sendNewBookingPush(bookingId).catch(err =>
+    await sendNewBookingPush(bookingId).catch(err =>
       console.error('[Webhook] booking push failed (non-fatal):', err)
     )
 
