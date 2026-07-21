@@ -6,9 +6,10 @@ import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { parseGuide, collectGuideTexts, translateBlocks, DE_LABELS, type GuideCtx, type GuideLabels } from '@/lib/guide'
+import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
 import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import GuideBlocks from '@/components/guide/GuideBlocks'
+import MappeChat from '@/components/guide/MappeChat'
 
 /**
  * 📖 Öffentliche Gästemappe — persönlicher, unguessbarer Link je Buchung
@@ -130,14 +131,22 @@ export default async function MappePage({ params, searchParams }: {
     hallo: 'Hallo', deinAufenthalt: 'Dein Aufenthalt im', zeitraum: 'Zeitraum',
     untitled: 'Deine Gästemappe', fallback: 'Der Gastgeber hat diese Mappe noch nicht befüllt — bei Fragen melde dich gern direkt.',
   }
+  const CHAT_DE = {
+    title: 'Nachricht an dein Gastgeber-Team',
+    hint: 'Schreib uns direkt hier — deine Nachricht landet sofort bei uns im Team und wir antworten so schnell wie möglich.',
+    placeholder: 'Deine Nachricht…',
+    send: 'Senden',
+    empty: 'Noch keine Nachrichten — schreib uns einfach!',
+  }
   let blocks = blocksAll
   let ctx = ctxDe
   let labels: GuideLabels = DE_LABELS
   let ui = UI_DE
+  let chatLabels = CHAT_DE
   if (lang !== 'de') {
     const tr = await makeTr(lang, [
       ...collectGuideTexts(blocksAll), ...rules,
-      ...Object.values(DE_LABELS), ...Object.values(UI_DE),
+      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE),
       ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
     blocks = translateBlocks(blocksAll, tr)
@@ -148,7 +157,16 @@ export default async function MappePage({ params, searchParams }: {
     }
     labels = Object.fromEntries(Object.entries(DE_LABELS).map(([k, v]) => [k, tr(v)])) as unknown as GuideLabels
     ui = Object.fromEntries(Object.entries(UI_DE).map(([k, v]) => [k, tr(v)])) as typeof UI_DE
+    chatLabels = Object.fromEntries(Object.entries(CHAT_DE).map(([k, v]) => [k, tr(v)])) as typeof CHAT_DE
   }
+
+  // §136: Bausteine nach Aufenthalts-Phase + Mindest-Nächten filtern —
+  // z. B. Check-in-Anleitung nur vor/bei Anreise, Danke-Block erst danach
+  const nights = Math.max(1, Math.round(
+    (new Date(String(booking.check_out) + 'T00:00:00Z').getTime() - new Date(String(booking.check_in) + 'T00:00:00Z').getTime()) / 86400_000,
+  ))
+  const guidePhase: GuidePhase = todayIso < String(booking.check_in) ? 'vor' : todayIso < String(booking.check_out) ? 'waehrend' : 'nach'
+  blocks = blocks.filter((b) => blockVisibleInPhase(b, guidePhase, nights))
 
   const firstName = String(booking.guest_name ?? '').trim().split(/\s+/)[0] || null
   const range = `${fmtDate(booking.check_in)} – ${fmtDate(booking.check_out)}`
@@ -187,6 +205,8 @@ export default async function MappePage({ params, searchParams }: {
         {blocks.length > 0
           ? <GuideBlocks blocks={blocks} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
+        {/* 💬 Direkter Draht zum Team (§136) — token-basiert, auch für Portal-Gäste */}
+        <MappeChat token={token} labels={chatLabels} />
         <p style={{ margin: '34px 0 0', textAlign: 'center', fontSize: 11, color: '#B0A793' }}>
           TRIMOSA Apartments &amp; Homes · trimosa.de
         </p>
