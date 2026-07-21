@@ -5,7 +5,26 @@
  * befüllen sich aus dem Inserat und brauchen nur eingefügt zu werden.
  */
 
-export interface GuideBlockBase { id: string; type: string }
+/** Sichtbarkeits-Phase eines Bausteins (§136): Standard 'immer';
+ *  'vor' = nur vor Anreise, 'waehrend' = nur während des Aufenthalts,
+ *  'nach' = erst nach Abreise (z. B. Danke/Bewertungs-Block). Optional
+ *  zusätzlich minNights = erst ab X Nächten Aufenthaltsdauer. */
+export type GuidePhase = 'immer' | 'vor' | 'waehrend' | 'nach'
+export interface GuideBlockBase { id: string; type: string; phase?: GuidePhase; minNights?: number }
+
+export const PHASE_META: { id: GuidePhase; label: string; short: string }[] = [
+  { id: 'immer', label: 'Immer sichtbar', short: 'Immer' },
+  { id: 'vor', label: 'Nur vor Anreise', short: 'Vorher' },
+  { id: 'waehrend', label: 'Nur während des Aufenthalts', short: 'Während' },
+  { id: 'nach', label: 'Erst nach Abreise', short: 'Danach' },
+]
+
+/** Ist der Block in der aktuellen Aufenthalts-Phase sichtbar? */
+export function blockVisibleInPhase(b: GuideBlockBase, phase: GuidePhase, nights: number): boolean {
+  if (typeof b.minNights === 'number' && b.minNights > 0 && nights < b.minNights) return false
+  if (!b.phase || b.phase === 'immer') return true
+  return b.phase === phase
+}
 export interface HeadingBlock extends GuideBlockBase { type: 'heading'; text: string }
 export interface TextBlock extends GuideBlockBase { type: 'text'; text: string }
 export interface InfoBlock extends GuideBlockBase { type: 'info'; emoji: string; title: string; text: string }
