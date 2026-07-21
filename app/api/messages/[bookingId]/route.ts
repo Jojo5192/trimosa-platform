@@ -161,13 +161,13 @@ export async function POST(
 
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('id, guest_id, smoobu_reservation_id, listings(host_id)')
+    .select('id, guest_id, guest_name, guest_email, smoobu_reservation_id, listings(host_id, title)')
     .eq('id', bookingId)
     .single()
 
   if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden' }, { status: 404 })
 
-  const listing = booking.listings as unknown as { host_id: string } | null
+  const listing = booking.listings as unknown as { host_id: string; title?: string | null } | null
   // Team access: the listing's host plus every admin/host/staff member —
   // the unified inbox lets the whole team answer guests.
   const { data: me } = await supabaseAdmin
@@ -199,14 +199,46 @@ export async function POST(
   // Push to Smoobu (only host messages — we send to guest via Smoobu).
   // Store the returned Smoobu message id on our row: the next sync would
   // otherwise re-import our own message as a "new" one → duplicate bubble.
+  let smoobuDelivered = false
   if (isHost && booking.smoobu_reservation_id) {
     try {
       const smoobuMsgId = await sendMessageToGuest(Number(booking.smoobu_reservation_id), content.trim())
+      if (smoobuMsgId != null) smoobuDelivered = true
       if (smoobuMsgId != null && msg?.id) {
         await supabaseAdmin.from('messages').update({ smoobu_message_id: String(smoobuMsgId) }).eq('id', msg.id)
       }
     } catch (err) {
       console.error('[Messages] Smoobu push failed:', err)
+    }
+  }
+
+  // 📧-Fallback (§140): Erreicht die Antwort den Gast NICHT über Smoobu
+  // (keine Reservierungs-ID oder Push fehlgeschlagen), geht sie per E-Mail
+  // raus — an bookings.guest_email (FeWo-Relay/Mail-Anreicherung) bzw. die
+  // Login-Mail des Gast-Kontos. Antworten fließen über die Inbound-Pipeline
+  // zurück in diesen Thread.
+  if (isHost && !smoobuDelivered) {
+    try {
+      let to = (booking.guest_email as string | null)?.trim() || null
+      if (!to && booking.guest_id) {
+        const { data: u } = await supabaseAdmin.auth.admin.getUserById(booking.guest_id)
+        to = u?.user?.email ?? null
+      }
+      if (to) {
+        const { sendGuestChatEmail } = await import('@/lib/email')
+        await sendGuestChatEmail({
+          to,
+          guestName: booking.guest_name,
+          listingTitle: listing?.title ?? null,
+          text: content.trim(),
+          lang: typeof lang === 'string' ? lang : null,
+        })
+        console.log('[Messages] Antwort per E-Mail an Gast:', to)
+      } else {
+        console.log('[Messages] Antwort NICHT zustellbar (kein Smoobu, keine E-Mail):', bookingId)
+      }
+    } catch (err) {
+      console.error('[Messages] Gast-Mail-Fallback failed:', err)
     }
   }
 
