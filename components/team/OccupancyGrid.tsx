@@ -37,8 +37,11 @@ function dayDiff(a: string, b: string): number {
 function channelColor(channel?: string | null): string {
   const c = (channel ?? '').toLowerCase()
   if (c.includes('airbnb')) return '#E0565B'
+  if (c.includes('fewo') || c.includes('vrbo') || c.includes('homeaway')) return '#8B5CF6'
+  // VOR dem booking-Match: „Direct booking" (Smoobu-Direktkanal) ist Gold,
+  // der Substring „booking" färbte die Balken sonst fälschlich navy
+  if (c.includes('direct') || c.includes('direkt')) return 'var(--gold, #AE8D2D)'
   if (c.includes('booking')) return '#1A4FA0'
-  if (c.includes('fewo') || c.includes('vrbo')) return '#8B5CF6'
   if (c.includes('hometogo')) return '#0EA5E9'
   return 'var(--gold, #AE8D2D)'
 }
