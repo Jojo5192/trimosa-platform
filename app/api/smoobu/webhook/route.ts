@@ -245,9 +245,11 @@ export async function POST(request: Request) {
     // Still return 200 to prevent Smoobu from retrying indefinitely
   } else {
     console.log(`[Smoobu Webhook] Upserted reservation ${reservationId} for listing ${listing.id}`)
-    // NEUE externe Buchung (Airbnb/Booking/…) → rollenabhängiger Team-Push
+    // NEUE externe Buchung (Airbnb/Booking/…) → rollenabhängiger Team-Push.
+    // AWAIT ist Pflicht (§135): Nach dem Response-Return friert Vercel die
+    // Function ein — fire-and-forget-Promises sterben, der Push kam nie an.
     if (!known && upserted?.id) {
-      sendNewBookingPush(upserted.id).catch((err) =>
+      await sendNewBookingPush(upserted.id).catch((err) =>
         console.error('[Smoobu Webhook] booking push failed (non-fatal):', err))
     }
   }
