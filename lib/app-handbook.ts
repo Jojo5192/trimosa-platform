@@ -8,7 +8,7 @@
  * veraltete Auskünfte. Stand-Datum unten mitziehen.
  */
 
-export const APP_HANDBOOK = `FUNKTIONS-HANDBUCH (Stand: 20. Juli 2026) — das kann die TRIMOSA-Plattform:
+export const APP_HANDBOOK = `FUNKTIONS-HANDBUCH (Stand: 21. Juli 2026) — das kann die TRIMOSA-Plattform:
 
 TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 
@@ -34,7 +34,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 - 🧾 QS-Block: geplante Qualitätschecks (halbjährlich je Wohnung, automatisch auf freie Tage gelegt, verschiebbar mit Belegungs-Warnung), Protokoll direkt in der App ausfüllen (Checkliste mit OK/Mangel, Stückzahlen, Fotos); Mängel werden automatisch Aufgaben-Vorschläge. Checklisten sind im Admin-Bereich editierbar (Standard/Standort/Wohnung mit Vererbung).
 
 📅 KALENDER — drei Ansichten:
-- 📊 Belegung: Smoobu-Stil-Grid, alle Wohnungen × Tage, Balken in Kanal-Farben mit Gastnamen UND Personenzahl (z. B. „4P" — damit klar ist, wie die Wohnung vorbereitet wird), Wechseltage als Halbzellen, Tipp → Details + Chat-Link.
+- 📊 Belegung: Smoobu-Stil-Grid, alle Wohnungen × Tage, Balken in Kanal-Farben mit Gastnamen UND Personenzahl (z. B. „4P" — damit klar ist, wie die Wohnung vorbereitet wird), Wechseltage als Halbzellen, Tipp → Details + Chat-Link; Admins/Gastgeber sehen in der Detail-Karte zusätzlich den Buchungspreis. Der Kalender gleicht sich automatisch mit Smoobu ab (2×/Stunde): fehlende Buchungen werden nachimportiert (mit Push), in Smoobu stornierte/gelöschte bei uns ausgetragen.
 - 📋 Agenda: An-/Abreisen, Wechsel-Badges, fällige Aufgaben, QS-Termine, „Gerade frei"-Karten + Planungs-Vorschläge (Aufgaben in Frei-Fenster legen). Zweitansicht 📆 Wochenblick: 14 Tages-Kacheln mit Ereignis-Punkten.
 - 🧹 Reinigung: jede Abreise als Slot (Wechseltag = Pflicht am Tag). Planungs-Doktrin: IMMER SCHNELLSTMÖGLICH reinigen (kurzfristige Buchungen!) — nur Sonn-/Feiertage werden (nach den Regeln der jeweiligen Kraft) übersprungen, und gebündelt wird nur, wenn es höchstens einen Tag kostet (gemeinsame Anfahrt mit einem Pflicht-Termin derselben Kraft am selben Standort). Jede Karte zeigt das Zeitfenster „Reinigen möglich: von – bis (Anreise)" und erklärt Verschiebungen per Chip (☀️ Sonntag übersprungen / 🚗 eine Anfahrt — zusammen mit X). Alle drei Unter-Ansichten (📋 Liste, 🗺 Touren, 💶 Kosten) sind nach REINIGUNGSKRAFT filterbar (Alle · 👤 Vanessa · 👤 Tip-Top …); Reinigungskräfte starten automatisch mit ihrem eigenen Filter, externe Dienstleister sehen ohnehin nur ihre Wohnungen. 💶 Kosten (NUR Admins/Gastgeber): erwartete Rechnung je KALENDERMONAT mit den Sätzen der JEWEILIGEN Kraft, zweistufig auffächerbar (Wohnung → einzelne Reinigungen mit Datum; Zulagen und Anfahrten ebenso). Regeln & Sätze (Sonn-/Feiertags-Meidung, Stundensatz, Anfahrt, Zulagen) sind im Admin-Bereich als Standard UND abweichend PRO Reinigungskraft hinterlegbar — inkl. Vertrags-Feinheiten: dritte Zuschlagsstufe für besondere Feiertage (Heiligabend, 1./2. Weihnachtstag, Silvester, 1. Mai), Anfahrt wahlweise je einzelner Reinigung statt je Einsatztag, und Umsatzsteuer-Ausweis (netto/brutto). Hinterlegte Verträge: Vanessa/VP Glanzteam (Pauschale = vereinbarte Stunden × 27,90 €, Anfahrt 5 € je Einsatz, Zuschläge 36,2/75,6/107,9 %, zzgl. 19 % USt, Sonn-/Feiertage werden gemieden) und Tip-Top Reinigung (15 €/h Paket M, Fahrzeit inklusive, keine Zuschläge, keine USt — darf daher auch sonn-/feiertags reinigen). Der Planer bündelt nur, wenn das bei der Kraft wirklich eine Anfahrt spart — bei Anfahrt-je-Reinigung oder 0-€-Anfahrt gilt strikt schnellstmöglich. Dazu „📄 Rechnung hochladen & prüfen": echte Monats-Rechnung (PDF/Foto) hochladen → Claude liest sie, vergleicht mit der Erwartung und zeigt Abweichung, Positionen und Auffälligkeiten.
 - Admins können pro Person einstellen, wer welche Wohnungen im Kalender sieht; Dienstleister sehen nie Gastnamen.
@@ -46,7 +46,8 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 
 🔔 PUSH-BENACHRICHTIGUNGEN (was wann kommt):
 - Neue Gast-Nachricht (alle Kanäle SOFORT — Smoobu-Webhook bzw. Website direkt; 10-Min-Poll als Sicherheitsnetz) — deutsch übersetzt mit Sprach-Flagge, Tipp öffnet den Thread.
-- NEUE BUCHUNG/ANFRAGE: JA, eingebaut (seit 19.07.) — aus ALLEN Kanälen (Website sofort via Stripe, extern via Smoobu-Webhook). Admins/Gastgeber sehen den Betrag, Mitarbeiter nicht, Dienstleister bekommen keinen. Tipp öffnet den Gast-Thread. Abschaltbar unter ⚙️ Mehr → „Neue Buchungen".
+- NEUE BUCHUNG/ANFRAGE: JA, eingebaut (seit 19.07.) — aus ALLEN Kanälen (Website sofort via Stripe, extern via Smoobu-Webhook; „Anfrage" heißt nur eine unbestätigte Website-Anfrage, externe Buchungen melden sich immer als „🎉 Neue Buchung"). Admins/Gastgeber sehen den Betrag, Mitarbeiter nicht, Dienstleister bekommen keinen. Tipp öffnet den Gast-Thread. Abschaltbar unter ⚙️ Mehr → „Neue Buchungen".
+- STORNIERUNG: „❌ Stornierung"-Push, sobald eine externe Buchung in Smoobu storniert wird (gleiche Empfänger-Regeln wie der Buchungs-Push).
 - Interne Gruppen-Nachrichten, Aufgaben-Zuweisung, Aufgaben-Kommentar, QS-Termin/-Abschluss, Reaktions-Push, KI-Vorschlags-Digest.
 - App-Icon-Badge zählt zu bearbeitende Threads und respektiert die Push-Kategorien. Ungelesen-Markierungen bleiben erhalten, bis man den Thread wirklich ansieht (Hintergrund-Aktualisierung markiert nichts mehr als gelesen). Push-Mitteilungen verschwinden automatisch aus der iOS-Mitteilungszentrale, sobald der zugehörige Thread in der App geöffnet wird.
 
