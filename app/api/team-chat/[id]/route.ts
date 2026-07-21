@@ -123,7 +123,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .eq('chat_id', id).eq('user_id', auth.userId)
 
   // Push an die anderen Mitglieder (fire-and-forget), push_team_chats respektieren
-  ;(async () => {
+  // await Pflicht (§135): fire-and-forget stirbt nach dem Response-Return
+  await (async () => {
     const [{ data: chat }, { data: members }, { data: me }] = await Promise.all([
       supabaseAdmin.from('team_chats').select('name, emoji').eq('id', id).maybeSingle(),
       supabaseAdmin.from('team_chat_members').select('user_id, profiles(push_team_chats)').eq('chat_id', id).neq('user_id', auth.userId),
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     for (const m of members ?? []) {
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
-      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, '/team?tab=intern', `intern-${id}`).catch(() => {})
+      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, '/team?tab=intern', `intern-${id}`).catch(() => {})
     }
   })().catch((e) => console.error('[team-chat] push:', e))
 
