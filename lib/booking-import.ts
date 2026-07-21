@@ -9,7 +9,7 @@ import { sendNewBookingPush } from '@/lib/push'
  * Anreise am selben Tag. Läuft 2×/Stunde im Poll-Cron: idempotent,
  * NEUE Buchungen lösen (verspätet, aber sicher) den Buchungs-Push aus.
  */
-export async function importMissingReservations(): Promise<{ imported: number; skipped: number; failed: number; cancelled: number }> {
+export async function importMissingReservations(futureDays = 120): Promise<{ imported: number; skipped: number; failed: number; cancelled: number }> {
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
   const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
@@ -24,12 +24,13 @@ export async function importMissingReservations(): Promise<{ imported: number; s
   }
 
   const from = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
-  const to = new Date(Date.now() + 120 * 86400_000).toISOString().slice(0, 10)
+  const to = new Date(Date.now() + futureDays * 86400_000).toISOString().slice(0, 10)
   let imported = 0, skipped = 0, failed = 0
   // Für den Storno-Abgleich: alles merken, was Smoobu im Fenster kennt
   const seen = new Map<number, boolean>() // id → in Smoobu storniert?
   let windowComplete = true
-  for (let p = 1; p <= 5; p++) {
+  const maxPages = futureDays > 200 ? 12 : 5
+  for (let p = 1; p <= maxPages; p++) {
     const { reservations, hasMore } = await listReservations(from, to, p, 100)
     for (const r of reservations) {
       seen.set(r.id, r.cancelled)
@@ -44,6 +45,7 @@ export async function importMissingReservations(): Promise<{ imported: number; s
         status: 'confirmed',
         channel: r.channelName ?? 'Smoobu',
         source: 'smoobu_webhook',
+        booking_type: 'instant',
       }).select('id').single()
       if (error || !inserted) { failed++; console.error('[booking-import]', r.id, error?.message); continue }
       imported++
@@ -53,7 +55,7 @@ export async function importMissingReservations(): Promise<{ imported: number; s
       await sendNewBookingPush(inserted.id).catch((e) => console.error('[booking-import] push:', e))
     }
     if (!hasMore) break
-    if (p === 5 && hasMore) windowComplete = false
+    if (p === maxPages && hasMore) windowComplete = false
   }
   if (imported > 0) {
     console.warn(`[booking-import] ⚠️ ${imported} Buchung(en) kamen NICHT per Webhook — Smoobu-Webhook-Konfiguration prüfen!`)
