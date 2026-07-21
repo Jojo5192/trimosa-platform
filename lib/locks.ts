@@ -116,7 +116,7 @@ export async function getRevealDays(): Promise<number> {
 export async function ensureDoorCode(bookingId: string): Promise<string | null> {
   const { data: b } = await supabaseAdmin
     .from('bookings')
-    .select('id, status, payment_status, check_in, check_out, door_code, listing_id, listings(locks)')
+    .select('id, status, payment_status, source, check_in, check_out, door_code, listing_id, listings(locks)')
     .eq('id', bookingId)
     .maybeSingle()
   // Stille Ausstiege LOGGEN — ein Gast ohne Code vor der Tür ist zu teuer
@@ -125,7 +125,11 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   if (!b) return skip('buchung fehlt')
   if (b.door_code) return b.door_code
   if (b.status !== 'confirmed') return skip(`status=${b.status}`)
-  if (b.payment_status && b.payment_status !== 'paid') return skip(`payment=${b.payment_status}`)
+  // Bezahl-Guard NUR für Website-Direktbuchungen (unbezahlte Stripe-/
+  // Geister-Buchungen bekommen keinen Code). Portal-Buchungen (Airbnb/
+  // Booking/FeWo) zahlen übers Portal oder vor Ort — deren payment_status
+  // ('unpaid'/null) ist für den Zugang irrelevant (§132-Diagnose: Artur).
+  if (b.source === 'trimosa' && b.payment_status !== 'paid') return skip(`unbezahlte Direktbuchung (payment=${b.payment_status})`)
   if (!b.check_in || !b.check_out) return skip('kein zeitraum')
 
   const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { locks?: LockRef[] } | null
