@@ -77,9 +77,11 @@ export default async function MappePage({ params, searchParams }: {
   let doorNoteDe: string | null = null
   const todayIso = new Date().toISOString().slice(0, 10)
   const locksArr = (listing.locks as { provider: string }[] | null) ?? []
+  console.log('[mappe] door-check:', { booking: String(booking.id).slice(0, 8), locks: locksArr.length, checkIn: booking.check_in, checkOut: booking.check_out, status: booking.status })
   if (locksArr.length && String(booking.check_out ?? '') >= todayIso) {
     const revealDays = await getRevealDays()
     const daysToArrival = Math.ceil((new Date(String(booking.check_in) + 'T00:00:00Z').getTime() - Date.now()) / 86400_000)
+    console.log('[mappe] door-window:', { daysToArrival, revealDays, hatCode: !!booking.door_code })
     if (daysToArrival <= revealDays) {
       doorCode = (booking.door_code as string | null) ?? null
       if (!doorCode) {
