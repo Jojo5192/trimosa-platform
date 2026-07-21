@@ -32,7 +32,7 @@ export async function GET() {
   const [{ data: bookings }, listingsRes] = await Promise.all([
     supabaseAdmin
       .from('bookings')
-      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source, adults, children')
+      .select('id, listing_id, check_in, check_out, guest_name, channel, status, payment_status, source, adults, children, total_price')
       .eq('status', 'confirmed')
       .lte('check_in', end)
       .gte('check_out', start)
@@ -93,6 +93,8 @@ export async function GET() {
       // Personenzahl für die Balken (Pascal §133.9) — arbeitsrelevant für
       // ALLE Rollen (Betten/Handtücher vorbereiten), keine Personendaten
       persons: ((b.adults ?? 0) + (b.children ?? 0)) || null,
+      // Buchungspreis NUR für Admins/Gastgeber (§139 — Finanz-Daten)
+      totalPrice: auth.role === 'admin' ? ((b as { total_price?: number | null }).total_price ?? null) : null,
     }))
 
   // ALLE offenen Aufgaben (auch ohne Rotfrist) — Panel nutzt fällige für die
