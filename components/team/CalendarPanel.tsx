@@ -12,7 +12,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 
-type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
+type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
 type CalQs = { id: string; listingId: string; dueDate: string }
 type ListingInfo = { title: string; group: string | null }
