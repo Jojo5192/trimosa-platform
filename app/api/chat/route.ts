@@ -324,14 +324,16 @@ export async function POST(req: NextRequest) {
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', convId)
 
-  // Guest wrote via the website → buzz the team (fire-and-forget).
-  // Translate first so the notification + inbox preview show German
-  // (cached on the row); fail-soft to the original text.
+  // Guest wrote via the website → buzz the team. Translate first so the
+  // notification + inbox preview show German (cached on the row); fail-soft
+  // to the original text. AWAITED — fire-and-forget stirbt in Serverless (§135).
+  // Nur bei Nachrichten des GASTS (guest_id) — Team-Antworten anderer
+  // Mitglieder (Vanessa/Pascal, nicht host_id) sind kein Gast-Ereignis.
   {
     const { data: convMeta } = await supabaseAdmin
-      .from('conversations').select('host_id, guest_name, listing_title').eq('id', convId).maybeSingle()
-    if (convMeta && convMeta.host_id !== user.id) {
-      ;(async () => {
+      .from('conversations').select('host_id, guest_id, guest_name, listing_title').eq('id', convId).maybeSingle()
+    if (convMeta && convMeta.guest_id === user.id) {
+      await (async () => {
         const tr = await translateIncoming([{ id: message.id, text: content.trim() }])
         const t = tr.get(message.id)
         const flag = t?.lang && t.lang !== 'de' ? `${LANG_FLAGS[t.lang] ?? '🌐'} ` : ''
@@ -346,15 +348,28 @@ export async function POST(req: NextRequest) {
   }
 
   // Forward to Smoobu if host is sending and booking has smoobu_reservation_id
+  let smoobuDelivered = false
+  let teamSender = false
+  let convForSend: { host_id: string | null; guest_id: string | null; guest_name: string | null; listing_title: string | null } | null = null
   try {
     const { data: conv } = await supabaseAdmin
       .from('conversations')
-      .select('host_id, bookings(smoobu_reservation_id)')
+      .select('host_id, guest_id, guest_name, listing_title, bookings(smoobu_reservation_id)')
       .eq('id', convId)
       .maybeSingle()
+    convForSend = conv as unknown as typeof convForSend
 
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
-    const isHost = conv?.host_id === user.id
+    // TEAM-Absender (nicht nur der Listing-Host): die Unified Inbox lässt
+    // jedes Team-Mitglied antworten — deren Nachrichten gehen als HOST-Seite
+    // zu Smoobu (vorher wurden sie fälschlich als Gast-Nachricht gepusht).
+    let isHost = conv?.host_id === user.id
+    if (!isHost && conv && user.id !== conv.guest_id) {
+      const { data: meProf } = await supabaseAdmin
+        .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
+      isHost = !!meProf?.is_admin || !!meProf?.is_host || !!meProf?.is_staff
+    }
+    teamSender = isHost
 
     if (smoobuId) {
       // Load host's API key (needed for both directions)
@@ -384,6 +399,7 @@ export async function POST(req: NextRequest) {
       }
       // Save smoobu_message_id so the sync skips this message (prevents duplicate + wrong sender_id)
       if (smoobuMsgId && message?.id) {
+        if (isHost) smoobuDelivered = true
         await supabaseAdmin
           .from('messages')
           .update({ smoobu_message_id: String(smoobuMsgId) })
@@ -393,6 +409,31 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error('[Chat] Smoobu forward failed', err)
+  }
+
+  // 📧-Fallback (§140): Host-Antwort in einem Direkt-Chat OHNE Smoobu-Weg
+  // (Konversation ohne Buchung/Reservierungs-ID oder Push fehlgeschlagen) →
+  // E-Mail an die Login-Mail des Gast-Kontos. Der Gast bekommt sonst nichts
+  // mit, bis er zufällig die Website öffnet. Antworten auf die Mail fließen
+  // über die Inbound-Pipeline zurück in diese Konversation.
+  if (convForSend && teamSender && !smoobuDelivered && convForSend.guest_id && convForSend.guest_id !== user.id) {
+    try {
+      const { data: u } = await supabaseAdmin.auth.admin.getUserById(convForSend.guest_id)
+      const to = u?.user?.email ?? null
+      if (to) {
+        const { sendGuestChatEmail } = await import('@/lib/email')
+        await sendGuestChatEmail({
+          to,
+          guestName: convForSend.guest_name,
+          listingTitle: convForSend.listing_title,
+          text: content.trim(),
+          lang: typeof lang === 'string' ? lang : null,
+        })
+        console.log('[Chat] Antwort per E-Mail an Website-Gast:', to)
+      }
+    } catch (err) {
+      console.error('[Chat] Gast-Mail-Fallback failed:', err)
+    }
   }
 
   return NextResponse.json({ message, conversationId: convId })
