@@ -68,7 +68,8 @@ export async function postAsClaude(
     .select('id').single()
   if (error || !msg) return null
 
-  ;(async () => {
+  // await Pflicht (§135): fire-and-forget stirbt nach dem Response-Return
+  await (async () => {
     const [{ data: chat }, { data: members }] = await Promise.all([
       supabaseAdmin.from('team_chats').select('name, emoji').eq('id', chatId).maybeSingle(),
       supabaseAdmin.from('team_chat_members').select('user_id, profiles(push_team_chats)').eq('chat_id', chatId).neq('user_id', claudeId),
@@ -77,7 +78,7 @@ export async function postAsClaude(
       if (opts.excludeUserId && m.user_id === opts.excludeUserId) continue
       const p = (Array.isArray(m.profiles) ? m.profiles[0] : m.profiles) as { push_team_chats?: boolean } | null
       if (p && p.push_team_chats === false) continue
-      sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern', `intern-${chatId}`).catch(() => {})
+      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern', `intern-${chatId}`).catch(() => {})
     }
   })().catch(() => {})
 
