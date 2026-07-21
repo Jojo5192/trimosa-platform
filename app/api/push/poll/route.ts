@@ -25,6 +25,20 @@ export async function GET(request: Request) {
   // 30 Min Verzögerung ab, ohne die Smoobu-API-Last zu vervielfachen.
   const today = new Date()
   const wide = today.getUTCMinutes() < 10 || (today.getUTCMinutes() >= 30 && today.getUTCMinutes() < 40)
+
+  // 🛟 Buchungs-Sicherheitsnetz (§137, 2×/Std.): fängt Reservierungen ab,
+  // die der Smoobu-Webhook verpasst hat (Ausfall 21.7. — 10 fehlende
+  // Buchungen inkl. Same-Day-Anreise), inkl. nachgeholtem Buchungs-Push
+  let bookingImport: { imported: number; skipped: number; failed: number } | null = null
+  if (wide) {
+    try {
+      const { importMissingReservations } = await import('@/lib/booking-import')
+      bookingImport = await importMissingReservations()
+    } catch (err) {
+      console.error('[push-poll] booking-import:', err)
+    }
+  }
+
   const soon = new Date(today.getTime() + (wide ? 60 : 14) * 86400_000).toISOString().slice(0, 10)
   const recent = new Date(today.getTime() - (wide ? 21 : 3) * 86400_000).toISOString().slice(0, 10)
 
@@ -56,5 +70,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ checked: (bookings ?? []).length, newMessages, pushes })
+  return NextResponse.json({ checked: (bookings ?? []).length, newMessages, pushes, bookingImport })
 }
