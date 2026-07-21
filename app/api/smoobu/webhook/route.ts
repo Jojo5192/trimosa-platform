@@ -215,13 +215,24 @@ export async function POST(request: Request) {
     || String(resData.type ?? '').toLowerCase().includes('cancel')
     || payload.status === 'cancelled'
   if (isCancelled) {
-    // Mark existing external booking as cancelled
+    // Nur pushen, wenn die Buchung existierte und noch nicht storniert war
+    // (Smoobu schickt Storno-Events gern doppelt)
+    const { data: existingBooking } = await supabaseAdmin
+      .from('bookings')
+      .select('id, status')
+      .eq('smoobu_reservation_id', reservationId)
+      .maybeSingle()
+
     await supabaseAdmin
       .from('bookings')
       .update({ status: 'cancelled' })
       .eq('smoobu_reservation_id', reservationId)
 
     console.log(`[Smoobu Webhook] Cancelled reservation ${reservationId}`)
+    if (existingBooking && existingBooking.status !== 'cancelled') {
+      await sendNewBookingPush(existingBooking.id, 'cancelled').catch((err) =>
+        console.error('[Smoobu Webhook] cancel push failed (non-fatal):', err))
+    }
     return new Response('OK', { status: 200 })
   }
 
@@ -278,6 +289,7 @@ export async function POST(request: Request) {
         guest_name: guestName,
         guest_email: guestEmail,
         source: 'smoobu_webhook',
+        booking_type: 'instant',   // externe Buchungen sind fix — DB-Default 'request' ließ den Push „Anfrage" sagen (§139)
       })
       .select('id')
       .single()
