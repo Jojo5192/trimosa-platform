@@ -15,6 +15,8 @@ export type GridStay = {
   guestName: string | null; channel?: string | null
   /** Erwachsene + Kinder — direkt im Balken sichtbar (Pascal §133.9) */
   persons?: number | null
+  /** Buchungspreis — API liefert ihn nur an Admins/Gastgeber (§139) */
+  totalPrice?: number | null
 }
 
 const DAY_W = 46
@@ -201,6 +203,7 @@ export default function OccupancyGrid({ stays, listings }: {
               {fmt(selected.checkIn)} – {fmt(selected.checkOut)} · {dayDiff(selected.checkIn, selected.checkOut)} {dayDiff(selected.checkIn, selected.checkOut) === 1 ? 'Nacht' : 'Nächte'}
               {selected.persons ? ` · ${selected.persons} ${selected.persons === 1 ? 'Person' : 'Personen'}` : ''}
               {selected.channel ? ` · ${selected.channel}` : ''}
+              {selected.totalPrice ? ` · ${Number(selected.totalPrice).toLocaleString('de-DE', { maximumFractionDigits: 0 })} €` : ''}
             </div>
           </div>
           {selected.guestName && (
