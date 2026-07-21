@@ -138,6 +138,50 @@ export async function sendViaResend(to: string, subject: string, html: string): 
   return { ok: true }
 }
 
+/**
+ * 💬→📧 Chat-Antwort als E-Mail an den Gast (§140): Greift überall dort, wo
+ * eine Host-Antwort den Gast NICHT über Smoobu erreicht (Direkt-Chats ohne
+ * Smoobu-Buchung, Buchungen ohne smoobu_reservation_id, Smoobu-Fehlschlag).
+ * `text` ist bereits die in Gastsprache gesendete Fassung; die Mail-Labels
+ * folgen via makeTr. Antworten auf die Mail fließen über die Inbound-Pipeline
+ * zurück in den Chat (Reply-To/M365-Umleitung) — geschlossener Kreislauf.
+ */
+export async function sendGuestChatEmail(opts: {
+  to: string
+  guestName?: string | null
+  listingTitle?: string | null
+  text: string
+  lang?: string | null
+}) {
+  const lang: UiLang = isUiLang(opts.lang ?? '') ? (opts.lang as UiLang) : 'de'
+  const L = [
+    'Neue Nachricht von deinen Gastgebern',
+    'Hallo {name},',
+    'du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:',
+    'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
+    'Unterkunft',
+  ]
+  const tr = lang === 'de' ? null : await makeTr(lang, L).catch(() => null)
+  const T = (s: string) => tr?.get(s) ?? s
+  const firstName = (opts.guestName ?? '').trim().split(/\s+/)[0] || 'Gast'
+  const safeText = opts.text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>')
+  const html = renderEmail({
+    preheader: opts.text.slice(0, 90),
+    heading: T('Neue Nachricht von deinen Gastgebern'),
+    paragraphs: [
+      T('Hallo {name},').replace('{name}', firstName),
+      T('du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:'),
+      `<span style="display:block;background:#FCFBF7;border-left:3px solid #AE8D2D;border-radius:0 10px 10px 0;padding:12px 16px;color:#1A1400;">${safeText}</span>`,
+    ],
+    details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
+    note: T('Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.'),
+  })
+  const subject = `${T('Neue Nachricht von deinen Gastgebern')}${opts.listingTitle ? ` — ${opts.listingTitle}` : ''}`
+  return sendViaResend(opts.to, subject, html)
+}
+
 /* ── Shared booking loader ── */
 async function loadBooking(bookingId: string) {
   const { data: booking } = await supabaseAdmin
