@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { askClaude } from '@/lib/ai'
+import { askClaude, FAST_MODEL } from '@/lib/ai'
 import { updateReservation } from '@/lib/smoobu'
 
 /**
@@ -66,6 +66,95 @@ async function saveGuestMessage(bookingId: string, guestName: string | null, tex
   return true
 }
 
+/**
+ * §134: Antwort-Mail eines WEBSITE-Gasts (privater Absender, kein Portal) —
+ * über die Absender-Adresse dem Gast-Konto bzw. der Buchung zuordnen und
+ * als Chat-Nachricht einsortieren (Direkt-Chat wenn eine Konversation
+ * existiert, sonst Buchungs-Thread). Nicht zuordenbare Mails werden nur
+ * geloggt — das ist zugleich der Spam-Filter für das umgeleitete Postfach.
+ */
+async function handleWebsiteGuestReply(fromRaw: string, rawText: string): Promise<NextResponse> {
+  const email = ((fromRaw.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/) || [])[0] ?? '').toLowerCase()
+  if (!email || /no-?reply|mailer-daemon|postmaster|notification|newsletter/i.test(email)) {
+    return NextResponse.json({ ok: true, skipped: 'kein Portal, kein Gast-Absender' })
+  }
+
+  // Gast-Konto über die Login-Mail finden (kleine Nutzerbasis → Seiten-Scan)
+  let guestId: string | null = null
+  try {
+    for (let page = 1; page <= 5; page++) {
+      const { data: pageData } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 })
+      const hit = pageData?.users?.find((u) => (u.email ?? '').toLowerCase() === email)
+      if (hit) { guestId = hit.id; break }
+      if (!pageData || pageData.users.length < 200) break
+    }
+  } catch { /* fail-soft — guest_email-Match unten bleibt */ }
+
+  // Passende Buchung: laufend/kommend bevorzugt, sonst jüngste (Abreise ≤30 Tage her)
+  const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10)
+  const baseSelect = 'id, guest_id, guest_name, check_in, check_out, conversations(id, guest_id)'
+  const [byId, byEmail] = await Promise.all([
+    guestId
+      ? supabaseAdmin.from('bookings').select(baseSelect).neq('status', 'cancelled').gte('check_out', since).eq('guest_id', guestId).order('check_in', { ascending: true }).limit(10)
+      : Promise.resolve({ data: [] as never[] }),
+    supabaseAdmin.from('bookings').select(baseSelect).neq('status', 'cancelled').gte('check_out', since).eq('guest_email', email).order('check_in', { ascending: true }).limit(10),
+  ])
+  type BRow = { id: string; guest_id: string | null; guest_name: string | null; check_in: string; check_out: string; conversations: unknown }
+  const seen = new Set<string>()
+  const cands = ([...(byId.data ?? []), ...(byEmail.data ?? [])] as BRow[]).filter((b) => !seen.has(b.id) && seen.add(b.id))
+  const today = new Date().toISOString().slice(0, 10)
+  const booking = cands.find((b) => b.check_out >= today) ?? cands[cands.length - 1] ?? null
+  if (!booking) {
+    console.log('[inbound-mail] Gast-Mail ohne zuordenbare Buchung:', email)
+    return NextResponse.json({ ok: true, skipped: 'Absender keiner Buchung zuordenbar' })
+  }
+
+  // Nur den NEUEN Text des Gasts extrahieren (ohne zitierte Mail/Signatur)
+  let text = ''
+  try {
+    const raw = await askClaude(
+      'Du bekommst die E-Mail-ANTWORT eines Feriengasts an seinen Gastgeber. Extrahiere NUR den neuen Nachrichtentext des Gasts — OHNE zitierte Vorgängermail, OHNE Signatur-Blöcke und Fußzeilen (eine Grußformel des Gasts darf bleiben). Gib AUSSCHLIESSLICH diesen Text zurück. Enthält die Mail keine echte persönliche Nachricht (Abwesenheitsnotiz, leere Mail, Werbung), antworte exakt: LEER',
+      rawText.slice(0, 8000), 1200, FAST_MODEL,
+    )
+    text = raw.trim()
+  } catch (e) {
+    console.error('[inbound-mail] Gast-Mail-Extraktion:', e)
+    return NextResponse.json({ ok: true, skipped: 'Extraktion fehlgeschlagen' })
+  }
+  if (!text || /^LEER\.?$/i.test(text)) {
+    return NextResponse.json({ ok: true, skipped: 'kein Nachrichtentext (Auto-Reply o. ä.)' })
+  }
+
+  const convRaw = booking.conversations
+  const conv = (Array.isArray(convRaw) ? convRaw[0] : convRaw) as { id: string; guest_id: string | null } | null
+  if (conv?.id && (conv.guest_id ?? guestId)) {
+    // Direkt-Chat-Welt (Website-Gast mit Konversation)
+    const { data: dupe } = await supabaseAdmin
+      .from('messages').select('id').eq('conversation_id', conv.id).eq('content', text).limit(1)
+    if (dupe?.length) return NextResponse.json({ ok: true, skipped: 'Duplikat' })
+    const { data: inserted, error } = await supabaseAdmin.from('messages')
+      .insert({ conversation_id: conv.id, sender_id: conv.guest_id ?? guestId, content: text })
+      .select('id').single()
+    if (error) return NextResponse.json({ ok: false, error: error.message })
+    await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+    try {
+      const { translateIncoming } = await import('@/lib/translate')
+      if (inserted) await translateIncoming([{ id: inserted.id, text }])
+    } catch { /* best effort */ }
+    try {
+      const { sendPushToTeam } = await import('@/lib/push')
+      await sendPushToTeam(`💬 ${booking.guest_name ?? 'Gast'} · E-Mail`, text.replace(/\s+/g, ' ').slice(0, 120), '/team?conv=' + conv.id, { guestChat: true })
+    } catch { /* best effort */ }
+    console.log('[inbound-mail] Website-Gast-Mail → Direkt-Chat:', { conv: conv.id, email })
+    return NextResponse.json({ ok: true, conversationId: conv.id })
+  }
+
+  // Ohne Konversation: booking-Welt — der Thread erscheint in der Team-Inbox
+  const saved = await saveGuestMessage(booking.id, booking.guest_name, text)
+  console.log('[inbound-mail] Website-Gast-Mail → Buchungs-Thread:', { booking: booking.id, email, neu: saved })
+  return NextResponse.json({ ok: true, bookingId: booking.id, nachricht: saved })
+}
+
 const stripHtml = (html: string) =>
   html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -93,10 +182,6 @@ export async function POST(req: NextRequest) {
   const subject = String(data.subject ?? '')
   // Payload-Form beim ersten Live-Fall kalibrieren — Struktur mitloggen
   console.log('[inbound-mail] received:', { from: from.slice(0, 80), subject: subject.slice(0, 120), keys: Object.keys(data) })
-
-  // Nur Portal-Buchungsmails an die KI geben
-  const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
-  if (!relevant) return NextResponse.json({ ok: true, skipped: 'kein Portal-Absender' })
 
   // Resend-Webhooks enthalten NUR Metadaten — der Mail-Body wird über die
   // Received-Emails-API nachgeladen (GET /emails/receiving/:email_id)
@@ -135,6 +220,11 @@ export async function POST(req: NextRequest) {
     console.error('[inbound-mail] Mail-Body leer/zu kurz — Payload-Keys:', Object.keys(data))
     return NextResponse.json({ ok: true, skipped: 'kein Mail-Text verfügbar' })
   }
+
+  // Kein Portal-Absender → Antwort-Mail eines WEBSITE-Gasts? (§134 — der
+  // Gast antwortet einfach auf unsere Bestätigungs-Mail von buchung@)
+  const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
+  if (!relevant) return handleWebsiteGuestReply(from, rawText)
 
   // ── Claude extrahiert die Buchungsdaten ──
   const system = `Du extrahierst Buchungsdaten aus der Bestätigungs-E-Mail eines
