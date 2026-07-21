@@ -629,8 +629,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         </button>
       </div>
 
-      {/* Nachrichten */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {/* Nachrichten — imsg-noselect auf dem GANZEN Feed: Long-Press für
+          Tapbacks markierte sonst auf manchen iPhones den kompletten Chat
+          (Dominik §133.10; die Klasse nur auf den Bubbles reichte nicht) */}
+      <div className="imsg-noselect" style={{ flex: 1, overflowY: 'auto', padding: '14px 12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {grouped.map((g) => (
           <div key={g.day}>
             <div style={{ textAlign: 'center', margin: '10px 0' }}>
