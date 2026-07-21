@@ -46,6 +46,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 5 Tabs:
 
 🔔 PUSH-BENACHRICHTIGUNGEN (was wann kommt):
 - Neue Gast-Nachricht (alle Kanäle SOFORT — Smoobu-Webhook bzw. Website direkt; 10-Min-Poll als Sicherheitsnetz) — deutsch übersetzt mit Sprach-Flagge, Tipp öffnet den Thread.
+- ANTWORTEN AUS DEM CHAT erreichen den Gast immer: Airbnb/Booking über deren Messaging (via Smoobu), FeWo per E-Mail an die Relay-Adresse (via Smoobu, sobald geerntet), Website-Gäste über Smoobu-Mail — und wo KEIN Smoobu-Weg existiert (Direkt-Chat ohne Buchung, Buchung ohne Smoobu-ID, Smoobu-Fehler), geht die Antwort automatisch als gebrandete E-Mail raus; Gast-Antworten auf diese Mails fließen zurück in den Chat (geschlossener Kreislauf).
 - NEUE BUCHUNG/ANFRAGE: JA, eingebaut (seit 19.07.) — aus ALLEN Kanälen (Website sofort via Stripe, extern via Smoobu-Webhook; „Anfrage" heißt nur eine unbestätigte Website-Anfrage, externe Buchungen melden sich immer als „🎉 Neue Buchung"). Admins/Gastgeber sehen den Betrag, Mitarbeiter nicht, Dienstleister bekommen keinen. Tipp öffnet den Gast-Thread. Abschaltbar unter ⚙️ Mehr → „Neue Buchungen".
 - STORNIERUNG: „❌ Stornierung"-Push, sobald eine externe Buchung in Smoobu storniert wird (gleiche Empfänger-Regeln wie der Buchungs-Push).
 - Interne Gruppen-Nachrichten, Aufgaben-Zuweisung, Aufgaben-Kommentar, QS-Termin/-Abschluss, Reaktions-Push, KI-Vorschlags-Digest.
