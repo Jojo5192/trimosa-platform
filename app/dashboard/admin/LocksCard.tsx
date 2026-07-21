@@ -19,6 +19,8 @@ export default function LocksCard() {
   const [nukiError, setNukiError] = useState<string | null>(null)
   const [pins, setPins] = useState<Record<string, string>>({})
   const [revealDays, setRevealDays] = useState(3)
+  const [validFromHour, setValidFromHour] = useState(0)
+  const [validUntilHour, setValidUntilHour] = useState(24)
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -34,6 +36,8 @@ export default function LocksCard() {
         setNukiError(d.nukiError ?? null)
         setPins(d.servicePins ?? {})
         setRevealDays(d.revealDays ?? 3)
+        setValidFromHour(d.validFromHour ?? 0)
+        setValidUntilHour(d.validUntilHour ?? 24)
         setLoaded(true)
       })
       .catch(() => setMsg('Laden fehlgeschlagen.'))
@@ -94,19 +98,44 @@ export default function LocksCard() {
           )}
 
           {loaded && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 12.5, color: '#555', fontWeight: 600 }}>
-                Gast-Code in der Mappe sichtbar ab
-              </label>
-              <input
-                type="number" min={0} max={30} defaultValue={revealDays}
-                onBlur={(e) => {
-                  const v = Number(e.target.value)
-                  if (Number.isFinite(v) && v !== revealDays) { setRevealDays(v); patch({ settings: { revealDays: v } }) }
-                }}
-                style={{ ...inputStyle, width: 64 }}
-              />
-              <span style={{ fontSize: 12.5, color: '#555' }}>Tagen vor Anreise</span>
+            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12.5, color: '#555', fontWeight: 600 }}>
+                  Gast-Code in der Mappe sichtbar ab
+                </label>
+                <input
+                  type="number" min={0} max={30} defaultValue={revealDays}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value)
+                    if (Number.isFinite(v) && v !== revealDays) { setRevealDays(v); patch({ settings: { revealDays: v } }) }
+                  }}
+                  style={{ ...inputStyle, width: 64 }}
+                />
+                <span style={{ fontSize: 12.5, color: '#555' }}>Tagen vor Anreise</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12.5, color: '#555', fontWeight: 600 }}>
+                  Code funktioniert am Anreisetag ab
+                </label>
+                <input
+                  type="number" min={0} max={23} defaultValue={validFromHour}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value)
+                    if (Number.isFinite(v) && v !== validFromHour) { setValidFromHour(v); patch({ settings: { validFromHour: v } }) }
+                  }}
+                  style={{ ...inputStyle, width: 64 }}
+                />
+                <span style={{ fontSize: 12.5, color: '#555' }}>Uhr — bis am Abreisetag</span>
+                <input
+                  type="number" min={1} max={24} defaultValue={validUntilHour}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value)
+                    if (Number.isFinite(v) && v !== validUntilHour) { setValidUntilHour(v); patch({ settings: { validUntilHour: v } }) }
+                  }}
+                  style={{ ...inputStyle, width: 64 }}
+                />
+                <span style={{ fontSize: 12.5, color: '#555' }}>Uhr (0 = Mitternacht, 24 = Ende des Tages; gilt für NEUE Codes)</span>
+              </div>
             </div>
           )}
 
