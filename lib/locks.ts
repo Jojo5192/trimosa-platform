@@ -79,7 +79,9 @@ export function generateDoorCode(): string {
   return '345679' // praktisch unerreichbar — deterministischer Fallback
 }
 
-/** EINEN Keypad-Code auf mehrere Nuki-Schlösser legen (ein API-Call). */
+/** EINEN Keypad-Code auf mehrere Nuki-Schlösser legen (ein API-Call).
+ *  remoteAllowed ist laut Swagger PFLICHT — ohne das Feld legte Nuki die
+ *  Auth zwar an, verwarf aber still die allowed*-Zeitfenster (§142). */
 export async function setNukiCode(
   smartlockIds: number[], name: string, code: string, fromIso: string, untilIso: string,
 ): Promise<void> {
@@ -90,6 +92,7 @@ export async function setNukiCode(
       type: 13, // keypad code
       code: Number(code),
       smartlockIds,
+      remoteAllowed: false,
       allowedFromDate: fromIso,
       allowedUntilDate: untilIso,
     }),
@@ -239,7 +242,7 @@ async function lockIdsFor(listingIds: string[]): Promise<{ nuki: number[]; tedee
 async function setNukiPermanentCode(smartlockIds: number[], name: string, code: string): Promise<void> {
   const res = await nukiFetch('/smartlock/auth', {
     method: 'PUT',
-    body: JSON.stringify({ name, type: 13, code: Number(code), smartlockIds }),
+    body: JSON.stringify({ name, type: 13, code: Number(code), smartlockIds, remoteAllowed: false }),
   })
   if (!res.ok && res.status !== 202 && res.status !== 204) {
     throw new Error(`Nuki auth-PUT HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`)
@@ -358,25 +361,29 @@ export async function syncStaffCode(personId: string, firstName: string, listing
 /** Diagnose (§142-Nachtrag): je Nuki-Schloss die TRIMOSA-Keypad-Auths
  *  (Team-Codes + Gäste-Codes) + Gesamtzahl (200er-Auth-Limit sichtbar). */
 export async function auditNukiAuths(): Promise<{
-  locks: { id: string; name: string; totalAuths: number; keypadAuths: number; trimosaTeam: string[]; trimosaGuest: number; pending: string[] }[]
+  locks: { id: string; name: string; totalAuths: number; keypadAuths: number; trimosaTeam: string[]; trimosaGuest: number; guestUnbounded: string[]; pending: string[] }[]
 }> {
   const all = await listNukiLocks()
   const locks = []
   for (const l of all) {
     const res = await nukiFetch(`/smartlock/${l.id}/auth`)
     if (!res.ok) {
-      locks.push({ id: l.id, name: l.name, totalAuths: -1, keypadAuths: -1, trimosaTeam: [`GET HTTP ${res.status}`], trimosaGuest: 0, pending: [] })
+      locks.push({ id: l.id, name: l.name, totalAuths: -1, keypadAuths: -1, trimosaTeam: [`GET HTTP ${res.status}`], trimosaGuest: 0, guestUnbounded: [], pending: [] })
       continue
     }
-    const auths = await res.json() as { type?: number; name?: string; enabled?: boolean; creationState?: number }[]
+    const auths = await res.json() as { type?: number; name?: string; enabled?: boolean; creationState?: number; allowedUntilDate?: string }[]
     const keypad = (auths ?? []).filter((a) => a.type === 13)
+    const guest = keypad.filter((a) => a.name?.startsWith('TRIMOSA ') && !a.name?.startsWith('TRIMOSA-Team'))
     locks.push({
       id: l.id,
       name: l.name,
       totalAuths: (auths ?? []).length,
       keypadAuths: keypad.length,
       trimosaTeam: keypad.filter((a) => a.name?.startsWith('TRIMOSA-Team')).map((a) => `${a.name}${a.enabled === false ? ' (disabled)' : ''}${a.creationState ? ` (state ${a.creationState})` : ''}`),
-      trimosaGuest: keypad.filter((a) => a.name?.startsWith('TRIMOSA ') && !a.name?.startsWith('TRIMOSA-Team')).length,
+      trimosaGuest: guest.length,
+      // Gäste-Codes OHNE Zeitfenster (Alt-Anlagen ohne remoteAllowed, §142) —
+      // gelten unbegrenzt und würden nie gelöscht; verify zieht Fenster nach
+      guestUnbounded: guest.filter((a) => !a.allowedUntilDate).map((a) => a.name ?? '?'),
       // creationState ≠ 0 = Anlage noch nicht aufs Schloss propagiert
       pending: keypad.filter((a) => a.creationState).map((a) => a.name ?? '?'),
     })
@@ -469,7 +476,7 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
  * nie), die App merkt das sonst nicht. Fehlende Codes werden mit dem
  * ORIGINAL-Zeitfenster nachgelegt. Läuft im täglichen Cron + auf Abruf.
  */
-export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; stillMissing: string[] }> {
+export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; windowsFixed: number; stillMissing: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
   const { data: rows } = await supabaseAdmin
@@ -483,11 +490,11 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
 
   const s = await getLockSettings()
   // Auth-Listen je Schloss nur einmal laden (mehrere Buchungen teilen Schlösser)
-  const authCache = new Map<number, { type?: number; name?: string }[]>()
+  const authCache = new Map<number, { id: string; type?: number; name?: string; allowedUntilDate?: string }[]>()
   const authsOf = async (id: number) => {
     if (!authCache.has(id)) {
       const res = await nukiFetch(`/smartlock/${id}/auth`)
-      authCache.set(id, res.ok ? (await res.json() as { type?: number; name?: string }[]) : [])
+      authCache.set(id, res.ok ? (await res.json() as { id: string; type?: number; name?: string; allowedUntilDate?: string }[]) : [])
     }
     return authCache.get(id)!
   }
@@ -497,7 +504,7 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
     return pinCache.get(id)!
   }
 
-  let checked = 0, healed = 0, ok = 0
+  let checked = 0, healed = 0, ok = 0, windowsFixed = 0
   const stillMissing: string[] = []
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
@@ -512,7 +519,19 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
       const lockId = Number(lock.id)
       try {
         if (lock.provider === 'nuki') {
-          if ((await authsOf(lockId)).some((a) => a.type === 13 && labelMatches(a.name, alias))) continue
+          const found = (await authsOf(lockId)).find((a) => a.type === 13 && labelMatches(a.name, alias))
+          if (found) {
+            // Alt-Codes ohne remoteAllowed bekamen KEIN Zeitfenster (§142) —
+            // hier nachziehen, sonst gelten sie unbegrenzt und werden nie gelöscht
+            if (!found.allowedUntilDate) {
+              const upd = await nukiFetch(`/smartlock/${lockId}/auth/${found.id}`, {
+                method: 'POST',
+                body: JSON.stringify({ name: found.name, allowedFromDate: from, allowedUntilDate: until, remoteAllowed: false }),
+              })
+              if (upd.ok || upd.status === 202 || upd.status === 204) windowsFixed++
+            }
+            continue
+          }
           missing++
           await setNukiCode([lockId], alias, r.door_code as string, from, until)
           fixed++
@@ -532,7 +551,8 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
     else if (fixed >= missing) { healed++; console.log('[locks] verify: Code nachgelegt', { booking: r.id.slice(0, 8), listing: listing?.title, locks: fixed }) }
     else stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
   }
-  return { checked, healed, ok, stillMissing }
+  if (windowsFixed) console.log('[locks] verify: Zeitfenster nachgezogen:', windowsFixed)
+  return { checked, healed, ok, windowsFixed, stillMissing }
 }
 
 /**
