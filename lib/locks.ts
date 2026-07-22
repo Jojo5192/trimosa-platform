@@ -418,7 +418,7 @@ export async function syncStaffCode(personId: string, firstName: string, listing
 /** Diagnose (§142-Nachtrag): je Nuki-Schloss die TRIMOSA-Keypad-Auths
  *  (Team-Codes + Gäste-Codes) + Gesamtzahl (200er-Auth-Limit sichtbar). */
 export async function auditNukiAuths(): Promise<{
-  locks: { id: string; name: string; totalAuths: number; keypadAuths: number; trimosaTeam: string[]; trimosaGuest: number; guestUnbounded: string[]; pending: string[] }[]
+  locks: { id: string; name: string; totalAuths: number; keypadAuths: number; trimosaTeam: string[]; trimosaGuest: number; guestUnbounded: string[]; pending: string[]; sample?: Record<string, unknown> }[]
 }> {
   const all = await listNukiLocks()
   const locks = []
@@ -428,9 +428,11 @@ export async function auditNukiAuths(): Promise<{
       locks.push({ id: l.id, name: l.name, totalAuths: -1, keypadAuths: -1, trimosaTeam: [`GET HTTP ${res.status}`], trimosaGuest: 0, guestUnbounded: [], pending: [] })
       continue
     }
-    const auths = await res.json() as { type?: number; name?: string; enabled?: boolean; creationState?: number; allowedUntilDate?: string }[]
+    const auths = await res.json() as { type?: number; name?: string; enabled?: boolean; creationState?: number; allowedFromDate?: string; allowedUntilDate?: string; allowedWeekDays?: number; allowedFromTime?: number; allowedUntilTime?: number }[]
     const keypad = (auths ?? []).filter((a) => a.type === 13)
     const guest = keypad.filter((a) => a.name?.startsWith('TRIMOSA ') && !a.name?.startsWith('TRIMOSA-Team'))
+    // Vollständige Zeitfelder EINES Gäste-Codes zur Anzeige-Diagnose (§142)
+    const s = guest[0]
     locks.push({
       id: l.id,
       name: l.name,
@@ -443,6 +445,7 @@ export async function auditNukiAuths(): Promise<{
       guestUnbounded: guest.filter((a) => !a.allowedUntilDate).map((a) => a.name ?? '?'),
       // creationState ≠ 0 = Anlage noch nicht aufs Schloss propagiert
       pending: keypad.filter((a) => a.creationState).map((a) => a.name ?? '?'),
+      sample: s ? { name: s.name, from: s.allowedFromDate, until: s.allowedUntilDate, weekDays: s.allowedWeekDays, fromTime: s.allowedFromTime, untilTime: s.allowedUntilTime } : undefined,
     })
   }
   return { locks }
