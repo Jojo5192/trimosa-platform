@@ -78,6 +78,8 @@ export default function CalendarPanel() {
   const [cleaning, setCleaning] = useState<CleaningInfo | null>(null)
   // 🔑 Service-PINs (Reinigung/Handwerker, §132) — API filtert nach Sichtbarkeit
   const [servicePins, setServicePins] = useState<Record<string, string>>({})
+  // 👤 Persönlicher Zugangs-Code (§141) — API liefert nur den EIGENEN
+  const [myDoorCode, setMyDoorCode] = useState<{ code: string; listings: string[] } | null>(null)
   const [agendaMode, setAgendaMode] = useState<'liste' | 'woche'>('liste')
   const [selDay, setSelDay] = useState<string>(isoOffset(0))
   const viewInitRef = useRef(false)
@@ -99,6 +101,7 @@ export default function CalendarPanel() {
         setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
         setCleaning(j.cleaning ?? null)
         setServicePins(j.servicePins ?? {})
+        setMyDoorCode(j.myDoorCode ?? null)
         setError(null)
         // Reinigungs-Verantwortliche starten direkt im Planer (einmalig)
         if (!viewInitRef.current) {
@@ -317,6 +320,24 @@ export default function CalendarPanel() {
           ))}
         </div>
       </div>
+
+      {/* 👤 Persönlicher Zugangs-Code (§141) — Navy-Karte, nur der EIGENE
+          Code; gilt an allen freigegebenen Wohnungen inkl. Haustür */}
+      {!loading && !error && myDoorCode && (
+        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: '#12222E' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#E3C878', marginBottom: 6 }}>
+            👤 Dein Zugangs-Code (Keypad)
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 22, fontWeight: 800, color: '#E3C878', letterSpacing: '0.18em', fontVariantNumeric: 'tabular-nums' }}>
+              {myDoorCode.code}
+            </span>
+            <span style={{ fontSize: 12, color: 'rgba(245,240,232,0.75)', lineHeight: 1.5 }}>
+              gilt für: {myDoorCode.listings.join(' · ') || '—'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* 🔑 Service-PINs über dem Kalender (Pascal, §99.5) — Navy-Karte,
           erscheint nur, wenn im Admin-Bereich PINs gepflegt sind */}
