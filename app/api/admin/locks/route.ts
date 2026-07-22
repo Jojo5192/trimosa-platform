@@ -96,6 +96,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (body.action === 'guest-code-verify') {
+    const { verifyGuestCodes } = await import('@/lib/locks')
+    try {
+      return NextResponse.json(await verifyGuestCodes(Number(body.daysAhead) || 7))
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action === 'team-code-test' && body.smartlockId && body.personId) {
     const { debugTeamCodePut, getStaffCodes } = await import('@/lib/locks')
     try {
