@@ -1,0 +1,126 @@
+/**
+ * 📨 Auto-Nachrichten (Gästemappe Phase 3, §145): Datenmodell + Platzhalter-
+ * Auflösung + Startvorlagen. Der Editor (dashboard/auto-nachrichten) pflegt
+ * die Vorlagen; die Versand-Engine (Phase B, eigener Schritt) rendert sie mit
+ * echten Buchungsdaten und schickt sie über den passenden Kanal.
+ */
+
+export type TriggerType = 'nach_buchung' | 'vor_anreise' | 'nach_anreise' | 'vor_abreise' | 'nach_abreise'
+
+export interface AutoMessage {
+  id: string
+  name: string
+  enabled: boolean
+  trigger_type: TriggerType
+  offset_days: number
+  send_hour: number
+  listing_id: string | null
+  channel_filter: string[] | null
+  min_nights: number | null
+  body: string
+  sort: number
+}
+
+export const TRIGGER_META: { id: TriggerType; label: string; bezug: string }[] = [
+  { id: 'nach_buchung', label: 'Nach der Buchung',  bezug: 'sofort nach Eingang der Buchung' },
+  { id: 'vor_anreise',  label: 'Vor der Anreise',   bezug: 'X Tage vor dem Anreisetag' },
+  { id: 'nach_anreise', label: 'Nach der Anreise',  bezug: 'X Tage nach dem Anreisetag' },
+  { id: 'vor_abreise',  label: 'Vor der Abreise',   bezug: 'X Tage vor dem Abreisetag' },
+  { id: 'nach_abreise', label: 'Nach der Abreise',  bezug: 'X Tage nach dem Abreisetag' },
+]
+
+/** Verfügbare Platzhalter — Klick fügt sie in den Text ein. */
+export const PLACEHOLDERS: { key: string; label: string }[] = [
+  { key: '{vorname}',      label: 'Vorname des Gasts' },
+  { key: '{name}',         label: 'Voller Gastname' },
+  { key: '{wohnung}',      label: 'Name der Wohnung' },
+  { key: '{anreise}',      label: 'Anreisedatum' },
+  { key: '{abreise}',      label: 'Abreisedatum' },
+  { key: '{naechte}',      label: 'Anzahl Nächte' },
+  { key: '{gaeste}',       label: 'Anzahl Gäste' },
+  { key: '{checkin}',      label: 'Check-in-Uhrzeit' },
+  { key: '{checkout}',     label: 'Check-out-Uhrzeit' },
+  { key: '{tuercode}',     label: 'Türcode (falls vorhanden)' },
+  { key: '{mappe}',        label: 'Link zur Gästemappe' },
+  { key: '{adresse}',      label: 'Adresse der Wohnung' },
+]
+
+export interface MessageContext {
+  vorname: string
+  name: string
+  wohnung: string
+  anreise: string
+  abreise: string
+  naechte: string
+  gaeste: string
+  checkin: string
+  checkout: string
+  tuercode: string
+  mappe: string
+  adresse: string
+}
+
+/** Ersetzt alle {platzhalter} im Text mit den Werten aus dem Kontext. */
+export function resolvePlaceholders(body: string, ctx: Partial<MessageContext>): string {
+  return body.replace(/\{(\w+)\}/g, (m, key: string) => {
+    const v = (ctx as Record<string, string | undefined>)[key]
+    return v != null && v !== '' ? v : m
+  })
+}
+
+/** Demo-Kontext für die Live-Vorschau (echte Buchungsdaten gibt es beim Versand). */
+export function demoContext(wohnung: string, checkin: string, checkout: string): MessageContext {
+  return {
+    vorname: 'Anna',
+    name: 'Anna Beispiel',
+    wohnung: wohnung || 'City Home',
+    anreise: '25.08.2026',
+    abreise: '28.08.2026',
+    naechte: '3',
+    gaeste: '2',
+    checkin: checkin || '16:00',
+    checkout: checkout || '10:00',
+    tuercode: '4 7 2 9 1 5',
+    mappe: 'trimosa.de/mappe/…',
+    adresse: 'Beispielstraße 1, 54634 Bitburg',
+  }
+}
+
+/** Menschlich lesbare Kurzbeschreibung des Auslösers (für Karten-Kopf). */
+export function triggerSummary(m: Pick<AutoMessage, 'trigger_type' | 'offset_days' | 'send_hour'>): string {
+  const h = `${String(m.send_hour).padStart(2, '0')}:00 Uhr`
+  const d = m.offset_days
+  switch (m.trigger_type) {
+    case 'nach_buchung': return 'Direkt nach der Buchung'
+    case 'vor_anreise':  return d <= 0 ? `Am Anreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} vor Anreise um ${h}`
+    case 'nach_anreise': return d <= 0 ? `Am Anreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} nach Anreise um ${h}`
+    case 'vor_abreise':  return d <= 0 ? `Am Abreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} vor Abreise um ${h}`
+    case 'nach_abreise': return d <= 0 ? `Am Abreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} nach Abreise um ${h}`
+  }
+}
+
+/** Vorbefüllte Start-Vorlagen (der „✨ Standard-Vorlagen laden"-Knopf). */
+export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
+  return [
+    {
+      name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
+      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 0,
+      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe: {mappe}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
+    },
+    {
+      name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
+      offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 1,
+      body: 'Hallo {vorname},\n\nin wenigen Tagen ist es soweit — dein Aufenthalt im {wohnung} beginnt am {anreise}. Check-in ist ab {checkin} Uhr.\n\nDeinen Türcode und die Check-in-Anleitung findest du in deiner Gästemappe: {mappe}\n\nBis bald!\nDein TRIMOSA-Team',
+    },
+    {
+      name: 'Am Anreisetag', enabled: true, trigger_type: 'vor_anreise',
+      offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, sort: 2,
+      body: 'Hallo {vorname},\n\nherzlich willkommen! Dein Türcode für {wohnung} lautet: {tuercode}\n\nAlle weiteren Infos findest du in deiner Gästemappe: {mappe}\n\nSchön, dass du da bist — melde dich jederzeit, wenn du etwas brauchst.\nDein TRIMOSA-Team',
+    },
+    {
+      name: 'Nach der Abreise / Danke', enabled: true, trigger_type: 'nach_abreise',
+      offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, sort: 3,
+      body: 'Hallo {vorname},\n\nwir hoffen, du hattest einen schönen Aufenthalt im {wohnung}! Vielen Dank, dass du bei uns warst.\n\nWenn dir alles gefallen hat, freuen wir uns riesig über eine Bewertung — und über ein Wiedersehen.\n\nHerzliche Grüße\nDein TRIMOSA-Team',
+    },
+  ]
+}
