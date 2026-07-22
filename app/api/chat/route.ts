@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, sendMessageToGuest, sendMessageToHost } from '@/lib/smoobu'
+import { getReservationMessages, sendMessageToGuest, sendMessageToHost, isSmoobuSystemMessage } from '@/lib/smoobu'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
 import { makeTr } from '@/lib/static-translate'
@@ -21,6 +21,8 @@ async function syncSmoobuMessages(
 
     for (const sm of smoobuMsgs) {
       if (!sm.message?.trim()) continue
+      // Smoobu-Automatik-/Schloss-Protokolle nie in den Chat holen (§143)
+      if (isSmoobuSystemMessage(sm.subject)) continue
       const msgId  = String(sm.id)
       const content = sm.message.trim()
 
@@ -74,35 +76,29 @@ async function syncSmoobuMessages(
       const subjectIsGuest = subjectStr.includes('nachricht von gast') || subjectStr.includes('via trimosa')
       const subjectIsHost  = subjectStr.includes('nachricht von trimosa')
 
-      // NOTE: Smoobu uses type=1 as a generic "text message" category, NOT as sender type.
-      // The actual sender comes from senderType ("owner"/"guest") or direction ("outgoing"/"incoming").
-      // Those fields are already normalised into sm.type by smoobu.ts (senderType > direction > type).
-      // Numeric Smoobu types (§49): '2' = an den Gast (von uns), '1' = an den Host
-      const typeIsGuest = typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
-                        || typeStr === '1'
-      const typeIsHost  = typeStr.includes('host')  || typeStr === 'outgoing' || typeStr === 'sent'
+      // §49: Smoobus numerischer Typ ist verlässlich — '2' = an den Gast (von
+      // uns/Host), '1' = vom Gast. Der EXPLIZITE Typ gewinnt jetzt über den
+      // Betreff. Vorher entschied der Betreff zuerst → ein Gast-REPLY
+      // „Re: Nachricht von Trimosa" wurde fälschlich als Host eingestuft (§146).
+      const typeIsGuest = typeStr === '1' || typeStr.includes('guest') || typeStr === 'incoming' || typeStr === 'guest_to_host'
+      const typeIsHost  = typeStr === '2' || typeStr.includes('host') || typeStr === 'outgoing' || typeStr === 'sent'
                         || typeStr === 'host_to_guest' || typeStr === 'automated' || typeStr === 'owner'
-                        || typeStr === '2'
                         || senderStr.includes('host') || senderStr.includes('gastgeber')
-
-      // Unknown type → HOST (booking confirmations and system messages come from host)
-      const isHost = subjectIsHost ? true
-                   : subjectIsGuest ? false
+      const isHost = typeIsHost ? true
                    : typeIsGuest ? false
-                   : typeIsHost || !typeIsGuest
+                   : subjectIsHost ? true
+                   : subjectIsGuest ? false
+                   : true   // unbekannt → Host (Buchungsbestätigungen/System)
 
       console.log('[Chat] syncMsg id:', sm.id,
         '| type:', JSON.stringify(sm.type), '| sender:', JSON.stringify(sm.sender),
         '| subject:', sm.subject?.slice(0, 50),
         '| → isHost:', isHost)
 
-      // Direct-website bookings: the guest writes HERE, never via Smoobu.
-      // Type-1 messages on these reservations are Smoobu system notifications
-      // for the host ("Guest Phone Number", booking confirmations) — they must
-      // NOT leak into the guest's chat. Real guest messages already live in
-      // our DB (and Trimosa-forwarded copies are linked by content above).
-      if (!isHost) continue
-
+      // Gast-Nachrichten, die der Gast NATIV auf der Website schrieb, tragen ihre
+      // smoobu_message_id (Step 1 überspringt sie) oder werden per Content
+      // gelinkt (Step 2) → hier landen nur NEUE Nachrichten. Host-Mails +
+      // echte Gast-E-Mail-Antworten (Smoobu-Relay) werden korrekt importiert.
       const senderId = isHost ? hostId : (guestId ?? hostId)  // fallback to hostId if guestId is null
 
       const { error } = await supabaseAdmin
