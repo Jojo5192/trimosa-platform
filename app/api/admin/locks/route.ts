@@ -96,6 +96,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (body.action === 'team-code-test' && body.smartlockId && body.personId) {
+    const { debugTeamCodePut, getStaffCodes } = await import('@/lib/locks')
+    try {
+      const sc = (await getStaffCodes())[String(body.personId)]
+      if (!sc) return NextResponse.json({ error: 'Person hat keinen Code.' }, { status: 404 })
+      return NextResponse.json(await debugTeamCodePut(Number(body.smartlockId), sc.label, sc.code))
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action !== 'diagnose' || !body.bookingId) {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
