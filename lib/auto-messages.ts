@@ -42,6 +42,7 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{checkout}',     label: 'Check-out-Uhrzeit' },
   { key: '{tuercode}',     label: 'Türcode (falls vorhanden)' },
   { key: '{mappe}',        label: 'Link zur Gästemappe' },
+  { key: '{mappe_button}', label: 'Gästemappe als Button' },
   { key: '{adresse}',      label: 'Adresse der Wohnung' },
 ]
 
@@ -105,17 +106,17 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
     {
       name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
       offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 0,
-      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe: {mappe}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
+      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
     },
     {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
       offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 1,
-      body: 'Hallo {vorname},\n\nin wenigen Tagen ist es soweit — dein Aufenthalt im {wohnung} beginnt am {anreise}. Check-in ist ab {checkin} Uhr.\n\nDeinen Türcode und die Check-in-Anleitung findest du in deiner Gästemappe: {mappe}\n\nBis bald!\nDein TRIMOSA-Team',
+      body: 'Hallo {vorname},\n\nin wenigen Tagen ist es soweit — dein Aufenthalt im {wohnung} beginnt am {anreise}. Check-in ist ab {checkin} Uhr.\n\nDeinen Türcode und die Check-in-Anleitung findest du in deiner Gästemappe:\n\n{mappe_button}\n\nBis bald!\nDein TRIMOSA-Team',
     },
     {
       name: 'Am Anreisetag', enabled: true, trigger_type: 'vor_anreise',
       offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, sort: 2,
-      body: 'Hallo {vorname},\n\nherzlich willkommen! Dein Türcode für {wohnung} lautet: {tuercode}\n\nAlle weiteren Infos findest du in deiner Gästemappe: {mappe}\n\nSchön, dass du da bist — melde dich jederzeit, wenn du etwas brauchst.\nDein TRIMOSA-Team',
+      body: 'Hallo {vorname},\n\nherzlich willkommen! Dein Türcode für {wohnung} lautet: {tuercode}\n\nAlle weiteren Infos findest du in deiner Gästemappe:\n\n{mappe_button}\n\nSchön, dass du da bist — melde dich jederzeit, wenn du etwas brauchst.\nDein TRIMOSA-Team',
     },
     {
       name: 'Nach der Abreise / Danke', enabled: true, trigger_type: 'nach_abreise',
