@@ -105,6 +105,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (body.action === 'window-test' && body.smartlockId) {
+    const { debugWindowTest } = await import('@/lib/locks')
+    try {
+      return NextResponse.json(await debugWindowTest(Number(body.smartlockId)))
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action === 'team-code-test' && body.smartlockId && body.personId) {
     const { debugTeamCodePut, getStaffCodes } = await import('@/lib/locks')
     try {
