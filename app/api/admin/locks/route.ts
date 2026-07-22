@@ -80,10 +80,22 @@ export async function GET() {
 
 /** POST { action: 'diagnose', bookingId } — zeigt Guard-Felder + das
  *  konkrete Ergebnis von ensureDoorCode (inkl. Nuki-Fehlertext) als JSON.
- *  Diagnose-Werkzeug, weil die stillen skip-Pfade sonst nur im Log stehen. */
+ *  POST { action: 'auth-audit' } — listet je Nuki-Schloss die TRIMOSA-
+ *  Keypad-Codes (Name + Gültigkeit) + Gesamtzahl der Auths (200er-Limit!).
+ *  Diagnose-Werkzeuge, weil die stillen skip-Pfade sonst nur im Log stehen. */
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const body = await req.json()
+
+  if (body.action === 'auth-audit') {
+    const { auditNukiAuths } = await import('@/lib/locks')
+    try {
+      return NextResponse.json(await auditNukiAuths())
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action !== 'diagnose' || !body.bookingId) {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }
