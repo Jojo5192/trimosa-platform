@@ -199,7 +199,12 @@ export async function syncStaffCode(personId: string, firstName: string, listing
       if (await hasNukiAuth(id, label)) continue
       await setNukiPermanentCode([id], label, code)
     } catch (err) {
-      problems.push(`Schloss ${id}: ${(err instanceof Error ? err.message : String(err)).slice(0, 160)}`)
+      const m = err instanceof Error ? err.message : String(err)
+      // 409 „exists already" = der Code liegt bereits auf dem Schloss —
+      // Nukis Auth-GET zeigt frisch angelegte Codes erst verzögert an,
+      // der erneute PUT kollidiert dann mit sich selbst. Ziel erreicht.
+      if (/exists already/i.test(m)) continue
+      problems.push(`Schloss ${id}: ${m.slice(0, 160)}`)
     }
   }
 
