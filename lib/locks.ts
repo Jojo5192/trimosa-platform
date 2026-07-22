@@ -476,7 +476,7 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
  * nie), die App merkt das sonst nicht. Fehlende Codes werden mit dem
  * ORIGINAL-Zeitfenster nachgelegt. Läuft im täglichen Cron + auf Abruf.
  */
-export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; windowsFixed: number; stillMissing: string[] }> {
+export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; stillMissing: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
   const { data: rows } = await supabaseAdmin
@@ -504,7 +504,7 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
     return pinCache.get(id)!
   }
 
-  let checked = 0, healed = 0, ok = 0, windowsFixed = 0
+  let checked = 0, healed = 0, ok = 0, rotated = 0
   const stillMissing: string[] = []
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
@@ -514,45 +514,78 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
     const alias = `TRIMOSA ${r.id.slice(0, 8)}`
     const from = new Date(new Date(r.check_in + 'T00:00:00.000Z').getTime() + (s.validFromHour - 2) * 3600_000).toISOString()
     const until = new Date(new Date(r.check_out + 'T00:00:00.000Z').getTime() + (s.validUntilHour - 2) * 3600_000).toISOString()
-    let missing = 0, fixed = 0
-    for (const lock of locks) {
-      const lockId = Number(lock.id)
-      try {
-        if (lock.provider === 'nuki') {
-          const found = (await authsOf(lockId)).find((a) => a.type === 13 && labelMatches(a.name, alias))
-          if (found) {
-            // Alt-Codes ohne remoteAllowed bekamen KEIN Zeitfenster (§142) —
-            // hier nachziehen, sonst gelten sie unbegrenzt und werden nie gelöscht
-            if (!found.allowedUntilDate) {
-              const upd = await nukiFetch(`/smartlock/${lockId}/auth/${found.id}`, {
-                method: 'POST',
-                body: JSON.stringify({ name: found.name, allowedFromDate: from, allowedUntilDate: until, remoteAllowed: false }),
-              })
-              if (upd.ok || upd.status === 202 || upd.status === 204) windowsFixed++
-            }
-            continue
-          }
-          missing++
-          await setNukiCode([lockId], alias, r.door_code as string, from, until)
-          fixed++
-        } else if (lock.provider === 'tedee') {
-          if ((await pinsOf(lockId)).some((p) => p.alias === alias)) continue
-          missing++
-          await setTedeePin(lockId, alias, r.door_code as string, from, until)
-          fixed++
-        }
-      } catch (err) {
-        const m = err instanceof Error ? err.message : String(err)
-        if (/exists already/i.test(m)) { fixed++; continue }
-        console.error('[locks] verify:', listing?.title, lock.id, m.slice(0, 120))
+
+    // Zustand je Schloss sammeln: fehlend / ok / vorhanden-OHNE-Zeitfenster
+    const nukiLocks = locks.filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
+    const tedeeLocks = locks.filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
+    let unbounded = false
+    const foundOn = new Map<number, { id: string; allowedUntilDate?: string }>()
+    for (const lockId of nukiLocks) {
+      const found = (await authsOf(lockId)).find((a) => a.type === 13 && labelMatches(a.name, alias))
+      if (found) {
+        foundOn.set(lockId, found)
+        if (!found.allowedUntilDate) unbounded = true
       }
     }
-    if (missing === 0) ok++
-    else if (fixed >= missing) { healed++; console.log('[locks] verify: Code nachgelegt', { booking: r.id.slice(0, 8), listing: listing?.title, locks: fixed }) }
-    else stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
+
+    try {
+      if (unbounded) {
+        // 🔄 ROTATION statt Update: Nuki verarbeitet Auth-Updates unzuverlässig
+        // (§142 — 2xx, aber Fenster kommt nie an). Neuer Code MIT Fenster
+        // (neuer Wert = keine 409-Falle), alte Auths runter, door_code neu.
+        // Gefahrlos: die Mappe-Codes sind noch nicht an Gäste kommuniziert
+        // (Testbetrieb, Smoobu vergibt die produktiven Codes).
+        const newCode = generateDoorCode()
+        for (const [lockId, found] of foundOn) {
+          await nukiFetch(`/smartlock/${lockId}/auth/${found.id}`, { method: 'DELETE' })
+        }
+        if (nukiLocks.length) await setNukiCode(nukiLocks, alias, newCode, from, until)
+        for (const id of tedeeLocks) {
+          await removeTedeePinsByAlias(id, alias)
+          await setTedeePin(id, alias, newCode, from, until)
+        }
+        await supabaseAdmin.from('bookings').update({ door_code: newCode }).eq('id', r.id)
+        rotated++
+        console.log('[locks] verify: Code ROTIERT (Fenster fehlte)', { booking: r.id.slice(0, 8), listing: listing?.title })
+        continue
+      }
+
+      // Kein Rotations-Fall: nur wirklich Fehlendes mit dem BESTEHENDEN Code nachlegen
+      let missing = 0, fixed = 0
+      for (const lockId of nukiLocks) {
+        if (foundOn.has(lockId)) continue
+        missing++
+        try {
+          await setNukiCode([lockId], alias, r.door_code as string, from, until)
+          fixed++
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          if (/exists already/i.test(m)) { fixed++; continue }
+          console.error('[locks] verify:', listing?.title, lockId, m.slice(0, 120))
+        }
+      }
+      for (const lockId of tedeeLocks) {
+        if ((await pinsOf(lockId)).some((p) => p.alias === alias)) continue
+        missing++
+        try {
+          await setTedeePin(lockId, alias, r.door_code as string, from, until)
+          fixed++
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          if (/exists already/i.test(m)) { fixed++; continue }
+          console.error('[locks] verify: tedee', listing?.title, lockId, m.slice(0, 120))
+        }
+      }
+      if (missing === 0) ok++
+      else if (fixed >= missing) { healed++; console.log('[locks] verify: Code nachgelegt', { booking: r.id.slice(0, 8), listing: listing?.title, locks: fixed }) }
+      else stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
+    } catch (err) {
+      console.error('[locks] verify booking failed:', r.id.slice(0, 8), err instanceof Error ? err.message.slice(0, 160) : String(err))
+      stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
+    }
   }
-  if (windowsFixed) console.log('[locks] verify: Zeitfenster nachgezogen:', windowsFixed)
-  return { checked, healed, ok, windowsFixed, stillMissing }
+  if (rotated) console.log('[locks] verify: rotierte Codes:', rotated)
+  return { checked, healed, ok, rotated, stillMissing }
 }
 
 /**
