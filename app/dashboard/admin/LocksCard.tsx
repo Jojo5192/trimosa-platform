@@ -12,12 +12,18 @@ import { useEffect, useState } from 'react'
 type LockRef = { provider: 'nuki' | 'tedee'; id: string; label: string }
 type Row = { id: string; title: string; locks: LockRef[] | null }
 type NukiLock = { id: string; name: string }
+type Person = { id: string; name: string; role: string }
+type StaffCode = { code: string; listingIds: string[]; label: string }
 
 export default function LocksCard() {
   const [rows, setRows] = useState<Row[]>([])
   const [nuki, setNuki] = useState<NukiLock[] | null>(null)
   const [nukiError, setNukiError] = useState<string | null>(null)
   const [pins, setPins] = useState<Record<string, string>>({})
+  const [people, setPeople] = useState<Person[]>([])
+  const [staffCodes, setStaffCodes] = useState<Record<string, StaffCode>>({})
+  const [drafts, setDrafts] = useState<Record<string, string[]>>({})
+  const [busyPerson, setBusyPerson] = useState<string | null>(null)
   const [revealDays, setRevealDays] = useState(3)
   const [validFromHour, setValidFromHour] = useState(0)
   const [validUntilHour, setValidUntilHour] = useState(24)
@@ -35,6 +41,9 @@ export default function LocksCard() {
         setNuki(d.nuki)
         setNukiError(d.nukiError ?? null)
         setPins(d.servicePins ?? {})
+        setPeople(d.people ?? [])
+        setStaffCodes(d.staffCodes ?? {})
+        setDrafts(Object.fromEntries(Object.entries((d.staffCodes ?? {}) as Record<string, StaffCode>).map(([pid, sc]) => [pid, sc.listingIds])))
         setRevealDays(d.revealDays ?? 3)
         setValidFromHour(d.validFromHour ?? 0)
         setValidUntilHour(d.validUntilHour ?? 24)
@@ -42,6 +51,31 @@ export default function LocksCard() {
       })
       .catch(() => setMsg('Laden fehlgeschlagen.'))
   }, [open, loaded])
+
+  async function saveStaffCode(personId: string, listingIds: string[]) {
+    setBusyPerson(personId)
+    setMsg(null)
+    try {
+      const r = await fetch('/api/admin/locks', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffCode: { personId, listingIds } }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setMsg(d.error ?? 'Speichern fehlgeschlagen.'); return }
+      setStaffCodes((sc) => {
+        const next = { ...sc }
+        if (d.staffCode) next[personId] = d.staffCode
+        else delete next[personId]
+        return next
+      })
+      setDrafts((dr) => ({ ...dr, [personId]: d.staffCode?.listingIds ?? [] }))
+      setMsg(d.staffCode ? `✓ Code aktiv: ${d.staffCode.code}` : '✓ Code entzogen')
+    } catch {
+      setMsg('Speichern fehlgeschlagen.')
+    } finally {
+      setBusyPerson(null)
+    }
+  }
 
   async function patch(body: Record<string, unknown>): Promise<boolean> {
     setMsg(null)
@@ -139,6 +173,91 @@ export default function LocksCard() {
             </div>
           )}
 
+          {/* 👤 Personen-Codes (§141): EIN fester Code je Person, gültig auf
+              den freigegebenen Wohnungen — Öffnungen erscheinen im Nuki-
+              Protokoll unter dem Namen (wer war wann wo). */}
+          {loaded && people.length > 0 && (
+            <div style={{ marginBottom: 18, padding: '14px 14px 12px', borderRadius: 12, background: '#F8F6F0', border: '1px solid #EDE9DE' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#222', marginBottom: 2 }}>👤 Personen-Codes</div>
+              <p style={{ fontSize: 12, color: '#888', margin: '0 0 10px', lineHeight: 1.5 }}>
+                Ein fester Keypad-Code pro Person — gilt an allen freigegebenen Wohnungen (inkl.
+                Haustür). Im Nuki-Protokoll steht bei jeder Öffnung der Name. Häkchen ändern +
+                Speichern legt die Codes direkt auf die Schlösser (dauert einige Sekunden).
+              </p>
+              {people.map((p) => {
+                const sc = staffCodes[p.id]
+                const draft = drafts[p.id] ?? []
+                const saved = sc?.listingIds ?? []
+                const dirty = draft.length !== saved.length || draft.some((id) => !saved.includes(id))
+                const busy = busyPerson === p.id
+                return (
+                  <div key={p.id} style={{ borderTop: '1px solid #EDE9DE', padding: '10px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 7 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#222' }}>{p.name}</span>
+                      <span style={{ fontSize: 11, color: '#999' }}>{p.role}</span>
+                      {sc && (
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8A7020', background: 'rgba(174,141,45,0.12)', borderRadius: 8, padding: '2px 8px', fontVariantNumeric: 'tabular-nums' }}>
+                          🔑 {sc.code}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                      {rows.map((row) => {
+                        const hasNuki = (row.locks ?? []).some((l) => l.provider === 'nuki')
+                        const on = draft.includes(row.id)
+                        return (
+                          <button
+                            key={row.id}
+                            disabled={!hasNuki || busy}
+                            title={hasNuki ? undefined : 'Kein Nuki-Schloss zugeordnet'}
+                            onClick={() => setDrafts((dr) => ({
+                              ...dr,
+                              [p.id]: on ? draft.filter((id) => id !== row.id) : [...draft, row.id],
+                            }))}
+                            style={{
+                              padding: '5px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                              cursor: hasNuki && !busy ? 'pointer' : 'not-allowed',
+                              border: on ? '1.5px solid var(--gold, #AE8D2D)' : '1.5px solid #E0DDD6',
+                              background: on ? 'rgba(174,141,45,0.1)' : '#fff',
+                              color: !hasNuki ? '#C4C0B6' : on ? '#8A7020' : '#666',
+                            }}
+                          >
+                            {on ? '✓ ' : ''}{row.title}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {dirty && (
+                        <button
+                          disabled={busy}
+                          onClick={() => saveStaffCode(p.id, draft)}
+                          style={{
+                            padding: '6px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                            border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#fff',
+                            background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+                          }}
+                        >
+                          {busy ? '⏳ Schreibe auf Schlösser…' : sc ? '💾 Zugriff aktualisieren' : '🔑 Code anlegen'}
+                        </button>
+                      )}
+                      {sc && !busy && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Code von ${p.name} überall entziehen?`)) saveStaffCode(p.id, [])
+                          }}
+                          style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, border: '1.5px solid #E5B9B0', background: '#fff', color: '#B0492B', cursor: 'pointer' }}
+                        >
+                          ✕ Entziehen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {loaded && rows.map((row) => {
             const assigned = (row.locks ?? []).filter((l) => l.provider === 'nuki')
             return (
@@ -191,9 +310,11 @@ export default function LocksCard() {
           })}
           {loaded && (
             <p style={{ fontSize: 11.5, color: '#999', margin: '12px 0 0', lineHeight: 1.55 }}>
-              Hinweis: Service-PINs werden hier nur ANGEZEIGT verwaltet — der Code selbst muss
-              (einmalig) als dauerhafter Keypad-Code in der Nuki-App angelegt sein. Gäste-Codes
-              legt die Automatik selbst an und räumt sie nach Abreise ab.
+              Hinweis: PERSONEN-Codes werden von der App direkt auf den Schlössern angelegt und
+              beim Entziehen wieder entfernt — jede Öffnung steht im Nuki-Protokoll unter dem
+              Namen. Die alten Wohnungs-Service-PINs sind nur eine Anzeige (Code muss in der
+              Nuki-App existieren) und können entfallen, sobald Personen-Codes vergeben sind.
+              Gäste-Codes legt die Automatik je Buchung selbst an und räumt sie nach Abreise ab.
             </p>
           )}
         </div>
