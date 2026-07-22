@@ -290,6 +290,39 @@ export async function debugTeamCodePut(smartlockId: number, label: string, code:
   return { putStatus: res.status, putBody, visibleAfter8s: await hasNukiAuth(smartlockId, label) }
 }
 
+/** Diagnose (§142): Probe-GAST-Code MIT Zeitfenster anlegen, nach 8s die
+ *  TATSÄCHLICH gespeicherten Felder auslesen, Probe wieder löschen —
+ *  beweist binär, ob remoteAllowed das Fenster-Verwerfen behoben hat. */
+export async function debugWindowTest(smartlockId: number): Promise<{
+  putStatus: number; putBody: string; sent: { from: string; until: string }
+  foundAfter8s: boolean; stored?: { allowedFromDate?: string; allowedUntilDate?: string; remoteAllowed?: boolean }
+}> {
+  const label = 'TRIMOSA TESTFENSTER'
+  const code = generateDoorCode()
+  const from = new Date(Date.now() + 86400_000).toISOString()
+  const until = new Date(Date.now() + 2 * 86400_000).toISOString()
+  const res = await nukiFetch('/smartlock/auth', {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: label, type: 13, code: Number(code), smartlockIds: [smartlockId],
+      remoteAllowed: false, allowedFromDate: from, allowedUntilDate: until,
+    }),
+  })
+  const putBody = (await res.text()).slice(0, 400)
+  await new Promise((r) => setTimeout(r, 8000))
+  const listRes = await nukiFetch(`/smartlock/${smartlockId}/auth`)
+  const auths = listRes.ok ? (await listRes.json() as { id: string; type?: number; name?: string; allowedFromDate?: string; allowedUntilDate?: string; remoteAllowed?: boolean }[]) : []
+  const found = auths.find((a) => a.type === 13 && labelMatches(a.name, label))
+  if (found) {
+    await nukiFetch(`/smartlock/${smartlockId}/auth/${found.id}`, { method: 'DELETE' })
+  }
+  return {
+    putStatus: res.status, putBody, sent: { from, until },
+    foundAfter8s: !!found,
+    stored: found ? { allowedFromDate: found.allowedFromDate, allowedUntilDate: found.allowedUntilDate, remoteAllowed: found.remoteAllowed } : undefined,
+  }
+}
+
 /**
  * Personen-Code anlegen/ändern/entziehen: EIN fester Keypad-Code je Person,
  * gültig auf den Nuki-Schlössern der freigegebenen Wohnungen (inkl. der
