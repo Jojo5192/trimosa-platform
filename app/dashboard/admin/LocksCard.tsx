@@ -19,6 +19,8 @@ export default function LocksCard() {
   const [rows, setRows] = useState<Row[]>([])
   const [nuki, setNuki] = useState<NukiLock[] | null>(null)
   const [nukiError, setNukiError] = useState<string | null>(null)
+  const [tedee, setTedee] = useState<NukiLock[] | null>(null)
+  const [tedeeError, setTedeeError] = useState<string | null>(null)
   const [pins, setPins] = useState<Record<string, string>>({})
   const [people, setPeople] = useState<Person[]>([])
   const [staffCodes, setStaffCodes] = useState<Record<string, StaffCode>>({})
@@ -40,6 +42,8 @@ export default function LocksCard() {
         setRows(d.listings ?? [])
         setNuki(d.nuki)
         setNukiError(d.nukiError ?? null)
+        setTedee(d.tedee ?? null)
+        setTedeeError(d.tedeeError ?? null)
         setPins(d.servicePins ?? {})
         setPeople(d.people ?? [])
         setStaffCodes(d.staffCodes ?? {})
@@ -89,12 +93,11 @@ export default function LocksCard() {
     return true
   }
 
-  function toggleLock(row: Row, lock: NukiLock) {
-    const cur = (row.locks ?? []).filter((l) => l.provider === 'nuki')
-    const has = cur.some((l) => l.id === lock.id)
+  function toggleLock(row: Row, lock: NukiLock, provider: 'nuki' | 'tedee') {
+    const has = (row.locks ?? []).some((l) => l.provider === provider && l.id === lock.id)
     const next: LockRef[] = has
-      ? (row.locks ?? []).filter((l) => !(l.provider === 'nuki' && l.id === lock.id))
-      : [...(row.locks ?? []), { provider: 'nuki', id: lock.id, label: lock.name }]
+      ? (row.locks ?? []).filter((l) => !(l.provider === provider && l.id === lock.id))
+      : [...(row.locks ?? []), { provider, id: lock.id, label: lock.name }]
     setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, locks: next } : r)))
     patch({ listingId: row.id, locks: next })
   }
@@ -111,7 +114,7 @@ export default function LocksCard() {
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
       >
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: '0 0 4px' }}>🔑 Türcodes (Nuki)</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: '0 0 4px' }}>🔑 Türcodes (Nuki + tedee)</h2>
           <p style={{ fontSize: 12.5, color: '#888', margin: 0, lineHeight: 1.55 }}>
             Schlösser je Wohnung zuordnen — Gäste-Codes entstehen dann automatisch je Buchung
             (Gästemappe), Service-PINs erscheinen im Team-Kalender.
@@ -128,6 +131,11 @@ export default function LocksCard() {
           {nukiError && (
             <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FDF3E7', border: '1px solid #EAD9B8', fontSize: 12.5, color: '#8A6216', lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {nukiError}
+            </div>
+          )}
+          {tedeeError && (
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FDF3E7', border: '1px solid #EAD9B8', fontSize: 12.5, color: '#8A6216', lineHeight: 1.5, marginBottom: 14 }}>
+              ⚠️ tedee: {tedeeError}
             </div>
           )}
 
@@ -203,23 +211,23 @@ export default function LocksCard() {
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                       {rows.map((row) => {
-                        const hasNuki = (row.locks ?? []).some((l) => l.provider === 'nuki')
+                        const hasLock = (row.locks ?? []).length > 0
                         const on = draft.includes(row.id)
                         return (
                           <button
                             key={row.id}
-                            disabled={!hasNuki || busy}
-                            title={hasNuki ? undefined : 'Kein Nuki-Schloss zugeordnet'}
+                            disabled={!hasLock || busy}
+                            title={hasLock ? undefined : 'Kein Schloss zugeordnet'}
                             onClick={() => setDrafts((dr) => ({
                               ...dr,
                               [p.id]: on ? draft.filter((id) => id !== row.id) : [...draft, row.id],
                             }))}
                             style={{
                               padding: '5px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
-                              cursor: hasNuki && !busy ? 'pointer' : 'not-allowed',
+                              cursor: hasLock && !busy ? 'pointer' : 'not-allowed',
                               border: on ? '1.5px solid var(--gold, #AE8D2D)' : '1.5px solid #E0DDD6',
                               background: on ? 'rgba(174,141,45,0.1)' : '#fff',
-                              color: !hasNuki ? '#C4C0B6' : on ? '#8A7020' : '#666',
+                              color: !hasLock ? '#C4C0B6' : on ? '#8A7020' : '#666',
                             }}
                           >
                             {on ? '✓ ' : ''}{row.title}
@@ -259,18 +267,18 @@ export default function LocksCard() {
           )}
 
           {loaded && rows.map((row) => {
-            const assigned = (row.locks ?? []).filter((l) => l.provider === 'nuki')
+            const assigned = row.locks ?? []
             return (
               <div key={row.id} style={{ borderTop: '1px solid #F0EDE5', padding: '12px 0' }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: '#222', marginBottom: 8 }}>{row.title}</div>
-                {nuki ? (
+                {(nuki || tedee) ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                    {nuki.map((l) => {
-                      const on = assigned.some((a) => a.id === l.id)
+                    {(nuki ?? []).map((l) => {
+                      const on = assigned.some((a) => a.provider === 'nuki' && a.id === l.id)
                       return (
                         <button
-                          key={l.id}
-                          onClick={() => toggleLock(row, l)}
+                          key={'n' + l.id}
+                          onClick={() => toggleLock(row, l, 'nuki')}
                           style={{
                             padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
                             border: on ? '1.5px solid var(--gold, #AE8D2D)' : '1.5px solid #E0DDD6',
@@ -279,6 +287,23 @@ export default function LocksCard() {
                           }}
                         >
                           {on ? '✓ ' : ''}{l.name}
+                        </button>
+                      )
+                    })}
+                    {(tedee ?? []).map((l) => {
+                      const on = assigned.some((a) => a.provider === 'tedee' && a.id === l.id)
+                      return (
+                        <button
+                          key={'t' + l.id}
+                          onClick={() => toggleLock(row, l, 'tedee')}
+                          style={{
+                            padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+                            border: on ? '1.5px solid #245ABC' : '1.5px solid #E0DDD6',
+                            background: on ? 'rgba(36,90,188,0.08)' : '#fff',
+                            color: on ? '#245ABC' : '#666',
+                          }}
+                        >
+                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>tedee</span>
                         </button>
                       )
                     })}
