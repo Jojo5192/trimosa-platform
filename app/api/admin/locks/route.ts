@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { listNukiLocks, nukiConfigured, getLockSettings, getStaffCodes, syncStaffCode, type LockRef } from '@/lib/locks'
+import { listNukiLocks, nukiConfigured, listTedeeLocks, tedeeConfigured, getLockSettings, getStaffCodes, syncStaffCode, type LockRef } from '@/lib/locks'
 
 /**
  * 🔑 Admin: Türschloss-Zuordnung je Wohnung + Service-PINs + Einstellungen.
@@ -49,10 +49,21 @@ export async function GET() {
     nukiError = 'NUKI_API_TOKEN fehlt (Vercel-Env) — Token auf web.nuki.io generieren.'
   }
 
+  // tedee (River Retreat, §142) — fail-soft wie Nuki
+  let tedee: { id: string; name: string }[] | null = null
+  let tedeeError: string | null = null
+  if (tedeeConfigured()) {
+    try { tedee = await listTedeeLocks() } catch (err) { tedeeError = err instanceof Error ? err.message : String(err) }
+  } else {
+    tedeeError = 'TEDEE_API_KEY fehlt (Vercel-Env) — Personal Access Key im tedee-Portal (Scope Device.ReadWrite) erstellen.'
+  }
+
   return NextResponse.json({
     listings: listings ?? [],
     nuki,
     nukiError,
+    tedee,
+    tedeeError,
     servicePins: (pinRow?.value as Record<string, string> | null) ?? {},
     staffCodes,
     people: (teamProfiles ?? []).map((p) => ({
