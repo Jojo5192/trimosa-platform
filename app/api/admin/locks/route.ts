@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { listNukiLocks, nukiConfigured, getLockSettings, type LockRef } from '@/lib/locks'
+import { listNukiLocks, nukiConfigured, getLockSettings, getStaffCodes, syncStaffCode, type LockRef } from '@/lib/locks'
 
 /**
  * 🔑 Admin: Türschloss-Zuordnung je Wohnung + Service-PINs + Einstellungen.
@@ -12,6 +12,8 @@ import { listNukiLocks, nukiConfigured, getLockSettings, type LockRef } from '@/
  *        | { settings: { revealDays } }
  */
 export const dynamic = 'force-dynamic'
+// Personen-Code-Sync macht je Schloss mehrere Nuki-Calls (§141)
+export const maxDuration = 60
 
 async function requireAdmin() {
   const supabase = await createSupabaseServerClient()
@@ -24,10 +26,16 @@ async function requireAdmin() {
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const [{ data: listings, error: lErr }, { data: pinRow }, settings] = await Promise.all([
+  const [{ data: listings, error: lErr }, { data: pinRow }, settings, staffCodes, { data: teamProfiles }] = await Promise.all([
     supabaseAdmin.from('listings').select('id, title, locks').eq('is_active', true).order('title'),
     supabaseAdmin.from('app_settings').select('value').eq('key', 'service_pins').maybeSingle(),
     getLockSettings(),
+    getStaffCodes(),
+    // Personen-Codes (§141): alle Team-Rollen zur Auswahl
+    supabaseAdmin.from('profiles')
+      .select('id, display_name, is_admin, is_host, is_staff, is_provider')
+      .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true,is_provider.eq.true')
+      .order('display_name'),
   ])
   if (lErr) {
     return NextResponse.json({ error: 'Migration 20260720_door_codes.sql fehlt noch (listings.locks).' }, { status: 500 })
@@ -46,6 +54,13 @@ export async function GET() {
     nuki,
     nukiError,
     servicePins: (pinRow?.value as Record<string, string> | null) ?? {},
+    staffCodes,
+    people: (teamProfiles ?? []).map((p) => ({
+      id: p.id,
+      name: (p.display_name ?? '').trim() || 'Ohne Namen',
+      role: p.is_provider && !p.is_staff && !p.is_host && !p.is_admin ? 'Dienstleister'
+        : p.is_staff && !p.is_host && !p.is_admin ? 'Mitarbeiter' : 'Gastgeber/Admin',
+    })),
     revealDays: settings.revealDays,
     validFromHour: settings.validFromHour,
     validUntilHour: settings.validUntilHour,
@@ -106,6 +121,25 @@ export async function PATCH(req: NextRequest) {
     )
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, settings: next })
+  }
+
+  // 👤 Personen-Code (§141): { staffCode: { personId, listingIds } } —
+  // leere listingIds = Code komplett entziehen. Der Sync legt/entfernt die
+  // Dauercodes direkt auf den Nuki-Schlössern der gewählten Wohnungen.
+  if (body.staffCode && typeof body.staffCode === 'object') {
+    const personId = String(body.staffCode.personId ?? '')
+    const listingIds = Array.isArray(body.staffCode.listingIds)
+      ? body.staffCode.listingIds.map(String).slice(0, 50) : []
+    if (!personId) return NextResponse.json({ error: 'personId fehlt.' }, { status: 400 })
+    const { data: prof } = await supabaseAdmin.from('profiles').select('display_name').eq('id', personId).maybeSingle()
+    if (!prof) return NextResponse.json({ error: 'Person nicht gefunden.' }, { status: 404 })
+    const firstName = (prof.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
+    try {
+      const result = await syncStaffCode(personId, firstName, listingIds)
+      return NextResponse.json({ ok: true, staffCode: result })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
   }
 
   const listingId = String(body.listingId ?? '')
