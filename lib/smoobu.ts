@@ -313,6 +313,21 @@ export interface SmoobuMessage {
 }
 
 /**
+ * Erkennt Smoobu-AUTOMATIK-/System-Protokolle (Schloss-Ereignisse etc.) am
+ * Betreff — diese sind KEINE Gast-Konversation und dürfen NICHT als Gast-
+ * Nachricht in den Chat wandern (§143: „Access granted for booking N",
+ * „Automation for booking N was scheduled"). Bewusst eng gefasst: nur diese
+ * eindeutigen System-Betreffs, echte Nachrichten (auch Bestätigungs-Mails)
+ * bleiben unberührt. Der Betreff ist ein System-Feld und immer englisch.
+ */
+export function isSmoobuSystemMessage(subject: string | null | undefined): boolean {
+  const s = String(subject ?? '').trim().toLowerCase()
+  if (!s) return false
+  return s.startsWith('automation for booking')
+    || /^access (granted|revoked) for booking/.test(s)
+}
+
+/**
  * Lists Smoobu reservations (arrival-date window, paginated) — used by the
  * chat-knowledge backfill to walk through the message history of past years.
  * Returns a defensive, normalised shape; hasMore signals further pages.
