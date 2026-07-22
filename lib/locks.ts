@@ -476,7 +476,7 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
  * nie), die App merkt das sonst nicht. Fehlende Codes werden mit dem
  * ORIGINAL-Zeitfenster nachgelegt. Läuft im täglichen Cron + auf Abruf.
  */
-export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; stillMissing: string[] }> {
+export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; orphansRemoved: number; stillMissing: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
   const { data: rows } = await supabaseAdmin
@@ -584,8 +584,39 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
       stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
     }
   }
+  // 🧹 Waisen-Sweep: unbegrenzte Gäste-Auths OHNE aktive Buchung löschen —
+  // Alt-Anlagen ohne Zeitfenster (§142), deren Aufenthalt vorbei ist; der
+  // reguläre Cleanup filtert auf allowedUntilDate und sieht sie nie
+  let orphansRemoved = 0
+  try {
+    const [{ data: allListings }, { data: activeRows }] = await Promise.all([
+      supabaseAdmin.from('listings').select('locks').not('locks', 'is', null),
+      supabaseAdmin.from('bookings').select('id').not('door_code', 'is', null).gte('check_out', today).limit(500),
+    ])
+    const activeAliases = new Set((activeRows ?? []).map((b) => `TRIMOSA ${String(b.id).slice(0, 8)}`))
+    const lockIds = new Set<number>()
+    for (const l of allListings ?? []) {
+      for (const lock of ((l.locks as LockRef[] | null) ?? [])) {
+        if (lock.provider === 'nuki') lockIds.add(Number(lock.id))
+      }
+    }
+    for (const lockId of lockIds) {
+      for (const a of await authsOf(lockId)) {
+        if (a.type !== 13 || a.allowedUntilDate) continue
+        const n = a.name ?? ''
+        // nur Gäste-Codes („TRIMOSA <hex8>", nie von Nuki gekürzt) — Team-Codes
+        // („TRIMOSA-Team …") sind absichtlich unbegrenzt
+        if (!/^TRIMOSA [0-9a-f]{8}$/.test(n)) continue
+        if (activeAliases.has(n)) continue
+        await nukiFetch(`/smartlock/${lockId}/auth/${a.id}`, { method: 'DELETE' })
+        orphansRemoved++
+      }
+    }
+    if (orphansRemoved) console.log('[locks] verify: verwaiste unbegrenzte Gäste-Codes gelöscht:', orphansRemoved)
+  } catch (err) { console.error('[locks] orphan sweep:', err) }
+
   if (rotated) console.log('[locks] verify: rotierte Codes:', rotated)
-  return { checked, healed, ok, rotated, stillMissing }
+  return { checked, healed, ok, rotated, orphansRemoved, stillMissing }
 }
 
 /**
@@ -596,12 +627,15 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
 export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skipped: number; cleaned: number; errors: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10)
+  // LAUFENDE Aufenthalte einschließen (check_out >= heute statt check_in >=
+  // heute) — Buchungen, die während einer Störung anreisten, bekamen sonst
+  // NIE einen Code (§142-Fall Jose: Backfill-Buchung, Anreise vor dem Cron)
   const { data: rows } = await supabaseAdmin
     .from('bookings')
     .select('id, guest_name, check_in, listings(title, locks)')
     .eq('status', 'confirmed')
     .is('door_code', null)
-    .gte('check_in', today)
+    .gte('check_out', today)
     .lte('check_in', horizon)
     .limit(100)
 
