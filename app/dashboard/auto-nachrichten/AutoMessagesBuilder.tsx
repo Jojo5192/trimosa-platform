@@ -40,7 +40,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
   const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [previewMode, setPreviewMode] = useState<'iphone' | 'desktop'>('iphone')
+  const [previewMode, setPreviewMode] = useState<'chat' | 'iphone' | 'desktop'>('chat')
   const bodyRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   const active = useMemo(() => messages.find((m) => m.id === activeId) ?? messages[0] ?? null, [messages, activeId])
@@ -118,7 +118,9 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
   }
 
   const ctx = demoContext(activeListing?.title ?? '', activeListing?.checkin ?? '16:00', activeListing?.checkout ?? '10:00')
-  const previewText = active ? resolvePlaceholders(active.body, ctx) : ''
+  // {mappe} + {mappe_button} bleiben als Token stehen (leerer Wert), damit sie
+  // beim Rendern als klickbarer Link bzw. Button dargestellt werden können
+  const previewText = active ? resolvePlaceholders(active.body, { ...ctx, mappe: '' }) : ''
 
   return (
     <div>
@@ -235,12 +237,12 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
           })}
         </div>
 
-        {/* ── Rechts: Mail-Vorschau (iPhone / Desktop) ── */}
+        {/* ── Rechts: Vorschau (Chat / iPhone Mail / Desktop) ── */}
         <div style={{ position: 'sticky', top: 100 }}>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 10 }}>
-            {([['iphone', '📱 iPhone Mail'], ['desktop', '💻 Desktop']] as const).map(([mode, label]) => (
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+            {([['chat', '💬 Chat'], ['iphone', '📱 iPhone Mail'], ['desktop', '💻 Desktop']] as const).map(([mode, label]) => (
               <button key={mode} type="button" onClick={() => setPreviewMode(mode)} style={{
-                padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                padding: '6px 13px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 border: previewMode === mode ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
                 background: previewMode === mode ? 'rgba(174,141,45,0.1)' : '#fff',
                 color: previewMode === mode ? '#8A7020' : '#888',
@@ -250,11 +252,26 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
 
           {!active ? (
             <p style={{ fontSize: 12.5, color: '#9A948A', textAlign: 'center', padding: 30 }}>Wähle links eine Nachricht aus.</p>
+          ) : previewMode === 'chat' ? (
+            /* Chat-Optik (so kommt sie bei Airbnb/Booking & Website-Chat an) */
+            <div style={{ borderRadius: 34, background: '#2B2F33', padding: 7, boxShadow: '0 14px 44px rgba(0,0,0,0.18)' }}>
+              <div style={{ borderRadius: 28, overflow: 'hidden', background: '#EBE7E0', minHeight: 520, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '18px 16px 14px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--gold)' }}>TRIMOSA</div>
+                  <div style={{ fontSize: 11.5, color: 'rgba(245,240,232,0.7)', marginTop: 2 }}>Nachricht an {ctx.vorname}</div>
+                </div>
+                <div style={{ flex: 1, padding: '18px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                  <div style={{ alignSelf: 'flex-end', maxWidth: '88%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))', color: '#fff', borderRadius: '16px 16px 4px 16px', padding: '11px 14px', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                    {renderBody(previewText, 'chat')}
+                  </div>
+                  <div style={{ alignSelf: 'flex-end', fontSize: 10, color: '#9A948A', marginTop: 6 }}>🌍 automatisch übersetzt</div>
+                </div>
+              </div>
+            </div>
           ) : previewMode === 'iphone' ? (
             /* iPhone-Mail-App-Rahmen */
             <div style={{ borderRadius: 34, background: '#2B2F33', padding: 7, boxShadow: '0 14px 44px rgba(0,0,0,0.18)' }}>
               <div style={{ borderRadius: 28, overflow: 'hidden', background: '#fff', maxHeight: 600, overflowY: 'auto' }}>
-                {/* iOS-Mail-Kopf */}
                 <div style={{ background: '#F7F7F7', borderBottom: '1px solid #E3E3E6', padding: '10px 14px 12px' }}>
                   <div style={{ fontSize: 11, color: '#8A8A8E', marginBottom: 6 }}>‹ Postfach</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#111', lineHeight: 1.3 }}>Nachricht von TRIMOSA</div>
@@ -266,7 +283,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                     </div>
                   </div>
                 </div>
-                <EmailBody text={previewText} />
+                <EmailBody>{renderBody(previewText, 'email')}</EmailBody>
               </div>
             </div>
           ) : (
@@ -284,7 +301,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                 </div>
               </div>
               <div style={{ maxHeight: 560, overflowY: 'auto' }}>
-                <EmailBody text={previewText} />
+                <EmailBody>{renderBody(previewText, 'email')}</EmailBody>
               </div>
             </div>
           )}
@@ -309,8 +326,45 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
   )
 }
 
+const DEMO_MAPPE_URL = 'https://trimosa.de/mappe/a1b2c3'
+
+/**
+ * Rendert den Nachrichtentext und macht {mappe} zum klickbaren Link bzw.
+ * {mappe_button} zum Button. In der Mail (mode 'email') echte Buttons/Links,
+ * im Chat (mode 'chat') klickbarer Link + „📖 …: URL"-Zeile (Chat-Clients
+ * verlinken URLs automatisch — ein echter Button geht dort nicht).
+ */
+function renderBody(text: string, mode: 'email' | 'chat'): React.ReactNode {
+  if (!text) return <span style={{ opacity: 0.7 }}>Noch kein Text…</span>
+  const parts = text.split(/(\{mappe_button\}|\{mappe\})/g)
+  const linkColor = mode === 'chat' ? '#EAF2FF' : '#8A7020'
+  return parts.map((p, i) => {
+    if (p === '{mappe}') {
+      return <a key={i} href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{ color: linkColor, fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all' }}>{DEMO_MAPPE_URL.replace('https://', '')}</a>
+    }
+    if (p === '{mappe_button}') {
+      if (mode === 'email') {
+        return (
+          <span key={i} style={{ display: 'block', margin: '16px 0 6px' }}>
+            <a href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{
+              display: 'inline-block', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+              color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none', padding: '12px 26px', borderRadius: 999,
+            }}>📖 Zur Gästemappe</a>
+          </span>
+        )
+      }
+      return (
+        <span key={i} style={{ display: 'block', marginTop: 8 }}>
+          📖 Deine Gästemappe: <a href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{ color: linkColor, fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all' }}>{DEMO_MAPPE_URL.replace('https://', '')}</a>
+        </span>
+      )
+    }
+    return <span key={i}>{p}</span>
+  })
+}
+
 /* Gebrandeter Mail-Inhalt (Navy-Kopf + Logo + Text + Footer) — matcht lib/email.ts */
-function EmailBody({ text }: { text: string }) {
+function EmailBody({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ background: '#F2F0EA', padding: '16px 12px' }}>
       <div style={{ maxWidth: 520, margin: '0 auto', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
@@ -322,7 +376,7 @@ function EmailBody({ text }: { text: string }) {
         {/* Text */}
         <div style={{ background: '#fff', padding: '22px 24px 20px' }}>
           <div style={{ fontSize: 14, lineHeight: 1.7, color: '#3A362E', whiteSpace: 'pre-wrap' }}>
-            {text || <span style={{ color: '#B0AA9C' }}>Noch kein Text…</span>}
+            {children}
           </div>
         </div>
         {/* Footer */}
