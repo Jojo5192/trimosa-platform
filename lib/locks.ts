@@ -136,7 +136,10 @@ export async function listTedeeLocks(): Promise<{ id: string; name: string }[]> 
 async function listTedeePins(lockId: number): Promise<{ id: number; alias?: string }[]> {
   const res = await tedeeFetch(`/api/v37/my/lock/${lockId}/pin`)
   if (!res.ok) return []
-  return tedeeResult<{ id: number; alias?: string }[]>(await res.json()) ?? []
+  // Antwort: { result: { listVersion, pins: [...] } } — defensiv auch nacktes Array
+  const r = tedeeResult<{ pins?: { id: number; alias?: string }[] } | { id: number; alias?: string }[]>(await res.json())
+  if (Array.isArray(r)) return r
+  return r?.pins ?? []
 }
 
 async function hasTedeePin(lockId: number, alias: string): Promise<boolean> {
