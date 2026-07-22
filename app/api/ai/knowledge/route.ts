@@ -120,6 +120,32 @@ export async function POST(request: Request) {
       detailBody,
     })
   }
+  if (action === 'lock-msg-cleanup') {
+    // §143: bereits synchronisierte Smoobu-Schloss-/Automatik-Meldungen aus
+    // der messages-Tabelle finden (Betreff nicht gespeichert → Content-Muster,
+    // eng gefasst auf die Lock-Notifications). dryRun (Default) LÖSCHT NICHTS.
+    const patterns = ['%granted access to apartment%', '%will be granted access%', '%wurde Zugriff auf das Apartment%', '%erhält Zugang zur Wohnung%']
+    const seen = new Map<string, { id: string; content: string; sender_type: string | null }>()
+    for (const p of patterns) {
+      const { data } = await supabaseAdmin
+        .from('messages').select('id, content, sender_type').ilike('content', p).limit(500)
+      for (const m of data ?? []) seen.set(m.id, m)
+    }
+    const rows = [...seen.values()]
+    const doDelete = content === 'DELETE' // nur bei explizitem { content: 'DELETE' }
+    if (doDelete && rows.length) {
+      const ids = rows.map((r) => r.id)
+      for (let i = 0; i < ids.length; i += 100) {
+        await supabaseAdmin.from('messages').delete().in('id', ids.slice(i, i + 100))
+      }
+    }
+    return NextResponse.json({
+      gefunden: rows.length,
+      geloescht: doDelete ? rows.length : 0,
+      modus: doDelete ? 'GELÖSCHT' : 'nur gezählt (dry-run)',
+      beispiele: rows.slice(0, 8).map((r) => ({ sender: r.sender_type, content: (r.content ?? '').slice(0, 70) })),
+    })
+  }
   if (action === 'smoobu-test') {
     // X-ray one reservation's messages: rohe normalisierte Felder
     // (type/sender/subject) — optional { bookingId } oder { guestName }
