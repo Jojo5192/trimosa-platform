@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page, key, content, instruction, historic } = await request.json()
+  const { action, page, key, content, instruction, historic, bookingId, guestName } = await request.json()
 
   // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
   // { action: 'review-match', dryRun?: true }
@@ -125,8 +125,8 @@ export async function POST(request: Request) {
     // (type/sender/subject) — optional { bookingId } oder { guestName }
     // gezielt (§143: Lock-System-Meldungen erkennen).
     let query = supabaseAdmin.from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null)
-    if (body.bookingId) query = query.eq('id', String(body.bookingId))
-    else if (body.guestName) query = query.ilike('guest_name', `%${String(body.guestName)}%`)
+    if (bookingId) query = query.eq('id', String(bookingId))
+    else if (guestName) query = query.ilike('guest_name', `%${String(guestName)}%`)
     else query = query.order('created_at', { ascending: false })
     const { data: booking } = await query.limit(1).maybeSingle()
     if (!booking?.smoobu_reservation_id) return NextResponse.json({ error: 'Keine Smoobu-Buchung gefunden.' })
