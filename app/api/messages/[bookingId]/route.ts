@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendMessageToGuest, getReservationMessages } from '@/lib/smoobu'
+import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 
 /**
@@ -76,6 +76,8 @@ export async function GET(
       }
       for (const sm of smoobuMessages) {
         if (!sm.message?.trim()) continue
+        // Smoobu-Automatik-/Schloss-Protokolle nicht in den Chat holen (§143)
+        if (isSmoobuSystemMessage(sm.subject)) continue
         const content = sm.message.trim()
         const fromHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
         if (known.has(String(sm.id))) {
