@@ -15,6 +15,28 @@ export interface MappeChatLabels {
 
 type Msg = { id: string; content: string | null; created_at: string; mine: boolean }
 
+// URLs im Nachrichtentext klickbar machen (z. B. Türcode-/Info-Links)
+function linkify(text: string | null): React.ReactNode {
+  if (!text) return text
+  const re = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
+  const out: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    let url = m[0]
+    const trail = url.match(/[.,;:!?]+$/)
+    const tail = trail ? trail[0] : ''
+    if (tail) url = url.slice(0, -tail.length)
+    const href = url.startsWith('http') ? url : `https://${url}`
+    out.push(<a key={m.index} href={href} target="_blank" rel="noreferrer" style={{ color: '#EAF2FF', textDecoration: 'underline', wordBreak: 'break-all' }}>{url}</a>)
+    if (tail) out.push(tail)
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out.length ? out : text
+}
+
 export default function MappeChat({ token, labels }: { token: string; labels: MappeChatLabels }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[] | null>(null)
@@ -106,7 +128,7 @@ export default function MappeChat({ token, labels }: { token: string; labels: Ma
                   background: m.mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : 'rgba(245,240,232,0.1)',
                   color: m.mine ? '#fff' : 'rgba(245,240,232,0.92)',
                 }}>
-                  {m.content}
+                  {linkify(m.content)}
                   <div style={{ fontSize: 9.5, opacity: 0.6, marginTop: 3, textAlign: 'right' }}>{fmt(m.created_at)}</div>
                 </div>
               </div>
