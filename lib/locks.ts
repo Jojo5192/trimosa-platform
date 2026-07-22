@@ -463,6 +463,79 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
 }
 
 /**
+ * 🩺 Selbstheilung (§142-Nachtrag): Prüft für anstehende Buchungen MIT
+ * gespeichertem door_code, ob der Code WIRKLICH auf den Schlössern liegt —
+ * Nuki verwirft Anlagen bei offline-Bridge still (PUT 204, Auth erscheint
+ * nie), die App merkt das sonst nicht. Fehlende Codes werden mit dem
+ * ORIGINAL-Zeitfenster nachgelegt. Läuft im täglichen Cron + auf Abruf.
+ */
+export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; stillMissing: string[] }> {
+  const today = new Date().toISOString().slice(0, 10)
+  const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
+  const { data: rows } = await supabaseAdmin
+    .from('bookings')
+    .select('id, door_code, check_in, check_out, listings(title, locks)')
+    .eq('status', 'confirmed')
+    .not('door_code', 'is', null)
+    .lte('check_in', horizon)
+    .gte('check_out', today)
+    .limit(60)
+
+  const s = await getLockSettings()
+  // Auth-Listen je Schloss nur einmal laden (mehrere Buchungen teilen Schlösser)
+  const authCache = new Map<number, { type?: number; name?: string }[]>()
+  const authsOf = async (id: number) => {
+    if (!authCache.has(id)) {
+      const res = await nukiFetch(`/smartlock/${id}/auth`)
+      authCache.set(id, res.ok ? (await res.json() as { type?: number; name?: string }[]) : [])
+    }
+    return authCache.get(id)!
+  }
+  const pinCache = new Map<number, { id: number; alias?: string }[]>()
+  const pinsOf = async (id: number) => {
+    if (!pinCache.has(id)) pinCache.set(id, await listTedeePins(id))
+    return pinCache.get(id)!
+  }
+
+  let checked = 0, healed = 0, ok = 0
+  const stillMissing: string[] = []
+  for (const r of rows ?? []) {
+    const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
+    const locks = (listing?.locks ?? []) as LockRef[]
+    if (!locks.length) continue
+    checked++
+    const alias = `TRIMOSA ${r.id.slice(0, 8)}`
+    const from = new Date(new Date(r.check_in + 'T00:00:00.000Z').getTime() + (s.validFromHour - 2) * 3600_000).toISOString()
+    const until = new Date(new Date(r.check_out + 'T00:00:00.000Z').getTime() + (s.validUntilHour - 2) * 3600_000).toISOString()
+    let missing = 0, fixed = 0
+    for (const lock of locks) {
+      const lockId = Number(lock.id)
+      try {
+        if (lock.provider === 'nuki') {
+          if ((await authsOf(lockId)).some((a) => a.type === 13 && labelMatches(a.name, alias))) continue
+          missing++
+          await setNukiCode([lockId], alias, r.door_code as string, from, until)
+          fixed++
+        } else if (lock.provider === 'tedee') {
+          if ((await pinsOf(lockId)).some((p) => p.alias === alias)) continue
+          missing++
+          await setTedeePin(lockId, alias, r.door_code as string, from, until)
+          fixed++
+        }
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err)
+        if (/exists already/i.test(m)) { fixed++; continue }
+        console.error('[locks] verify:', listing?.title, lock.id, m.slice(0, 120))
+      }
+    }
+    if (missing === 0) ok++
+    else if (fixed >= missing) { healed++; console.log('[locks] verify: Code nachgelegt', { booking: r.id.slice(0, 8), listing: listing?.title, locks: fixed }) }
+    else stillMissing.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
+  }
+  return { checked, healed, ok, stillMissing }
+}
+
+/**
  * Cron-Kern: Codes für alle Anreisen der nächsten 7 Tage anlegen +
  * abgelaufene Codes aufräumen. Fehler werden gesammelt und als EIN
  * Team-Push gemeldet (der Gast steht sonst ohne Code vor der Tür).
@@ -501,6 +574,13 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   for (const id of usedLocks) {
     try { cleaned += await cleanupNukiAuths(id) } catch { /* best effort */ }
   }
+
+  // 🩺 Selbstheilung: still verworfene Anlagen (offline-Bridge) nachlegen
+  try {
+    const v = await verifyGuestCodes(7)
+    if (v.healed || v.stillMissing.length) console.warn('[locks] verify:', v)
+    if (v.stillMissing.length) errors.push(`Code fehlt weiter auf Schloss: ${v.stillMissing.join(' · ')}`)
+  } catch (err) { console.error('[locks] verify failed:', err) }
 
   if (errors.length) {
     try {
