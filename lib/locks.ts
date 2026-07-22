@@ -290,37 +290,55 @@ export async function debugTeamCodePut(smartlockId: number, label: string, code:
   return { putStatus: res.status, putBody, visibleAfter8s: await hasNukiAuth(smartlockId, label) }
 }
 
-/** Diagnose (§142): Probe-GAST-Code MIT Zeitfenster anlegen, nach 8s die
- *  TATSÄCHLICH gespeicherten Felder auslesen, Probe wieder löschen —
- *  beweist binär, ob remoteAllowed das Fenster-Verwerfen behoben hat. */
+/** Diagnose (§142): Probe-GAST-Codes MIT Zeitfenster in mehreren Payload-
+ *  Varianten anlegen und nachprüfen, welche Variante das Fenster WIRKLICH
+ *  speichert (Nuki verwirft allowedFromDate/Until beim Bulk-PUT still).
+ *  Jede Probe wird wieder gelöscht; bricht beim ersten Treffer ab. */
 export async function debugWindowTest(smartlockId: number): Promise<{
-  putStatus: number; putBody: string; sent: { from: string; until: string }
-  foundAfter8s: boolean; stored?: { allowedFromDate?: string; allowedUntilDate?: string; remoteAllowed?: boolean }
+  variants: { name: string; putStatus: number; putBody: string; foundAfter8s: boolean; stored?: Record<string, unknown> }[]
+  winner: string | null
 }> {
-  const label = 'TRIMOSA TESTFENSTER'
-  const code = generateDoorCode()
   const from = new Date(Date.now() + 86400_000).toISOString()
   const until = new Date(Date.now() + 2 * 86400_000).toISOString()
-  const res = await nukiFetch('/smartlock/auth', {
-    method: 'PUT',
-    body: JSON.stringify({
-      name: label, type: 13, code: Number(code), smartlockIds: [smartlockId],
-      remoteAllowed: false, allowedFromDate: from, allowedUntilDate: until,
-    }),
-  })
-  const putBody = (await res.text()).slice(0, 400)
-  await new Promise((r) => setTimeout(r, 8000))
-  const listRes = await nukiFetch(`/smartlock/${smartlockId}/auth`)
-  const auths = listRes.ok ? (await listRes.json() as { id: string; type?: number; name?: string; allowedFromDate?: string; allowedUntilDate?: string; remoteAllowed?: boolean }[]) : []
-  const found = auths.find((a) => a.type === 13 && labelMatches(a.name, label))
-  if (found) {
-    await nukiFetch(`/smartlock/${smartlockId}/auth/${found.id}`, { method: 'DELETE' })
+  const noMillis = (iso: string) => iso.split('.')[0] + 'Z'
+  const variants: { name: string; path: string; body: Record<string, unknown> }[] = [
+    {
+      // Einzel-Schloss-Endpoint statt Bulk — evtl. reicht nur der die Felder durch
+      name: 'einzel-endpoint',
+      path: `/smartlock/${smartlockId}/auth`,
+      body: { name: 'TRIMOSA TEST-A', type: 13, code: Number(generateDoorCode()), remoteAllowed: false, allowedFromDate: from, allowedUntilDate: until },
+    },
+    {
+      // Bulk + komplette Wochentags-/Tageszeit-Felder (wie die Nuki-App sie setzt?)
+      name: 'bulk+weekdays',
+      path: '/smartlock/auth',
+      body: { name: 'TRIMOSA TEST-B', type: 13, code: Number(generateDoorCode()), smartlockIds: [smartlockId], remoteAllowed: false, allowedFromDate: from, allowedUntilDate: until, allowedWeekDays: 127, allowedFromTime: 0, allowedUntilTime: 0 },
+    },
+    {
+      // Bulk, Datum ohne Millisekunden
+      name: 'bulk-ohne-millis',
+      path: '/smartlock/auth',
+      body: { name: 'TRIMOSA TEST-C', type: 13, code: Number(generateDoorCode()), smartlockIds: [smartlockId], remoteAllowed: false, allowedFromDate: noMillis(from), allowedUntilDate: noMillis(until) },
+    },
+  ]
+  const results: { name: string; putStatus: number; putBody: string; foundAfter8s: boolean; stored?: Record<string, unknown> }[] = []
+  let winner: string | null = null
+  for (const v of variants) {
+    const res = await nukiFetch(v.path, { method: 'PUT', body: JSON.stringify(v.body) })
+    const putBody = (await res.text()).slice(0, 300)
+    await new Promise((r) => setTimeout(r, 8000))
+    const listRes = await nukiFetch(`/smartlock/${smartlockId}/auth`)
+    const auths = listRes.ok ? (await listRes.json() as { id: string; type?: number; name?: string; allowedFromDate?: string; allowedUntilDate?: string }[]) : []
+    const found = auths.find((a) => a.type === 13 && labelMatches(a.name, String(v.body.name)))
+    if (found) await nukiFetch(`/smartlock/${smartlockId}/auth/${found.id}`, { method: 'DELETE' })
+    results.push({
+      name: v.name, putStatus: res.status, putBody,
+      foundAfter8s: !!found,
+      stored: found ? { allowedFromDate: found.allowedFromDate, allowedUntilDate: found.allowedUntilDate } : undefined,
+    })
+    if (found?.allowedUntilDate) { winner = v.name; break }
   }
-  return {
-    putStatus: res.status, putBody, sent: { from, until },
-    foundAfter8s: !!found,
-    stored: found ? { allowedFromDate: found.allowedFromDate, allowedUntilDate: found.allowedUntilDate, remoteAllowed: found.remoteAllowed } : undefined,
-  }
+  return { variants: results, winner }
 }
 
 /**
