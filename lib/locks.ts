@@ -246,14 +246,21 @@ async function setNukiPermanentCode(smartlockIds: number[], name: string, code: 
   }
 }
 
-/** Alle Keypad-Auths mit exakt diesem Namen von den Schlössern entfernen. */
+/** Nuki KÜRZT Auth-Namen auf 20 Zeichen („TRIMOSA-Team Johannes 9f9c" →
+ *  „TRIMOSA-Team Johanne") — Vergleiche müssen die gekürzte Form mitprüfen,
+ *  sonst findet der Sync die eigenen Auths nie (§142-Nachtrag). */
+function labelMatches(name: string | undefined, label: string): boolean {
+  return name === label || name === label.slice(0, 20)
+}
+
+/** Alle Keypad-Auths mit diesem Namen von den Schlössern entfernen. */
 async function removeNukiAuthsByName(smartlockIds: number[], label: string): Promise<void> {
   for (const id of smartlockIds) {
     const res = await nukiFetch(`/smartlock/${id}/auth`)
     if (!res.ok) continue
     const auths = await res.json() as { id: string; type?: number; name?: string }[]
     for (const a of auths ?? []) {
-      if (a.type === 13 && a.name === label) {
+      if (a.type === 13 && labelMatches(a.name, label)) {
         await nukiFetch(`/smartlock/${id}/auth/${a.id}`, { method: 'DELETE' })
       }
     }
@@ -265,7 +272,19 @@ async function hasNukiAuth(smartlockId: number, label: string): Promise<boolean>
   const res = await nukiFetch(`/smartlock/${smartlockId}/auth`)
   if (!res.ok) return false
   const auths = await res.json() as { type?: number; name?: string }[]
-  return (auths ?? []).some((a) => a.type === 13 && a.name === label)
+  return (auths ?? []).some((a) => a.type === 13 && labelMatches(a.name, label))
+}
+
+/** Diagnose (§142): EIN permanenter Team-Code-PUT auf EIN Schloss mit voller
+ *  Response + Nachschau nach 8s — zeigt, ob Nuki die Anlage still verwirft. */
+export async function debugTeamCodePut(smartlockId: number, label: string, code: string): Promise<{ putStatus: number; putBody: string; visibleAfter8s: boolean }> {
+  const res = await nukiFetch('/smartlock/auth', {
+    method: 'PUT',
+    body: JSON.stringify({ name: label, type: 13, code: Number(code), smartlockIds: [smartlockId] }),
+  })
+  const putBody = (await res.text()).slice(0, 400)
+  await new Promise((r) => setTimeout(r, 8000))
+  return { putStatus: res.status, putBody, visibleAfter8s: await hasNukiAuth(smartlockId, label) }
 }
 
 /**
