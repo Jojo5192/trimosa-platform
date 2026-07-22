@@ -41,7 +41,8 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
   }))
 }
 
-/** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — Nutzer mit
+/** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — DIENSTLEISTER
+ *  (is_provider, kein Gäste-Chat-Zugang) bekommen ihn NIE; Nutzer mit
  *  push_guest_chats=false (Pascal-Präferenz §97.5) werden übersprungen. */
 export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean } = {}): Promise<void> {
   if (!ensureConfigured()) return
@@ -52,10 +53,12 @@ export async function sendPushToTeam(title: string, body: string, url = '/team',
   let filtered = subs as (Sub & { user_id: string | null })[]
   if (opts.guestChat) {
     try {
-      const { data: muted } = await supabaseAdmin
-        .from('profiles').select('id').eq('push_guest_chats', false)
-      const mutedIds = new Set((muted ?? []).map((p) => p.id))
-      if (mutedIds.size) filtered = filtered.filter((s) => !s.user_id || !mutedIds.has(s.user_id))
+      // Dienstleister KATEGORISCH ausschließen (sehen keine Gäste-Chats) +
+      // alle mit push_guest_chats=false stummgeschalteten Nutzer (§143)
+      const { data: excl } = await supabaseAdmin
+        .from('profiles').select('id').or('is_provider.eq.true,push_guest_chats.eq.false')
+      const exclIds = new Set((excl ?? []).map((p) => p.id))
+      if (exclIds.size) filtered = filtered.filter((s) => !s.user_id || !exclIds.has(s.user_id))
     } catch { /* Spalte fehlt (Migration ausstehend) → ungefiltert senden */ }
   }
   if (!filtered.length) return
