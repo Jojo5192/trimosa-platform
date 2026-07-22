@@ -159,6 +159,14 @@ async function removeNukiAuthsByName(smartlockIds: number[], label: string): Pro
   }
 }
 
+/** Trägt das Schloss bereits unsere Auth mit diesem Namen? */
+async function hasNukiAuth(smartlockId: number, label: string): Promise<boolean> {
+  const res = await nukiFetch(`/smartlock/${smartlockId}/auth`)
+  if (!res.ok) return false
+  const auths = await res.json() as { type?: number; name?: string }[]
+  return (auths ?? []).some((a) => a.type === 13 && a.name === label)
+}
+
 /**
  * Personen-Code anlegen/ändern/entziehen: EIN fester Keypad-Code je Person,
  * gültig auf den Nuki-Schlössern der freigegebenen Wohnungen (inkl. der
@@ -166,6 +174,12 @@ async function removeNukiAuthsByName(smartlockIds: number[], label: string): Pro
  * trägt den Vornamen → im Nuki-Protokoll steht, WER wann WO geöffnet hat.
  * Leere Wohnungs-Auswahl = Code komplett entziehen. Der Code selbst bleibt
  * bei Änderungen stabil (die Person muss sich nichts Neues merken).
+ *
+ * DIFFERENZ-Logik statt Löschen-und-neu-Anlegen: Nuki verarbeitet Auth-Calls
+ * asynchron — denselben Code sofort neu anzulegen racet mit dem Löschen und
+ * wirft 409 „code exists already". Darum: unveränderte Schlösser bleiben
+ * UNBERÜHRT, entfallende werden geräumt, nur wirklich fehlende bekommen den
+ * Code (idempotent per hasNukiAuth-Check, einzeln — Fehler je Schloss benannt).
  */
 export async function syncStaffCode(personId: string, firstName: string, listingIds: string[]): Promise<StaffCode | null> {
   const codes = await getStaffCodes()
@@ -173,17 +187,28 @@ export async function syncStaffCode(personId: string, firstName: string, listing
   const label = old?.label ?? `TRIMOSA-Team ${firstName} ${personId.slice(0, 4)}`
   const code = old?.code ?? generateDoorCode()
 
-  // Sauberer Reset: Code von allen bisher UND künftig betroffenen Schlössern
-  // nehmen, dann (falls Auswahl bleibt) frisch auf die Ziel-Schlösser legen
-  const affected = await nukiLockIdsFor([...new Set([...(old?.listingIds ?? []), ...listingIds])])
-  await removeNukiAuthsByName(affected, label)
+  const oldIds = await nukiLockIdsFor(old?.listingIds ?? [])
+  const newIds = await nukiLockIdsFor(listingIds)
 
-  const target = await nukiLockIdsFor(listingIds)
-  if (target.length) await setNukiPermanentCode(target, label, code)
+  const toRemove = oldIds.filter((id) => !newIds.includes(id))
+  await removeNukiAuthsByName(toRemove, label)
 
+  const problems: string[] = []
+  for (const id of newIds) {
+    try {
+      if (await hasNukiAuth(id, label)) continue
+      await setNukiPermanentCode([id], label, code)
+    } catch (err) {
+      problems.push(`Schloss ${id}: ${(err instanceof Error ? err.message : String(err)).slice(0, 160)}`)
+    }
+  }
+
+  // Wunschzustand immer speichern — ein erneutes Speichern heilt Teilfehler
+  // (idempotent); die Fehlermeldung benennt die betroffenen Schlösser
   if (listingIds.length) codes[personId] = { code, listingIds, label }
   else delete codes[personId]
   await saveStaffCodes(codes)
+  if (problems.length) throw new Error(`Code auf ${problems.length} Schloss/Schlössern nicht gesetzt — nochmal „Zugriff aktualisieren" versuchen. ${problems.join(' · ')}`)
   return listingIds.length ? codes[personId] : null
 }
 
