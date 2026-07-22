@@ -139,12 +139,28 @@ export async function GET() {
     servicePins = Object.fromEntries(Object.entries(all).filter(([lid]) => !visibleIds || visibleIds.has(lid)))
   } catch { /* fail-soft */ }
 
+  // 👤 Persönlicher Zugangs-Code (§141) — jede*r sieht NUR den eigenen
+  let myDoorCode: { code: string; listings: string[] } | null = null
+  try {
+    const { getStaffCodes } = await import('@/lib/locks')
+    const sc = (await getStaffCodes())[auth.userId]
+    if (sc) {
+      myDoorCode = {
+        code: sc.code,
+        listings: sc.listingIds
+          .map((id) => listings.find((l) => l.id === id)?.title ?? '')
+          .filter(Boolean),
+      }
+    }
+  } catch { /* fail-soft */ }
+
   return NextResponse.json({
     role: auth.role,
     stays,
     tasks: tasks ?? [],
     qs,
     servicePins,
+    myDoorCode,
     listings: Object.fromEntries(listings
       .filter((l) => !visibleIds || visibleIds.has(l.id))
       .map((l) => [
