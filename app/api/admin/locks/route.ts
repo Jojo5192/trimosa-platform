@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { listNukiLocks, nukiConfigured, listTedeeLocks, tedeeConfigured, getLockSettings, getStaffCodes, syncStaffCode, type LockRef } from '@/lib/locks'
+import { listNukiLocks, nukiConfigured, listTedeeLocks, tedeeConfigured, getLockSettings, getStaffCodes, syncStaffCode, validateDoorCode, type LockRef } from '@/lib/locks'
 
 /**
  * 🔑 Admin: Türschloss-Zuordnung je Wohnung + Service-PINs + Einstellungen.
@@ -142,11 +142,18 @@ export async function PATCH(req: NextRequest) {
     const listingIds = Array.isArray(body.staffCode.listingIds)
       ? body.staffCode.listingIds.map(String).slice(0, 50) : []
     if (!personId) return NextResponse.json({ error: 'personId fehlt.' }, { status: 400 })
+    // Optionaler WUNSCH-Code (§142-Nachtrag) — validiert gegen die Regeln
+    // beider Provider; leer/fehlend = bestehenden behalten bzw. generieren
+    const desiredCode = String(body.staffCode.code ?? '').trim() || undefined
+    if (desiredCode) {
+      const codeErr = validateDoorCode(desiredCode)
+      if (codeErr) return NextResponse.json({ error: codeErr }, { status: 400 })
+    }
     const { data: prof } = await supabaseAdmin.from('profiles').select('display_name').eq('id', personId).maybeSingle()
     if (!prof) return NextResponse.json({ error: 'Person nicht gefunden.' }, { status: 404 })
     const firstName = (prof.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
     try {
-      const result = await syncStaffCode(personId, firstName, listingIds)
+      const result = await syncStaffCode(personId, firstName, listingIds, desiredCode)
       return NextResponse.json({ ok: true, staffCode: result })
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
