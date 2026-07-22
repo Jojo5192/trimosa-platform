@@ -336,6 +336,35 @@ export async function syncStaffCode(personId: string, firstName: string, listing
   return listingIds.length ? codes[personId] : null
 }
 
+/** Diagnose (§142-Nachtrag): je Nuki-Schloss die TRIMOSA-Keypad-Auths
+ *  (Team-Codes + Gäste-Codes) + Gesamtzahl (200er-Auth-Limit sichtbar). */
+export async function auditNukiAuths(): Promise<{
+  locks: { id: string; name: string; totalAuths: number; keypadAuths: number; trimosaTeam: string[]; trimosaGuest: number; pending: string[] }[]
+}> {
+  const all = await listNukiLocks()
+  const locks = []
+  for (const l of all) {
+    const res = await nukiFetch(`/smartlock/${l.id}/auth`)
+    if (!res.ok) {
+      locks.push({ id: l.id, name: l.name, totalAuths: -1, keypadAuths: -1, trimosaTeam: [`GET HTTP ${res.status}`], trimosaGuest: 0, pending: [] })
+      continue
+    }
+    const auths = await res.json() as { type?: number; name?: string; enabled?: boolean; creationState?: number }[]
+    const keypad = (auths ?? []).filter((a) => a.type === 13)
+    locks.push({
+      id: l.id,
+      name: l.name,
+      totalAuths: (auths ?? []).length,
+      keypadAuths: keypad.length,
+      trimosaTeam: keypad.filter((a) => a.name?.startsWith('TRIMOSA-Team')).map((a) => `${a.name}${a.enabled === false ? ' (disabled)' : ''}${a.creationState ? ` (state ${a.creationState})` : ''}`),
+      trimosaGuest: keypad.filter((a) => a.name?.startsWith('TRIMOSA ') && !a.name?.startsWith('TRIMOSA-Team')).length,
+      // creationState ≠ 0 = Anlage noch nicht aufs Schloss propagiert
+      pending: keypad.filter((a) => a.creationState).map((a) => a.name ?? '?'),
+    })
+  }
+  return { locks }
+}
+
 export interface LockSettings {
   /** Tage vor Anreise, ab denen der Code in der Gästemappe erscheint */
   revealDays: number
