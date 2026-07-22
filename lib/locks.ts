@@ -47,24 +47,33 @@ export async function listNukiLocks(): Promise<{ id: string; name: string }[]> {
   return (list ?? []).map((l) => ({ id: String(l.smartlockId), name: l.name ?? `Schloss ${l.smartlockId}` }))
 }
 
+function isMonotoneSequence(c: string): boolean {
+  let up = true, down = true
+  for (let i = 1; i < c.length; i++) {
+    if (Number(c[i]) !== Number(c[i - 1]) + 1) up = false
+    if (Number(c[i]) !== Number(c[i - 1]) - 1) down = false
+  }
+  return up || down
+}
+
+/** Prüft einen WUNSCH-Code gegen die Regeln BEIDER Provider —
+ *  Fehlertext (deutsch) oder null wenn gültig. */
+export function validateDoorCode(code: string): string | null {
+  if (!/^[1-9]{6}$/.test(code)) return 'Code: genau 6 Ziffern, nur 1–9 (keine 0 — Nuki-Keypads haben keine 0-Logik).'
+  if (code.startsWith('12')) return 'Code darf nicht mit „12" beginnen (Nuki-Regel).'
+  if (new Set(code.split('')).size < 3) return 'Code braucht mindestens 3 verschiedene Ziffern.'
+  if (isMonotoneSequence(code)) return 'Code darf keine auf-/absteigende Folge sein (z. B. 345678).'
+  return null
+}
+
 /** 6-stelliger Code nach Nuki-Regeln (Ziffern 1–9, nicht „12…"-Start) —
  *  erfüllt auch die tedee-Regeln (5–8 Stellen, ≥3 verschiedene, keine
  *  streng auf-/absteigende Sequenz wie 345678). */
 export function generateDoorCode(): string {
-  const monotone = (c: string) => {
-    let up = true, down = true
-    for (let i = 1; i < c.length; i++) {
-      if (Number(c[i]) !== Number(c[i - 1]) + 1) up = false
-      if (Number(c[i]) !== Number(c[i - 1]) - 1) down = false
-    }
-    return up || down
-  }
   for (let i = 0; i < 50; i++) {
     let code = ''
     for (let d = 0; d < 6; d++) code += String(1 + Math.floor(Math.random() * 9))
-    if (code.startsWith('12')) continue
-    if (new Set(code.split('')).size < 3) continue
-    if (monotone(code)) continue
+    if (validateDoorCode(code)) continue
     return code
   }
   return '345679' // praktisch unerreichbar — deterministischer Fallback
@@ -273,24 +282,30 @@ async function hasNukiAuth(smartlockId: number, label: string): Promise<boolean>
  * UNBERÜHRT, entfallende werden geräumt, nur wirklich fehlende bekommen den
  * Code (idempotent per hasNukiAuth-Check, einzeln — Fehler je Schloss benannt).
  */
-export async function syncStaffCode(personId: string, firstName: string, listingIds: string[]): Promise<StaffCode | null> {
+export async function syncStaffCode(personId: string, firstName: string, listingIds: string[], desiredCode?: string): Promise<StaffCode | null> {
   const codes = await getStaffCodes()
   const old = codes[personId] ?? null
   const label = old?.label ?? `TRIMOSA-Team ${firstName} ${personId.slice(0, 4)}`
-  const code = old?.code ?? generateDoorCode()
+  const code = desiredCode || old?.code || generateDoorCode()
+  // Wunsch-Code weicht vom bisherigen ab → ALLE alten Auths räumen und
+  // überall frisch anlegen (der neue Code-WERT kollidiert nicht mit dem
+  // alten, darum greift die Async-409-Falle hier nicht)
+  const codeChanged = !!old && code !== old.code
 
   const oldIds = await lockIdsFor(old?.listingIds ?? [])
   const newIds = await lockIdsFor(listingIds)
 
-  await removeNukiAuthsByName(oldIds.nuki.filter((id) => !newIds.nuki.includes(id)), label)
-  for (const id of oldIds.tedee.filter((t) => !newIds.tedee.includes(t))) {
-    await removeTedeePinsByAlias(id, label)
-  }
+  const nukiToClean = codeChanged ? [...new Set([...oldIds.nuki, ...newIds.nuki])] : oldIds.nuki.filter((id) => !newIds.nuki.includes(id))
+  const tedeeToClean = codeChanged ? [...new Set([...oldIds.tedee, ...newIds.tedee])] : oldIds.tedee.filter((t) => !newIds.tedee.includes(t))
+  await removeNukiAuthsByName(nukiToClean, label)
+  for (const id of tedeeToClean) await removeTedeePinsByAlias(id, label)
 
   const problems: string[] = []
   for (const id of newIds.nuki) {
     try {
-      if (await hasNukiAuth(id, label)) continue
+      // Bei Code-Wechsel keinen Skip — die alte Auth (alter Code) kann im
+      // GET noch sichtbar sein, obwohl sie gerade gelöscht wird
+      if (!codeChanged && await hasNukiAuth(id, label)) continue
       await setNukiPermanentCode([id], label, code)
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err)
@@ -303,7 +318,7 @@ export async function syncStaffCode(personId: string, firstName: string, listing
   }
   for (const id of newIds.tedee) {
     try {
-      if (await hasTedeePin(id, label)) continue
+      if (!codeChanged && await hasTedeePin(id, label)) continue
       await setTedeePin(id, label, code) // ohne Zeitfenster = Dauercode
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err)
