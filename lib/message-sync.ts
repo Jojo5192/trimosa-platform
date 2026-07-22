@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages } from '@/lib/smoobu'
+import { getReservationMessages, isSmoobuSystemMessage } from '@/lib/smoobu'
 import { sendPushToTeam } from '@/lib/push'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 
@@ -30,6 +30,8 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
   const newGuestMsgs: { id: string; text: string }[] = []
   for (const sm of msgs) {
     if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
+    // Smoobu-Automatik-/Schloss-Protokolle NICHT in den Chat holen (§143)
+    if (isSmoobuSystemMessage(sm.subject)) continue
     const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
     // Zwillings-Claim für BEIDE Richtungen: Host-Nachrichten aus der Web-App
     // (POST speichert lokal ohne smoobu_message_id) UND Gast-Nachrichten aus
