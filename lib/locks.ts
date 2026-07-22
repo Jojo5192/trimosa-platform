@@ -96,6 +96,97 @@ export async function cleanupNukiAuths(smartlockId: number): Promise<number> {
   return removed
 }
 
+/* ── 👤 Personen-Codes (§141): EIN Dauercode je Team-Mitglied/Dienstleister ── */
+
+export interface StaffCode {
+  /** 6-stelliger Keypad-Code — ein Code je Person, auf allen freigegebenen Wohnungen gleich */
+  code: string
+  /** Wohnungen, deren Nuki-Schlösser den Code tragen */
+  listingIds: string[]
+  /** Auth-Name bei Nuki (Match-Anker beim Entziehen) — trägt den Vornamen fürs Öffnungs-Protokoll */
+  label: string
+}
+
+export async function getStaffCodes(): Promise<Record<string, StaffCode>> {
+  try {
+    const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'staff_door_codes').maybeSingle()
+    return (data?.value as Record<string, StaffCode> | null) ?? {}
+  } catch { return {} }
+}
+
+async function saveStaffCodes(codes: Record<string, StaffCode>): Promise<void> {
+  const { error } = await supabaseAdmin.from('app_settings').upsert(
+    { key: 'staff_door_codes', value: codes }, { onConflict: 'key' },
+  )
+  if (error) throw new Error(error.message)
+}
+
+/** Nuki-Schloss-IDs der Wohnungen (dedupe — die Sirzenich-Haustür hängt an dreien). */
+async function nukiLockIdsFor(listingIds: string[]): Promise<number[]> {
+  if (!listingIds.length) return []
+  const { data } = await supabaseAdmin.from('listings').select('id, locks').in('id', listingIds)
+  const ids = new Set<number>()
+  for (const l of data ?? []) {
+    for (const lock of ((l.locks as LockRef[] | null) ?? [])) {
+      if (lock.provider === 'nuki') ids.add(Number(lock.id))
+    }
+  }
+  return [...ids]
+}
+
+/** DAUER-Code (ohne Zeitfenster) auf mehrere Schlösser legen — ein API-Call. */
+async function setNukiPermanentCode(smartlockIds: number[], name: string, code: string): Promise<void> {
+  const res = await nukiFetch('/smartlock/auth', {
+    method: 'PUT',
+    body: JSON.stringify({ name, type: 13, code: Number(code), smartlockIds }),
+  })
+  if (!res.ok && res.status !== 202 && res.status !== 204) {
+    throw new Error(`Nuki auth-PUT HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  }
+}
+
+/** Alle Keypad-Auths mit exakt diesem Namen von den Schlössern entfernen. */
+async function removeNukiAuthsByName(smartlockIds: number[], label: string): Promise<void> {
+  for (const id of smartlockIds) {
+    const res = await nukiFetch(`/smartlock/${id}/auth`)
+    if (!res.ok) continue
+    const auths = await res.json() as { id: string; type?: number; name?: string }[]
+    for (const a of auths ?? []) {
+      if (a.type === 13 && a.name === label) {
+        await nukiFetch(`/smartlock/${id}/auth/${a.id}`, { method: 'DELETE' })
+      }
+    }
+  }
+}
+
+/**
+ * Personen-Code anlegen/ändern/entziehen: EIN fester Keypad-Code je Person,
+ * gültig auf den Nuki-Schlössern der freigegebenen Wohnungen (inkl. der
+ * zugehörigen Haustür, weil die in listings.locks mit hängt). Der Auth-Name
+ * trägt den Vornamen → im Nuki-Protokoll steht, WER wann WO geöffnet hat.
+ * Leere Wohnungs-Auswahl = Code komplett entziehen. Der Code selbst bleibt
+ * bei Änderungen stabil (die Person muss sich nichts Neues merken).
+ */
+export async function syncStaffCode(personId: string, firstName: string, listingIds: string[]): Promise<StaffCode | null> {
+  const codes = await getStaffCodes()
+  const old = codes[personId] ?? null
+  const label = old?.label ?? `TRIMOSA-Team ${firstName} ${personId.slice(0, 4)}`
+  const code = old?.code ?? generateDoorCode()
+
+  // Sauberer Reset: Code von allen bisher UND künftig betroffenen Schlössern
+  // nehmen, dann (falls Auswahl bleibt) frisch auf die Ziel-Schlösser legen
+  const affected = await nukiLockIdsFor([...new Set([...(old?.listingIds ?? []), ...listingIds])])
+  await removeNukiAuthsByName(affected, label)
+
+  const target = await nukiLockIdsFor(listingIds)
+  if (target.length) await setNukiPermanentCode(target, label, code)
+
+  if (listingIds.length) codes[personId] = { code, listingIds, label }
+  else delete codes[personId]
+  await saveStaffCodes(codes)
+  return listingIds.length ? codes[personId] : null
+}
+
 export interface LockSettings {
   /** Tage vor Anreise, ab denen der Code in der Gästemappe erscheint */
   revealDays: number
