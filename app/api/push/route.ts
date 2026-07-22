@@ -13,9 +13,12 @@ async function requireTeam() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+  // is_provider MIT: Dienstleister brauchen Push für interne Gruppen +
+  // Aufgaben-Zuweisungen (§98) — vorher fehlte das Flag hier → „Nicht
+  // berechtigt" beim Geräte-Aktivieren (Julia)
   const { data: me } = await supabaseAdmin
-    .from('profiles').select('is_admin, is_host, is_staff').eq('id', user.id).maybeSingle()
-  return (me?.is_admin || me?.is_host || me?.is_staff) ? user : null
+    .from('profiles').select('is_admin, is_host, is_staff, is_provider').eq('id', user.id).maybeSingle()
+  return (me?.is_admin || me?.is_host || me?.is_staff || me?.is_provider) ? user : null
 }
 
 export async function GET(request: Request) {
