@@ -121,22 +121,21 @@ export async function POST(request: Request) {
     })
   }
   if (action === 'smoobu-test') {
-    // X-ray one real reservation's messages: shows the raw normalised fields
-    // (type/sender) so the host/guest detection can be matched exactly.
-    const { data: booking } = await supabaseAdmin
-      .from('bookings')
-      .select('smoobu_reservation_id')
-      .not('smoobu_reservation_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // X-ray one reservation's messages: rohe normalisierte Felder
+    // (type/sender/subject) — optional { bookingId } oder { guestName }
+    // gezielt (§143: Lock-System-Meldungen erkennen).
+    let query = supabaseAdmin.from('bookings').select('smoobu_reservation_id').not('smoobu_reservation_id', 'is', null)
+    if (body.bookingId) query = query.eq('id', String(body.bookingId))
+    else if (body.guestName) query = query.ilike('guest_name', `%${String(body.guestName)}%`)
+    else query = query.order('created_at', { ascending: false })
+    const { data: booking } = await query.limit(1).maybeSingle()
     if (!booking?.smoobu_reservation_id) return NextResponse.json({ error: 'Keine Smoobu-Buchung gefunden.' })
     const { getReservationMessages } = await import('@/lib/smoobu')
     const msgs = await getReservationMessages(Number(booking.smoobu_reservation_id))
     return NextResponse.json({
       reservation: booking.smoobu_reservation_id,
       count: msgs.length,
-      sample: msgs.slice(0, 8).map((m) => ({ type: m.type, sender: m.sender, subject: m.subject, content: m.message.slice(0, 60) })),
+      sample: msgs.slice(0, 12).map((m) => ({ type: m.type, sender: m.sender, subject: m.subject, content: m.message.slice(0, 90) })),
     })
   }
   if (action === 'places-resolve') {
