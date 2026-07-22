@@ -120,6 +120,40 @@ export async function POST(request: Request) {
       detailBody,
     })
   }
+  if (action === 'fix-conv-senders') {
+    // §146: falsch als Host gespeicherte GAST-Nachrichten einer Direkt-Chat-
+    // Konversation korrigieren (Betreff-Bug „Re: Nachricht von Trimosa").
+    // Nicht-löschend: nur sender_id per echtem Smoobu-Typ richtiggestellt.
+    // dryRun (Default) ZÄHLT nur; korrigiert bei { content: 'FIX' }.
+    if (!bookingId) return NextResponse.json({ error: 'bookingId fehlt.' }, { status: 400 })
+    const { data: bk } = await supabaseAdmin
+      .from('bookings').select('guest_id, listing_id, smoobu_reservation_id').eq('id', String(bookingId)).maybeSingle()
+    if (!bk?.smoobu_reservation_id || !bk.guest_id) return NextResponse.json({ error: 'Buchung/Reservierung/Gast fehlt.' }, { status: 404 })
+    const { data: conv } = await supabaseAdmin
+      .from('conversations').select('id, host_id, guest_id').eq('guest_id', bk.guest_id).eq('listing_id', bk.listing_id).maybeSingle()
+    if (!conv) return NextResponse.json({ error: 'Keine Konversation gefunden.' }, { status: 404 })
+    const { getReservationMessages, isSmoobuSystemMessage } = await import('@/lib/smoobu')
+    const msgs = await getReservationMessages(Number(bk.smoobu_reservation_id))
+    const doFix = content === 'FIX'
+    const corrections: { smoobuId: string; von: string; nach: string; text: string }[] = []
+    for (const sm of msgs) {
+      if (isSmoobuSystemMessage(sm.subject)) continue
+      const t = String(sm.type ?? '').toLowerCase()
+      const s = String(sm.sender ?? '').toLowerCase()
+      const isHost = (t === '2' || t.includes('host') || t === 'outgoing' || t === 'sent' || t === 'owner' || t === 'automated' || s.includes('host') || s.includes('gastgeber'))
+        ? true : (t === '1' || t.includes('guest') || t === 'incoming') ? false : true
+      const correct = isHost ? conv.host_id : conv.guest_id
+      const { data: row } = await supabaseAdmin
+        .from('messages').select('id, sender_id').eq('conversation_id', conv.id).eq('smoobu_message_id', String(sm.id)).maybeSingle()
+      if (row && row.sender_id !== correct) {
+        corrections.push({ smoobuId: String(sm.id), von: row.sender_id === conv.host_id ? 'host' : 'gast', nach: isHost ? 'host' : 'gast', text: sm.message.slice(0, 50) })
+        if (doFix) {
+          await supabaseAdmin.from('messages').update({ sender_id: correct, lang: null, content_de: null }).eq('id', row.id)
+        }
+      }
+    }
+    return NextResponse.json({ konversation: conv.id, korrekturen: corrections.length, modus: doFix ? 'KORRIGIERT' : 'nur gezählt', details: corrections })
+  }
   if (action === 'lock-msg-cleanup') {
     // §143: bereits synchronisierte Smoobu-Schloss-/Automatik-Meldungen aus
     // der messages-Tabelle finden (Betreff nicht gespeichert → Content-Muster,
