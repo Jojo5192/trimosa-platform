@@ -48,13 +48,23 @@ export async function listNukiLocks(): Promise<{ id: string; name: string }[]> {
 }
 
 /** 6-stelliger Code nach Nuki-Regeln (Ziffern 1–9, nicht „12…"-Start) —
- *  erfüllt nebenbei auch die tedee-Regeln (5–8 Stellen, ≥3 verschiedene). */
+ *  erfüllt auch die tedee-Regeln (5–8 Stellen, ≥3 verschiedene, keine
+ *  streng auf-/absteigende Sequenz wie 345678). */
 export function generateDoorCode(): string {
+  const monotone = (c: string) => {
+    let up = true, down = true
+    for (let i = 1; i < c.length; i++) {
+      if (Number(c[i]) !== Number(c[i - 1]) + 1) up = false
+      if (Number(c[i]) !== Number(c[i - 1]) - 1) down = false
+    }
+    return up || down
+  }
   for (let i = 0; i < 50; i++) {
     let code = ''
     for (let d = 0; d < 6; d++) code += String(1 + Math.floor(Math.random() * 9))
     if (code.startsWith('12')) continue
     if (new Set(code.split('')).size < 3) continue
+    if (monotone(code)) continue
     return code
   }
   return '345679' // praktisch unerreichbar — deterministischer Fallback
@@ -77,6 +87,83 @@ export async function setNukiCode(
   })
   if (!res.ok && res.status !== 202 && res.status !== 204) {
     throw new Error(`Nuki auth-PUT HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  }
+}
+
+/* ── tedee-Adapter (§142, River Retreat) ──────────────────────────────
+ * Cloud-API api.tedee.com v37, Auth „PersonalKey <PAK>" (Personal Access
+ * Key aus dem tedee-Portal, Scope Device.ReadWrite). PIN-Regeln: 5–8
+ * Ziffern 0–9, ≥3 verschiedene, keine monotone Sequenz. PINs MIT endDate
+ * räumt tedee nach Ablauf SELBST ab (kein Cleanup nötig). 406 = „pin
+ * already exists", 409 = Gerät beschäftigt, 428 = Schloss offline. */
+
+function tedeeToken(): string | null {
+  return process.env.TEDEE_API_KEY ?? null
+}
+
+export function tedeeConfigured(): boolean {
+  return !!tedeeToken()
+}
+
+async function tedeeFetch(path: string, init?: RequestInit): Promise<Response> {
+  const token = tedeeToken()
+  if (!token) throw new Error('TEDEE_API_KEY fehlt (Vercel-Env).')
+  return fetch(`https://api.tedee.com${path}`, {
+    ...init,
+    headers: {
+      Authorization: `PersonalKey ${token}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+    cache: 'no-store',
+  })
+}
+
+/** tedee wickelt Antworten in { result, success } — defensiv auspacken. */
+function tedeeResult<T>(json: unknown): T {
+  const j = json as { result?: T } | T
+  return (j && typeof j === 'object' && 'result' in (j as object) ? (j as { result: T }).result : j as T)
+}
+
+/** Alle tedee-Schlösser des Kontos (für die Zuordnung in der Admin-Karte). */
+export async function listTedeeLocks(): Promise<{ id: string; name: string }[]> {
+  const res = await tedeeFetch('/api/v37/my/lock')
+  if (!res.ok) throw new Error(`tedee /my/lock HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  const list = tedeeResult<{ id: number; name?: string }[]>(await res.json())
+  return (list ?? []).map((l) => ({ id: String(l.id), name: l.name ?? `tedee ${l.id}` }))
+}
+
+async function listTedeePins(lockId: number): Promise<{ id: number; alias?: string }[]> {
+  const res = await tedeeFetch(`/api/v37/my/lock/${lockId}/pin`)
+  if (!res.ok) return []
+  return tedeeResult<{ id: number; alias?: string }[]>(await res.json()) ?? []
+}
+
+async function hasTedeePin(lockId: number, alias: string): Promise<boolean> {
+  return (await listTedeePins(lockId)).some((p) => p.alias === alias)
+}
+
+/** PIN anlegen — ohne start/end = Dauercode; mit endDate räumt tedee selbst ab. */
+async function setTedeePin(lockId: number, alias: string, pin: string, startIso?: string, endIso?: string): Promise<void> {
+  const res = await tedeeFetch(`/api/v37/my/lock/${lockId}/pin`, {
+    method: 'POST',
+    body: JSON.stringify({
+      alias, pin,
+      ...(startIso ? { startDate: startIso } : {}),
+      ...(endIso ? { endDate: endIso } : {}),
+    }),
+  })
+  if (!res.ok && res.status !== 201 && res.status !== 204) {
+    // 406 = „pin already exists" — für die Aufrufer als eigener Text erkennbar
+    throw new Error(`tedee pin-POST HTTP ${res.status}${res.status === 406 ? ' (exists already)' : ''}: ${(await res.text()).slice(0, 300)}`)
+  }
+}
+
+async function removeTedeePinsByAlias(lockId: number, alias: string): Promise<void> {
+  for (const p of await listTedeePins(lockId)) {
+    if (p.alias === alias) {
+      await tedeeFetch(`/api/v37/my/lock/${lockId}/pin/${p.id}`, { method: 'DELETE' })
+    }
   }
 }
 
@@ -121,17 +208,19 @@ async function saveStaffCodes(codes: Record<string, StaffCode>): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** Nuki-Schloss-IDs der Wohnungen (dedupe — die Sirzenich-Haustür hängt an dreien). */
-async function nukiLockIdsFor(listingIds: string[]): Promise<number[]> {
-  if (!listingIds.length) return []
+/** Schloss-IDs der Wohnungen je Provider (dedupe — die Sirzenich-Haustür hängt an dreien). */
+async function lockIdsFor(listingIds: string[]): Promise<{ nuki: number[]; tedee: number[] }> {
+  if (!listingIds.length) return { nuki: [], tedee: [] }
   const { data } = await supabaseAdmin.from('listings').select('id, locks').in('id', listingIds)
-  const ids = new Set<number>()
+  const nuki = new Set<number>()
+  const tedee = new Set<number>()
   for (const l of data ?? []) {
     for (const lock of ((l.locks as LockRef[] | null) ?? [])) {
-      if (lock.provider === 'nuki') ids.add(Number(lock.id))
+      if (lock.provider === 'nuki') nuki.add(Number(lock.id))
+      if (lock.provider === 'tedee') tedee.add(Number(lock.id))
     }
   }
-  return [...ids]
+  return { nuki: [...nuki], tedee: [...tedee] }
 }
 
 /** DAUER-Code (ohne Zeitfenster) auf mehrere Schlösser legen — ein API-Call. */
@@ -187,14 +276,16 @@ export async function syncStaffCode(personId: string, firstName: string, listing
   const label = old?.label ?? `TRIMOSA-Team ${firstName} ${personId.slice(0, 4)}`
   const code = old?.code ?? generateDoorCode()
 
-  const oldIds = await nukiLockIdsFor(old?.listingIds ?? [])
-  const newIds = await nukiLockIdsFor(listingIds)
+  const oldIds = await lockIdsFor(old?.listingIds ?? [])
+  const newIds = await lockIdsFor(listingIds)
 
-  const toRemove = oldIds.filter((id) => !newIds.includes(id))
-  await removeNukiAuthsByName(toRemove, label)
+  await removeNukiAuthsByName(oldIds.nuki.filter((id) => !newIds.nuki.includes(id)), label)
+  for (const id of oldIds.tedee.filter((t) => !newIds.tedee.includes(t))) {
+    await removeTedeePinsByAlias(id, label)
+  }
 
   const problems: string[] = []
-  for (const id of newIds) {
+  for (const id of newIds.nuki) {
     try {
       if (await hasNukiAuth(id, label)) continue
       await setNukiPermanentCode([id], label, code)
@@ -205,6 +296,16 @@ export async function syncStaffCode(personId: string, firstName: string, listing
       // der erneute PUT kollidiert dann mit sich selbst. Ziel erreicht.
       if (/exists already/i.test(m)) continue
       problems.push(`Schloss ${id}: ${m.slice(0, 160)}`)
+    }
+  }
+  for (const id of newIds.tedee) {
+    try {
+      if (await hasTedeePin(id, label)) continue
+      await setTedeePin(id, label, code) // ohne Zeitfenster = Dauercode
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err)
+      if (/exists already/i.test(m)) continue // tedee 406 = PIN liegt schon drauf
+      problems.push(`tedee ${id}: ${m.slice(0, 160)}`)
     }
   }
 
@@ -272,12 +373,12 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   if (!b.check_in || !b.check_out) return skip('kein zeitraum')
 
   const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { locks?: LockRef[] } | null
-  const nukiIds = ((listing?.locks ?? []) as LockRef[])
-    .filter((l) => l.provider === 'nuki')
-    .map((l) => Number(l.id))
-    .filter(Number.isFinite)
-  if (!nukiIds.length) return skip('keine nuki-schlösser')
-  if (!nukiConfigured()) return skip('kein NUKI_API_TOKEN')
+  const allLocks = (listing?.locks ?? []) as LockRef[]
+  const nukiIds = allLocks.filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
+  const tedeeIds = allLocks.filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
+  if (!nukiIds.length && !tedeeIds.length) return skip('keine schlösser zugeordnet')
+  if (nukiIds.length && !nukiConfigured()) return skip('kein NUKI_API_TOKEN')
+  if (tedeeIds.length && !tedeeConfigured()) return skip('kein TEDEE_API_KEY')
 
   const code = generateDoorCode()
   // Gültigkeitsfenster aus den Admin-Einstellungen (lokale Stunden am
@@ -286,9 +387,12 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   const s = await getLockSettings()
   const from = new Date(new Date(b.check_in + 'T00:00:00.000Z').getTime() + (s.validFromHour - 2) * 3600_000).toISOString()
   const until = new Date(new Date(b.check_out + 'T00:00:00.000Z').getTime() + (s.validUntilHour - 2) * 3600_000).toISOString()
-  await setNukiCode(nukiIds, `TRIMOSA ${b.id.slice(0, 8)}`, code, from, until)
+  const alias = `TRIMOSA ${b.id.slice(0, 8)}`
+  if (nukiIds.length) await setNukiCode(nukiIds, alias, code, from, until)
+  // tedee: PINs mit endDate räumt tedee nach Ablauf selbst ab
+  for (const id of tedeeIds) await setTedeePin(id, alias, code, from, until)
   await supabaseAdmin.from('bookings').update({ door_code: code }).eq('id', b.id)
-  console.log('[locks] Code gesetzt:', { booking: b.id, locks: nukiIds.length })
+  console.log('[locks] Code gesetzt:', { booking: b.id, nuki: nukiIds.length, tedee: tedeeIds.length })
   return code
 }
 
@@ -314,10 +418,12 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   const usedLocks = new Set<number>()
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
-    const nukiIds = ((listing?.locks ?? []) as LockRef[]).filter((l) => l.provider === 'nuki').map((l) => Number(l.id))
-    if (!nukiIds.length) { skipped++; continue }
+    const locks = (listing?.locks ?? []) as LockRef[]
+    const nukiIds = locks.filter((l) => l.provider === 'nuki').map((l) => Number(l.id))
+    if (!locks.length) { skipped++; continue }
     try {
       const code = await ensureDoorCode(r.id)
+      // Cleanup betrifft nur Nuki — tedee räumt PINs mit endDate selbst ab
       if (code) { created++; nukiIds.forEach((id) => usedLocks.add(id)) }
       else skipped++
     } catch (err) {
