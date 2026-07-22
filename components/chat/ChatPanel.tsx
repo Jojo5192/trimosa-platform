@@ -85,6 +85,35 @@ function shortPlatform(p: string): string {
   if (/hometogo/i.test(p)) return 'HomeToGo'
   return p
 }
+
+// URLs im Nachrichtentext klickbar machen (z. B. Gästemappe-Link aus einer
+// Auto-Nachricht). Fresh-Regex je Aufruf (kein globaler lastIndex-Zustand);
+// nachlaufende Satzzeichen bleiben Text.
+function linkify(text: string, isMe: boolean): React.ReactNode {
+  if (!text) return text
+  const re = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
+  const out: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    let url = m[0]
+    const trail = url.match(/[.,;:!?]+$/)
+    const tail = trail ? trail[0] : ''
+    if (tail) url = url.slice(0, -tail.length)
+    const href = url.startsWith('http') ? url : `https://${url}`
+    out.push(
+      <a key={m.index} href={href} target="_blank" rel="noreferrer" style={{
+        color: isMe ? '#EAF2FF' : '#0A66C2', textDecoration: 'underline', wordBreak: 'break-all',
+      }}>{url}</a>
+    )
+    if (tail) out.push(tail)
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out.length ? out : text
+}
+
 function ThreadBadges({ c, size = 10 }: { c: Conversation; size?: number }) {
   if (!c.platform && !c.guestStatus) return null
   const st = statusInfo(c)
@@ -1035,7 +1064,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         wordBreak: 'break-word',
                       }}>
                         <span style={{ whiteSpace: 'pre-wrap' }}>
-                          {team && msg.content_de && !showOriginal[msg.id] ? msg.content_de : msg.content}
+                          {linkify(team && msg.content_de && !showOriginal[msg.id] ? msg.content_de : msg.content, isMe)}
                         </span>
                       </div>
                       {team && msg.lang && msg.lang !== 'de' && msg.content_de && (
