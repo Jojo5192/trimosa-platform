@@ -80,8 +80,11 @@ export function generateDoorCode(): string {
 }
 
 /** EINEN Keypad-Code auf mehrere Nuki-Schlösser legen (ein API-Call).
- *  remoteAllowed ist laut Swagger PFLICHT — ohne das Feld legte Nuki die
- *  Auth zwar an, verwarf aber still die allowed*-Zeitfenster (§142). */
+ *  ⚠️ Nuki verwirft allowedFromDate/UntilDate STILL, wenn allowedWeekDays
+ *  (+ allowedFromTime/UntilTime) fehlen — empirisch per window-test bewiesen
+ *  (§142). weekDays 127 = alle Wochentage, fromTime/untilTime 0 = ganztags
+ *  (= keine tägliche Uhrzeit-Beschränkung, nur der DATUMS-Rahmen zählt).
+ *  remoteAllowed ist laut Swagger Pflichtfeld. */
 export async function setNukiCode(
   smartlockIds: number[], name: string, code: string, fromIso: string, untilIso: string,
 ): Promise<void> {
@@ -95,6 +98,9 @@ export async function setNukiCode(
       remoteAllowed: false,
       allowedFromDate: fromIso,
       allowedUntilDate: untilIso,
+      allowedWeekDays: 127,
+      allowedFromTime: 0,
+      allowedUntilTime: 0,
     }),
   })
   if (!res.ok && res.status !== 202 && res.status !== 204) {
