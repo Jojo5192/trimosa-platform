@@ -25,6 +25,7 @@ export default function LocksCard() {
   const [people, setPeople] = useState<Person[]>([])
   const [staffCodes, setStaffCodes] = useState<Record<string, StaffCode>>({})
   const [drafts, setDrafts] = useState<Record<string, string[]>>({})
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({})
   const [busyPerson, setBusyPerson] = useState<string | null>(null)
   const [revealDays, setRevealDays] = useState(3)
   const [validFromHour, setValidFromHour] = useState(0)
@@ -56,13 +57,13 @@ export default function LocksCard() {
       .catch(() => setMsg('Laden fehlgeschlagen.'))
   }, [open, loaded])
 
-  async function saveStaffCode(personId: string, listingIds: string[]) {
+  async function saveStaffCode(personId: string, listingIds: string[], code?: string) {
     setBusyPerson(personId)
     setMsg(null)
     try {
       const r = await fetch('/api/admin/locks', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffCode: { personId, listingIds } }),
+        body: JSON.stringify({ staffCode: { personId, listingIds, ...(code ? { code } : {}) } }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setMsg(d.error ?? 'Speichern fehlgeschlagen.'); return }
@@ -73,6 +74,7 @@ export default function LocksCard() {
         return next
       })
       setDrafts((dr) => ({ ...dr, [personId]: d.staffCode?.listingIds ?? [] }))
+      setCodeDrafts((cd) => ({ ...cd, [personId]: d.staffCode?.code ?? '' }))
       setMsg(d.staffCode ? `✓ Code aktiv: ${d.staffCode.code}` : '✓ Code entzogen')
     } catch {
       setMsg('Speichern fehlgeschlagen.')
@@ -191,22 +193,39 @@ export default function LocksCard() {
                 Ein fester Keypad-Code pro Person — gilt an allen freigegebenen Wohnungen (inkl.
                 Haustür). Im Nuki-Protokoll steht bei jeder Öffnung der Name. Häkchen ändern +
                 Speichern legt die Codes direkt auf die Schlösser (dauert einige Sekunden).
+                WUNSCH-Code: einfach ins 🔑-Feld tippen (6 Ziffern 1–9, keine 0, nicht mit „12"
+                beginnend, keine Folge wie 345678) — leer = automatisch.
               </p>
               {people.map((p) => {
                 const sc = staffCodes[p.id]
                 const draft = drafts[p.id] ?? []
                 const saved = sc?.listingIds ?? []
-                const dirty = draft.length !== saved.length || draft.some((id) => !saved.includes(id))
+                const codeDraft = codeDrafts[p.id] ?? sc?.code ?? ''
+                const codeDirty = codeDraft !== (sc?.code ?? '') && codeDraft !== ''
+                const dirty = draft.length !== saved.length || draft.some((id) => !saved.includes(id)) || codeDirty
                 const busy = busyPerson === p.id
                 return (
                   <div key={p.id} style={{ borderTop: '1px solid #EDE9DE', padding: '10px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 7 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#222' }}>{p.name}</span>
                       <span style={{ fontSize: 11, color: '#999' }}>{p.role}</span>
-                      {sc && (
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8A7020', background: 'rgba(174,141,45,0.12)', borderRadius: 8, padding: '2px 8px', fontVariantNumeric: 'tabular-nums' }}>
-                          🔑 {sc.code}
-                        </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, fontWeight: 700, color: '#8A7020', background: 'rgba(174,141,45,0.12)', borderRadius: 8, padding: '2px 6px 2px 8px' }}>
+                        🔑
+                        <input
+                          type="text" inputMode="numeric" maxLength={6}
+                          placeholder="automatisch"
+                          value={codeDraft}
+                          disabled={busy}
+                          onChange={(e) => setCodeDrafts((cd) => ({ ...cd, [p.id]: e.target.value.replace(/\D/g, '') }))}
+                          style={{
+                            border: 'none', background: 'transparent', outline: 'none', width: 86,
+                            fontSize: 13, fontWeight: 700, color: codeDirty ? '#B0492B' : '#8A7020',
+                            fontVariantNumeric: 'tabular-nums', letterSpacing: '0.08em', padding: 0,
+                          }}
+                        />
+                      </span>
+                      {codeDirty && sc && (
+                        <span style={{ fontSize: 11, color: '#B0492B' }}>Code wird beim Speichern ÜBERALL geändert</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
@@ -239,7 +258,7 @@ export default function LocksCard() {
                       {dirty && (
                         <button
                           disabled={busy}
-                          onClick={() => saveStaffCode(p.id, draft)}
+                          onClick={() => saveStaffCode(p.id, draft, codeDirty ? codeDraft : undefined)}
                           style={{
                             padding: '6px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
                             border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#fff',
