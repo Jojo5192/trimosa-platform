@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createInvoiceForBooking } from '@/lib/lexoffice'
+import { createInvoiceForBooking, saveRecipient, sanitizeRecipient } from '@/lib/lexoffice'
 
 /**
  * 🧾 Rechnungs-Status je Buchung (Team, §158) — Basis für die 🧾-Aktion in
@@ -48,11 +48,44 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ boo
   return NextResponse.json(state, NO_STORE)
 }
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ bookingId: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ bookingId: string }> }) {
   const { bookingId } = await params
   if (!(await requireTeam())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   const state = await loadState(bookingId)
   if (!state) return NextResponse.json({ error: 'Buchung nicht gefunden.' }, { status: 404 })
+
+  const body = await req.json().catch(() => ({}))
+  const recipient = sanitizeRecipient(body.recipient)
+
+  // §159: Empfänger mitgeschickt (vom Gast im Chat/bei Buchung) →
+  // speichern; existiert schon eine Rechnung → NEU ausstellen (alte in der
+  // lexoffice-UI stornieren — Hinweis in der Antwort); vor Anreisetag →
+  // nur speichern, der 15:00-Lauf nutzt die Daten dann automatisch.
+  if (recipient) {
+    if (state.status === 'bereit') {
+      const oldNr = state.voucherNumber ?? null
+      const r = await createInvoiceForBooking(bookingId, { recipient, force: true })
+      if (!r.ok) return NextResponse.json({ error: r.error ?? 'Neu-Ausstellung fehlgeschlagen.' }, { status: 500 })
+      const fresh = await loadState(bookingId)
+      return NextResponse.json({
+        ...fresh,
+        hinweis: oldNr
+          ? `Neu ausgestellt (${r.voucherNumber ?? '—'}) — alte Rechnung ${oldNr} bitte in lexoffice stornieren/löschen.`
+          : `Neu ausgestellt (${r.voucherNumber ?? '—'}).`,
+      }, NO_STORE)
+    }
+    await saveRecipient(bookingId, recipient)
+    if (state.status === 'zu_frueh') {
+      return NextResponse.json({
+        ...state, gespeichert: true,
+        hinweis: 'Empfänger gespeichert — die Rechnung wird am Anreisetag automatisch mit diesen Daten erstellt.',
+      }, NO_STORE)
+    }
+    const r = await createInvoiceForBooking(bookingId, { recipient })
+    if (!r.ok && !r.skipped) return NextResponse.json({ error: r.error ?? 'Erstellung fehlgeschlagen.' }, { status: 500 })
+    return NextResponse.json({ ...(await loadState(bookingId)), gespeichert: true }, NO_STORE)
+  }
+
   if (state.status === 'bereit') return NextResponse.json(state, NO_STORE)
   if (state.status === 'zu_frueh') {
     return NextResponse.json({
