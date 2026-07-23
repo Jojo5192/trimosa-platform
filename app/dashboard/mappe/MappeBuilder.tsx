@@ -489,6 +489,28 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
         </div>
       )}
 
+      {/* §160-Kleinigkeit: Check-in-/Check-out-Zeit getrennt anzeigbar — als
+          zwei duplizierte Bausteine mit je eigener Phasen-Sichtbarkeit */}
+      {block.type === 'times' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', color: '#A8A292' }}>🕓 ZEIGT:</span>
+          {([['beide', 'Beide Zeiten'], ['checkin', 'Nur Check-in'], ['checkout', 'Nur Check-out']] as const).map(([v, lbl]) => {
+            const on = (block.show ?? 'beide') === v
+            return (
+              <button key={v} type="button" onClick={() => onChange({ show: v === 'beide' ? undefined : v } as Partial<GuideBlock>)} style={{
+                padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                border: on ? '1px solid transparent' : '1px solid #E5E1D6',
+                background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                color: on ? '#fff' : '#8A857B',
+              }}>{lbl}</button>
+            )
+          })}
+          <span style={{ fontSize: 11, color: '#A8A292', flexBasis: '100%' }}>
+            Tipp: Baustein ⧉ duplizieren — einmal „Nur Check-in" (sichtbar: Vorher), einmal „Nur Check-out" (Während).
+          </span>
+        </div>
+      )}
+
       {aiText !== null && (
         <AiPolishButton
           field="mappe_baustein"
