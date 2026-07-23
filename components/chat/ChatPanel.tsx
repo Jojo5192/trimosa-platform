@@ -22,7 +22,12 @@ interface Conversation {
   children?: number | null
   guestLang?: string | null
   mappeUrl?: string | null
+  bookingId?: string | null
 }
+
+/** §158: Erläuterung für Rechnungsanfragen VOR dem Anreisetag (wird beim
+ *  Senden automatisch in die Gastsprache übersetzt). */
+const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt — ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
 
 type InboxFilter = 'alle' | 'unbeantwortet' | 'ungelesen' | 'vorort' | 'kommend'
 const INBOX_FILTERS: { id: InboxFilter; label: string }[] = [
@@ -58,6 +63,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     children: (t.children as number | null) ?? null,
     guestLang: t.guestLang ?? null,
     mappeUrl: (t.mappeUrl as string | null) ?? null,
+    bookingId: (t.bookingId as string | null) ?? (t.kind === 'booking' ? (t.id as string) : null),
   } as unknown as Conversation
 }
 
@@ -308,6 +314,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
   const [mappeMenu, setMappeMenu] = useState(false)
+  const [invoiceBusy, setInvoiceBusy] = useState(false)
+  const [invoiceErr, setInvoiceErr] = useState<string | null>(null)
+
+  /** §158: Rechnung sicherstellen (erstellt sie ab Anreisetag on-demand)
+   *  und die Gast-Download-URL zurückgeben. */
+  async function ensureInvoiceUrl(bid: string): Promise<string> {
+    const r = await fetch(`/api/invoices/${bid}`, { method: 'POST' })
+    const d = await r.json().catch(() => null)
+    if (!r.ok || !d?.url) throw new Error(d?.error ?? 'Rechnung nicht verfügbar.')
+    return `${location.origin}${d.url}`
+  }
   const [refining, setRefining] = useState(false)
   const [showGuestInfo, setShowGuestInfo] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
@@ -1294,6 +1311,56 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     }}
                     style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}
                   >📤 Nur Link senden</button>
+
+                  {/* §158: 🧾 Rechnung — ab Anreisetag Link, vorher Erläuterung */}
+                  {active.bookingId && (
+                    <>
+                      <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                        🧾 RECHNUNG
+                      </div>
+                      {(active.check_in ?? '') <= new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10) ? (
+                        <>
+                          <button
+                            disabled={invoiceBusy}
+                            onClick={async () => {
+                              setInvoiceBusy(true); setInvoiceErr(null)
+                              try {
+                                const url = await ensureInvoiceUrl(active.bookingId!)
+                                setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + url)
+                                setMappeMenu(false)
+                                taRef.current?.focus()
+                              } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
+                              finally { setInvoiceBusy(false) }
+                            }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                          >{invoiceBusy ? '⏳ Erstellt…' : '📎 Rechnungs-Link anhängen'}</button>
+                          <button
+                            disabled={invoiceBusy}
+                            onClick={async () => {
+                              setInvoiceBusy(true); setInvoiceErr(null)
+                              try {
+                                const url = await ensureInvoiceUrl(active.bookingId!)
+                                setMappeMenu(false)
+                                await reallySend(url)
+                              } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
+                              finally { setInvoiceBusy(false) }
+                            }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020' }}
+                          >{invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}</button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setDraft(RECHNUNG_HINWEIS)
+                            setMappeMenu(false)
+                            taRef.current?.focus()
+                          }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                        >💬 Hinweis einfügen (Rechnung ab Anreisetag)</button>
+                      )}
+                      {invoiceErr && <div style={{ padding: '6px 13px 10px', fontSize: 11.5, color: '#B91C1C' }}>⚠️ {invoiceErr}</div>}
+                    </>
+                  )}
                 </div>
               )}
             </div>
