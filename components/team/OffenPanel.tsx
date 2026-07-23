@@ -533,6 +533,9 @@ export default function OffenPanel({ visible, onCount }: {
                                 💬 Hinweis einfügen (ab Anreisetag)
                               </button>
                             )}
+                            <button type="button" onClick={() => { location.href = `/team?conv=${current.id}` }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#8E8E93' }}>
+                              ✏️ Empfänger erfassen — im Chat öffnen ›
+                            </button>
                           </>
                         )}
                       </div>
