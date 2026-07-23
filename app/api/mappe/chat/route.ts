@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { makeTr } from '@/lib/static-translate'
+import { isUiLang } from '@/lib/i18n'
 
 /**
  * 💬 Chat in der Gästemappe (§136): token-basiert (portal_token der Buchung
@@ -16,6 +18,7 @@ import { checkRateLimit } from '@/lib/rate-limit'
  * Chat offen bis 30 Tage nach Abreise (späte Fragen: Rechnung, Fundsachen).
  */
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // §163: Ersthit einer Sprache übersetzt den Verlauf
 
 type Ctx = { booking: { id: string; guest_id: string | null; guest_name: string | null; check_out: string; conversations: unknown } }
 
@@ -45,33 +48,58 @@ export async function GET(req: NextRequest) {
   const b = await resolveToken(token)
   if (!b) return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
 
+  // §163: Der Verlauf folgt der MAPPEN-Sprache (?lang=) — deutsche Fassung
+  // als Basis (content_de || content), Original behalten, wenn es schon in
+  // der Zielsprache ist; sonst Batch-Übersetzung (makeTr, Hash-Cache).
+  const langParam = req.nextUrl.searchParams.get('lang') ?? 'de'
+  const lang = isUiLang(langParam) ? langParam : 'de'
+
   const conv = convOf(b)
-  let rows: { id: string; content: string | null; created_at: string; mine: boolean }[] = []
+  let rows: { id: string; content: string | null; content_de?: string | null; lang?: string | null; created_at: string; mine: boolean }[] = []
   if (conv?.id) {
     const { data } = await supabaseAdmin
       .from('messages')
-      .select('id, content, created_at, sender_id')
+      .select('id, content, content_de, lang, created_at, sender_id')
       .eq('conversation_id', conv.id)
       .order('created_at', { ascending: true })
       .limit(60)
     rows = (data ?? []).map((m) => ({
-      id: m.id, content: m.content, created_at: m.created_at,
+      id: m.id, content: m.content, content_de: m.content_de, lang: m.lang, created_at: m.created_at,
       mine: m.sender_id != null && m.sender_id === (conv.guest_id ?? b.guest_id),
     }))
   } else {
     const { data } = await supabaseAdmin
       .from('messages')
-      .select('id, content, created_at, sender_type')
+      .select('id, content, content_de, lang, created_at, sender_type')
       .eq('booking_id', b.id)
       .order('created_at', { ascending: true })
       .limit(60)
     rows = (data ?? []).map((m) => ({
-      id: m.id, content: m.content, created_at: m.created_at,
+      id: m.id, content: m.content, content_de: m.content_de, lang: m.lang, created_at: m.created_at,
       mine: m.sender_type === 'guest',
     }))
   }
+  let out = rows
+    .filter((m) => (m.content ?? '').trim())
+    .map((m) => ({
+      id: m.id, created_at: m.created_at, mine: m.mine,
+      content: m.content_de || m.content, // deutsche Basis
+      original: m.content, originalLang: (m.lang ?? '').slice(0, 2) || null,
+    }))
+  if (lang !== 'de') {
+    try {
+      const needsTr = out.filter((m) => m.originalLang !== lang)
+      const tr = needsTr.length ? await makeTr(lang, needsTr.map((m) => m.content ?? '')) : null
+      out = out.map((m) => ({
+        ...m,
+        content: m.originalLang === lang ? m.original : tr ? tr(m.content ?? '') : m.content,
+      }))
+    } catch (e) {
+      console.error('[mappe-chat] Übersetzung:', e) // fail-soft: deutsche Basis
+    }
+  }
   return NextResponse.json(
-    { messages: rows.filter((m) => (m.content ?? '').trim()) },
+    { messages: out.map(({ id, content, created_at, mine }) => ({ id, content, created_at, mine })) },
     { headers: { 'Cache-Control': 'no-store, must-revalidate' } },
   )
 }
