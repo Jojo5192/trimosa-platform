@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import NavBar from '@/components/NavBar'
 import DashboardNav from '@/components/DashboardNav'
 import type { AutoMessage } from '@/lib/auto-messages'
+import { getAutoSendEnabled } from '@/lib/auto-messages-engine'
 import AutoMessagesBuilder, { type BuilderListing } from './AutoMessagesBuilder'
 
 /**
@@ -35,6 +36,7 @@ export default async function AutoNachrichtenPage() {
     .from('auto_messages').select('*').order('sort').order('created_at')
   if (error) migrationMissing = true
   else initial = (msgs ?? []) as AutoMessage[]
+  const sendEnabled = await getAutoSendEnabled()
 
   return (
     <main style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
@@ -51,7 +53,7 @@ export default async function AutoNachrichtenPage() {
           Versand mit den echten Buchungsdaten gefüllt, und jede Nachricht wird automatisch in die Sprache des Gasts übersetzt.
           Rechts siehst du live, wie sie beim Gast ankommt.
         </p>
-        <AutoMessagesBuilder listings={listings} initial={initial} migrationMissing={migrationMissing} />
+        <AutoMessagesBuilder listings={listings} initial={initial} migrationMissing={migrationMissing} initialSendEnabled={sendEnabled} />
       </div>
     </main>
   )
