@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, sendMessageToGuest, sendMessageToHost, isSmoobuSystemMessage } from '@/lib/smoobu'
+import { getReservationMessages, sendMessageToHost, isSmoobuSystemMessage } from '@/lib/smoobu'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
 import { makeTr } from '@/lib/static-translate'
@@ -381,8 +381,12 @@ export async function POST(req: NextRequest) {
 
       let smoobuMsgId: number | null = null
       if (isHost) {
-        console.log('[Chat] Host→Smoobu: forwarding to reservation', smoobuId)
-        smoobuMsgId = await sendMessageToGuest(smoobuId, content.trim(), hKey)
+        // §151: Host-/Team-Antworten an WEBSITE-Gäste gehen NICHT mehr über
+        // Smoobu — Smoobu würde sie dem Gast selbst per Mail zustellen
+        // (fremdes Layout, keine Antwort-Brücke, Doppel-Risiko). Stattdessen
+        // greift unten IMMER unsere gebrandete E-Mail (smoobuDelivered bleibt
+        // false) — identisch zur Auto-Nachrichten-Engine (§148).
+        console.log('[Chat] Host→Website-Gast: eigener Chat + eigene Mail (kein Smoobu-Umweg)')
       } else {
         const { data: guestProfile } = await supabaseAdmin
           .from('profiles')
