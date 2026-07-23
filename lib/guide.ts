@@ -122,13 +122,13 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   steps: { icon: '1.', label: 'Schritt-für-Schritt', hint: 'Nummerierte Anleitung (z. B. Check-in)' },
   wifi: { icon: '📶', label: 'WLAN', hint: 'Netzwerkname + Passwort mit Kopier-Knopf' },
   door: { icon: '🔑', label: 'Schlüssel & Zugang', hint: 'Zugangs-Infos — zeigt automatisch den Türcode der Buchung, sobald der Wohnung Schlösser zugeordnet sind (Admin → 🔑 Türcodes)' },
-  contact: { icon: '📞', label: 'Kontakt', hint: 'Telefonnummer + Hinweis, wann erreichbar' },
+  contact: { icon: '📞', label: 'Kontakt', hint: 'Telefonnummer + Hinweis — erscheint in der Mappe ZUSAMMEN mit dem Gäste-Chat als ein Punkt „Kontakt & Chat" (an dieser Position, falls kein eigener Chat-Baustein platziert ist)' },
   image: { icon: '📷', label: 'Foto', hint: 'Bild mit optionaler Bildunterschrift (z. B. Parkplatz, Mülltonnen-Standort)' },
   map: { icon: '📍', label: 'Adresse & Anfahrt', hint: 'Aus dem Inserat: Adresse + Google-Maps-Route', smart: true },
   times: { icon: '🕓', label: 'Check-in/-out-Zeiten', hint: 'Aus dem Inserat: An- und Abreisezeit', smart: true },
   rules: { icon: '🏠', label: 'Hausregeln', hint: 'Aus dem Inserat: Ruhezeiten, Rauchen, Haustiere …', smart: true },
   region: { icon: '🗺️', label: 'Region entdecken', hint: 'Link auf den Reiseführer der Region', smart: true },
-  chat: { icon: '💬', label: 'Gäste-Chat', hint: 'Direkter Draht zum Team — bestimmt, WO der Chat in der Mappe sitzt (ohne diesen Baustein: am Ende)', smart: true },
+  chat: { icon: '💬', label: 'Gäste-Chat', hint: 'Direkter Draht zum Team — bestimmt, WO „Kontakt & Chat" in der Mappe sitzt (Telefon/Hinweis kommen aus dem Kontakt-Baustein; ohne Chat-Baustein: an der Kontakt-Position bzw. am Ende)', smart: true },
 }
 
 let seq = 0
