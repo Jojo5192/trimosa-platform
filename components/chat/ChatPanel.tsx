@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
+import { useSwipeBack } from '@/components/team/useSwipeBack'
 
 interface Conversation {
   id: string; guest_id: string; host_id: string
@@ -20,6 +21,7 @@ interface Conversation {
   adults?: number | null
   children?: number | null
   guestLang?: string | null
+  mappeUrl?: string | null
 }
 
 type InboxFilter = 'alle' | 'unbeantwortet' | 'ungelesen' | 'vorort' | 'kommend'
@@ -55,6 +57,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     adults: (t.adults as number | null) ?? null,
     children: (t.children as number | null) ?? null,
     guestLang: t.guestLang ?? null,
+    mappeUrl: (t.mappeUrl as string | null) ?? null,
   } as unknown as Conversation
 }
 
@@ -304,6 +307,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // im ⚙️-Tab der Team-Shell (SettingsPanel) — die Glocke hier ist raus
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
+  const [mappeMenu, setMappeMenu] = useState(false)
   const [refining, setRefining] = useState(false)
   const [showGuestInfo, setShowGuestInfo] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
@@ -328,6 +332,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // §156: In-Memory-Cache je Thread — beim Wieder-Öffnen erscheint der
   // Verlauf INSTANT, frische Daten ersetzen ihn still (wie die Listen-§52)
   const msgsCacheRef  = useRef<Map<string, Message[]>>(new Map())
+  // §157: iMessage-Swipe vom linken Rand → zurück zur Liste (mobil)
+  const swipe = useSwipeBack(() => setMobileView('list'))
 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
@@ -454,6 +460,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setInstruction('')
     setShowOriginal({})
     setShowGuestInfo(false)
+    setMappeMenu(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id])
 
@@ -487,12 +494,24 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }, [msgs, active?.id, team])
   // Scrollen nur, wenn wirklich eine NEUE letzte Nachricht da ist (Thread-
   // Öffnung oder eingehende/gesendete Nachricht) — nie bei Poll-Refreshes.
+  // §157: Beim THREAD-ÖFFNEN sofort ans Ende (instant + Nachläufer, §117-
+  // Muster — Bilder/Layout strecken nach); smooth nur im laufenden Gespräch.
+  const scrolledThreadRef = useRef<string | null>(null)
   useEffect(() => {
     const lastId = msgs.length ? msgs[msgs.length - 1].id : null
     if (lastId === lastMsgIdRef.current) return
     lastMsgIdRef.current = lastId
-    if (lastId) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [msgs])
+    if (!lastId) return
+    const jump = () => bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    if (active?.id !== scrolledThreadRef.current) {
+      scrolledThreadRef.current = active?.id ?? null
+      jump()
+      setTimeout(jump, 250)
+      setTimeout(jump, 800)
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [msgs, active?.id])
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
     const grow = () => {
@@ -689,15 +708,24 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       // Direktversand (Pascal-Feedback §97): automatisch übersetzen und sofort
       // senden — das deutsche Original bleibt in der Bubble einsehbar
       // („Gesendet auf 🇳🇱"). Schlägt die Übersetzung fehl → deutsch senden.
+      // §157: URLs (Gästemappe!) werden vor der Übersetzung als Tokens
+      // geschützt und danach wiederhergestellt — geht dabei etwas verloren,
+      // wird das deutsche Original gesendet (Engine-Muster §148).
       setTranslating(true)
       try {
+        const urls: string[] = []
+        const tokenized = draft.replace(/https?:\/\/[^\s]+/g, (u) => { urls.push(u); return `[[L${urls.length}]]` })
         const res = await fetch('/api/ai/translate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: draft, targetLang: guestLang }),
+          body: JSON.stringify({ text: tokenized, targetLang: guestLang }),
         })
         const data = await res.json()
         if (res.ok && data.translation) {
-          await reallySend(data.translation, draft, guestLang)
+          let restored = data.translation as string
+          urls.forEach((u, i) => { restored = restored.split(`[[L${i + 1}]]`).join(u) })
+          const intact = !/\[\[L\d+\]\]/.test(restored) && urls.every((u) => restored.includes(u))
+          if (intact) await reallySend(restored, draft, guestLang)
+          else await reallySend(draft)
         } else {
           await reallySend(draft)
         }
@@ -906,7 +934,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     )
 
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}>
+      <div
+        ref={showBack ? swipe.ref : undefined}
+        onTouchStart={showBack ? swipe.onTouchStart : undefined}
+        onTouchMove={showBack ? swipe.onTouchMove : undefined}
+        onTouchEnd={showBack ? swipe.onTouchEnd : undefined}
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}
+      >
         {/* Chat header: back button on mobile; on the page variant the
             desktop thread shows it too (the overlay has it in its own bar) */}
         {(showBack || variant !== 'overlay') && (
@@ -1221,6 +1255,48 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             >
               {aiBusy ? '⏳' : '✨'}
             </button>
+          )}
+          {/* §157: 📖 Gästemappen-Link — anhängen oder direkt senden */}
+          {team && active?.mappeUrl && (
+            <div style={{ position: 'relative', flexShrink: 0, marginBottom: 1 }}>
+              <button
+                onClick={() => setMappeMenu(v => !v)}
+                title="Gästemappen-Link"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'rgba(118,118,128,0.12)',
+                  cursor: 'pointer', fontSize: 15,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >📖</button>
+              {mappeMenu && (
+                <div style={{
+                  position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 220,
+                  background: '#fff', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                  border: '0.5px solid rgba(60,60,67,0.15)', overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292' }}>
+                    📖 GÄSTEMAPPE
+                  </div>
+                  <button
+                    onClick={() => {
+                      const link = `${location.origin}${active.mappeUrl}`
+                      setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + link)
+                      setMappeMenu(false)
+                      taRef.current?.focus()
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                  >📎 An Nachricht anhängen</button>
+                  <button
+                    onClick={() => {
+                      setMappeMenu(false)
+                      reallySend(`${location.origin}${active.mappeUrl}`)
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}
+                  >📤 Nur Link senden</button>
+                </div>
+              )}
+            </div>
           )}
           {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
           <div style={{
