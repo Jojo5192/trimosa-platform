@@ -306,8 +306,9 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
               )
             })}
           </div>
-          <div style={{ borderRadius: 34, background: '#2B2F33', padding: 7, boxShadow: '0 14px 44px rgba(0,0,0,0.18)' }}>
-            <div style={{ borderRadius: 28, overflow: 'hidden', background: '#F5F3EE', height: 620, overflowY: 'auto' }}>
+          {/* §163: echtes iPhone-Seitenverhältnis (~390×800) statt Spaltenbreite */}
+          <div style={{ borderRadius: 40, background: '#2B2F33', padding: 8, boxShadow: '0 14px 44px rgba(0,0,0,0.18)', width: '100%', maxWidth: 384, margin: '0 auto' }}>
+            <div style={{ borderRadius: 32, overflow: 'hidden', background: '#F5F3EE', height: 770, overflowY: 'auto' }}>
               <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '20px 16px 16px' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logo.png" alt="TRIMOSA" style={{ maxHeight: 32, maxWidth: '60%', width: 'auto', height: 'auto', display: 'block', marginBottom: 10 }} />
