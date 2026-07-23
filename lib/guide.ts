@@ -59,7 +59,10 @@ export interface DoorBlock extends GuideBlockBase { type: 'door'; title: string;
 export interface ContactBlock extends GuideBlockBase { type: 'contact'; phone: string; note: string }
 export interface ImageBlock extends GuideBlockBase { type: 'image'; url: string; caption: string }
 export interface MapBlock extends GuideBlockBase { type: 'map' }
-export interface TimesBlock extends GuideBlockBase { type: 'times' }
+/** show: 'checkin'/'checkout' zeigt nur die eine Zeit — so lassen sich beide
+ *  Zeiten als getrennte Bausteine mit EIGENER Phasen-Sichtbarkeit pflegen
+ *  (Check-in-Zeit ist nach der Anreise nicht mehr relevant). Default 'beide'. */
+export interface TimesBlock extends GuideBlockBase { type: 'times'; show?: 'beide' | 'checkin' | 'checkout' }
 export interface RulesBlock extends GuideBlockBase { type: 'rules' }
 export interface RegionBlock extends GuideBlockBase { type: 'region' }
 
@@ -184,7 +187,10 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'contact': return b.phone.trim().length > 0 || b.note.trim().length > 0
     case 'image': return b.url.trim().length > 0
     case 'map': return !!ctx.address
-    case 'times': return !!(ctx.checkIn || ctx.checkOut)
+    case 'times':
+      if (b.show === 'checkin') return !!ctx.checkIn
+      if (b.show === 'checkout') return !!ctx.checkOut
+      return !!(ctx.checkIn || ctx.checkOut)
     case 'rules': return ctx.rules.length > 0
     case 'region': return !!ctx.regionSlug
   }
