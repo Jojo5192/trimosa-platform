@@ -45,6 +45,20 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   const [internThread, setInternThread] = useState(false)
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
 
+  // §162: Klick auf eine Aufgabe im Kalender → Aufgaben-Tab öffnen und die
+  // Aufgabe fokussieren (Event aus CalendarPanel; TasksPanel ist nur bei
+  // aktivem Tab gemountet, darum vermittelt die Shell per Prop)
+  const [taskFocus, setTaskFocus] = useState<string | null>(null)
+  useEffect(() => {
+    const onOpenTask = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string | null }>).detail?.id ?? null
+      setTaskFocus(id)
+      setTab('aufgaben')
+    }
+    window.addEventListener('trimosa-open-task', onOpenTask)
+    return () => window.removeEventListener('trimosa-open-task', onOpenTask)
+  }, [])
+
   // App-Icon-Badge ZENTRAL (Pascal 19.7.): folgt den Push-Einstellungen —
   // Gäste stumm ⇒ nur Intern-Threads zählen (und umgekehrt). Zahlen = THREADS
   // (Gäste: ungelesen ODER unbeantwortet · Intern: ungelesen).
@@ -155,7 +169,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
           <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} />
         </div>
         {tab === 'aufgaben' && (
-          <TasksPanel role={role} userId={userId} />
+          <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />
         )}
         {tab === 'kalender' && <CalendarPanel />}
         {tab === 'einstellungen' && <SettingsPanel role={role} />}
