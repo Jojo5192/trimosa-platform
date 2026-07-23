@@ -5,6 +5,7 @@ import {
   TRIGGER_META, PLACEHOLDERS, LEAD_META, CHANNEL_META, resolvePlaceholders, demoContext, triggerSummary,
   defaultAutoMessages, type AutoMessage, type TriggerType, type LeadFilter,
 } from '@/lib/auto-messages'
+import AiPolishButton from '@/components/AiPolishButton'
 
 /**
  * 📨 Auto-Nachrichten-Builder (Client, §145): links die Nachrichten-Vorlagen
@@ -347,6 +348,20 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                       border: '1px solid rgba(174,141,45,0.25)', borderRadius: 7, padding: '3px 7px', cursor: 'pointer',
                     }}>{p.key}</button>
                   ))}
+                </div>
+
+                {/* ✨ KI-Formulierhilfe (§149) — Platzhalter bleiben laut Prompt unangetastet */}
+                <div onClick={(e) => e.stopPropagation()}>
+                  <AiPolishButton
+                    field="auto_nachricht"
+                    text={m.body}
+                    context={{
+                      zweck: `${TRIGGER_META.find((t) => t.id === m.trigger_type)?.label ?? ''} (${triggerSummary(m)})`,
+                      buchungstyp: LEAD_META.find((l) => l.id === m.lead_filter)?.label ?? 'Alle Buchungen',
+                      verfuegbare_platzhalter: PLACEHOLDERS.map((p) => p.key).join(' '),
+                    }}
+                    onAccept={(v) => patch(m.id, { body: v })}
+                  />
                 </div>
 
                 {/* Test-Versand an die eigene Login-Mail (Demo-Daten, kein Gast) */}
