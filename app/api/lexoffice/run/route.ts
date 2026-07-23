@@ -53,6 +53,19 @@ export async function POST(request: NextRequest) {
     if (b.action === 'lex-delete' && typeof b.voucherId === 'string') {
       return NextResponse.json(await deleteInvoice(b.voucherId))
     }
+    // §160: Buchung mit BESTEHENDER Lexoffice-Rechnung verknüpfen (z. B.
+    // Teichert/RE00774 „Philipp") — verhindert Doppel-Fakturierung im
+    // Backfill und aktiviert den Gast-Download-Link
+    if (b.action === 'lex-link' && typeof b.bookingId === 'string' && typeof b.lexofficeId === 'string') {
+      const { error } = await supabaseAdmin.from('lexoffice_invoices').upsert({
+        booking_id: b.bookingId, lexoffice_id: b.lexofficeId,
+        voucher_number: typeof b.voucherNumber === 'string' ? b.voucherNumber : null,
+        amount: typeof b.amount === 'number' ? b.amount : null,
+        status: 'erstellt', error: null, updated_at: new Date().toISOString(),
+      }, { onConflict: 'booking_id' })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
     return NextResponse.json(await runInvoiceRun({ dryRun: b.dryRun !== false }))
   } catch (err) {
     const detail = String(err instanceof Error ? err.message : err).slice(0, 300)
