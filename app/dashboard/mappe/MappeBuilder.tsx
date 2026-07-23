@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
-  DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
+  blockVisibleInPhase, DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import AiPolishButton from '@/components/AiPolishButton'
@@ -53,10 +53,17 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
     () => (filter ? blocks.filter((b) => blockForListing(b, filter)) : blocks),
     [blocks, filter],
   )
-  // Vorschau: nur aktive Bausteine der Vorschau-Wohnung
+  // §160-Ergänzung: Vorschau-Phase — zeigt die Mappe so, wie sie zum
+  // jeweiligen Zeitpunkt aussieht ('alle' = ohne Phasen-Filter).
+  const [previewPhase, setPreviewPhase] = useState<'alle' | Exclude<GuidePhase, 'immer'>>('alle')
+  // Vorschau: nur aktive Bausteine der Vorschau-Wohnung (+ Phasen-Filter;
+  // nights=99, damit „ab X Nächten"-Bausteine die Phasen-Vorschau nicht stören)
   const previewBlocks = useMemo(
-    () => blocks.filter((b) => !b.disabled && (!previewListing || blockForListing(b, previewListing.id))),
-    [blocks, previewListing],
+    () => blocks.filter((b) =>
+      !b.disabled
+      && (!previewListing || blockForListing(b, previewListing.id))
+      && (previewPhase === 'alle' || blockVisibleInPhase(b, previewPhase, 99))),
+    [blocks, previewListing, previewPhase],
   )
 
   useEffect(() => {
@@ -285,6 +292,20 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: '#A8A292', marginBottom: 8, textAlign: 'center' }}>
             LIVE-VORSCHAU · {previewListing.title.toUpperCase()}
           </div>
+          {/* §160: Vorschau-Zeitpunkt — zeigt genau die Bausteine der Phase */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+            {([['alle', 'Alle'], ['vor', 'Vor Anreise'], ['waehrend', 'Während'], ['nach', 'Nach Abreise']] as const).map(([v, lbl]) => {
+              const on = previewPhase === v
+              return (
+                <button key={v} type="button" onClick={() => setPreviewPhase(v)} style={{
+                  padding: '4px 11px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700,
+                  border: on ? '1px solid transparent' : '1px solid #E5E1D6',
+                  background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                  color: on ? '#fff' : '#8A857B',
+                }}>{lbl}</button>
+              )
+            })}
+          </div>
           <div style={{ borderRadius: 34, background: '#2B2F33', padding: 7, boxShadow: '0 14px 44px rgba(0,0,0,0.18)' }}>
             <div style={{ borderRadius: 28, overflow: 'hidden', background: '#F5F3EE', height: 620, overflowY: 'auto' }}>
               <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '20px 16px 16px' }}>
@@ -299,7 +320,9 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
                 <GuideBlocks blocks={previewBlocks} ctx={previewListing.ctx} labels={DE_LABELS} preview />
                 {previewBlocks.length === 0 && (
                   <p style={{ fontSize: 12.5, color: '#A8A292', textAlign: 'center', marginTop: 30, lineHeight: 1.6 }}>
-                    Keine aktiven Bausteine für diese Wohnung.<br />Füge Bausteine hinzu oder ordne bestehende zu.
+                    {previewPhase === 'alle'
+                      ? <>Keine aktiven Bausteine für diese Wohnung.<br />Füge Bausteine hinzu oder ordne bestehende zu.</>
+                      : <>Zu diesem Zeitpunkt ist kein Baustein sichtbar.</>}
                   </p>
                 )}
               </div>
