@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import {
-  TRIGGER_META, PLACEHOLDERS, LEAD_META, resolvePlaceholders, demoContext, triggerSummary,
+  TRIGGER_META, PLACEHOLDERS, LEAD_META, CHANNEL_META, resolvePlaceholders, demoContext, triggerSummary,
   defaultAutoMessages, type AutoMessage, type TriggerType, type LeadFilter,
 } from '@/lib/auto-messages'
 
@@ -27,7 +27,7 @@ function blankMessage(): Draft {
   return {
     id: `tmp-${++tmpCounter}`, name: 'Neue Nachricht', enabled: true, trigger_type: 'vor_anreise',
     offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null,
-    lead_filter: 'alle', body: '', sort: 999,
+    lead_filter: 'alle', send_email: true, body: '', sort: 999,
     _dirty: true, _new: true,
   }
 }
@@ -39,7 +39,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
   initialSendEnabled: boolean
 }) {
   const [messages, setMessages] = useState<Draft[]>(
-    initial.map((m) => ({ ...m, lead_filter: m.lead_filter ?? 'alle' })),
+    initial.map((m) => ({ ...m, lead_filter: m.lead_filter ?? 'alle', send_email: m.send_email !== false })),
   )
   const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -55,6 +55,15 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
 
   function patch(id: string, p: Partial<Draft>) {
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...p, _dirty: true } : m)))
+  }
+
+  /** Kanal-Chip an/aus; alle gewählt (oder keiner) = null = alle Kanäle. */
+  function toggleChannel(id: string, ch: string) {
+    const m = messages.find((x) => x.id === id)
+    if (!m) return
+    const cur = m.channel_filter ?? []
+    const next = cur.includes(ch) ? cur.filter((c) => c !== ch) : [...cur, ch]
+    patch(id, { channel_filter: next.length && next.length < CHANNEL_META.length ? next : null })
   }
 
   async function toggleSend() {
@@ -105,7 +114,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
           name: m.name, enabled: m.enabled, trigger_type: m.trigger_type,
           offset_days: m.offset_days, send_hour: m.send_hour, listing_id: m.listing_id,
           channel_filter: m.channel_filter, min_nights: m.min_nights,
-          lead_filter: m.lead_filter, body: m.body, sort: m.sort,
+          lead_filter: m.lead_filter, send_email: m.send_email, body: m.body, sort: m.sort,
         }),
       })
       const d = await res.json().catch(() => ({}))
@@ -294,6 +303,35 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   </select>
                 </div>
 
+                {/* 📬 Kanäle + Versandweg */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>Kanäle:</span>
+                  <button type="button" onClick={() => patch(m.id, { channel_filter: null })} style={{
+                    padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                    border: !m.channel_filter?.length ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+                    background: !m.channel_filter?.length ? 'rgba(174,141,45,0.1)' : '#fff',
+                    color: !m.channel_filter?.length ? '#8A7020' : '#999',
+                  }}>Alle</button>
+                  {CHANNEL_META.map((c) => {
+                    const on = (m.channel_filter ?? []).includes(c.id)
+                    return (
+                      <button key={c.id} type="button" onClick={() => toggleChannel(m.id, c.id)} style={{
+                        padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                        border: on ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+                        background: on ? 'rgba(174,141,45,0.1)' : '#fff',
+                        color: on ? '#8A7020' : '#999',
+                      }}>{c.label}</button>
+                    )
+                  })}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10, cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={m.send_email} onChange={(e) => patch(m.id, { send_email: e.target.checked })} style={{ marginTop: 2, accentColor: '#AE8D2D' }} />
+                  <span style={{ fontSize: 12, color: '#666', lineHeight: 1.5 }}>
+                    📧 Website-Gäste zusätzlich per E-Mail
+                    <span style={{ color: '#A8A292' }}> — Portal-Gäste laufen automatisch über den Portal-Chat (Airbnb/Booking in der App, FeWo stellt als E-Mail zu)</span>
+                  </span>
+                </label>
+
                 {/* Text + Platzhalter */}
                 <textarea
                   ref={(el) => { bodyRefs.current[m.id] = el }}
@@ -411,8 +449,12 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#8A7020' }}>⏱ {triggerSummary(active)}</div>
               <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
                 {active.listing_id ? (activeListing?.title ?? 'Eine Wohnung') : 'Alle Wohnungen'}
+                {active.channel_filter?.length
+                  ? ` · ${active.channel_filter.map((c) => CHANNEL_META.find((x) => x.id === c)?.label ?? c).join(' + ')}`
+                  : ' · alle Kanäle'}
                 {active.lead_filter === 'kurzfristig' ? ' · ⚡ nur kurzfristige Buchungen' : active.lead_filter === 'normal' ? ' · 📅 nur normale Buchungen' : ''}
                 {active.min_nights ? ` · ab ${active.min_nights} Nächten` : ''}
+                {active.send_email ? '' : ' · 📧 ohne Website-Mail'}
                 {active.enabled ? '' : ' · ⏸ pausiert'} · 🌍 automatisch übersetzt
               </div>
             </div>
