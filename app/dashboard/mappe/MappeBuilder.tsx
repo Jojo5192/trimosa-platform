@@ -471,7 +471,7 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
               onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = '' }} />
           </label>
           {uploadErr && <span style={{ fontSize: 11.5, color: '#B91C1C' }}>⚠️ {uploadErr}</span>}
-          <input style={INPUT} placeholder="Bildunterschrift (optional, z. B. „Dein Parkplatz — Nr. 3")" value={block.caption} onChange={(e) => onChange({ caption: e.target.value })} />
+          <input style={INPUT} placeholder="Bildunterschrift (optional, z. B. Dein Parkplatz Nr. 3)" value={block.caption} onChange={(e) => onChange({ caption: e.target.value })} />
         </div>
       )}
 
