@@ -247,6 +247,67 @@ async function upsertRow(bookingId: string, patch: Record<string, unknown>) {
   )
 }
 
+/**
+ * §159-Nachtrag: AUTOMATISCHE Stornorechnung (Inhaber: „Storno muss
+ * definitiv selbstständig passieren"). POST /credit-notes mit
+ * precedingSalesVoucherId + finalize=true — laut API-Doku wird die
+ * Stornorechnung damit sofort verrechnet („paidoff") und gleicht die
+ * Originalrechnung aus. Positionen/Adresse werden aus der Original-
+ * rechnung gespiegelt.
+ */
+export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean; creditNoteId?: string; error?: string }> {
+  const orig = await lexFetch(`/invoices/${lexofficeId}`)
+  if (!orig.ok) return { ok: false, error: `Original nicht ladbar (HTTP ${orig.status})` }
+  const inv = await orig.json().catch(() => null) as {
+    address?: Record<string, unknown>
+    lineItems?: { type?: string; name?: string; description?: string; quantity?: number; unitName?: string; unitPrice?: Record<string, unknown> }[]
+    taxConditions?: { taxType?: string }
+    voucherNumber?: string
+  } | null
+  if (!inv) return { ok: false, error: 'Original nicht lesbar' }
+
+  const a = inv.address ?? {}
+  const address: Record<string, unknown> = a.contactId
+    ? { contactId: a.contactId }
+    : {
+        name: a.name ?? 'Gast', countryCode: a.countryCode ?? 'DE',
+        ...(a.supplement ? { supplement: a.supplement } : {}),
+        ...(a.street ? { street: a.street } : {}),
+        ...(a.zip ? { zip: a.zip } : {}),
+        ...(a.city ? { city: a.city } : {}),
+      }
+  const lineItems = (inv.lineItems ?? [])
+    .filter((li) => li.type !== 'text')
+    .map((li) => ({
+      type: 'custom',
+      name: li.name ?? 'Position',
+      ...(li.description ? { description: li.description } : {}),
+      quantity: li.quantity ?? 1,
+      unitName: li.unitName ?? 'Pauschale',
+      unitPrice: li.unitPrice,
+    }))
+  if (!lineItems.length) return { ok: false, error: 'Original ohne Positionen' }
+
+  const payload = {
+    voucherDate: `${berlinToday()}T12:00:00.000Z`,
+    address,
+    lineItems,
+    totalPrice: { currency: 'EUR' },
+    taxConditions: { taxType: inv.taxConditions?.taxType ?? 'gross' },
+    remark: `Storno zu Rechnung ${inv.voucherNumber ?? lexofficeId} (Rechnungskorrektur).`,
+  }
+  const res = await lexFetch(`/credit-notes?precedingSalesVoucherId=${lexofficeId}&finalize=true`, {
+    method: 'POST', body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    return { ok: false, error: `Storno HTTP ${res.status}: ${body.slice(0, 300)}` }
+  }
+  const created = await res.json().catch(() => null) as { id?: string } | null
+  console.log('[lexoffice] Storno erstellt für', inv.voucherNumber ?? lexofficeId, '→', created?.id)
+  return { ok: true, creditNoteId: created?.id }
+}
+
 /** PDF einer Rechnung als Buffer (render document → file download). */
 export async function getInvoicePdf(lexofficeId: string): Promise<{ ok: boolean; pdf?: Buffer; error?: string }> {
   const doc = await lexFetch(`/invoices/${lexofficeId}/document`)
