@@ -272,13 +272,35 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
               </a>
             )
           case 'chat':
-            // §163: Positions-Marker — den ECHTEN Chat rendert die Mappe-Seite
-            // an dieser Stelle; im Builder nur ein Platzhalter
+            // §163/§166: Positions-Marker — den ECHTEN Chat rendert die
+            // Mappe-Seite an dieser Stelle; die Builder-Vorschau zeigt die
+            // KOMBI-Karte „Kontakt & Chat" in derselben Optik (Text →
+            // Telefon → Chat, Daten aus dem Kontakt-Baustein gemergt)
             return preview
               ? wrap(
-                  <div style={{ ...CARD, textAlign: 'center', border: '1.5px dashed #D8C98F', background: '#FDFBF4' }}>
-                    <div style={{ fontSize: 20, marginBottom: 4 }}>💬</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8A7020' }}>Gäste-Chat erscheint hier</div>
+                  <div style={{ borderRadius: 16, overflow: 'hidden', background: '#12222E', padding: '15px 18px' }}>
+                    {(b.phone || b.note) && (
+                      <>
+                        <div style={{ fontSize: 14.5, fontWeight: 700, color: '#E3C878', marginBottom: b.note ? 6 : 10 }}>📞 Kontakt</div>
+                        {b.note && <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'rgba(245,240,232,0.7)', lineHeight: 1.6 }}>{b.note}</p>}
+                        {b.phone && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 999,
+                            border: '1px solid rgba(227,200,120,0.4)', color: '#E3C878', fontSize: 13.5, fontWeight: 700, marginBottom: 4,
+                          }}>📞 {b.phone}</span>
+                        )}
+                        <div style={{ borderTop: '1px solid rgba(245,240,232,0.12)', margin: '12px 0' }} />
+                      </>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 14.5, fontWeight: 700, color: '#E3C878' }}>💬 Nachricht an dein Gastgeber-Team</span>
+                      <span style={{ fontSize: 12, color: 'rgba(245,240,232,0.6)' }}>▼</span>
+                    </div>
+                    {!(b.phone || b.note) && (
+                      <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(245,240,232,0.45)' }}>
+                        Tipp: Ein 📞-Kontakt-Baustein füllt hier Telefon + Hinweis mit aus.
+                      </p>
+                    )}
                   </div>
                 )
               : null
