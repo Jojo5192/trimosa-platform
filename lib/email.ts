@@ -180,6 +180,53 @@ export async function sendGuestChatEmail(opts: {
   return sendViaResend(opts.to, subject, html)
 }
 
+/**
+ * 📨 Auto-Nachricht als E-Mail (Phase B, §148): `text` ist bereits die
+ * Gastsprachen-Fassung und darf den MAPPE_BTN_SENTINEL enthalten — der wird
+ * hier zum Gold-Button. URLs im Text werden klickbar verlinkt. Antworten
+ * fließen via Reply-To (§134) zurück in den Chat.
+ */
+export async function sendAutoMessageEmail(opts: {
+  to: string
+  guestName?: string | null
+  listingTitle?: string | null
+  text: string
+  mappeUrl?: string | null
+  lang?: string | null
+}) {
+  const lang: UiLang = isUiLang(opts.lang ?? '') ? (opts.lang as UiLang) : 'de'
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    'Infos zu deinem Aufenthalt',
+    'Zur Gästemappe',
+    'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
+    'Unterkunft',
+  ])
+  const escaped = opts.text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // URLs klickbar (Satzzeichen am Ende bleiben Text — wie im Chat-Linkify)
+  const linked = escaped.replace(/https?:\/\/[^\s<&]+/g, (u) => {
+    const m = u.match(/[.,;:!?]+$/)
+    const tail = m ? m[0] : ''
+    const url = tail ? u.slice(0, -tail.length) : u
+    return `<a href="${url}" style="color:#8A7020;font-weight:600;text-decoration:underline;word-break:break-all;">${url.replace('https://', '')}</a>${tail}`
+  })
+  const button = opts.mappeUrl
+    ? `<span style="display:block;margin:16px 0 6px;"><a href="${opts.mappeUrl}" style="display:inline-block;background:linear-gradient(135deg,#AE8D2D,#8A7020);background-color:#AE8D2D;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:999px;">📖 ${T('Zur Gästemappe')}</a></span>`
+    : ''
+  const bodyHtml = linked
+    .split('[[MAPPE_BUTTON]]').join(button)
+    .replace(/\n/g, '<br/>')
+  const html = renderEmail({
+    preheader: opts.text.replace('[[MAPPE_BUTTON]]', '').slice(0, 90),
+    heading: T('Infos zu deinem Aufenthalt'),
+    paragraphs: [bodyHtml],
+    details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
+    note: T('Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.'),
+  })
+  const subject = `${T('Infos zu deinem Aufenthalt')}${opts.listingTitle ? ` — ${opts.listingTitle}` : ''}`
+  return sendViaResend(opts.to, subject, html)
+}
+
 /* ── Shared booking loader ── */
 async function loadBooking(bookingId: string) {
   const { data: booking } = await supabaseAdmin
