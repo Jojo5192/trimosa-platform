@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useState } from 'react'
 import {
-  TRIGGER_META, PLACEHOLDERS, resolvePlaceholders, demoContext, triggerSummary,
-  defaultAutoMessages, type AutoMessage, type TriggerType,
+  TRIGGER_META, PLACEHOLDERS, LEAD_META, resolvePlaceholders, demoContext, triggerSummary,
+  defaultAutoMessages, type AutoMessage, type TriggerType, type LeadFilter,
 } from '@/lib/auto-messages'
 
 /**
@@ -26,21 +26,28 @@ let tmpCounter = 0
 function blankMessage(): Draft {
   return {
     id: `tmp-${++tmpCounter}`, name: 'Neue Nachricht', enabled: true, trigger_type: 'vor_anreise',
-    offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, body: '', sort: 999,
+    offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null,
+    lead_filter: 'alle', body: '', sort: 999,
     _dirty: true, _new: true,
   }
 }
 
-export default function AutoMessagesBuilder({ listings, initial, migrationMissing }: {
+export default function AutoMessagesBuilder({ listings, initial, migrationMissing, initialSendEnabled }: {
   listings: BuilderListing[]
   initial: AutoMessage[]
   migrationMissing: boolean
+  initialSendEnabled: boolean
 }) {
-  const [messages, setMessages] = useState<Draft[]>(initial)
+  const [messages, setMessages] = useState<Draft[]>(
+    initial.map((m) => ({ ...m, lead_filter: m.lead_filter ?? 'alle' })),
+  )
   const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<'chat' | 'iphone' | 'desktop'>('chat')
+  const [sendEnabled, setSendEnabled] = useState(initialSendEnabled)
+  const [switchBusy, setSwitchBusy] = useState(false)
+  const [testState, setTestState] = useState<Record<string, string>>({})
   const bodyRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   const active = useMemo(() => messages.find((m) => m.id === activeId) ?? messages[0] ?? null, [messages, activeId])
@@ -48,6 +55,42 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
 
   function patch(id: string, p: Partial<Draft>) {
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...p, _dirty: true } : m)))
+  }
+
+  async function toggleSend() {
+    const next = !sendEnabled
+    if (next && !confirm('Automatischen Versand AKTIVIEREN?\n\nAb sofort gehen aktive Vorlagen automatisch an echte Gäste raus (alle 10 Minuten geprüft).')) return
+    setSwitchBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/auto-messages', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { sendEnabled: next } }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      setSendEnabled(next)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Schalter konnte nicht gespeichert werden.')
+    } finally {
+      setSwitchBusy(false)
+    }
+  }
+
+  async function sendTest(id: string) {
+    const m = messages.find((x) => x.id === id)
+    if (!m || !m.body.trim()) return
+    setTestState((s) => ({ ...s, [id]: '…' }))
+    try {
+      const res = await fetch('/api/auto-messages/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: m.body, wohnung: activeListing?.title ?? '' }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      setTestState((s) => ({ ...s, [id]: `✓ an ${d.an}` }))
+    } catch (e) {
+      setTestState((s) => ({ ...s, [id]: `⚠️ ${e instanceof Error ? e.message : 'Fehler'}` }))
+    }
   }
 
   async function saveRow(id: string) {
@@ -61,7 +104,8 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
           id: m._new ? undefined : m.id,
           name: m.name, enabled: m.enabled, trigger_type: m.trigger_type,
           offset_days: m.offset_days, send_hour: m.send_hour, listing_id: m.listing_id,
-          channel_filter: m.channel_filter, min_nights: m.min_nights, body: m.body, sort: m.sort,
+          channel_filter: m.channel_filter, min_nights: m.min_nights,
+          lead_filter: m.lead_filter, body: m.body, sort: m.sort,
         }),
       })
       const d = await res.json().catch(() => ({}))
@@ -133,6 +177,31 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
         <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: 13, color: '#B91C1C' }}>⚠️ {error}</div>
       )}
 
+      {/* 🚦 Master-Schalter: ohne AN geht NICHTS raus (Default AUS) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 18,
+        padding: '14px 18px', borderRadius: 14, background: '#fff',
+        border: sendEnabled ? '1.5px solid #34C759' : '1.5px solid #E5E1D6',
+      }}>
+        <button type="button" onClick={toggleSend} disabled={switchBusy} title={sendEnabled ? 'Versand stoppen' : 'Versand aktivieren'} style={{
+          width: 54, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative',
+          background: sendEnabled ? '#34C759' : '#D1D1D6', transition: 'background .15s', flexShrink: 0,
+          opacity: switchBusy ? 0.6 : 1,
+        }}>
+          <span style={{ position: 'absolute', top: 3, left: sendEnabled ? 27 : 3, width: 24, height: 24, borderRadius: '50%', background: '#fff', transition: 'left .15s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+        </button>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: sendEnabled ? '#1B7A34' : '#555' }}>
+            🚦 Automatischer Versand {sendEnabled ? 'AKTIV' : 'AUS'}
+          </div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 2, lineHeight: 1.5 }}>
+            {sendEnabled
+              ? 'Aktive Vorlagen gehen automatisch an echte Gäste raus (alle 10 Min geprüft).'
+              : 'Solange AUS, wird garantiert nichts versendet — Vorlagen lassen sich gefahrlos bauen und testen.'}
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => addRow()} style={{
           padding: '9px 16px', borderRadius: 999, border: '1.5px solid var(--gold)', background: '#fff',
@@ -181,6 +250,26 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   }}>✕</button>
                 </div>
 
+                {/* ⚡ Kurzfristig-Weiche (§148): für welche Buchungen gilt die Vorlage? */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
+                  <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>Buchungstyp:</span>
+                  {LEAD_META.map((l) => (
+                    <button key={l.id} type="button" title={l.hint} onClick={() => patch(m.id, { lead_filter: l.id as LeadFilter })} style={{
+                      padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                      border: m.lead_filter === l.id ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+                      background: m.lead_filter === l.id ? 'rgba(174,141,45,0.1)' : '#fff',
+                      color: m.lead_filter === l.id ? '#8A7020' : '#999',
+                    }}>{l.label}</button>
+                  ))}
+                </div>
+                {m.lead_filter !== 'alle' && (
+                  <p style={{ margin: '-4px 0 10px', fontSize: 11, color: '#A8935A', lineHeight: 1.5 }}>
+                    {m.lead_filter === 'kurzfristig'
+                      ? '⚡ Geht nur an Gäste, die max. 3 Tage vor der Anreise gebucht haben — ideal für EINE kompakte Nachricht mit allem Wichtigen.'
+                      : '📅 Geht nur an Gäste, die mehr als 3 Tage vor der Anreise gebucht haben (kurzfristige Bucher bekommen stattdessen die ⚡-Vorlage).'}
+                  </p>
+                )}
+
                 {/* Auslöser */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
                   <select value={m.trigger_type} onChange={(e) => patch(m.id, { trigger_type: e.target.value as TriggerType })} style={{ ...INPUT, width: 'auto', flex: '1 1 180px' }}>
@@ -220,6 +309,17 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                       border: '1px solid rgba(174,141,45,0.25)', borderRadius: 7, padding: '3px 7px', cursor: 'pointer',
                     }}>{p.key}</button>
                   ))}
+                </div>
+
+                {/* Test-Versand an die eigene Login-Mail (Demo-Daten, kein Gast) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={() => sendTest(m.id)} disabled={testState[m.id] === '…' || !m.body.trim()} style={{
+                    padding: '6px 13px', borderRadius: 999, border: '1.5px solid #E0DDD6', background: '#fff',
+                    color: '#666', fontSize: 11.5, fontWeight: 700, cursor: m.body.trim() ? 'pointer' : 'default',
+                  }}>{testState[m.id] === '…' ? '⏳ Sendet…' : '📧 Test an mich'}</button>
+                  {testState[m.id] && testState[m.id] !== '…' && (
+                    <span style={{ fontSize: 11.5, color: testState[m.id].startsWith('✓') ? '#1B7A34' : '#B91C1C' }}>{testState[m.id]}</span>
+                  )}
                 </div>
 
                 {/* Speichern-Zeile */}
@@ -311,6 +411,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#8A7020' }}>⏱ {triggerSummary(active)}</div>
               <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
                 {active.listing_id ? (activeListing?.title ?? 'Eine Wohnung') : 'Alle Wohnungen'}
+                {active.lead_filter === 'kurzfristig' ? ' · ⚡ nur kurzfristige Buchungen' : active.lead_filter === 'normal' ? ' · 📅 nur normale Buchungen' : ''}
                 {active.min_nights ? ` · ab ${active.min_nights} Nächten` : ''}
                 {active.enabled ? '' : ' · ⏸ pausiert'} · 🌍 automatisch übersetzt
               </div>
