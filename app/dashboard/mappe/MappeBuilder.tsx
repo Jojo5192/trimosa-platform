@@ -5,6 +5,7 @@ import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, DE_LABELS, type GuideBlock, type GuideCtx,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
+import AiPolishButton from '@/components/AiPolishButton'
 
 /**
  * 📖 Gästemappen-Builder (Client): links Bausteine anordnen und ausfüllen,
@@ -264,6 +265,17 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
     width: 26, height: 26, borderRadius: 8, border: '1px solid #E5E1D6', background: '#fff',
     cursor: 'pointer', fontSize: 12, color: '#777', display: 'flex', alignItems: 'center', justifyContent: 'center',
   }
+  // ✨ KI-Formulierhilfe (§149) für die Freitext-Bausteine — welches Feld
+  // je Baustein-Typ poliert wird (steps behalten das Zeilen-Format)
+  const aiText = block.type === 'steps' ? block.steps.join('\n')
+    : block.type === 'contact' ? (block.note ?? '')
+    : (block.type === 'text' || block.type === 'warning' || block.type === 'info' || block.type === 'door') ? (block.text ?? '')
+    : null
+  const aiAccept = (v: string) => {
+    if (block.type === 'steps') onChange({ steps: v.split('\n') } as Partial<GuideBlock>)
+    else if (block.type === 'contact') onChange({ note: v } as Partial<GuideBlock>)
+    else onChange({ text: v } as Partial<GuideBlock>)
+  }
   return (
     <div style={{ border: '1px solid #E5E1D6', borderRadius: 14, background: '#fff', padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: meta.smart ? 0 : 10 }}>
@@ -324,6 +336,18 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
           <input style={INPUT} placeholder="Telefonnummer (z. B. +49 170 1234567)" value={block.phone} onChange={(e) => onChange({ phone: e.target.value })} />
           <textarea style={{ ...INPUT, resize: 'vertical' }} rows={2} placeholder="Hinweis (z. B. wann ihr erreichbar seid)" value={block.note} onChange={(e) => onChange({ note: e.target.value })} />
         </div>
+      )}
+
+      {aiText !== null && (
+        <AiPolishButton
+          field="mappe_baustein"
+          text={aiText}
+          context={{
+            baustein: meta.label,
+            ...('title' in block && typeof block.title === 'string' && block.title ? { titel: block.title } : {}),
+          }}
+          onAccept={aiAccept}
+        />
       )}
 
       {/* §136: Sichtbarkeits-Phase je Baustein + optional Mindest-Nächte */}
