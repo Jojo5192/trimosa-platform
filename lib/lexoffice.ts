@@ -59,29 +59,108 @@ function channelLabel(b: { channel?: string | null; source?: string | null }): s
 
 interface BookingRow {
   id: string; status: string; source: string | null; payment_status: string | null
-  check_in: string; check_out: string; guest_name: string | null
+  check_in: string; check_out: string; guest_name: string | null; guest_id: string | null
   total_price: number | null; channel: string | null; listing_id: string | null
   adults: number | null; children: number | null
+}
+
+/** §159: Rechnungsempfänger — Override (Chat) > Website-Profil > Gast-Name. */
+export interface InvoiceRecipient {
+  name: string
+  supplement?: string
+  street?: string
+  zip?: string
+  city?: string
+  countryCode?: string
+}
+
+const COUNTRY_CODES: Record<string, string> = {
+  deutschland: 'DE', germany: 'DE', niederlande: 'NL', netherlands: 'NL', nederland: 'NL',
+  belgien: 'BE', belgium: 'BE', belgie: 'BE', 'belgië': 'BE', luxemburg: 'LU', luxembourg: 'LU',
+  frankreich: 'FR', france: 'FR', 'österreich': 'AT', oesterreich: 'AT', austria: 'AT',
+  schweiz: 'CH', switzerland: 'CH', polen: 'PL', poland: 'PL', italien: 'IT', italy: 'IT',
+  spanien: 'ES', spain: 'ES', 'dänemark': 'DK', denmark: 'DK', schweden: 'SE', sweden: 'SE',
+  'vereinigtes königreich': 'GB', 'united kingdom': 'GB', england: 'GB',
+}
+function countryCodeFor(v: string | null | undefined): string {
+  const s = (v ?? '').trim()
+  if (/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase()
+  return COUNTRY_CODES[s.toLowerCase()] ?? 'DE'
+}
+
+export function sanitizeRecipient(raw: unknown): InvoiceRecipient | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const name = typeof r.name === 'string' ? r.name.trim().slice(0, 120) : ''
+  if (!name) return null
+  const opt = (k: string, max = 120) => (typeof r[k] === 'string' && (r[k] as string).trim() ? (r[k] as string).trim().slice(0, max) : undefined)
+  return {
+    name,
+    supplement: opt('supplement'),
+    street: opt('street'),
+    zip: opt('zip', 12),
+    city: opt('city'),
+    countryCode: countryCodeFor(opt('countryCode', 40) ?? opt('country', 40)),
+  }
+}
+
+/** Empfänger auflösen: gespeicherter Override → Website-Profil (inkl. Firma) → Gast-Name. */
+async function resolveRecipient(b: BookingRow): Promise<InvoiceRecipient> {
+  const { data: row } = await supabaseAdmin
+    .from('lexoffice_invoices').select('recipient').eq('booking_id', b.id).maybeSingle()
+  const stored = sanitizeRecipient((row as { recipient?: unknown } | null)?.recipient)
+  if (stored) return stored
+
+  if (b.guest_id) {
+    const { data: p } = await supabaseAdmin
+      .from('profiles')
+      .select('account_type, guest_first_name, guest_last_name, company_name, guest_street, guest_zip, guest_city, guest_country, display_name')
+      .eq('id', b.guest_id).maybeSingle()
+    if (p) {
+      const isBiz = p.account_type === 'business' && p.company_name
+      const person = [p.guest_first_name, p.guest_last_name].filter(Boolean).join(' ').trim()
+      const name = (isBiz ? String(p.company_name) : person) || String(p.display_name ?? '').trim()
+      if (name) {
+        return sanitizeRecipient({
+          name,
+          supplement: isBiz && person ? person : undefined,
+          street: p.guest_street, zip: p.guest_zip, city: p.guest_city, country: p.guest_country,
+        }) ?? { name }
+      }
+    }
+  }
+  return { name: (b.guest_name ?? '').trim() || 'Gast', countryCode: 'DE' }
+}
+
+export async function saveRecipient(bookingId: string, recipient: InvoiceRecipient): Promise<void> {
+  await upsertRow(bookingId, { recipient })
 }
 
 /**
  * Rechnung für EINE Buchung erstellen (idempotent über lexoffice_invoices).
  * Guards: confirmed · Anreisetag erreicht · Betrag > 0 · Website nur bezahlt.
  */
-export async function createInvoiceForBooking(bookingId: string): Promise<{
+export async function createInvoiceForBooking(bookingId: string, opts: {
+  /** §159: expliziter Empfänger (Neu-Ausstellung) — wird auch gespeichert */
+  recipient?: InvoiceRecipient
+  /** §159: bestehende Rechnung ignorieren und NEU ausstellen (die alte muss
+   *  in der lexoffice-UI storniert/gelöscht werden — Hinweis im Aufrufer) */
+  force?: boolean
+} = {}): Promise<{
   ok: boolean; lexofficeId?: string; voucherNumber?: string | null; skipped?: string; error?: string
 }> {
   if (!lexofficeConfigured()) return { ok: false, error: 'LEXOFFICE_API_KEY fehlt' }
 
   const { data: existing } = await supabaseAdmin
     .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', bookingId).maybeSingle()
-  if (existing?.lexoffice_id) {
+  if (existing?.lexoffice_id && !opts.force) {
     return { ok: true, lexofficeId: existing.lexoffice_id, voucherNumber: existing.voucher_number, skipped: 'existiert bereits' }
   }
+  if (opts.recipient) await saveRecipient(bookingId, opts.recipient)
 
   const { data: b } = await supabaseAdmin
     .from('bookings')
-    .select('id, status, source, payment_status, check_in, check_out, guest_name, total_price, channel, listing_id, adults, children')
+    .select('id, status, source, payment_status, check_in, check_out, guest_name, guest_id, total_price, channel, listing_id, adults, children')
     .eq('id', bookingId).maybeSingle() as { data: BookingRow | null }
   if (!b) return { ok: false, error: 'Buchung nicht gefunden' }
   if (b.status !== 'confirmed') return { ok: false, skipped: `status=${b.status}` }
@@ -98,14 +177,22 @@ export async function createInvoiceForBooking(bookingId: string): Promise<{
     ? await supabaseAdmin.from('listings').select('title').eq('id', b.listing_id).maybeSingle()
     : { data: null }
   const listingTitle = (l as { title?: string } | null)?.title ?? 'Ferienwohnung'
-  const guestName = (b.guest_name ?? '').trim() || 'Gast'
   const kanal = channelLabel(b)
   const n = nights(b.check_in, b.check_out)
   const persons = (b.adults ?? 1) + (b.children ?? 0)
 
+  // §159: Empfänger — expliziter Wunsch > gespeicherter Override >
+  // Website-Profil (inkl. Firma + Anschrift) > Gast-Name
+  const rec = opts.recipient ?? await resolveRecipient(b)
+  const address: Record<string, string> = { name: rec.name, countryCode: rec.countryCode ?? 'DE' }
+  if (rec.supplement) address.supplement = rec.supplement
+  if (rec.street) address.street = rec.street
+  if (rec.zip) address.zip = rec.zip
+  if (rec.city) address.city = rec.city
+
   const payload = {
     voucherDate: `${today}T12:00:00.000Z`,
-    address: { name: guestName, countryCode: 'DE' },
+    address,
     lineItems: [{
       type: 'custom',
       name: `Übernachtung ${listingTitle}`.slice(0, 255),
@@ -149,7 +236,7 @@ export async function createInvoiceForBooking(bookingId: string): Promise<{
     lexoffice_id: created.id, voucher_number: voucherNumber, amount,
     status: 'erstellt', error: null,
   })
-  console.log('[lexoffice] Rechnung erstellt:', voucherNumber ?? created.id, '→', guestName, amount, '€')
+  console.log('[lexoffice] Rechnung erstellt:', voucherNumber ?? created.id, '→', rec.name, amount, '€')
   return { ok: true, lexofficeId: created.id, voucherNumber }
 }
 
