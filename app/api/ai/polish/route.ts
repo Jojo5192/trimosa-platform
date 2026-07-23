@@ -30,6 +30,21 @@ const FIELD_BRIEFS: Record<string, string> = {
     'direkt und authentisch (wie ein Freund, der einen Geheimtipp gibt), Du-Form erlaubt. ' +
     'Die persönliche Erfahrung MUSS aus dem Ausgangstext stammen — bei leerem Text darfst du ' +
     'KEINEN Entwurf erfinden, antworte dann exakt mit: "Bitte schreibe zuerst deinen eigenen Tipp — ich poliere ihn dann."',
+  auto_nachricht:
+    'Überarbeite die automatische Gäste-Nachricht einer Ferienwohnungs-Vermietung: warm, klar, ' +
+    'in Du-Form, kurze Absätze, ähnliche Länge wie der Ausgangstext. ' +
+    'EISERN: Platzhalter in geschweiften Klammern ({vorname}, {wohnung}, {anreise}, {checkin}, ' +
+    '{tuercode}, {mappe_button} …) EXAKT unverändert an sinnvoller Stelle übernehmen — ' +
+    'niemals übersetzen, umbenennen, erfinden oder weglassen. ' +
+    'Bei leerem Ausgangstext: kurzen Entwurf aus den Kontext-Fakten (Zweck/Auslöser der Nachricht) ' +
+    'erstellen und die im Kontext genannten Platzhalter sinnvoll einsetzen.',
+  mappe_baustein:
+    'Überarbeite den Text eines Gästemappen-Bausteins (digitale Mappe, die der Gast auf dem ' +
+    'Handy liest): freundlich, klar, in Du-Form, kurz und praktisch — das Wichtigste zuerst. ' +
+    'Ist der Ausgangstext eine Schritt-Liste (eine Zeile = ein Schritt), behalte GENAU dieses ' +
+    'Zeilen-Format bei (keine Nummerierung ergänzen). Keine Fakten erfinden — nur umformulieren. ' +
+    'Bei leerem Text: KEINEN Entwurf erfinden, antworte dann exakt mit: ' +
+    '"Bitte schreibe zuerst ein paar Stichpunkte — ich formuliere sie dann aus."',
 }
 
 
