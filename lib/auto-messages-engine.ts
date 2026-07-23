@@ -121,8 +121,9 @@ async function phoneLangFor(bookingId: string): Promise<string | null> {
 }
 
 /* ── Gastsprache: letzte erkannte Gast-Nachricht > guest_lang (Website) >
- * Telefon-Vorwahl-Schätzung > de ── */
-async function guestLangFor(b: BookingRow, convId?: string, convGuestId?: string | null): Promise<string> {
+ * Telefon-Vorwahl-Schätzung > de. Exportiert (§163): auch die Gästemappe
+ * startet damit in der Kommunikationssprache des Gasts. ── */
+export async function guestLangFor(b: { id: string; guest_id: string | null; guest_lang: string | null }, convId?: string, convGuestId?: string | null): Promise<string> {
   try {
     const { data: bm } = await supabaseAdmin
       .from('messages').select('lang').eq('booking_id', b.id).eq('sender_type', 'guest')
