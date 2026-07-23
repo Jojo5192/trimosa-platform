@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun, q2Check } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check, q2Backfill, deleteInvoice } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -38,6 +38,20 @@ export async function POST(request: NextRequest) {
     // §160: Q2-Nachschau — reine Abgleich-LISTE, nichts wird erstellt
     if (b.action === 'q2-check') {
       return NextResponse.json(await q2Check(typeof b.from === 'string' ? b.from : '2026-04-01'))
+    }
+    // §160: Backfill — Entwürfe löschen + Rechnungen mit Belegdatum =
+    // Anreisetag nachschießen. dryRun:true (Default) zeigt nur die Vorschau.
+    if (b.action === 'q2-backfill') {
+      return NextResponse.json(await q2Backfill({
+        dryRun: b.dryRun !== false,
+        limit: typeof b.limit === 'number' ? b.limit : undefined,
+        from: typeof b.from === 'string' ? b.from : undefined,
+      }))
+    }
+    // §160: Einzel-Löschung (z. B. verwaister Test-Entwurf) — dient zugleich
+    // als Fähigkeits-Test, ob die API Belege löschen kann
+    if (b.action === 'lex-delete' && typeof b.voucherId === 'string') {
+      return NextResponse.json(await deleteInvoice(b.voucherId))
     }
     return NextResponse.json(await runInvoiceRun({ dryRun: b.dryRun !== false }))
   } catch (err) {
