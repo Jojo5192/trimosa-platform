@@ -5,25 +5,49 @@
  * befüllen sich aus dem Inserat und brauchen nur eingefügt zu werden.
  */
 
-/** Sichtbarkeits-Phase eines Bausteins (§136): Standard 'immer';
- *  'vor' = nur vor Anreise, 'waehrend' = nur während des Aufenthalts,
- *  'nach' = erst nach Abreise (z. B. Danke/Bewertungs-Block). Optional
- *  zusätzlich minNights = erst ab X Nächten Aufenthaltsdauer. */
+/** Sichtbarkeits-Phase eines Bausteins (§136/§150): Standard 'immer'.
+ *  NEU: `phases` erlaubt MEHRERE Phasen gleichzeitig (z. B. vor+während,
+ *  aber nicht danach); das alte Einzel-Feld `phase` bleibt als Alt-Format
+ *  lesbar. Optional minNights = erst ab X Nächten Aufenthaltsdauer.
+ *  `disabled` = Baustein pausiert (nirgends sichtbar); `listingIds` =
+ *  gilt nur für diese Wohnungen (leer/fehlend = alle) — §150 Pool-Modell. */
 export type GuidePhase = 'immer' | 'vor' | 'waehrend' | 'nach'
-export interface GuideBlockBase { id: string; type: string; phase?: GuidePhase; minNights?: number }
+export interface GuideBlockBase {
+  id: string; type: string
+  phase?: GuidePhase
+  phases?: Exclude<GuidePhase, 'immer'>[]
+  minNights?: number
+  disabled?: boolean
+  listingIds?: string[]
+}
 
 export const PHASE_META: { id: GuidePhase; label: string; short: string }[] = [
   { id: 'immer', label: 'Immer sichtbar', short: 'Immer' },
-  { id: 'vor', label: 'Nur vor Anreise', short: 'Vorher' },
-  { id: 'waehrend', label: 'Nur während des Aufenthalts', short: 'Während' },
-  { id: 'nach', label: 'Erst nach Abreise', short: 'Danach' },
+  { id: 'vor', label: 'Vor Anreise', short: 'Vorher' },
+  { id: 'waehrend', label: 'Während des Aufenthalts', short: 'Während' },
+  { id: 'nach', label: 'Nach Abreise', short: 'Danach' },
 ]
+
+/** Effektive Phasen-Auswahl (neues Mehrfach-Format vor Alt-Einzelfeld);
+ *  leeres Array = immer sichtbar. */
+export function blockPhases(b: GuideBlockBase): Exclude<GuidePhase, 'immer'>[] {
+  if (b.phases?.length) return b.phases
+  if (b.phase && b.phase !== 'immer') return [b.phase]
+  return []
+}
 
 /** Ist der Block in der aktuellen Aufenthalts-Phase sichtbar? */
 export function blockVisibleInPhase(b: GuideBlockBase, phase: GuidePhase, nights: number): boolean {
+  if (b.disabled) return false
   if (typeof b.minNights === 'number' && b.minNights > 0 && nights < b.minNights) return false
-  if (!b.phase || b.phase === 'immer') return true
-  return b.phase === phase
+  const ph = blockPhases(b)
+  if (ph.length === 0) return true
+  return ph.includes(phase as Exclude<GuidePhase, 'immer'>)
+}
+
+/** Gilt der Block für diese Wohnung? (keine Zuordnung = alle Wohnungen) */
+export function blockForListing(b: GuideBlockBase, listingId: string): boolean {
+  return !b.listingIds || b.listingIds.length === 0 || b.listingIds.includes(listingId)
 }
 export interface HeadingBlock extends GuideBlockBase { type: 'heading'; text: string }
 export interface TextBlock extends GuideBlockBase { type: 'text'; text: string }
@@ -33,6 +57,7 @@ export interface StepsBlock extends GuideBlockBase { type: 'steps'; title: strin
 export interface WifiBlock extends GuideBlockBase { type: 'wifi'; ssid: string; password: string }
 export interface DoorBlock extends GuideBlockBase { type: 'door'; title: string; text: string }
 export interface ContactBlock extends GuideBlockBase { type: 'contact'; phone: string; note: string }
+export interface ImageBlock extends GuideBlockBase { type: 'image'; url: string; caption: string }
 export interface MapBlock extends GuideBlockBase { type: 'map' }
 export interface TimesBlock extends GuideBlockBase { type: 'times' }
 export interface RulesBlock extends GuideBlockBase { type: 'rules' }
@@ -40,7 +65,7 @@ export interface RegionBlock extends GuideBlockBase { type: 'region' }
 
 export type GuideBlock =
   | HeadingBlock | TextBlock | InfoBlock | WarningBlock | StepsBlock
-  | WifiBlock | DoorBlock | ContactBlock
+  | WifiBlock | DoorBlock | ContactBlock | ImageBlock
   | MapBlock | TimesBlock | RulesBlock | RegionBlock
 
 /** Kontext aus Inserat/Region für die Smart-Blöcke. */
@@ -90,6 +115,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   wifi: { icon: '📶', label: 'WLAN', hint: 'Netzwerkname + Passwort mit Kopier-Knopf' },
   door: { icon: '🔑', label: 'Schlüssel & Zugang', hint: 'Zugangs-Infos — zeigt automatisch den Türcode der Buchung, sobald der Wohnung Schlösser zugeordnet sind (Admin → 🔑 Türcodes)' },
   contact: { icon: '📞', label: 'Kontakt', hint: 'Telefonnummer + Hinweis, wann erreichbar' },
+  image: { icon: '📷', label: 'Foto', hint: 'Bild mit optionaler Bildunterschrift (z. B. Parkplatz, Mülltonnen-Standort)' },
   map: { icon: '📍', label: 'Adresse & Anfahrt', hint: 'Aus dem Inserat: Adresse + Google-Maps-Route', smart: true },
   times: { icon: '🕓', label: 'Check-in/-out-Zeiten', hint: 'Aus dem Inserat: An- und Abreisezeit', smart: true },
   rules: { icon: '🏠', label: 'Hausregeln', hint: 'Aus dem Inserat: Ruhezeiten, Rauchen, Haustiere …', smart: true },
@@ -113,6 +139,7 @@ export function emptyBlock(type: GuideBlock['type']): GuideBlock {
     case 'wifi': return { id, type, ssid: '', password: '' }
     case 'door': return { id, type, title: 'Schlüssel & Zugang', text: '' }
     case 'contact': return { id, type, phone: '', note: '' }
+    case 'image': return { id, type, url: '', caption: '' }
     case 'map': return { id, type }
     case 'times': return { id, type }
     case 'rules': return { id, type }
@@ -155,6 +182,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'wifi': return b.ssid.trim().length > 0
     case 'door': return b.text.trim().length > 0 || !!ctx.doorCode || !!ctx.doorNote
     case 'contact': return b.phone.trim().length > 0 || b.note.trim().length > 0
+    case 'image': return b.url.trim().length > 0
     case 'map': return !!ctx.address
     case 'times': return !!(ctx.checkIn || ctx.checkOut)
     case 'rules': return ctx.rules.length > 0
@@ -169,6 +197,7 @@ export function collectGuideTexts(blocks: GuideBlock[]): string[] {
     if ('text' in b && b.text) out.push(b.text)
     if ('title' in b && b.title) out.push(b.title)
     if ('note' in b && b.note) out.push(b.note)
+    if ('caption' in b && b.caption) out.push(b.caption)
     if (b.type === 'steps') out.push(...b.steps.filter(Boolean))
   }
   return out
@@ -181,6 +210,7 @@ export function translateBlocks(blocks: GuideBlock[], tr: (de: string) => string
     if ('text' in c && c.text) c.text = tr(c.text)
     if ('title' in c && c.title) c.title = tr(c.title)
     if ('note' in c && c.note) c.note = tr(c.note)
+    if ('caption' in c && c.caption) c.caption = tr(c.caption)
     if (c.type === 'steps') c.steps = c.steps.map((s) => (s ? tr(s) : s))
     return c
   })
