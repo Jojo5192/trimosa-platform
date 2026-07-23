@@ -53,8 +53,10 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {visible.map((b) => {
         const empty = preview && !blockHasContent(b, ctx)
+        // Anker je Baustein (§154 Sprung-Navigation): mb-<id> + scrollMarginTop
+        // hält den Abschnitt unter der sticky Nav-Leiste frei
         const wrap = (child: React.ReactNode) => (
-          <div key={b.id} style={{ opacity: empty ? 0.45 : 1 }}>
+          <div key={b.id} id={`mb-${b.id}`} style={{ opacity: empty ? 0.45 : 1, scrollMarginTop: 70 }}>
             {child}
             {empty && (
               <div style={{ fontSize: 10.5, color: '#B0A793', marginTop: 3, fontStyle: 'italic' }}>
