@@ -10,12 +10,13 @@
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
-    "@vercel/analytics": "^1.4.0",
     "@supabase/supabase-js": "^2.103.0",
+    "@vercel/analytics": "^1.4.0",
     "autoprefixer": "^10.4.27",
     "next": "16.2.3",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.9",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "stripe": "^17.7.0",
@@ -24,11 +25,12 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
-    "typescript": "^5",
-    "@types/web-push": "^3.6.4"
+    "typescript": "^5"
   }
 }
