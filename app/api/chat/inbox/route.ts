@@ -281,6 +281,7 @@ export async function GET(request: Request) {
       guestAvatar: gp?.avatar_url ?? null,
       listingTitle: b?.listing_id ? listingTitle.get(b.listing_id) ?? null : null,
       listingId: b?.listing_id ?? null,
+      bookingId: (c.booking_id as string | null) ?? null,
       mappeUrl: b?.portal_token ? `/mappe/${b.portal_token}` : null,
       platform: 'TRIMOSA',
       checkIn: b?.check_in ?? null,
