@@ -81,10 +81,13 @@ export async function makeTr(lang: UiLang, texts: (string | null | undefined)[])
         if (c) { result.set(t, c); mem.set(lang + ':' + deHash(t), c) }
         else untranslated.push(t)
       }
-      // 2) AI für den Rest, in Häppchen (Antwortlänge/Latenz begrenzen)
+      // 2) AI für den Rest, in Häppchen — PARALLEL statt sequenziell:
+      //    der Ersthit einer Sprache dauerte sonst 15–30 s (§166-Performance,
+      //    Inhaber: „Sprachwechsel/Chat sehr langsam"); parallel ~3–5 s
       const CHUNK = 12
-      for (let i = 0; i < untranslated.length; i += CHUNK) {
-        const chunk = untranslated.slice(i, i + CHUNK)
+      const chunks: string[][] = []
+      for (let i = 0; i < untranslated.length; i += CHUNK) chunks.push(untranslated.slice(i, i + CHUNK))
+      await Promise.all(chunks.map(async (chunk) => {
         try {
           const translated = await translateChunk(lang, chunk)
           const rows = chunk.map((t, j) => ({ de_hash: deHash(t), lang, content: translated[j] }))
@@ -93,7 +96,7 @@ export async function makeTr(lang: UiLang, texts: (string | null | undefined)[])
         } catch (err) {
           console.error('[static-translate] chunk failed:', err)
         }
-      }
+      }))
     }
   } catch (err) {
     console.error('[static-translate]', err)
