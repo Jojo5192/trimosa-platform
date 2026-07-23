@@ -22,6 +22,7 @@ interface Thread {
   guestName: string
   listingTitle: string | null
   listingId: string | null
+  mappeUrl?: string | null
   platform: string
   checkIn: string | null
   checkOut: string | null
@@ -31,6 +32,19 @@ interface Thread {
   guestLang: string | null
   noReplyNeeded: boolean
   phoneResolved: boolean
+}
+
+/* SpeechRecognition (Diktat) — best effort, iOS 17+/Chrome */
+interface SR { start: () => void; stop: () => void; lang: string; continuous: boolean; interimResults: boolean; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null }
+function makeRecognition(): SR | null {
+  const w = window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+  if (!Ctor) return null
+  const sr = new Ctor()
+  sr.lang = 'de-DE'
+  sr.continuous = true
+  sr.interimResults = false
+  return sr
 }
 interface Msg { id: string; ours: boolean; text: string; at: string }
 
@@ -78,6 +92,16 @@ export default function OffenPanel({ visible, onCount }: {
   const [taskPrio, setTaskPrio] = useState('mittel')
   const [taskBusy, setTaskBusy] = useState(false)
   const busyRef = useRef(false)
+  // §157: Werkstatt (Anweisung schriftlich/🎤) + 📖-Mappen-Menü
+  const [instruction, setInstruction] = useState('')
+  const [refining, setRefining] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [speechOk, setSpeechOk] = useState(false)
+  const [mappeMenu, setMappeMenu] = useState(false)
+  const recRef = useRef<{ stop: () => void; finish: () => void } | null>(null)
+  const verlaufRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setSpeechOk(!!makeRecognition()) }, [])
 
   const current = queue[0] ?? null
 
@@ -146,12 +170,19 @@ export default function OffenPanel({ visible, onCount }: {
     return () => { stale = true }
   }, [current?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Verlauf nach dem Laden ans Ende scrollen (letzte Nachricht sichtbar) ── */
+  useEffect(() => {
+    const el = verlaufRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [msgs])
+
   /* ── Karte abräumen (Animation → Queue-Update) ── */
   function dismiss(dir: 'left' | 'right', remove: boolean) {
     setLeaving(dir)
     setTimeout(() => {
       setLeaving(null)
       setDraft(''); setComposer(false); setError(null); setTaskOpen(false)
+      setInstruction(''); setMappeMenu(false)
       setQueue((q) => {
         const [c, ...rest] = q
         if (!c) return q
@@ -199,36 +230,114 @@ export default function OffenPanel({ visible, onCount }: {
     } finally { setAiBusy(false) }
   }
 
+  /* ✏️/🎤 Werkstatt: Anweisung → Claude schreibt/überarbeitet den Entwurf */
+  async function refine(instrText?: string) {
+    if (!current) return
+    const instr = (instrText ?? instruction).trim()
+    if (!instr || refining) return
+    setRefining(true); setError(null); setComposer(true)
+    try {
+      const body = {
+        ...(current.kind === 'booking' ? { bookingId: current.id } : { conversationId: current.id }),
+        instruction: instr,
+        ...(draft.trim() ? { currentDraft: draft } : {}),
+      }
+      const r = await fetch('/api/ai/chat-suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(d?.error ?? `KI-Fehler (${r.status})`)
+      setDraft(d.suggestion ?? '')
+      setInstruction('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'KI-Anweisung fehlgeschlagen.')
+    } finally { setRefining(false) }
+  }
+
+  /* 🎤 Diktat (ChatPanel-Muster §105: idempotentes finish + Failsafe) */
+  function toggleRecording() {
+    if (recording) { recRef.current?.stop(); setTimeout(() => recRef.current?.finish(), 1200); return }
+    const sr = makeRecognition()
+    if (!sr) return
+    let spoken = ''
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      setRecording(false)
+      recRef.current = null
+      if (spoken.trim()) refine(spoken.trim())
+    }
+    sr.onresult = (e) => {
+      let txt = ''
+      for (let i = 0; i < e.results.length; i++) if (e.results[i].isFinal) txt += e.results[i][0].transcript + ' '
+      spoken = txt
+    }
+    sr.onend = finish
+    sr.onerror = finish
+    recRef.current = { stop: () => { try { sr.stop() } catch { /* */ } }, finish }
+    try { sr.start(); setRecording(true) } catch { finish() }
+  }
+
+  async function sendText(text: string) {
+    if (!current) throw new Error('Kein Thread.')
+    let content = text.trim()
+    let contentDe: string | undefined
+    let lang: string | undefined
+    if (current.guestLang && current.guestLang !== 'de') {
+      // §157: URLs (Gästemappe!) vor der Übersetzung schützen — bei Verlust
+      // wird das deutsche Original gesendet (Engine-Muster §148)
+      const urls: string[] = []
+      const tokenized = content.replace(/https?:\/\/[^\s]+/g, (u) => { urls.push(u); return `[[L${urls.length}]]` })
+      const tr = await fetch('/api/ai/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: tokenized, targetLang: current.guestLang }),
+      }).then((r) => r.json()).catch(() => null)
+      if (tr?.translation) {
+        let restored = tr.translation as string
+        urls.forEach((u, i) => { restored = restored.split(`[[L${i + 1}]]`).join(u) })
+        if (!/\[\[L\d+\]\]/.test(restored) && urls.every((u) => restored.includes(u))) {
+          contentDe = content; lang = current.guestLang; content = restored
+        }
+      }
+    }
+    const url = current.kind === 'booking' ? `/api/messages/${current.id}` : '/api/chat'
+    const payload = current.kind === 'booking'
+      ? { content, ...(contentDe ? { contentDe, lang } : {}) }
+      : { conversationId: current.id, content, ...(contentDe ? { contentDe, lang } : {}) }
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!r.ok) {
+      const d = await r.json().catch(() => null)
+      throw new Error(d?.error ?? `Senden fehlgeschlagen (${r.status})`)
+    }
+  }
+
   async function send() {
     if (!current || !draft.trim() || sending) return
     setSending(true); setError(null)
     try {
-      let content = draft.trim()
-      let contentDe: string | undefined
-      let lang: string | undefined
-      if (current.guestLang && current.guestLang !== 'de') {
-        const tr = await fetch('/api/ai/translate', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: content, targetLang: current.guestLang }),
-        }).then((r) => r.json()).catch(() => null)
-        if (tr?.translation) { contentDe = content; lang = current.guestLang; content = tr.translation }
-      }
-      const url = current.kind === 'booking' ? `/api/messages/${current.id}` : '/api/chat'
-      const payload = current.kind === 'booking'
-        ? { content, ...(contentDe ? { contentDe, lang } : {}) }
-        : { conversationId: current.id, content, ...(contentDe ? { contentDe, lang } : {}) }
-      const r = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!r.ok) {
-        const d = await r.json().catch(() => null)
-        throw new Error(d?.error ?? `Senden fehlgeschlagen (${r.status})`)
-      }
+      await sendText(draft)
       showToast('✨ Antwort gesendet')
       dismiss('right', true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Senden fehlgeschlagen — Entwurf bleibt erhalten.')
+    } finally { setSending(false) }
+  }
+
+  /* 📖 Gästemappen-Link: anhängen oder direkt senden */
+  async function sendMappeLink() {
+    if (!current?.mappeUrl || sending) return
+    setSending(true); setError(null)
+    try {
+      await sendText(`${location.origin}${current.mappeUrl}`)
+      showToast('📖 Mappe-Link gesendet')
+      dismiss('right', true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Senden fehlgeschlagen.')
     } finally { setSending(false) }
   }
 
@@ -335,8 +444,8 @@ export default function OffenPanel({ visible, onCount }: {
               opacity: leaving ? 0 : 1,
             }}>
               {/* Karten-Kopf */}
-              <div style={{ padding: '15px 17px 11px', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <div style={{ padding: '15px 17px 11px', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)', position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', paddingRight: current.mappeUrl ? 38 : 0 }}>
                   <span style={{ fontSize: 16.5, fontWeight: 800, color: '#111' }}>
                     {current.guestLang && current.guestLang !== 'de' ? `${LANG_FLAGS[current.guestLang] ?? '🌐'} ` : ''}{current.guestName}
                   </span>
@@ -346,14 +455,43 @@ export default function OffenPanel({ visible, onCount }: {
                   }}>{platform}</span>
                   {current.guestStatus === 'current' && <span style={{ fontSize: 11, color: '#1B7A34', fontWeight: 700 }}>🟢 Vor Ort</span>}
                 </div>
+                {/* §157: 📖 Gästemappen-Link */}
+                {current.mappeUrl && (
+                  <>
+                    <button type="button" onClick={() => setMappeMenu((v) => !v)} title="Gästemappen-Link" style={{
+                      position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: '50%',
+                      border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'rgba(118,118,128,0.10)',
+                      cursor: 'pointer', fontSize: 15,
+                    }}>📖</button>
+                    {mappeMenu && (
+                      <div style={{
+                        position: 'absolute', top: 48, right: 12, zIndex: 30, width: 220,
+                        background: '#fff', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                        border: '0.5px solid rgba(60,60,67,0.15)', overflow: 'hidden',
+                      }}>
+                        <button type="button" onClick={() => {
+                          const link = `${location.origin}${current.mappeUrl}`
+                          setComposer(true)
+                          setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + link)
+                          setMappeMenu(false)
+                        }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                          📎 An Antwort anhängen
+                        </button>
+                        <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                          📤 Nur Link senden
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div style={{ fontSize: 12, color: '#8E8E93', marginTop: 4 }}>
                   {current.listingTitle ?? '—'} · {fmtD(current.checkIn)}–{fmtD(current.checkOut)}
                   {current.lastMessageAt ? ` · wartet seit ${fmtT(current.lastMessageAt)}` : ''}
                 </div>
               </div>
 
-              {/* Mini-Verlauf */}
-              <div style={{ padding: '13px 15px', background: '#FAFAF8', minHeight: 120, maxHeight: 300, overflowY: 'auto' }}>
+              {/* Mini-Verlauf (öffnet unten — neueste Nachricht sichtbar) */}
+              <div ref={verlaufRef} style={{ padding: '13px 15px', background: '#FAFAF8', minHeight: 120, maxHeight: 300, overflowY: 'auto' }}>
                 {msgsLoading && <p style={{ fontSize: 12, color: '#999', textAlign: 'center' }}>Verlauf lädt…</p>}
                 {!msgsLoading && msgs.map((m) => (
                   <div key={m.id} style={{ display: 'flex', justifyContent: m.ours ? 'flex-end' : 'flex-start', marginBottom: 7 }}>
@@ -397,10 +535,37 @@ export default function OffenPanel({ visible, onCount }: {
                       border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
                       background: '#fff', color: '#8A7020', fontSize: 13, fontWeight: 800,
                     }}>✨ Neu</button>
-                    <button type="button" onClick={() => { setComposer(false); setDraft('') }} style={{
+                    <button type="button" onClick={() => { setComposer(false); setDraft(''); setInstruction('') }} style={{
                       border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
                       background: '#fff', color: '#999', fontSize: 13, fontWeight: 700,
                     }}>✕</button>
+                  </div>
+                  {/* §157: Werkstatt — Anweisung tippen ODER 🎤 diktieren (wie im Chat) */}
+                  <div style={{ display: 'flex', gap: 7, marginTop: 8, alignItems: 'center' }}>
+                    {speechOk && (
+                      <button type="button" onClick={toggleRecording} className={recording ? 'rec-pulse' : undefined}
+                        title={recording ? 'Aufnahme beenden' : 'Anweisung diktieren'} style={{
+                        width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
+                        background: recording ? '#DC2626' : 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+                        color: '#fff', fontSize: 15,
+                      }}>{recording ? '■' : '🎤'}</button>
+                    )}
+                    <input
+                      value={instruction}
+                      onChange={(e) => setInstruction(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') refine() }}
+                      placeholder={refining ? 'Claude schreibt…' : recording ? '🔴 Sprich jetzt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
+                      style={{
+                        flex: 1, minWidth: 0, borderRadius: 999, border: recording ? '1.5px solid #DC2626' : '1.5px solid #E0DDD6',
+                        padding: '9px 14px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
+                      }}
+                    />
+                    <button type="button" onClick={() => refine()} disabled={refining || !instruction.trim()} title="Anweisung ausführen" style={{
+                      width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
+                      background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#EDE9E0',
+                      color: instruction.trim() && !refining ? '#fff' : '#BBB',
+                      fontSize: 15, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
+                    }}>{refining ? '⏳' : '✨'}</button>
                   </div>
                 </div>
               )}
