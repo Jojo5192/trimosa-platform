@@ -6,10 +6,11 @@ import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
+import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, blockHasContent, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
 import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import MappeChat from '@/components/guide/MappeChat'
+import MappeNav, { type MappeNavItem } from '@/components/guide/MappeNav'
 
 /**
  * 📖 Öffentliche Gästemappe — persönlicher, unguessbarer Link je Buchung
@@ -178,14 +179,36 @@ export default async function MappePage({ params, searchParams }: {
   const firstName = String(booking.guest_name ?? '').trim().split(/\s+/)[0] || null
   const range = `${fmtDate(booking.check_in)} – ${fmtDate(booking.check_out)}`
 
+  // §154 Sprung-Navigation: Chips aus den sichtbaren Bausteinen (Labels sind
+  // bereits übersetzt) + fester Chat-Anker am Ende
+  const navItems: MappeNavItem[] = []
+  for (const b of blocks) {
+    if (!blockHasContent(b, ctx)) continue
+    const anchor = `mb-${b.id}`
+    switch (b.type) {
+      case 'heading': if (b.text.trim()) navItems.push({ id: anchor, label: b.text.trim() }); break
+      case 'steps': if (b.title.trim()) navItems.push({ id: anchor, label: b.title.trim(), icon: '📋' }); break
+      case 'info': if (b.title.trim()) navItems.push({ id: anchor, label: b.title.trim(), icon: b.emoji || 'ℹ️' }); break
+      case 'wifi': navItems.push({ id: anchor, label: labels.wifi, icon: '📶' }); break
+      case 'door': navItems.push({ id: anchor, label: b.title.trim() || labels.doorCodeLabel, icon: '🔑' }); break
+      case 'map': navItems.push({ id: anchor, label: labels.addressTitle, icon: '📍' }); break
+      case 'rules': navItems.push({ id: anchor, label: labels.rulesTitle, icon: '🏠' }); break
+      case 'region': navItems.push({ id: anchor, label: labels.regionTitle, icon: '🗺️' }); break
+      case 'contact': navItems.push({ id: anchor, label: labels.contactTitle, icon: '📞' }); break
+      default: break // text/warning/times/image ohne eigenen Chip
+    }
+  }
+  navItems.push({ id: 'mb-chat', label: 'Chat', icon: '💬' })
+
   return (
     <div style={{ minHeight: '100vh', background: '#F5F3EE', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
       {/* Kopf */}
       <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '34px 20px 28px' }}>
         <div style={{ maxWidth: 560, margin: '0 auto' }}>
-          {/* §150: echtes Logo statt Text-Wortmarke */}
+          {/* §150: echtes Logo — §154: beide Maße auto + nur max-Grenzen,
+              sonst verzerrt maxWidth bei fixer Höhe das Seitenverhältnis */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="TRIMOSA Apartments & Homes" style={{ height: 46, width: 'auto', maxWidth: '60%', display: 'block', marginBottom: 16 }} />
+          <img src="/logo.png" alt="TRIMOSA Apartments & Homes" style={{ maxHeight: 44, maxWidth: '65%', width: 'auto', height: 'auto', display: 'block', marginBottom: 16 }} />
           <h1 style={{ margin: '0 0 6px', fontSize: 25, fontWeight: 800, color: '#F5F0E8', letterSpacing: '-0.3px' }}>
             {firstName ? `${ui.hallo} ${firstName}! 👋` : ui.untitled}
           </h1>
@@ -206,13 +229,18 @@ export default async function MappePage({ params, searchParams }: {
         </div>
       </div>
 
+      {/* §154: Sprung-Navigation (sticky, Scroll-Spy) */}
+      <MappeNav items={navItems} />
+
       {/* Inhalt */}
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '22px 16px 48px' }}>
         {blocks.length > 0
           ? <GuideBlocks blocks={blocks} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
         {/* 💬 Direkter Draht zum Team (§136) — token-basiert, auch für Portal-Gäste */}
-        <MappeChat token={token} labels={chatLabels} />
+        <div id="mb-chat" style={{ scrollMarginTop: 70 }}>
+          <MappeChat token={token} labels={chatLabels} />
+        </div>
         <p style={{ margin: '34px 0 0', textAlign: 'center', fontSize: 11, color: '#B0A793' }}>
           TRIMOSA Apartments &amp; Homes · trimosa.de
         </p>
