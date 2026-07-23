@@ -375,6 +375,7 @@ export interface Q2CheckReport {
   nurEntwurf: { gast: string; wohnung: string; checkIn: string; betrag: number | null; beleg: string }[]
   fehlt: { gast: string; wohnung: string; checkIn: string; betrag: number | null; kanal: string }[]
   keinBetrag: { gast: string; wohnung: string; checkIn: string; kanal: string }[]
+  nichtZugeordneteBelege?: { beleg: string; kontakt: string; betrag: number; datum: string; status: string }[]
   fehlerlisteError?: string
 }
 
@@ -410,6 +411,13 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
 
   const used = new Set<string>()
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+  // Zapier-Kontaktnamen sind lange Strings: „<Name> - Buchung Ferienwohnung
+  // <Wohnung> | … (DD-MM-YYYY - DD-MM-YYYY)" — nur den Namens-Teil vergleichen
+  const contactBase = (s: string) => norm(s.split(/\s+-\s+buchung/i)[0] ?? s)
+  const ddmmyyyy = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-')
+    return `${d}-${m}-${y}`
+  }
   for (const b of bookings) {
     const gast = b.guest_name ?? 'Gast'
     const lt = (Array.isArray(b.listings) ? b.listings[0] : b.listings)?.title ?? '—'
@@ -420,9 +428,14 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
       report.keinBetrag.push({ gast, wohnung: lt, checkIn: b.check_in, kanal })
       continue
     }
-    // Beleg-Match: gleicher Name + Betrag (±1 Cent), nächster Belegtag zum Check-in
+    // Beleg-Match: Namens-Teil identisch UND (Betrag ±1,50 € [Zapier ist
+    // centgenau, unsere total_price teils gerundet] ODER der Kontaktname
+    // enthält exakt den Anreise-Zeitraum der Buchung)
+    const checkInTag = ddmmyyyy(b.check_in)
     const candidates = vouchers.filter((v) =>
-      !used.has(v.id) && norm(v.contactName) === norm(gast) && Math.abs(v.totalAmount - amount) < 0.011)
+      !used.has(v.id)
+      && contactBase(v.contactName) === norm(gast)
+      && (Math.abs(v.totalAmount - amount) < 1.5 || v.contactName.includes(checkInTag)))
     candidates.sort((a, c) =>
       Math.abs(new Date(a.voucherDate).getTime() - new Date(b.check_in).getTime())
       - Math.abs(new Date(c.voucherDate).getTime() - new Date(b.check_in).getTime()))
@@ -439,6 +452,11 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
       report.fehlt.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, kanal })
     }
   }
+  // Gegenrichtung: Belege ohne zugeordnete Buchung (Diagnose)
+  report.nichtZugeordneteBelege = vouchers
+    .filter((v) => !used.has(v.id))
+    .slice(0, 60)
+    .map((v) => ({ beleg: v.voucherNumber, kontakt: v.contactName.slice(0, 70), betrag: v.totalAmount, datum: v.voucherDate, status: v.voucherStatus }))
   return report
 }
 
