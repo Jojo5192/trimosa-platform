@@ -8,6 +8,7 @@ import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, blockHasContent, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
 import { ensureDoorCode, getRevealDays } from '@/lib/locks'
+import { guestLangFor } from '@/lib/auto-messages-engine'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import MappeChat from '@/components/guide/MappeChat'
 import MappeNav, { type MappeNavItem } from '@/components/guide/MappeNav'
@@ -43,16 +44,29 @@ export default async function MappePage({ params, searchParams }: {
 
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('*, listings(*)')
+    .select('*, listings(*), conversations(id, guest_id)')
     .eq('portal_token', token)
     .maybeSingle()
   if (!booking || booking.status === 'cancelled') notFound()
   const listing = (Array.isArray(booking.listings) ? booking.listings[0] : booking.listings) as Record<string, unknown> | null
   if (!listing) notFound()
 
-  const lang: UiLang = isUiLang(langParam ?? '')
-    ? (langParam as UiLang)
-    : isUiLang(String(booking.guest_lang ?? '')) ? (booking.guest_lang as UiLang) : 'de'
+  // §163: Startsprache = KOMMUNIKATIONSSPRACHE des Gasts (gleiche Kette wie
+  // Chat/Auto-Nachrichten: letzte erkannte Gast-Nachricht > guest_lang >
+  // Telefon-Vorwahl > de); ?lang= übersteuert. Sprachen außerhalb des
+  // Mappen-Angebots (it/es/…) fallen auf Englisch zurück.
+  let lang: UiLang
+  if (isUiLang(langParam ?? '')) {
+    lang = langParam as UiLang
+  } else {
+    const convRaw = (booking as { conversations?: unknown }).conversations
+    const conv = (Array.isArray(convRaw) ? convRaw[0] : convRaw) as { id: string; guest_id: string | null } | null
+    const detected = await guestLangFor(
+      { id: String(booking.id), guest_id: (booking.guest_id as string | null) ?? null, guest_lang: (booking.guest_lang as string | null) ?? null },
+      conv?.id, conv?.guest_id,
+    ).catch(() => 'de')
+    lang = isUiLang(detected) ? (detected as UiLang) : detected !== 'de' ? 'en' : 'de'
+  }
 
   // ── Hausregeln aus dem Inserat als lesbare Zeilen ──
   const rules: string[] = []
@@ -195,10 +209,19 @@ export default async function MappePage({ params, searchParams }: {
       case 'rules': navItems.push({ id: anchor, label: labels.rulesTitle, icon: '🏠' }); break
       case 'region': navItems.push({ id: anchor, label: labels.regionTitle, icon: '🗺️' }); break
       case 'contact': navItems.push({ id: anchor, label: labels.contactTitle, icon: '📞' }); break
+      case 'chat': navItems.push({ id: 'mb-chat', label: 'Chat', icon: '💬' }); break
       default: break // text/warning/times/image ohne eigenen Chip
     }
   }
-  navItems.push({ id: 'mb-chat', label: 'Chat', icon: '💬' })
+  const hasChatBlock = blocks.some((b) => b.type === 'chat')
+  if (!hasChatBlock) navItems.push({ id: 'mb-chat', label: 'Chat', icon: '💬' })
+
+  // §163: Chat-Baustein bestimmt die Position des echten Chats — die Block-
+  // Liste wird am chat-Block gesplittet und der Chat dazwischen gerendert
+  const chatIdx = blocks.findIndex((b) => b.type === 'chat')
+  const blocksBefore = chatIdx >= 0 ? blocks.slice(0, chatIdx) : blocks
+  const blocksAfter = chatIdx >= 0 ? blocks.slice(chatIdx + 1) : []
+  const hasRealContent = blocks.some((b) => b.type !== 'chat')
 
   return (
     <div style={{ minHeight: '100vh', background: '#F5F3EE', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
@@ -234,13 +257,14 @@ export default async function MappePage({ params, searchParams }: {
 
       {/* Inhalt */}
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '22px 16px 48px' }}>
-        {blocks.length > 0
-          ? <GuideBlocks blocks={blocks} ctx={ctx} labels={labels} />
+        {hasRealContent
+          ? <GuideBlocks blocks={blocksBefore} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
-        {/* 💬 Direkter Draht zum Team (§136) — token-basiert, auch für Portal-Gäste */}
+        {/* 💬 Direkter Draht zum Team (§136) — Position folgt dem chat-Baustein (§163) */}
         <div id="mb-chat" style={{ scrollMarginTop: 70 }}>
-          <MappeChat token={token} labels={chatLabels} />
+          <MappeChat token={token} labels={chatLabels} lang={lang} />
         </div>
+        {blocksAfter.length > 0 && <GuideBlocks blocks={blocksAfter} ctx={ctx} labels={labels} />}
         <p style={{ margin: '34px 0 0', textAlign: 'center', fontSize: 11, color: '#B0A793' }}>
           TRIMOSA Apartments &amp; Homes · trimosa.de
         </p>
