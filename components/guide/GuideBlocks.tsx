@@ -204,14 +204,18 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
           case 'times':
             return wrap(
               <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ ...CARD, flex: 1, textAlign: 'center', padding: '13px 10px' }}>
-                  <div style={{ fontSize: 11, color: '#8A8065', marginBottom: 3 }}>{labels.checkInFrom}</div>
-                  <div style={{ fontSize: 19, fontWeight: 800, color: '#1A1400' }}>{ctx.checkIn ?? '—'}</div>
-                </div>
-                <div style={{ ...CARD, flex: 1, textAlign: 'center', padding: '13px 10px' }}>
-                  <div style={{ fontSize: 11, color: '#8A8065', marginBottom: 3 }}>{labels.checkOutUntil}</div>
-                  <div style={{ fontSize: 19, fontWeight: 800, color: '#1A1400' }}>{ctx.checkOut ?? '—'}</div>
-                </div>
+                {b.show !== 'checkout' && (
+                  <div style={{ ...CARD, flex: 1, textAlign: 'center', padding: '13px 10px' }}>
+                    <div style={{ fontSize: 11, color: '#8A8065', marginBottom: 3 }}>{labels.checkInFrom}</div>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: '#1A1400' }}>{ctx.checkIn ?? '—'}</div>
+                  </div>
+                )}
+                {b.show !== 'checkin' && (
+                  <div style={{ ...CARD, flex: 1, textAlign: 'center', padding: '13px 10px' }}>
+                    <div style={{ fontSize: 11, color: '#8A8065', marginBottom: 3 }}>{labels.checkOutUntil}</div>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: '#1A1400' }}>{ctx.checkOut ?? '—'}</div>
+                  </div>
+                )}
               </div>
             )
           case 'rules':
