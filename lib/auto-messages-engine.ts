@@ -164,7 +164,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const { data: tRows, error: tErr } = await supabaseAdmin
     .from('auto_messages').select('*').eq('enabled', true).order('sort')
   if (tErr || !tRows?.length) return report
-  const templates = (tRows as AutoMessage[]).map(t => ({ ...t, lead_filter: t.lead_filter ?? 'alle' }))
+  const templates = (tRows as AutoMessage[]).map(t => ({
+    ...t, lead_filter: t.lead_filter ?? 'alle', send_email: t.send_email !== false,
+  }))
   report.templates = templates.length
 
   const { date: today, hour } = berlinNow()
@@ -281,7 +283,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       if (!german) { report.postponed++; continue }
 
       const conv = convByBooking.get(b.id)
-      const kanal = conv ? 'chat+email' : b.smoobu_reservation_id ? 'smoobu' : 'email'
+      const kanal = conv ? (t.send_email ? 'chat+email' : 'chat') : b.smoobu_reservation_id ? 'smoobu' : 'email'
       if (dryRun) {
         report.due.push({
           vorlage: t.name, gast, wohnung: listing?.title ?? '—', zeitraum, kanal,
@@ -307,14 +309,15 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       let outcome = ''
       if (conv?.id) {
         // Website-Gast: Direkt-Chat + E-Mail-Brücke (§140 — Smoobus
-        // Direktkanal erreicht den Gast nicht, die Mail schon)
+        // Direktkanal erreicht den Gast nicht, die Mail schon).
+        // send_email=false → nur Chat (je Vorlage einstellbar).
         await supabaseAdmin.from('messages').insert({
           conversation_id: conv.id, sender_id: conv.host_id,
           content: chatText, content_de: msgDe, lang: msgLang,
         })
         await supabaseAdmin.from('conversations')
           .update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
-        const to = await guestEmailFor(b)
+        const to = t.send_email ? await guestEmailFor(b) : null
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
