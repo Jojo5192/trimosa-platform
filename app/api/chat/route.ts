@@ -132,6 +132,9 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 })
 
   const conversationId = req.nextUrl.searchParams.get('conversationId')
+  // §156 Performance: ?fast=1 = nur DB-Stand (kein Sync-Trigger, keine
+  // Übersetzung) — Client rendert instant und holt den vollen Stand nach
+  const fast = req.nextUrl.searchParams.get('fast') === '1'
 
   if (conversationId) {
     // Load conversation metadata to know booking / Smoobu link
@@ -143,7 +146,7 @@ export async function GET(req: NextRequest) {
 
     // Pull in new Smoobu messages — throttled to once per 30s per conversation
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
-    if (conv && smoobuId) {
+    if (!fast && conv && smoobuId) {
       const lastSync = syncCache.get(conversationId) ?? 0
       if (Date.now() - lastSync >= SYNC_COOLDOWN_MS) {
         syncCache.set(conversationId, Date.now())
@@ -175,7 +178,7 @@ export async function GET(req: NextRequest) {
 
     // Translate untranslated guest-side messages to German once (cached)
     let out = messages ?? []
-    const guestSide = out.filter((m) =>
+    const guestSide = fast ? [] : out.filter((m) =>
       conv && m.sender_id !== conv.host_id && !m.lang && (m.content ?? '').trim().length > 0)
     if (guestSide.length > 0) {
       const map = await translateIncoming(guestSide.slice(0, 25).map((m) => ({ id: m.id, text: m.content })))
