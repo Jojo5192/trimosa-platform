@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Zu viele KI-Anfragen — bitte kurz warten.' }, { status: 429 })
   }
 
-  const { field, text, context } = await request.json()
+  const { field, text, context, instruction } = await request.json()
   if (!(field in FIELD_BRIEFS)) {
     return NextResponse.json({ error: 'Unbekanntes Feld.' }, { status: 400 })
   }
@@ -72,6 +72,9 @@ export async function POST(request: Request) {
   if (input.length > 6000) {
     return NextResponse.json({ error: 'Text zu lang.' }, { status: 400 })
   }
+  // §158: optionale Anweisung des Gastgebers („kürzer", „förmlicher", „erwähne
+  // den Parkplatz") — hat Vorrang vor den Stil-Vorgaben des Feld-Briefings
+  const instr = typeof instruction === 'string' ? instruction.trim().slice(0, 500) : ''
 
   // Context facts (title, location, capacity, amenities) ground the model so
   // drafts for empty fields stay factual.
@@ -84,7 +87,12 @@ export async function POST(request: Request) {
     : ''
 
   const prompt = `${FIELD_BRIEFS[field]}
-
+${instr ? `
+ANWEISUNG DES GASTGEBERS (hat Vorrang vor den Stil-Vorgaben oben — aber die
+EISERNEN Regeln wie „keine Fakten erfinden" und „Platzhalter unverändert"
+gelten weiterhin):
+${instr}
+` : ''}
 KONTEXT-FAKTEN ZUR UNTERKUNFT (einzige erlaubte Faktenquelle):
 ${ctx || '—'}
 
