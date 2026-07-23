@@ -18,6 +18,16 @@ export const LEAD_META: { id: LeadFilter; label: string; hint: string }[] = [
   { id: 'normal',      label: '📅 Normal',        hint: 'nur wenn die Anreise mehr als 3 Tage nach der Buchung liegt' },
 ]
 
+/** Kanal-Chips für channel_filter (normalisierte Schlüssel — die Engine
+ *  matcht Buchungs-Kanäle über dieselbe Normalisierung). */
+export const CHANNEL_META: { id: string; label: string }[] = [
+  { id: 'direkt',    label: '🌐 Website/Direkt' },
+  { id: 'airbnb',    label: 'Airbnb' },
+  { id: 'booking',   label: 'Booking.com' },
+  { id: 'fewo',      label: 'FeWo-direkt' },
+  { id: 'hometogo',  label: 'HomeToGo' },
+]
+
 export interface AutoMessage {
   id: string
   name: string
@@ -29,6 +39,8 @@ export interface AutoMessage {
   channel_filter: string[] | null
   min_nights: number | null
   lead_filter: LeadFilter
+  /** Website-Gäste zusätzlich zur Chat-Nachricht per E-Mail (Default AN). */
+  send_email: boolean
   body: string
   sort: number
 }
@@ -124,27 +136,27 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
   return [
     {
       name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
-      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 0,
+      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 0,
       body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
     },
     {
       name: 'Kurzfristige Buchung — alles Wichtige', enabled: true, trigger_type: 'nach_buchung',
-      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'kurzfristig', sort: 1,
+      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'kurzfristig', send_email: true, sort: 1,
       body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung} — schön, dass es so bald losgeht! Anreise am {anreise} ab {checkin} Uhr.\n\nDein Türcode: {tuercode}\n\nCheck-in-Anleitung, WLAN und alle weiteren Infos findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nBis gleich!\nDein TRIMOSA-Team',
     },
     {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
-      offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 2,
+      offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 2,
       body: 'Hallo {vorname},\n\nin wenigen Tagen ist es soweit — dein Aufenthalt im {wohnung} beginnt am {anreise}. Check-in ist ab {checkin} Uhr.\n\nDeinen Türcode und die Check-in-Anleitung findest du in deiner Gästemappe:\n\n{mappe_button}\n\nBis bald!\nDein TRIMOSA-Team',
     },
     {
       name: 'Am Anreisetag', enabled: true, trigger_type: 'vor_anreise',
-      offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 3,
+      offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 3,
       body: 'Hallo {vorname},\n\nherzlich willkommen! Dein Türcode für {wohnung} lautet: {tuercode}\n\nAlle weiteren Infos findest du in deiner Gästemappe:\n\n{mappe_button}\n\nSchön, dass du da bist — melde dich jederzeit, wenn du etwas brauchst.\nDein TRIMOSA-Team',
     },
     {
       name: 'Nach der Abreise / Danke', enabled: true, trigger_type: 'nach_abreise',
-      offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', sort: 4,
+      offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 4,
       body: 'Hallo {vorname},\n\nwir hoffen, du hattest einen schönen Aufenthalt im {wohnung}! Vielen Dank, dass du bei uns warst.\n\nWenn dir alles gefallen hat, freuen wir uns riesig über eine Bewertung — und über ein Wiedersehen.\n\nHerzliche Grüße\nDein TRIMOSA-Team',
     },
   ]
