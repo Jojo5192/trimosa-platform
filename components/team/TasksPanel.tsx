@@ -91,7 +91,12 @@ function initials(name: string): string {
 
 type Filter = 'aktiv' | 'erledigt' | 'alle' | 'vorschlaege'
 
-export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'; userId: string }) {
+export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed }: {
+  role: 'team' | 'provider'; userId: string
+  /** §162: Aufgabe aus dem Kalender fokussieren (scrollen + hervorheben) */
+  focusTaskId?: string | null
+  onFocusConsumed?: () => void
+}) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [listings, setListings] = useState<ListingOpt[]>([])
@@ -115,6 +120,24 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
   // Load wird für Alles-Seher der Personen-Filter auf die eigene Person
   // vorgewählt; ein manueller Klick (touched) gewinnt danach immer
   const personTouched = useRef(false)
+  // §162: Kalender-Klick — Aufgabe hervorheben, Filter passend stellen
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusTaskId || loading) return
+    const t = tasks.find((x) => x.id === focusTaskId)
+    if (t) {
+      personTouched.current = true
+      setPersonFilter('')
+      setFilter(t.status === 'erledigt' ? 'erledigt' : 'aktiv')
+    }
+    setHighlightId(focusTaskId)
+    const scrollTimer = setTimeout(() => {
+      document.getElementById(`task-card-${focusTaskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 120)
+    const clearTimer = setTimeout(() => { setHighlightId(null); onFocusConsumed?.() }, 3000)
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskId, loading])
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -394,13 +417,16 @@ export default function TasksPanel({ role, userId }: { role: 'team' | 'provider'
           const st = STATUS_META[t.status] ?? STATUS_META.offen
           const done = t.status === 'erledigt'
           return (
-            <div key={t.id}
+            <div key={t.id} id={`task-card-${t.id}`}
               onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
               style={{
                 background: '#fff', borderRadius: 16, padding: '13px 15px',
-                boxShadow: overdue ? 'inset 0 0 0 1.5px #EF4444' : `inset 0 0 0 0.5px rgba(60,60,67,0.15)`,
+                boxShadow: t.id === highlightId
+                  ? 'inset 0 0 0 2px var(--gold, #AE8D2D), 0 0 0 4px rgba(174,141,45,0.25)'
+                  : overdue ? 'inset 0 0 0 1.5px #EF4444' : `inset 0 0 0 0.5px rgba(60,60,67,0.15)`,
                 cursor: manage && t.editable !== false ? 'pointer' : 'default',
                 opacity: done ? 0.65 : 1,
+                transition: 'box-shadow .3s',
               }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111', flex: 1, textDecoration: done ? 'line-through' : 'none' }}>
