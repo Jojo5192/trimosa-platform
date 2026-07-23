@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { t, MONTHS_SHORT, type UiLang } from '@/lib/i18n'
@@ -31,6 +32,16 @@ export default async function GuestPage() {
     .eq('guest_id', user.id)
     .order('check_in', { ascending: false })
 
+  // §160-Ergänzung: Buchungen mit existierender Rechnung — der Gast kann
+  // sie direkt aus der Reisen-Liste ansehen (Token-Link, PDF inline)
+  const invoiceSet = new Set<string>()
+  const bookingIds = (bookings ?? []).map(b => b.id as string)
+  if (bookingIds.length) {
+    const { data: invs } = await supabaseAdmin
+      .from('lexoffice_invoices').select('booking_id, lexoffice_id').in('booking_id', bookingIds)
+    for (const i of invs ?? []) if (i.lexoffice_id) invoiceSet.add(i.booking_id as string)
+  }
+
   // Stornierte Buchungen sind keine Reisen mehr: sie zählen nicht in die
   // Kennzahlen und wandern in "Vergangene Reisen" (dort mit Storniert-Badge).
   const activeBookings = (bookings ?? []).filter(b => b.status !== 'cancelled')
@@ -54,8 +65,11 @@ export default async function GuestPage() {
     const listing = booking.listings as { title: string; location: string; images?: string[] } | null
     const badge = statusBadge(booking.status as string)
     const firstImage = listing?.images?.[0]
+    const invoiceUrl = invoiceSet.has(booking.id as string) && booking.portal_token
+      ? `/api/rechnung/${booking.portal_token as string}` : null
     return (
-      <Link href={`/guest/booking/${booking.id as string}`} style={{ textDecoration: 'none', background: '#fff', borderRadius: '20px', overflow: 'hidden', border: '1px solid #E5E5EA', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', display: 'flex', gap: 0, transition: 'box-shadow 0.15s' }}>
+      <div style={{ background: '#fff', borderRadius: '20px', overflow: 'hidden', border: '1px solid #E5E5EA', boxShadow: '0 1px 6px rgba(0,0,0,0.04)', transition: 'box-shadow 0.15s' }}>
+      <Link href={`/guest/booking/${booking.id as string}`} style={{ textDecoration: 'none', display: 'flex', gap: 0 }}>
         {firstImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={firstImage} alt="" style={{ width: '120px', objectFit: 'cover', flexShrink: 0 }} />
@@ -93,6 +107,13 @@ export default async function GuestPage() {
           </div>
         </div>
       </Link>
+      {invoiceUrl && (
+        <a href={invoiceUrl} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 20px', borderTop: '1px solid #F0EDE4', background: '#FFFDF6', fontSize: '12px', fontWeight: 700, color: 'var(--gold-dark)', textDecoration: 'none' }}>
+          🧾 {t(lang, 'Rechnung ansehen (PDF)')} ↗
+        </a>
+      )}
+      </div>
     )
   }
 
