@@ -9,10 +9,14 @@ import { translateIncoming } from '@/lib/translate'
  * Returns all messages for a booking (from our DB + synced from Smoobu).
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ bookingId: string }> }
 ) {
   const { bookingId } = await params
+  // §156 Performance: ?fast=1 = nur DB-Stand (kein Smoobu-Sync, keine
+  // Übersetzung) — der Client rendert damit INSTANT und holt direkt danach
+  // den vollen Stand nach (fast-first, stale-while-revalidate).
+  const fast = new URL(request.url).searchParams.get('fast') === '1'
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -42,7 +46,7 @@ export async function GET(
   const g = globalThis as typeof globalThis & { __bookingSyncCache?: Map<string, number> }
   const syncCache = (g.__bookingSyncCache ??= new Map<string, number>())
   const lastSync = syncCache.get(bookingId) ?? 0
-  if (booking.smoobu_reservation_id && Date.now() - lastSync >= 30_000) {
+  if (!fast && booking.smoobu_reservation_id && Date.now() - lastSync >= 30_000) {
     syncCache.set(bookingId, Date.now())
     try {
       const smoobuMessages = await getReservationMessages(Number(booking.smoobu_reservation_id))
@@ -129,9 +133,15 @@ export async function GET(
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true })
 
-  // Translate new guest messages to German once (cached in lang/content_de)
+  // Translate messages to German once (cached in lang/content_de).
+  // §156: auch HOST-Nachrichten aus Smoobu — seit §152 kommen über Airbnb/
+  // Booking gesendete Team-Antworten rein (oft in Gastsprache); ohne
+  // Eindeutschung zeigte die App sie unübersetzt. Eigene deutsche
+  // Nachrichten bekommen dabei nur lang='de' (content_de bleibt null).
   let out = messages ?? []
-  const untranslated = out.filter((m) => m.sender_type === 'guest' && !m.lang && (m.content ?? '').trim().length > 0)
+  const untranslated = fast ? [] : out.filter((m) =>
+    !m.lang && (m.content ?? '').trim().length > 0
+    && (m.sender_type === 'guest' || (m.sender_type === 'host' && m.smoobu_message_id)))
   if (untranslated.length > 0) {
     const map = await translateIncoming(untranslated.slice(0, 25).map((m) => ({ id: m.id, text: m.content })))
     out = out.map((m) => {
