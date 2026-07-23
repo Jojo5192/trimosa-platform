@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import { useSwipeBack } from '@/components/team/useSwipeBack'
 
 /**
  * 💼 Interner Team-Messenger (Etappe B, §97): Gruppen-Chats fürs Team —
@@ -118,6 +119,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [uploading, setUploading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
+  // §157: iMessage-Swipe vom linken Rand → zurück zur Gruppen-Liste (mobil)
+  const swipe = useSwipeBack(() => setMobileView('list'))
   const [showCreate, setShowCreate] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [reactFor, setReactFor] = useState<string | null>(null)
@@ -606,7 +609,13 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       Gruppe auswählen
     </div>
   ) : (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, background: '#fff' }}>
+    <div
+      ref={isMobile ? swipe.ref : undefined}
+      onTouchStart={isMobile ? swipe.onTouchStart : undefined}
+      onTouchMove={isMobile ? swipe.onTouchMove : undefined}
+      onTouchEnd={isMobile ? swipe.onTouchEnd : undefined}
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, background: '#fff' }}
+    >
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: HAIR, flexShrink: 0, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
         {isMobile && (
