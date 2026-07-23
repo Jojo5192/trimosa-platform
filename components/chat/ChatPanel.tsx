@@ -325,6 +325,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const lastMsgIdRef  = useRef<string | null>(null)
   const msgsSig = (threadId: string, list: Message[]) =>
     threadId + '::' + list.map(m => `${m.id}|${m.read_at ? 1 : 0}|${m.content_de ? 1 : 0}`).join(',')
+  // §156: In-Memory-Cache je Thread — beim Wieder-Öffnen erscheint der
+  // Verlauf INSTANT, frische Daten ersetzen ihn still (wie die Listen-§52)
+  const msgsCacheRef  = useRef<Map<string, Message[]>>(new Map())
 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
@@ -389,10 +392,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     finally { setArchivLoading(false) }
   }, [userId])
 
-  const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking') => {
+  const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking', fast = false) => {
     // setMsgs nur bei echter Änderung (Signatur-Diff) — sonst Voll-Re-Render
     // + Scroll-Sprung bei jedem 5s-Poll (§110-Lektion aus dem InternPanel).
     const apply = (list: Message[]) => {
+      msgsCacheRef.current.set(id, list)
       const sig = msgsSig(id, list)
       if (sig !== msgsSigRef.current) { msgsSigRef.current = sig; setMsgs(list) }
     }
@@ -400,7 +404,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const clearUnread = () =>
       setConvs(cs => cs.some(c => c.id === id && c.unread > 0) ? cs.map(c => c.id === id ? { ...c, unread: 0 } : c) : cs)
     if (kind === 'booking') {
-      const r = await fetch(`/api/messages/${id}`)
+      const r = await fetch(`/api/messages/${id}${fast ? '?fast=1' : ''}`)
       if (r.ok) {
         const { messages } = await r.json()
         // Map booking messages (sender_type guest/host/system) onto the
@@ -415,7 +419,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       }
       return
     }
-    const r = await fetch(`/api/chat?conversationId=${id}`)
+    const r = await fetch(`/api/chat?conversationId=${id}${fast ? '&fast=1' : ''}`)
     if (r.ok) {
       apply(await r.json())
       clearUnread()
@@ -456,7 +460,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   useEffect(() => {
     if (timer.current) clearInterval(timer.current)
     if (!open || !active) return
-    getMsgs(active.id, active.kind)
+    // §156 fast-first: erst Cache instant zeigen, dann schneller DB-Stand
+    // via fast=1 ohne Smoobu-Sync/Übersetzung, danach der volle Stand —
+    // Thread öffnet ohne Haker
+    const cached = msgsCacheRef.current.get(active.id)
+    if (cached) { msgsSigRef.current = msgsSig(active.id, cached); setMsgs(cached) }
+    getMsgs(active.id, active.kind, true).then(() => getMsgs(active.id, active.kind)).catch(() => {})
     timer.current = setInterval(() => getMsgs(active.id, active.kind), 5000)
     return () => { if (timer.current) clearInterval(timer.current) }
   }, [open, active, getMsgs])
