@@ -6,7 +6,7 @@ import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, blockHasContent, DE_LABELS, type ContactBlock, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
+import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, blockHasContent, mergeContactIntoChat, DE_LABELS, type ChatBlock, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
 import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import { guestLangFor } from '@/lib/auto-messages-engine'
 import GuideBlocks from '@/components/guide/GuideBlocks'
@@ -192,21 +192,10 @@ export default async function MappePage({ params, searchParams }: {
   const guidePhase: GuidePhase = todayIso < String(booking.check_in) ? 'vor' : todayIso < String(booking.check_out) ? 'waehrend' : 'nach'
   blocks = blocks.filter((b) => blockVisibleInPhase(b, guidePhase, nights))
 
-  // §166: Kontakt + Chat = EIN Punkt — der erste contact-Baustein bestimmt
-  // (ohne expliziten chat-Baustein) die Chat-Position und liefert Telefon +
-  // Hinweis für den Kopf der Chat-Karte; contact wird nicht mehr separat
-  // gerendert (keine Doppel-Pflege, ein Nav-Punkt „Kontakt & Chat")
-  const contactBlock = blocks.find((b): b is ContactBlock => b.type === 'contact')
-  {
-    const hadChat = blocks.some((b) => b.type === 'chat')
-    let first = true
-    blocks = blocks.flatMap((b) => {
-      if (b.type !== 'contact') return [b]
-      const wasFirst = first
-      first = false
-      return wasFirst && !hadChat ? [{ id: 'auto-chat', type: 'chat' } as (typeof blocks)[number]] : []
-    })
-  }
+  // §166: Kontakt + Chat = EIN Punkt „Kontakt & Chat" (geteilte Logik mit
+  // der Builder-Vorschau) — Telefon/Hinweis wandern in den chat-Block
+  blocks = mergeContactIntoChat(blocks)
+  const chatBlock = blocks.find((b): b is ChatBlock => b.type === 'chat')
 
   const firstName = String(booking.guest_name ?? '').trim().split(/\s+/)[0] || null
   const range = `${fmtDate(booking.check_in)} – ${fmtDate(booking.check_out)}`
@@ -279,7 +268,7 @@ export default async function MappePage({ params, searchParams }: {
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
         {/* 💬 Direkter Draht zum Team (§136) — Position folgt dem chat-Baustein (§163) */}
         <div id="mb-chat" style={{ scrollMarginTop: 70 }}>
-          <MappeChat token={token} labels={chatLabels} lang={lang} phone={contactBlock?.phone || null} note={contactBlock?.note || null} />
+          <MappeChat token={token} labels={chatLabels} lang={lang} phone={chatBlock?.phone || null} note={chatBlock?.note || null} />
         </div>
         {blocksAfter.length > 0 && <GuideBlocks blocks={blocksAfter} ctx={ctx} labels={labels} />}
         <p style={{ margin: '34px 0 0', textAlign: 'center', fontSize: 11, color: '#B0A793' }}>
