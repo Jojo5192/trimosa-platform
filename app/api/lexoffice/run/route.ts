@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun, q2Check, q2Backfill, deleteInvoice } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -38,6 +38,10 @@ export async function POST(request: NextRequest) {
     // §160: Q2-Nachschau — reine Abgleich-LISTE, nichts wird erstellt
     if (b.action === 'q2-check') {
       return NextResponse.json(await q2Check(typeof b.from === 'string' ? b.from : '2026-04-01'))
+    }
+    // §160-Nachtrag: Zahlungsweg-Report (Bankabgleich-Hilfe)
+    if (b.action === 'q2-payment-report') {
+      return NextResponse.json(await q2PaymentReport(typeof b.from === 'string' ? b.from : '2026-04-01'))
     }
     // §160: Backfill — Entwürfe löschen + Rechnungen mit Belegdatum =
     // Anreisetag nachschießen. dryRun:true (Default) zeigt nur die Vorschau.
