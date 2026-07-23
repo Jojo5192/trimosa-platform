@@ -78,10 +78,12 @@ export default function BookingDetailClient({
   booking,
   conversationId,
   userId: _userId,
+  invoiceUrl,
 }: {
   booking: Booking
   conversationId: string | null
   userId: string
+  invoiceUrl?: string | null
 }) {
   const [uiLang, setUiLang] = useState<UiLang>('de')
   useEffect(() => {
@@ -216,6 +218,13 @@ export default function BookingDetailClient({
           style={{ display: 'block', padding: '14px', borderRadius: '14px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
           💬 {t(uiLang, 'Zum Chat')}
         </Link>
+
+        {invoiceUrl && (
+          <a href={invoiceUrl} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', padding: '14px', borderRadius: '14px', border: '1.5px solid var(--gold)', background: '#FFFDF6', color: 'var(--gold-dark)', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
+            🧾 {t(uiLang, 'Rechnung ansehen (PDF)')}
+          </a>
+        )}
 
         <Link href={`/listing/${booking.listing_id}`}
           style={{ display: 'block', padding: '14px', borderRadius: '14px', border: '1px solid #E0DDD6', color: '#555', fontWeight: 600, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
