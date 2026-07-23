@@ -28,6 +28,9 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
     .from('messages').select('smoobu_message_id').in('smoobu_message_id', ids)
   const knownSet = new Set((known ?? []).map((m) => m.smoobu_message_id))
   const newGuestMsgs: { id: string; text: string }[] = []
+  // §156: auch neue HOST-Nachrichten (über Airbnb/Booking gesendete Team-
+  // Antworten, §152) sofort eindeutschen — sonst stehen sie unübersetzt im Chat
+  const newHostMsgs: { id: string; text: string }[] = []
   for (const sm of msgs) {
     if (!sm.message?.trim() || knownSet.has(String(sm.id))) continue
     // Smoobu-Automatik-/Schloss-Protokolle NICHT in den Chat holen (§143)
@@ -60,7 +63,11 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
     if (error || !inserted) continue
     newMessages++
     if (!isHost) newGuestMsgs.push({ id: inserted.id, text: sm.message.trim() })
+    else newHostMsgs.push({ id: inserted.id, text: sm.message.trim() })
   }
+
+  // Host-Nachrichten nur übersetzen (kein Push)
+  if (newHostMsgs.length) await translateIncoming(newHostMsgs.slice(0, 25))
 
   // Translate new guest messages BEFORE pushing — the notification (and
   // the inbox preview, via the cached content_de) shows German, with the
