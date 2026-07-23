@@ -52,6 +52,11 @@ export default async function MappePage() {
     return { id: l.id as string, title: String(l.title ?? ''), blocks: parseGuide(l.guide), ctx }
   })
 
+  // §150 Pool-Modell: EIN gemeinsamer Baustein-Bestand für alle Wohnungen
+  const { data: poolRow } = await supabaseAdmin
+    .from('app_settings').select('value').eq('key', 'guide_global').maybeSingle()
+  const pool = parseGuide(poolRow?.value)
+
   return (
     <main style={{ minHeight: '100vh', backgroundColor: '#F5F5F7' }}>
       <NavBar />
@@ -62,10 +67,11 @@ export default async function MappePage() {
         </p>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>📖 Gästemappen-Builder</h1>
         <p style={{ fontSize: '13.5px', color: '#777', margin: '0 0 24px', lineHeight: 1.6, maxWidth: 640 }}>
-          Stelle die digitale Mappe je Wohnung aus Bausteinen zusammen — rechts siehst du live, was der Gast sieht.
+          EIN gemeinsamer Baustein-Bestand für alle Wohnungen: Je Baustein legst du fest, für welche Wohnungen er gilt,
+          wann er sichtbar ist und ob er aktiv ist. Oben wählst du die Wohnung für Filter &amp; Vorschau.
           Jeder Gast bekommt einen persönlichen Link, automatisch in seiner Sprache. Leere Bausteine erscheinen beim Gast nicht.
         </p>
-        <MappeBuilder listings={listings} />
+        <MappeBuilder listings={listings} pool={pool} />
       </div>
     </main>
   )
