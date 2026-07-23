@@ -23,6 +23,7 @@ interface Thread {
   listingTitle: string | null
   listingId: string | null
   mappeUrl?: string | null
+  bookingId?: string | null
   platform: string
   checkIn: string | null
   checkOut: string | null
@@ -341,6 +342,38 @@ export default function OffenPanel({ visible, onCount }: {
     } finally { setSending(false) }
   }
 
+  /* 🧾 Rechnung (§158): ab Anreisetag Link erstellen/senden, vorher Hinweis */
+  const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt — ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
+  const invoiceBookingId = current ? (current.kind === 'booking' ? current.id : current.bookingId ?? null) : null
+  const arrivalReached = !!current?.checkIn && current.checkIn <= new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10)
+  const [invoiceBusy, setInvoiceBusy] = useState(false)
+
+  async function ensureInvoiceUrl(bid: string): Promise<string> {
+    const r = await fetch(`/api/invoices/${bid}`, { method: 'POST' })
+    const d = await r.json().catch(() => null)
+    if (!r.ok || !d?.url) throw new Error(d?.error ?? 'Rechnung nicht verfügbar.')
+    return `${location.origin}${d.url}`
+  }
+
+  async function invoiceAction(mode: 'attach' | 'send') {
+    if (!invoiceBookingId || invoiceBusy) return
+    setInvoiceBusy(true); setError(null)
+    try {
+      const url = await ensureInvoiceUrl(invoiceBookingId)
+      setMappeMenu(false)
+      if (mode === 'attach') {
+        setComposer(true)
+        setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + url)
+      } else {
+        await sendText(url)
+        showToast('🧾 Rechnung gesendet')
+        dismiss('right', true)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Rechnung fehlgeschlagen.')
+    } finally { setInvoiceBusy(false) }
+  }
+
   function openTask() {
     if (!current) return
     const lastGuest = [...msgs].reverse().find((m) => !m.ours)
@@ -480,6 +513,28 @@ export default function OffenPanel({ visible, onCount }: {
                         <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
                           📤 Nur Link senden
                         </button>
+                        {/* §158: 🧾 Rechnung */}
+                        {invoiceBookingId && (
+                          <>
+                            <div style={{ padding: '9px 13px 5px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                              🧾 RECHNUNG
+                            </div>
+                            {arrivalReached ? (
+                              <>
+                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('attach')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                                  {invoiceBusy ? '⏳ Erstellt…' : '📎 Rechnungs-Link anhängen'}
+                                </button>
+                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('send')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020' }}>
+                                  {invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}
+                                </button>
+                              </>
+                            ) : (
+                              <button type="button" onClick={() => { setMappeMenu(false); setComposer(true); setDraft(RECHNUNG_HINWEIS) }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                                💬 Hinweis einfügen (ab Anreisetag)
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     )}
                   </>
