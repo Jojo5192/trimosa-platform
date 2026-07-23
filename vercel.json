@@ -39,6 +39,10 @@
     {
       "path": "/api/auto-messages/send",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/lexoffice/run",
+      "schedule": "0 13 * * *"
     }
   ]
 }
