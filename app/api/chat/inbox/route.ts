@@ -95,11 +95,11 @@ export async function GET(request: Request) {
   const [{ data: conversations }, { data: bookings }] = await Promise.all([
     supabaseAdmin
       .from('conversations')
-      .select('*, bookings(check_in, check_out, channel, listing_id, status, adults, children)')
+      .select('*, bookings(check_in, check_out, channel, listing_id, status, adults, children, portal_token)')
       .order('last_message_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, adults, children, listings(title), conversations(id)')
+      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, adults, children, portal_token, listings(title), conversations(id)')
       .not('smoobu_reservation_id', 'is', null)
       .order('check_in', { ascending: false })
       .limit(400),
@@ -268,7 +268,7 @@ export async function GET(request: Request) {
   }
 
   const directThreads = (conversations ?? []).map((c) => {
-    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string; adults?: number | null; children?: number | null } | null
+    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string; adults?: number | null; children?: number | null; portal_token?: string | null } | null
     const gp = guestProfile.get(c.guest_id)
     const last = lastDirect[c.id]
     return {
@@ -281,6 +281,7 @@ export async function GET(request: Request) {
       guestAvatar: gp?.avatar_url ?? null,
       listingTitle: b?.listing_id ? listingTitle.get(b.listing_id) ?? null : null,
       listingId: b?.listing_id ?? null,
+      mappeUrl: b?.portal_token ? `/mappe/${b.portal_token}` : null,
       platform: 'TRIMOSA',
       checkIn: b?.check_in ?? null,
       checkOut: b?.check_out ?? null,
@@ -314,6 +315,7 @@ export async function GET(request: Request) {
         guestAvatar: null,
         listingTitle: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? null,
         listingId: (b.listing_id as string | null) ?? null,
+        mappeUrl: b.portal_token ? `/mappe/${b.portal_token}` : null,
         platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
         checkIn: b.check_in,
         checkOut: b.check_out,
