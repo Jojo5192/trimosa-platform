@@ -101,7 +101,7 @@ export async function GET() {
   // Agenda und alle für die Leerstands-Gelegenheiten je Wohnung.
   let taskQuery = supabaseAdmin
     .from('tasks')
-    .select('id, title, due_date, status, prio, listing_id, location_group, is_general')
+    .select('id, title, due_date, status, prio, listing_id, location_group, is_general, assignee_id')
     .in('status', ['offen', 'in_arbeit'])
     .limit(300)
   if (auth.role !== 'admin') {
@@ -112,6 +112,22 @@ export async function GET() {
     else taskQuery = taskQuery.or(`${own},visibility.eq.alle`)
   }
   const { data: tasks } = await taskQuery
+
+  // §162: Verantwortlichen-VORNAME je Aufgabe (Agenda zeigt „wer macht's")
+  const taskRows = (tasks ?? []) as (Record<string, unknown> & { assignee_id?: string | null })[]
+  const assigneeIds = [...new Set(taskRows.map((t) => t.assignee_id).filter(Boolean))] as string[]
+  const assigneeName = new Map<string, string>()
+  if (assigneeIds.length) {
+    const { data: profs } = await supabaseAdmin
+      .from('profiles').select('id, display_name').in('id', assigneeIds)
+    for (const p of profs ?? []) {
+      const first = String(p.display_name ?? '').trim().split(/\s+/)[0]
+      if (first) assigneeName.set(p.id, first)
+    }
+  }
+  const tasksOut = taskRows.map((t) => ({
+    ...t, assigneeName: t.assignee_id ? assigneeName.get(t.assignee_id) ?? null : null,
+  }))
 
   // 🧾 Geplante QS-Termine (Admins alle, sonst nur die eigenen) — fail-soft,
   // falls die qs_checks-Migration noch nicht gelaufen ist
@@ -157,7 +173,7 @@ export async function GET() {
   return NextResponse.json({
     role: auth.role,
     stays,
-    tasks: tasks ?? [],
+    tasks: tasksOut,
     qs,
     servicePins,
     myDoorCode,
