@@ -245,6 +245,17 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#E3C878' }}>{labels.regionCta} →</span>
               </a>
             )
+          case 'chat':
+            // §163: Positions-Marker — den ECHTEN Chat rendert die Mappe-Seite
+            // an dieser Stelle; im Builder nur ein Platzhalter
+            return preview
+              ? wrap(
+                  <div style={{ ...CARD, textAlign: 'center', border: '1.5px dashed #D8C98F', background: '#FDFBF4' }}>
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>💬</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8A7020' }}>Gäste-Chat erscheint hier</div>
+                  </div>
+                )
+              : null
         }
       })}
     </div>
