@@ -319,6 +319,129 @@ export async function getInvoicePdf(lexofficeId: string): Promise<{ ok: boolean;
   return { ok: true, pdf: Buffer.from(await file.arrayBuffer()) }
 }
 
+/**
+ * §160: Q2-Nachschau — Buchungen ab einem Stichtag gegen Lexoffice
+ * abgleichen (NUR Liste, nichts erstellen). Matching je Buchung:
+ * Engine-Zeile > Lexoffice-Beleg mit gleichem Gast-Namen + Betrag
+ * (Entwurf/finalisiert getrennt ausgewiesen) > FEHLT.
+ */
+interface LexVoucher {
+  id: string; voucherNumber: string; voucherStatus: string
+  voucherDate: string; contactName: string; totalAmount: number
+}
+
+async function fetchVoucherlist(fromDate: string): Promise<{ vouchers: LexVoucher[]; error?: string }> {
+  const vouchers: LexVoucher[] = []
+  let withDateFilter = true
+  for (let page = 0; page < 40; page++) {
+    const base = `/voucherlist?voucherType=invoice&voucherStatus=draft,open,paid,voided&size=250&page=${page}&sort=voucherDate,DESC`
+    const url = withDateFilter ? `${base}&voucherDateFrom=${fromDate}` : base
+    let res = await lexFetch(url)
+    if (!res.ok && withDateFilter && page === 0) {
+      // Datums-Filter wird evtl. nicht unterstützt → ohne erneut
+      withDateFilter = false
+      res = await lexFetch(base)
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      return { vouchers, error: `voucherlist HTTP ${res.status}: ${body.slice(0, 200)}` }
+    }
+    const data = await res.json().catch(() => null) as { content?: unknown[]; last?: boolean; totalPages?: number } | null
+    const items = (data?.content ?? []) as Record<string, unknown>[]
+    for (const v of items) {
+      vouchers.push({
+        id: String(v.id ?? ''),
+        voucherNumber: String(v.voucherNumber ?? ''),
+        voucherStatus: String(v.voucherStatus ?? ''),
+        voucherDate: String(v.voucherDate ?? '').slice(0, 10),
+        contactName: String(v.contactName ?? ''),
+        totalAmount: Number(v.totalAmount ?? NaN),
+      })
+    }
+    // Ohne Datums-Filter: abbrechen, sobald die Seite älter als der Stichtag ist
+    if (!withDateFilter && items.length && vouchers[vouchers.length - 1].voucherDate < fromDate) break
+    const totalPages = Number(data?.totalPages ?? 1)
+    if (data?.last === true || !items.length || page + 1 >= totalPages) break
+  }
+  return { vouchers }
+}
+
+export interface Q2CheckReport {
+  zeitraum: { von: string; bis: string }
+  buchungen: number
+  belegeGeladen: number
+  ok: { engine: number; finalisiert: number }
+  finalisiertListe: { gast: string; checkIn: string; betrag: number | null; beleg: string }[]
+  nurEntwurf: { gast: string; wohnung: string; checkIn: string; betrag: number | null; beleg: string }[]
+  fehlt: { gast: string; wohnung: string; checkIn: string; betrag: number | null; kanal: string }[]
+  keinBetrag: { gast: string; wohnung: string; checkIn: string; kanal: string }[]
+  fehlerlisteError?: string
+}
+
+export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
+  const today = berlinToday()
+  const report: Q2CheckReport = {
+    zeitraum: { von: from, bis: today }, buchungen: 0, belegeGeladen: 0,
+    ok: { engine: 0, finalisiert: 0 }, finalisiertListe: [], nurEntwurf: [], fehlt: [], keinBetrag: [],
+  }
+  const { data: rows } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name, check_in, check_out, total_price, channel, source, status, listings(title)')
+    .gte('check_in', from)
+    .lte('check_in', today)
+    .eq('status', 'confirmed')
+    .order('check_in', { ascending: true })
+    .limit(1000)
+  const bookings = (rows ?? []) as (BookingRow & { listings?: { title?: string } | { title?: string }[] | null })[]
+  report.buchungen = bookings.length
+  if (!bookings.length) return report
+
+  const engineDone = new Set<string>()
+  const ids = bookings.map((b) => b.id)
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data: done } = await supabaseAdmin
+      .from('lexoffice_invoices').select('booking_id, lexoffice_id').in('booking_id', ids.slice(i, i + 300))
+    for (const d of done ?? []) if (d.lexoffice_id) engineDone.add(d.booking_id)
+  }
+
+  const { vouchers, error } = await fetchVoucherlist(from)
+  report.belegeGeladen = vouchers.length
+  if (error) report.fehlerlisteError = error
+
+  const used = new Set<string>()
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+  for (const b of bookings) {
+    const gast = b.guest_name ?? 'Gast'
+    const lt = (Array.isArray(b.listings) ? b.listings[0] : b.listings)?.title ?? '—'
+    const kanal = channelLabel(b)
+    if (engineDone.has(b.id)) { report.ok.engine++; continue }
+    const amount = Number(b.total_price)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      report.keinBetrag.push({ gast, wohnung: lt, checkIn: b.check_in, kanal })
+      continue
+    }
+    // Beleg-Match: gleicher Name + Betrag (±1 Cent), nächster Belegtag zum Check-in
+    const candidates = vouchers.filter((v) =>
+      !used.has(v.id) && norm(v.contactName) === norm(gast) && Math.abs(v.totalAmount - amount) < 0.011)
+    candidates.sort((a, c) =>
+      Math.abs(new Date(a.voucherDate).getTime() - new Date(b.check_in).getTime())
+      - Math.abs(new Date(c.voucherDate).getTime() - new Date(b.check_in).getTime()))
+    const hit = candidates[0]
+    if (hit) {
+      used.add(hit.id)
+      if (hit.voucherStatus === 'draft') {
+        report.nurEntwurf.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, beleg: hit.voucherNumber })
+      } else {
+        report.ok.finalisiert++
+        report.finalisiertListe.push({ gast, checkIn: b.check_in, betrag: amount, beleg: hit.voucherNumber })
+      }
+    } else {
+      report.fehlt.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, kanal })
+    }
+  }
+  return report
+}
+
 export interface InvoiceRunReport {
   dryRun: boolean
   gefunden: number
