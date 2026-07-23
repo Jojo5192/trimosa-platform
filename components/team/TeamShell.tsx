@@ -9,15 +9,17 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
+import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
 
-type Tab = 'chat' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
+type Tab = 'chat' | 'offen' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'chat', icon: '💬', label: 'Chat' },
+  { id: 'offen', icon: '📥', label: 'Offen' },
   { id: 'intern', icon: '💼', label: 'Intern' },
   { id: 'aufgaben', icon: '✅', label: 'Aufgaben' },
   { id: 'kalender', icon: '📅', label: 'Kalender' },
@@ -30,13 +32,14 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
   initialConvId: string | null
   initialTab?: string
 }) {
-  const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat') : TABS
+  const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat' && t.id !== 'offen') : TABS
   const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
   const [tab, setTab] = useState<Tab>(
     tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
   const [guestUnread, setGuestUnread] = useState(0)
+  const [offenCount, setOffenCount] = useState(0)
   // Mobil in einem Thread: Tab-Bar versteckt (WhatsApp-Verhalten, §98-Feedback)
   const [chatThread, setChatThread] = useState(false)
   const [internThread, setInternThread] = useState(false)
@@ -143,6 +146,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
             <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
           </div>
         )}
+        {role === 'team' && (
+          <div style={{ height: '100%', display: tab === 'offen' ? 'block' : 'none' }}>
+            <OffenPanel visible={tab === 'offen'} onCount={setOffenCount} />
+          </div>
+        )}
         <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
           <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} />
         </div>
@@ -177,6 +185,15 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
                     filter: 'none',
                   }}>{internUnread > 9 ? '9+' : internUnread}</span>
+                )}
+                {t.id === 'offen' && offenCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
+                    background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                    fontSize: 9.5, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
+                    filter: 'none',
+                  }}>{offenCount > 9 ? '9+' : offenCount}</span>
                 )}
               </span>
               <span style={{
