@@ -387,29 +387,41 @@ export async function getReservationMessages(
   smoobuReservationId: number,
   apiKey?: string,
 ): Promise<SmoobuMessage[]> {
-  const res = await fetch(`${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages`, {
-    headers: smoobuHeaders(apiKey),
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    console.error('[Smoobu] getReservationMessages failed', res.status, smoobuReservationId)
-    return []
-  }
-  const data = await res.json()
-  // Log raw structure to help diagnose response format issues
-  console.log('[Smoobu] getReservationMessages raw keys:', JSON.stringify(Object.keys(data ?? {})))
+  // §152: onlyRelatedToGuest=false ist PFLICHT — ohne den Parameter liefert
+  // Smoobu (Default-Änderung ~23.07.2026) NUR noch Gast-Nachrichten; die
+  // komplette Host-Seite (auch über Airbnb/Booking gesendete Team-Antworten
+  // und Smoobu-Willkommens-Mails) fehlte sonst. Außerdem ist der Endpoint
+  // PAGINIERT (page/page_count) — alle Seiten holen, nicht nur die erste.
+  const msgs: unknown[] = []
+  let page = 1
+  for (let guard = 0; guard < 30; guard++) {
+    const res = await fetch(
+      `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages?onlyRelatedToGuest=false&page=${page}`,
+      { headers: smoobuHeaders(apiKey), cache: 'no-store' },
+    )
+    if (!res.ok) {
+      console.error('[Smoobu] getReservationMessages failed', res.status, smoobuReservationId, 'page', page)
+      break
+    }
+    const data = await res.json()
+    if (guard === 0) console.log('[Smoobu] getReservationMessages raw keys:', JSON.stringify(Object.keys(data ?? {})))
 
-  // Smoobu may return { messages: [...] }, { data: [...] }, or a direct array
-  let msgs: unknown[]
-  if (Array.isArray(data)) {
-    msgs = data
-  } else if (Array.isArray(data?.messages)) {
-    msgs = data.messages
-  } else if (Array.isArray(data?.data)) {
-    msgs = data.data
-  } else {
-    console.warn('[Smoobu] getReservationMessages: unexpected response shape', JSON.stringify(data).slice(0, 200))
-    msgs = []
+    // Smoobu may return { messages: [...] }, { data: [...] }, or a direct array
+    let pageMsgs: unknown[]
+    if (Array.isArray(data)) {
+      pageMsgs = data
+    } else if (Array.isArray(data?.messages)) {
+      pageMsgs = data.messages
+    } else if (Array.isArray(data?.data)) {
+      pageMsgs = data.data
+    } else {
+      console.warn('[Smoobu] getReservationMessages: unexpected response shape', JSON.stringify(data).slice(0, 200))
+      pageMsgs = []
+    }
+    msgs.push(...pageMsgs)
+    const pageCount = Number((data as { page_count?: unknown } | null)?.page_count ?? 1)
+    if (!pageMsgs.length || !Number.isFinite(pageCount) || page >= pageCount) break
+    page++
   }
 
   // Log first message to diagnose field format in production
@@ -441,15 +453,6 @@ export async function getReservationMessages(
       const d = new Date(s + offset)
       return isNaN(d.getTime()) ? '' : d.toISOString()
     }
-    // Log everything so we can see the exact format in Vercel logs
-    console.log('[Smoobu] msg raw — id:', obj.id,
-      '| type(', typeof obj.type, '):', JSON.stringify(obj.type),
-      '| senderType:', JSON.stringify(obj.senderType),
-      '| direction:', JSON.stringify(obj.direction),
-      '| sender:', JSON.stringify(obj.sender),
-      '| senderName:', JSON.stringify(obj.senderName),
-      '| subject:', String(obj.subject ?? '').slice(0, 60))
-
     // Smoobu uses `type` as a message-category code (1 = text, 2 = ???), NOT as sender type.
     // The actual sender is in `senderType` ("owner"/"guest") or `direction` ("outgoing"/"incoming").
     // Prefer senderType > direction > type as fallback only.
