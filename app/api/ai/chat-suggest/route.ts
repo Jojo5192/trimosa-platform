@@ -124,10 +124,17 @@ export async function POST(request: Request) {
 
   // Zeiten sind AKTUELL & VERBINDLICH — ältere Chats/Wissensbasis können noch
   // alte Zeiten nennen (z. B. Check-out 11:00 vor der Umstellung auf 10:00)
-  const facts = listing
+  const facts = (listing
     ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}
 (Diese Check-in-/Check-out-Zeiten sind der AKTUELLE, VERBINDLICHE Stand — sie gehen abweichenden Zeiten aus der Wissensbasis oder früheren Antworten IMMER vor.)`
-    : 'Unterkunft: unbekannt'
+    : 'Unterkunft: unbekannt')
+    // §158: Rechnungs-Regel — KI-Antworten auf frühe Rechnungsanfragen
+    + `
+RECHNUNGS-REGEL (aktuell & verbindlich): Rechnungen werden automatisch am
+ANREISETAG erstellt; das Team schickt den Download-Link dann direkt im Chat.
+Fragt der Gast VOR der Anreise nach einer Rechnung: freundlich genau das
+erklären und anbieten, schon jetzt den gewünschten Rechnungsempfänger
+(Name/Firmenanschrift) durchzugeben.`
 
   const prompt = `${facts}
 
