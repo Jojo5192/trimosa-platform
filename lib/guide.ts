@@ -100,6 +100,7 @@ export interface GuideLabels {
   checkInFrom: string; checkOutUntil: string; addressTitle: string; route: string
   rulesTitle: string; regionTitle: string; regionCta: string; contactTitle: string
   emptyBlock: string; doorCodeLabel: string
+  wifiQrHint: string
 }
 
 export const DE_LABELS: GuideLabels = {
@@ -110,6 +111,7 @@ export const DE_LABELS: GuideLabels = {
   regionCta: 'Zum Reiseführer', contactTitle: 'Dein Gastgeber-Team',
   emptyBlock: 'Noch nicht ausgefüllt — erscheint erst mit Inhalt.',
   doorCodeLabel: 'Dein Türcode',
+  wifiQrHint: 'Zweites Gerät verbinden? Diesen Code einfach mit der Kamera scannen — das WLAN verbindet sich direkt.',
 }
 
 export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: string; hint: string; smart?: boolean }> = {
