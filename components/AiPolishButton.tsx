@@ -19,6 +19,8 @@ export default function AiPolishButton({ field, text, context, onAccept }: Props
   const [busy, setBusy] = useState(false)
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const [error, setError] = useState('')
+  // §158: optionale Anweisung („kürzer und lockerer", „erwähne den Parkplatz")
+  const [instruction, setInstruction] = useState('')
 
   async function run() {
     setBusy(true)
@@ -28,7 +30,7 @@ export default function AiPolishButton({ field, text, context, onAccept }: Props
       const res = await fetch('/api/ai/polish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field, text, context }),
+        body: JSON.stringify({ field, text, context, ...(instruction.trim() ? { instruction: instruction.trim() } : {}) }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'KI-Fehler.'); return }
@@ -42,15 +44,28 @@ export default function AiPolishButton({ field, text, context, onAccept }: Props
 
   return (
     <div style={{ marginTop: '6px' }}>
-      <button type="button" onClick={run} disabled={busy} style={{
-        display: 'inline-flex', alignItems: 'center', gap: '6px',
-        padding: '5px 12px', borderRadius: '999px', cursor: busy ? 'wait' : 'pointer',
-        border: '1px solid #E8D9A0', background: '#FDFAF0',
-        fontSize: '11.5px', fontWeight: 700, color: 'var(--gold-dark)',
-        opacity: busy ? 0.6 : 1,
-      }}>
-        {busy ? '✨ Claude schreibt…' : text.trim() ? '✨ Mit KI verbessern' : '✨ Entwurf schreiben lassen'}
-      </button>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={run} disabled={busy} style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+          padding: '5px 12px', borderRadius: '999px', cursor: busy ? 'wait' : 'pointer',
+          border: '1px solid #E8D9A0', background: '#FDFAF0',
+          fontSize: '11.5px', fontWeight: 700, color: 'var(--gold-dark)',
+          opacity: busy ? 0.6 : 1,
+        }}>
+          {busy ? '✨ Claude schreibt…' : instruction.trim() ? '✨ Anweisung umsetzen' : text.trim() ? '✨ Mit KI verbessern' : '✨ Entwurf schreiben lassen'}
+        </button>
+        <input
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) run() } }}
+          placeholder="Anweisung (optional), z. B. kürzer und lockerer…"
+          style={{
+            flex: '1 1 200px', minWidth: 0, borderRadius: 999, border: '1px solid #E5E1D6',
+            padding: '5px 12px', fontSize: '11.5px', color: '#555', outline: 'none',
+            fontFamily: 'inherit', background: '#fff',
+          }}
+        />
+      </div>
       {error && <p style={{ fontSize: '11px', color: '#DC2626', margin: '6px 0 0' }}>{error}</p>}
 
       {suggestion && (
