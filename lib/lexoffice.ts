@@ -463,6 +463,66 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
   return report
 }
 
+/**
+ * §160-Nachtrag: Zahlungsweg-Report — welche der fakturierten Buchungen
+ * kann der Inhaber im Bankabgleich bedenkenlos als bezahlt markieren, und
+ * welche muss er PRÜFEN (Zahlung floss direkt an TRIMOSA, nicht übers
+ * Portal)? Logik je Kanal: Website = Stripe-bezahlt (unbezahlte werden nie
+ * fakturiert) · Airbnb/FeWo/HomeToGo = Portal zieht ein · Booking.com =
+ * hängt vom Payments-Setup ab · Direktbuchung/unklar = individuell → prüfen.
+ */
+export interface Q2PaymentReport {
+  zeitraum: { von: string; bis: string }
+  gruppen: Record<string, { anzahl: number; summe: number }>
+  pruefen: { gast: string; wohnung: string; checkIn: string; checkOut: string; betrag: number | null; kanal: string; beleg: string | null }[]
+}
+
+export async function q2PaymentReport(from = '2026-04-01'): Promise<Q2PaymentReport> {
+  const today = berlinToday()
+  const { data: rows } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name, check_in, check_out, total_price, channel, source, payment_status, listings(title)')
+    .gte('check_in', from).lte('check_in', today).eq('status', 'confirmed')
+    .order('check_in', { ascending: true }).limit(1000)
+  const bookings = (rows ?? []) as (BookingRow & { listings?: { title?: string } | { title?: string }[] | null })[]
+
+  // Belegnummern der Engine-Rechnungen dazu (welche RE-Nummer prüfen?)
+  const belege = new Map<string, string>()
+  const ids = bookings.map((b) => b.id)
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await supabaseAdmin
+      .from('lexoffice_invoices').select('booking_id, voucher_number').in('booking_id', ids.slice(i, i + 300))
+    for (const d of data ?? []) if (d.voucher_number) belege.set(d.booking_id, d.voucher_number)
+  }
+
+  const report: Q2PaymentReport = { zeitraum: { von: from, bis: today }, gruppen: {}, pruefen: [] }
+  for (const b of bookings) {
+    const v = `${b.channel ?? ''} ${b.source ?? ''}`.toLowerCase()
+    let key: string
+    let pruefen = false
+    // Reihenfolge wichtig: „Direct booking" enthält „booking" (§140-Falle)
+    if (b.source === 'trimosa') key = 'Website (Stripe — sicher bezahlt)'
+    else if (/airbnb/.test(v)) key = 'Airbnb (Portal zieht ein)'
+    else if (/fewo|homeaway|vrbo/.test(v)) key = 'FeWo-direkt (Portal)'
+    else if (/hometogo/.test(v)) key = 'HomeToGo (Portal)'
+    else if (/direct|direkt/.test(v)) { key = 'Direktbuchung — PRÜFEN'; pruefen = true }
+    else if (/booking/.test(v)) key = 'Booking.com (je nach Payments-Setup)'
+    else { key = 'Unbekannter Kanal — PRÜFEN'; pruefen = true }
+    const g = report.gruppen[key] ?? (report.gruppen[key] = { anzahl: 0, summe: 0 })
+    g.anzahl += 1
+    g.summe = Math.round((g.summe + (Number(b.total_price) || 0)) * 100) / 100
+    if (pruefen) {
+      report.pruefen.push({
+        gast: b.guest_name ?? 'Gast',
+        wohnung: (Array.isArray(b.listings) ? b.listings[0] : b.listings)?.title ?? '—',
+        checkIn: b.check_in, checkOut: b.check_out, betrag: Number(b.total_price) || null,
+        kanal: b.channel ?? b.source ?? '—', beleg: belege.get(b.id) ?? null,
+      })
+    }
+  }
+  return report
+}
+
 /** §160: Beleg (i. d. R. Zapier-ENTWURF) per API löschen — ob die Public API
  *  das überhaupt kann, entscheidet der erste echte Aufruf (deleteSupported). */
 export async function deleteInvoice(lexofficeId: string): Promise<{ ok: boolean; status: number; error?: string }> {
