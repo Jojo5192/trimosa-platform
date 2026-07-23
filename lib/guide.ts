@@ -65,11 +65,14 @@ export interface MapBlock extends GuideBlockBase { type: 'map' }
 export interface TimesBlock extends GuideBlockBase { type: 'times'; show?: 'beide' | 'checkin' | 'checkout' }
 export interface RulesBlock extends GuideBlockBase { type: 'rules' }
 export interface RegionBlock extends GuideBlockBase { type: 'region' }
+/** §163: frei platzierbarer Gäste-Chat — die Mappe rendert den echten Chat
+ *  an dieser Stelle (ohne chat-Block wie bisher am Ende). */
+export interface ChatBlock extends GuideBlockBase { type: 'chat' }
 
 export type GuideBlock =
   | HeadingBlock | TextBlock | InfoBlock | WarningBlock | StepsBlock
   | WifiBlock | DoorBlock | ContactBlock | ImageBlock
-  | MapBlock | TimesBlock | RulesBlock | RegionBlock
+  | MapBlock | TimesBlock | RulesBlock | RegionBlock | ChatBlock
 
 /** Kontext aus Inserat/Region für die Smart-Blöcke. */
 export interface GuideCtx {
@@ -123,6 +126,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   times: { icon: '🕓', label: 'Check-in/-out-Zeiten', hint: 'Aus dem Inserat: An- und Abreisezeit', smart: true },
   rules: { icon: '🏠', label: 'Hausregeln', hint: 'Aus dem Inserat: Ruhezeiten, Rauchen, Haustiere …', smart: true },
   region: { icon: '🗺️', label: 'Region entdecken', hint: 'Link auf den Reiseführer der Region', smart: true },
+  chat: { icon: '💬', label: 'Gäste-Chat', hint: 'Direkter Draht zum Team — bestimmt, WO der Chat in der Mappe sitzt (ohne diesen Baustein: am Ende)', smart: true },
 }
 
 let seq = 0
@@ -147,6 +151,7 @@ export function emptyBlock(type: GuideBlock['type']): GuideBlock {
     case 'times': return { id, type }
     case 'rules': return { id, type }
     case 'region': return { id, type }
+    case 'chat': return { id, type }
   }
 }
 
@@ -193,6 +198,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
       return !!(ctx.checkIn || ctx.checkOut)
     case 'rules': return ctx.rules.length > 0
     case 'region': return !!ctx.regionSlug
+    case 'chat': return true
   }
 }
 
