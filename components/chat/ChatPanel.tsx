@@ -320,8 +320,33 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // §159: Empfänger-Dialog (vom Gast mitgeteilte Rechnungsdaten erfassen)
   const [invForm, setInvForm] = useState({
     open: false, name: '', supplement: '', street: '', zip: '', city: '', country: 'Deutschland',
-    busy: false, result: null as string | null, url: null as string | null,
+    busy: false, extracting: false, result: null as string | null, url: null as string | null,
   })
+
+  /** §159: Dialog-Vorbefüllung — KI zieht Rechnungsdaten aus dem Chat-Verlauf
+   *  (nur explizit als Rechnungsempfänger gemeinte Angaben); Team bestätigt. */
+  async function extractRecipient(bid: string) {
+    setInvForm(f => ({ ...f, extracting: true }))
+    try {
+      const r = await fetch(`/api/invoices/${bid}/extract`, { method: 'POST' })
+      const d = await r.json().catch(() => null)
+      const rec = d?.recipient
+      if (rec?.name) {
+        const CC: Record<string, string> = { DE: 'Deutschland', NL: 'Niederlande', BE: 'Belgien', FR: 'Frankreich', LU: 'Luxemburg', AT: 'Österreich', CH: 'Schweiz', GB: 'Vereinigtes Königreich' }
+        setInvForm(f => f.open ? ({
+          ...f,
+          name: f.name || rec.name || '',
+          supplement: f.supplement || rec.supplement || '',
+          street: f.street || rec.street || '',
+          zip: f.zip || rec.zip || '',
+          city: f.city || rec.city || '',
+          country: rec.countryCode ? (CC[rec.countryCode] ?? rec.countryCode) : f.country,
+          result: '✨ Aus dem Chat übernommen — bitte prüfen und übernehmen.',
+        }) : f)
+      }
+    } catch { /* best effort */ }
+    finally { setInvForm(f => ({ ...f, extracting: false })) }
+  }
 
   async function submitRecipient() {
     if (!active?.bookingId || !invForm.name.trim() || invForm.busy) return
@@ -1391,6 +1416,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         onClick={() => {
                           setMappeMenu(false)
                           setInvForm(f => ({ ...f, open: true, result: null, url: null }))
+                          extractRecipient(active.bookingId!)
                         }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
                       >✏️ Rechnungsempfänger erfassen</button>
@@ -1408,7 +1434,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: '#fff', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#111', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: '#8E8E93', lineHeight: 1.5 }}>
-                  Daten des Gasts aus dem Chat übernehmen — vor der Anreise werden sie gespeichert und automatisch verwendet, danach wird die Rechnung neu ausgestellt.
+                  {invForm.extracting
+                    ? '✨ Claude durchsucht den Chat nach Rechnungsdaten…'
+                    : 'Daten des Gasts aus dem Chat übernehmen — vor der Anreise werden sie gespeichert und automatisch verwendet, danach wird die alte Rechnung storniert und neu ausgestellt.'}
                 </p>
                 {(['name', 'supplement', 'street', 'zip', 'city', 'country'] as const).map((k) => (
                   <input key={k}
