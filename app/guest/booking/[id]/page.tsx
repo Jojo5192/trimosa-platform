@@ -25,11 +25,22 @@ export default async function BookingDetailPage({ params }: { params: Promise<{ 
     .eq('booking_id', id)
     .maybeSingle()
 
+  // §160-Ergänzung: existiert eine Rechnung, kann der Gast sie direkt
+  // ansehen (Token-Link streamt das PDF live aus lexoffice, inline)
+  let invoiceUrl: string | null = null
+  const token = (booking as { portal_token?: string | null }).portal_token
+  if (token) {
+    const { data: inv } = await supabaseAdmin
+      .from('lexoffice_invoices').select('lexoffice_id').eq('booking_id', id).maybeSingle()
+    if (inv?.lexoffice_id) invoiceUrl = `/api/rechnung/${token}`
+  }
+
   return (
     <BookingDetailClient
       booking={booking}
       conversationId={conv?.id ?? null}
       userId={user.id}
+      invoiceUrl={invoiceUrl}
     />
   )
 }
