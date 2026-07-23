@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 
 export interface MappeChatLabels {
   title: string; hint: string; placeholder: string; send: string; empty: string
+  contactTitle: string; navLabel: string
 }
 
 type Msg = { id: string; content: string | null; created_at: string; mine: boolean }
@@ -37,7 +38,7 @@ function linkify(text: string | null): React.ReactNode {
   return out.length ? out : text
 }
 
-export default function MappeChat({ token, labels, lang = 'de' }: { token: string; labels: MappeChatLabels; lang?: string }) {
+export default function MappeChat({ token, labels, lang = 'de', phone, note }: { token: string; labels: MappeChatLabels; lang?: string; phone?: string | null; note?: string | null }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[] | null>(null)
   const [draft, setDraft] = useState('')
@@ -98,8 +99,25 @@ export default function MappeChat({ token, labels, lang = 'de' }: { token: strin
     return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 
+  const telHref = phone ? 'tel:' + phone.replace(/[^\d+]/g, '') : null
   return (
     <div style={{ marginTop: 18, borderRadius: 16, overflow: 'hidden', background: '#12222E' }}>
+      {/* §166: Kontakt + Chat = EIN Punkt — Telefon/Hinweis aus dem
+          Kontakt-Baustein sitzen im Kopf der Chat-Karte */}
+      {(phone || note) && (
+        <div style={{ padding: '15px 18px 0' }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#E3C878', marginBottom: note ? 6 : 10 }}>📞 {labels.contactTitle}</div>
+          {note && <p style={{ margin: '0 0 10px', fontSize: 12.5, color: 'rgba(245,240,232,0.7)', lineHeight: 1.6 }}>{note}</p>}
+          {telHref && (
+            <a href={telHref} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 999,
+              border: '1px solid rgba(227,200,120,0.4)', color: '#E3C878', fontSize: 13.5, fontWeight: 700,
+              textDecoration: 'none', marginBottom: 4,
+            }}>📞 {phone}</a>
+          )}
+          <div style={{ borderTop: '1px solid rgba(245,240,232,0.12)', marginTop: 12 }} />
+        </div>
+      )}
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
