@@ -165,6 +165,23 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 )}
               </div>
             )
+          case 'image':
+            return wrap(
+              <figure style={{ margin: 0 }}>
+                {b.url
+                  ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={b.url} alt={b.caption || 'Foto'} style={{
+                      display: 'block', width: '100%', height: 'auto', borderRadius: 16,
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    }} />
+                  )
+                  : <div style={{ borderRadius: 16, background: '#ECE8DE', padding: '34px 0', textAlign: 'center', fontSize: 22 }}>📷</div>}
+                {b.caption && (
+                  <figcaption style={{ margin: '7px 4px 0', fontSize: 12, color: '#8A8065', lineHeight: 1.5 }}>{b.caption}</figcaption>
+                )}
+              </figure>
+            )
           case 'map': {
             const q = ctx.lat && ctx.lon ? `${ctx.lat},${ctx.lon}` : encodeURIComponent(ctx.address ?? '')
             return wrap(
