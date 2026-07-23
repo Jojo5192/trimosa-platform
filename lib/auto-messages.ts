@@ -7,6 +7,17 @@
 
 export type TriggerType = 'nach_buchung' | 'vor_anreise' | 'nach_anreise' | 'vor_abreise' | 'nach_abreise'
 
+/** Kurzfristig-Weiche (§148): Für welche Buchungen gilt die Vorlage?
+ *  'kurzfristig' = Anreise ≤ 3 Tage nach Buchungseingang (kompakte
+ *  Einzel-Nachricht statt der ganzen Sequenz), 'normal' = alles andere. */
+export type LeadFilter = 'alle' | 'kurzfristig' | 'normal'
+
+export const LEAD_META: { id: LeadFilter; label: string; hint: string }[] = [
+  { id: 'alle',        label: 'Alle Buchungen',   hint: 'gilt unabhängig vom Buchungszeitpunkt' },
+  { id: 'kurzfristig', label: '⚡ Kurzfristig',    hint: 'nur wenn die Anreise max. 3 Tage nach der Buchung liegt' },
+  { id: 'normal',      label: '📅 Normal',        hint: 'nur wenn die Anreise mehr als 3 Tage nach der Buchung liegt' },
+]
+
 export interface AutoMessage {
   id: string
   name: string
@@ -17,6 +28,7 @@ export interface AutoMessage {
   listing_id: string | null
   channel_filter: string[] | null
   min_nights: number | null
+  lead_filter: LeadFilter
   body: string
   sort: number
 }
@@ -45,6 +57,10 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{mappe_button}', label: 'Gästemappe als Button' },
   { key: '{adresse}',      label: 'Adresse der Wohnung' },
 ]
+
+/** Sentinel, der {mappe_button} unbeschadet durch Übersetzung & Versand trägt
+ *  (Phase B): Chat ersetzt ihn durch die URL-Zeile, die Mail durch den Button. */
+export const MAPPE_BTN_SENTINEL = '[[MAPPE_BUTTON]]'
 
 export interface MessageContext {
   vorname: string
@@ -100,27 +116,35 @@ export function triggerSummary(m: Pick<AutoMessage, 'trigger_type' | 'offset_day
   }
 }
 
-/** Vorbefüllte Start-Vorlagen (der „✨ Standard-Vorlagen laden"-Knopf). */
+/** Vorbefüllte Start-Vorlagen (der „✨ Standard-Vorlagen laden"-Knopf).
+ *  Anti-Spam-Doktrin (§148): Normale Buchungen bekommen die Sequenz
+ *  (Bestätigung → Erinnerung → Anreisetag), kurzfristige Bucher EINE
+ *  kompakte Nachricht mit allem Wichtigen. */
 export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
   return [
     {
       name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
-      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 0,
+      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 0,
       body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
     },
     {
+      name: 'Kurzfristige Buchung — alles Wichtige', enabled: true, trigger_type: 'nach_buchung',
+      offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'kurzfristig', sort: 1,
+      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung} — schön, dass es so bald losgeht! Anreise am {anreise} ab {checkin} Uhr.\n\nDein Türcode: {tuercode}\n\nCheck-in-Anleitung, WLAN und alle weiteren Infos findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nBis gleich!\nDein TRIMOSA-Team',
+    },
+    {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
-      offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, sort: 1,
+      offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 2,
       body: 'Hallo {vorname},\n\nin wenigen Tagen ist es soweit — dein Aufenthalt im {wohnung} beginnt am {anreise}. Check-in ist ab {checkin} Uhr.\n\nDeinen Türcode und die Check-in-Anleitung findest du in deiner Gästemappe:\n\n{mappe_button}\n\nBis bald!\nDein TRIMOSA-Team',
     },
     {
       name: 'Am Anreisetag', enabled: true, trigger_type: 'vor_anreise',
-      offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, sort: 2,
+      offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', sort: 3,
       body: 'Hallo {vorname},\n\nherzlich willkommen! Dein Türcode für {wohnung} lautet: {tuercode}\n\nAlle weiteren Infos findest du in deiner Gästemappe:\n\n{mappe_button}\n\nSchön, dass du da bist — melde dich jederzeit, wenn du etwas brauchst.\nDein TRIMOSA-Team',
     },
     {
       name: 'Nach der Abreise / Danke', enabled: true, trigger_type: 'nach_abreise',
-      offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, sort: 3,
+      offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', sort: 4,
       body: 'Hallo {vorname},\n\nwir hoffen, du hattest einen schönen Aufenthalt im {wohnung}! Vielen Dank, dass du bei uns warst.\n\nWenn dir alles gefallen hat, freuen wir uns riesig über eine Bewertung — und über ein Wiedersehen.\n\nHerzliche Grüße\nDein TRIMOSA-Team',
     },
   ]
