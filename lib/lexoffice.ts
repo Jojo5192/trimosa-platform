@@ -146,6 +146,9 @@ export async function createInvoiceForBooking(bookingId: string, opts: {
   /** §159: bestehende Rechnung ignorieren und NEU ausstellen (die alte muss
    *  in der lexoffice-UI storniert/gelöscht werden — Hinweis im Aufrufer) */
   force?: boolean
+  /** §160-Backfill: abweichendes Belegdatum (YYYY-MM-DD, z. B. Anreisetag
+   *  vergangener Buchungen — Inhaber-Regel: Rechnungsdatum = Anreisedatum) */
+  voucherDate?: string
 } = {}): Promise<{
   ok: boolean; lexofficeId?: string; voucherNumber?: string | null; skipped?: string; error?: string
 }> {
@@ -191,7 +194,7 @@ export async function createInvoiceForBooking(bookingId: string, opts: {
   if (rec.city) address.city = rec.city
 
   const payload = {
-    voucherDate: `${today}T12:00:00.000Z`,
+    voucherDate: `${opts.voucherDate ?? today}T12:00:00.000Z`,
     address,
     lineItems: [{
       type: 'custom',
@@ -372,10 +375,10 @@ export interface Q2CheckReport {
   belegeGeladen: number
   ok: { engine: number; finalisiert: number }
   finalisiertListe: { gast: string; checkIn: string; betrag: number | null; beleg: string }[]
-  nurEntwurf: { gast: string; wohnung: string; checkIn: string; betrag: number | null; beleg: string }[]
-  fehlt: { gast: string; wohnung: string; checkIn: string; betrag: number | null; kanal: string }[]
+  nurEntwurf: { gast: string; wohnung: string; checkIn: string; betrag: number | null; beleg: string; bookingId: string; voucherId: string }[]
+  fehlt: { gast: string; wohnung: string; checkIn: string; betrag: number | null; kanal: string; bookingId: string }[]
   keinBetrag: { gast: string; wohnung: string; checkIn: string; kanal: string }[]
-  nichtZugeordneteBelege?: { beleg: string; kontakt: string; betrag: number; datum: string; status: string }[]
+  nichtZugeordneteBelege?: { beleg: string; kontakt: string; betrag: number; datum: string; status: string; id: string }[]
   fehlerlisteError?: string
 }
 
@@ -443,20 +446,103 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
     if (hit) {
       used.add(hit.id)
       if (hit.voucherStatus === 'draft') {
-        report.nurEntwurf.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, beleg: hit.voucherNumber })
+        report.nurEntwurf.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, beleg: hit.voucherNumber, bookingId: b.id, voucherId: hit.id })
       } else {
         report.ok.finalisiert++
         report.finalisiertListe.push({ gast, checkIn: b.check_in, betrag: amount, beleg: hit.voucherNumber })
       }
     } else {
-      report.fehlt.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, kanal })
+      report.fehlt.push({ gast, wohnung: lt, checkIn: b.check_in, betrag: amount, kanal, bookingId: b.id })
     }
   }
   // Gegenrichtung: Belege ohne zugeordnete Buchung (Diagnose)
   report.nichtZugeordneteBelege = vouchers
     .filter((v) => !used.has(v.id))
     .slice(0, 60)
-    .map((v) => ({ beleg: v.voucherNumber, kontakt: v.contactName.slice(0, 70), betrag: v.totalAmount, datum: v.voucherDate, status: v.voucherStatus }))
+    .map((v) => ({ beleg: v.voucherNumber, kontakt: v.contactName.slice(0, 70), betrag: v.totalAmount, datum: v.voucherDate, status: v.voucherStatus, id: v.id }))
+  return report
+}
+
+/** §160: Beleg (i. d. R. Zapier-ENTWURF) per API löschen — ob die Public API
+ *  das überhaupt kann, entscheidet der erste echte Aufruf (deleteSupported). */
+export async function deleteInvoice(lexofficeId: string): Promise<{ ok: boolean; status: number; error?: string }> {
+  const res = await lexFetch(`/invoices/${lexofficeId}`, { method: 'DELETE' })
+  if (res.ok) return { ok: true, status: res.status }
+  const body = await res.text().catch(() => '')
+  return { ok: false, status: res.status, error: `HTTP ${res.status}: ${body.slice(0, 200)}` }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export interface Q2BackfillReport {
+  dryRun: boolean
+  geplant: number
+  verarbeitet: number
+  entwurfGeloescht: number
+  erstellt: number
+  rest: number
+  deleteSupported: boolean | null
+  fehler: string[]
+  vorschau?: { gast: string; checkIn: string; betrag: number | null; aktion: string }[]
+}
+
+/**
+ * §160-Backfill nach Inhaber-Go: Zapier-Entwürfe LÖSCHEN und durch
+ * finalisierte Engine-Rechnungen ersetzen + komplett fehlende nachschießen.
+ * Rechnungsdatum = ANREISEDATUM (Inhaber-Regel). Idempotent: erstellte
+ * Buchungen landen in lexoffice_invoices (ok.engine beim nächsten q2Check);
+ * limit hält den Lauf unter dem 300s-Function-Limit → mehrfach aufrufen.
+ * Kann die API Entwürfe NICHT löschen (404/405 beim ersten Versuch), werden
+ * alle Entwurf-Fälle übersprungen (KEINE Duplikate) — dann löscht der
+ * Inhaber händisch und ein erneuter Lauf behandelt sie als „fehlt".
+ */
+export async function q2Backfill(opts: { dryRun?: boolean; limit?: number; from?: string } = {}): Promise<Q2BackfillReport> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(Number(opts.limit) || 40, 1), 60)
+  const check = await q2Check(opts.from ?? '2026-04-01')
+  const queue = [
+    ...check.nurEntwurf.map((e) => ({ gast: e.gast, checkIn: e.checkIn, betrag: e.betrag, bookingId: e.bookingId, voucherId: e.voucherId as string | null, beleg: e.beleg as string | null })),
+    ...check.fehlt.map((e) => ({ gast: e.gast, checkIn: e.checkIn, betrag: e.betrag, bookingId: e.bookingId, voucherId: null as string | null, beleg: null as string | null })),
+  ].sort((a, c) => a.checkIn.localeCompare(c.checkIn))
+  const report: Q2BackfillReport = {
+    dryRun, geplant: queue.length, verarbeitet: 0, entwurfGeloescht: 0, erstellt: 0,
+    rest: queue.length, deleteSupported: null, fehler: [],
+  }
+  if (dryRun) {
+    report.vorschau = queue.slice(0, limit).map((q) => ({
+      gast: q.gast, checkIn: q.checkIn, betrag: q.betrag,
+      aktion: q.voucherId ? `Entwurf ${q.beleg} löschen + neu (Belegdatum ${q.checkIn})` : `neu erstellen (Belegdatum ${q.checkIn})`,
+    }))
+    return report
+  }
+  for (const item of queue) {
+    if (report.verarbeitet >= limit) break
+    if (item.voucherId) {
+      if (report.deleteSupported === false) continue // Entwurf-Fälle ohne Lösch-API überspringen — nie Duplikate
+      const del = await deleteInvoice(item.voucherId)
+      await sleep(550)
+      if (!del.ok) {
+        if (report.deleteSupported === null && (del.status === 404 || del.status === 405 || del.status === 400)) {
+          report.deleteSupported = false
+          report.fehler.push(`Entwurf-Löschen per API nicht möglich (${del.error}) — Entwürfe bitte händisch löschen, danach Lauf wiederholen.`)
+          continue
+        }
+        report.fehler.push(`${item.gast} (${item.checkIn}): Entwurf ${item.beleg} nicht löschbar — ${del.error}`)
+        report.verarbeitet++
+        continue
+      }
+      report.deleteSupported = true
+      report.entwurfGeloescht++
+    }
+    // KEIN force: der Existenz-Guard in createInvoiceForBooking macht
+    // Wiederholungs-Läufe idempotent (nach Teilfehlern kein Duplikat)
+    const r = await createInvoiceForBooking(item.bookingId, { voucherDate: item.checkIn })
+    await sleep(900)
+    report.verarbeitet++
+    if (r.ok) report.erstellt++
+    else report.fehler.push(`${item.gast} (${item.checkIn}): ${r.error ?? r.skipped ?? 'unbekannt'}`)
+  }
+  report.rest = report.geplant - report.erstellt
   return report
 }
 
