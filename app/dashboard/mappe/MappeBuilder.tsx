@@ -91,6 +91,17 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
     setBlocks((bs) => bs.filter((b) => b.id !== id))
     setDirty(true)
   }
+  /** §159: Baustein duplizieren — Kopie erscheint direkt DARUNTER (macht
+   *  wohnungs-spezifische Varianten leicht: kopieren, Wohnung umstellen). */
+  function duplicate(id: string) {
+    setBlocks((bs) => {
+      const i = bs.findIndex((b) => b.id === id)
+      if (i < 0) return bs
+      const copy = { ...bs[i], id: newBlockId() } as GuideBlock
+      return [...bs.slice(0, i + 1), copy, ...bs.slice(i + 1)]
+    })
+    setDirty(true)
+  }
   function add(type: GuideBlock['type']) {
     // Neuer Baustein übernimmt den aktiven Wohnungs-Filter als Vorbelegung
     const nb = emptyBlock(type)
@@ -195,6 +206,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
                 onChange={(patch) => update(b.id, patch)}
                 onMove={(dir) => move(b.id, dir)}
                 onRemove={() => remove(b.id)}
+                onDuplicate={() => duplicate(b.id)}
               />
             ))}
           </div>
@@ -317,7 +329,7 @@ async function compressToJpeg(file: File): Promise<Blob> {
 }
 
 /* ── Einzelner Block im Editor ── */
-function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove }: {
+function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove, onDuplicate }: {
   block: GuideBlock
   index: number
   total: number
@@ -325,6 +337,7 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
   onChange: (patch: Partial<GuideBlock>) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
+  onDuplicate: () => void
 }) {
   const meta = BLOCK_META[block.type]
   const [uploadBusy, setUploadBusy] = useState(false)
@@ -401,6 +414,7 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
           }}>
           <span style={{ position: 'absolute', top: 2, left: block.disabled ? 2 : 20, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
         </button>
+        <button type="button" style={btn} onClick={onDuplicate} title="Duplizieren (Kopie erscheint darunter)">⧉</button>
         <button type="button" style={{ ...btn, opacity: index === 0 ? 0.35 : 1 }} disabled={index === 0} onClick={() => onMove(-1)} title="Nach oben">↑</button>
         <button type="button" style={{ ...btn, opacity: index === total - 1 ? 0.35 : 1 }} disabled={index === total - 1} onClick={() => onMove(1)} title="Nach unten">↓</button>
         <button type="button" style={{ ...btn, color: '#DC2626' }} onClick={onRemove} title="Entfernen">✕</button>
