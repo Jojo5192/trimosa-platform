@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 
@@ -316,6 +317,34 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [mappeMenu, setMappeMenu] = useState(false)
   const [invoiceBusy, setInvoiceBusy] = useState(false)
   const [invoiceErr, setInvoiceErr] = useState<string | null>(null)
+  // §159: Empfänger-Dialog (vom Gast mitgeteilte Rechnungsdaten erfassen)
+  const [invForm, setInvForm] = useState({
+    open: false, name: '', supplement: '', street: '', zip: '', city: '', country: 'Deutschland',
+    busy: false, result: null as string | null, url: null as string | null,
+  })
+
+  async function submitRecipient() {
+    if (!active?.bookingId || !invForm.name.trim() || invForm.busy) return
+    setInvForm(f => ({ ...f, busy: true, result: null, url: null }))
+    try {
+      const r = await fetch(`/api/invoices/${active.bookingId}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: {
+          name: invForm.name, supplement: invForm.supplement, street: invForm.street,
+          zip: invForm.zip, city: invForm.city, country: invForm.country,
+        } }),
+      })
+      const d = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`)
+      setInvForm(f => ({
+        ...f, busy: false,
+        result: d.hinweis ?? (d.status === 'bereit' ? 'Rechnung mit diesen Daten ausgestellt.' : 'Empfänger gespeichert.'),
+        url: d.url ? `${location.origin}${d.url}` : null,
+      }))
+    } catch (e) {
+      setInvForm(f => ({ ...f, busy: false, result: `⚠️ ${e instanceof Error ? e.message : 'Fehler.'}` }))
+    }
+  }
 
   /** §158: Rechnung sicherstellen (erstellt sie ab Anreisetag on-demand)
    *  und die Gast-Download-URL zurückgeben. */
@@ -1358,12 +1387,62 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                           style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
                         >💬 Hinweis einfügen (Rechnung ab Anreisetag)</button>
                       )}
+                      <button
+                        onClick={() => {
+                          setMappeMenu(false)
+                          setInvForm(f => ({ ...f, open: true, result: null, url: null }))
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                      >✏️ Rechnungsempfänger erfassen</button>
                       {invoiceErr && <div style={{ padding: '6px 13px 10px', fontSize: 11.5, color: '#B91C1C' }}>⚠️ {invoiceErr}</div>}
                     </>
                   )}
                 </div>
               )}
             </div>
+          )}
+          {/* §159: Empfänger-Dialog (Portal — §83: fixed nie im Touch-Scroller) */}
+          {invForm.open && typeof document !== 'undefined' && createPortal(
+            <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+              onClick={() => setInvForm(f => ({ ...f, open: false }))}>
+              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: '#fff', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#111', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
+                <p style={{ margin: '0 0 12px', fontSize: 12, color: '#8E8E93', lineHeight: 1.5 }}>
+                  Daten des Gasts aus dem Chat übernehmen — vor der Anreise werden sie gespeichert und automatisch verwendet, danach wird die Rechnung neu ausgestellt.
+                </p>
+                {(['name', 'supplement', 'street', 'zip', 'city', 'country'] as const).map((k) => (
+                  <input key={k}
+                    value={invForm[k]}
+                    onChange={(e) => setInvForm(f => ({ ...f, [k]: e.target.value }))}
+                    placeholder={{ name: 'Name / Firma *', supplement: 'Zusatz (z. B. z. Hd. …)', street: 'Straße + Nr.', zip: 'PLZ', city: 'Ort', country: 'Land' }[k]}
+                    style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', marginBottom: 8 }}
+                  />
+                ))}
+                {invForm.result && (
+                  <p style={{ margin: '2px 0 8px', fontSize: 12.5, color: invForm.result.startsWith('⚠️') ? '#B91C1C' : '#1B7A34', lineHeight: 1.5, fontWeight: 600 }}>{invForm.result}</p>
+                )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  {invForm.url ? (
+                    <button onClick={() => {
+                      setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + invForm.url)
+                      setInvForm(f => ({ ...f, open: false }))
+                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                      📎 Link in Entwurf übernehmen
+                    </button>
+                  ) : (
+                    <button onClick={submitRecipient} disabled={invForm.busy || !invForm.name.trim()} style={{
+                      flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer',
+                      background: invForm.name.trim() && !invForm.busy ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E1D6',
+                      color: '#fff', fontSize: 13, fontWeight: 800,
+                    }}>{invForm.busy ? '⏳ Speichert…' : '💾 Übernehmen'}</button>
+                  )}
+                  <button onClick={() => setInvForm(f => ({ ...f, open: false }))} style={{ border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '11px 16px', cursor: 'pointer', background: '#fff', color: '#999', fontSize: 13, fontWeight: 700 }}>
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
           )}
           {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
           <div style={{
