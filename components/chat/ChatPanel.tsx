@@ -318,6 +318,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const taRef         = useRef<HTMLTextAreaElement>(null)
   const timer         = useRef<ReturnType<typeof setInterval> | null>(null)
   const mobileShellRef = useRef<HTMLDivElement>(null)
+  // §110-Muster: Poll-Diffing — das 5s-Polling darf msgs nur bei ECHTER
+  // Änderung ersetzen, sonst feuert der Scroll-Effect bei jedem Lauf und
+  // springt beim Lesen/Scrollen alle paar Sekunden ans Ende.
+  const msgsSigRef    = useRef('')
+  const lastMsgIdRef  = useRef<string | null>(null)
+  const msgsSig = (threadId: string, list: Message[]) =>
+    threadId + '::' + list.map(m => `${m.id}|${m.read_at ? 1 : 0}|${m.content_de ? 1 : 0}`).join(',')
 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
@@ -383,26 +390,35 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }, [userId])
 
   const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking') => {
+    // setMsgs nur bei echter Änderung (Signatur-Diff) — sonst Voll-Re-Render
+    // + Scroll-Sprung bei jedem 5s-Poll (§110-Lektion aus dem InternPanel).
+    const apply = (list: Message[]) => {
+      const sig = msgsSig(id, list)
+      if (sig !== msgsSigRef.current) { msgsSigRef.current = sig; setMsgs(list) }
+    }
+    // Unread-Reset nur, wenn der Thread wirklich ungelesen war (spart Re-Renders)
+    const clearUnread = () =>
+      setConvs(cs => cs.some(c => c.id === id && c.unread > 0) ? cs.map(c => c.id === id ? { ...c, unread: 0 } : c) : cs)
     if (kind === 'booking') {
       const r = await fetch(`/api/messages/${id}`)
       if (r.ok) {
         const { messages } = await r.json()
         // Map booking messages (sender_type guest/host/system) onto the
         // shared shape: everything from our side renders as "me".
-        setMsgs((messages ?? []).map((m: Record<string, unknown>) => ({
+        apply((messages ?? []).map((m: Record<string, unknown>) => ({
           id: m.id, conversation_id: id,
           sender_id: m.sender_type === 'guest' ? 'guest' : userId,
           content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
           lang: m.lang ?? null, content_de: m.content_de ?? null,
-        })))
-        setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
+        })) as Message[])
+        clearUnread()
       }
       return
     }
     const r = await fetch(`/api/chat?conversationId=${id}`)
     if (r.ok) {
-      setMsgs(await r.json())
-      setConvs(cs => cs.map(c => c.id === id ? { ...c, unread: 0 } : c))
+      apply(await r.json())
+      clearUnread()
     }
   }, [userId])
 
@@ -460,7 +476,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     suggestReply()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msgs, active?.id, team])
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  // Scrollen nur, wenn wirklich eine NEUE letzte Nachricht da ist (Thread-
+  // Öffnung oder eingehende/gesendete Nachricht) — nie bei Poll-Refreshes.
+  useEffect(() => {
+    const lastId = msgs.length ? msgs[msgs.length - 1].id : null
+    if (lastId === lastMsgIdRef.current) return
+    lastMsgIdRef.current = lastId
+    if (lastId) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs])
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
     const grow = () => {
