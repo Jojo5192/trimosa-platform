@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createInvoiceForBooking, saveRecipient, sanitizeRecipient } from '@/lib/lexoffice'
+import { createInvoiceForBooking, saveRecipient, sanitizeRecipient, stornoInvoice } from '@/lib/lexoffice'
 
 /**
  * 🧾 Rechnungs-Status je Buchung (Team, §158) — Basis für die 🧾-Aktion in
@@ -63,14 +63,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
   // nur speichern, der 15:00-Lauf nutzt die Daten dann automatisch.
   if (recipient) {
     if (state.status === 'bereit') {
+      // §159-Nachtrag: Storno passiert AUTOMATISCH (Inhaber-Vorgabe) —
+      // erst die alte Rechnung per Stornorechnung ausgleichen, DANN neu
+      // ausstellen. Scheitert der Storno, wird abgebrochen (sonst stünden
+      // zwei offene Rechnungen für dieselbe Buchung in der Buchhaltung).
       const oldNr = state.voucherNumber ?? null
+      const { data: row } = await supabaseAdmin
+        .from('lexoffice_invoices').select('lexoffice_id').eq('booking_id', bookingId).maybeSingle()
+      if (row?.lexoffice_id) {
+        const st = await stornoInvoice(row.lexoffice_id)
+        if (!st.ok) {
+          return NextResponse.json({ error: `Storno der alten Rechnung fehlgeschlagen: ${st.error}` }, { status: 500 })
+        }
+      }
       const r = await createInvoiceForBooking(bookingId, { recipient, force: true })
-      if (!r.ok) return NextResponse.json({ error: r.error ?? 'Neu-Ausstellung fehlgeschlagen.' }, { status: 500 })
+      if (!r.ok) {
+        return NextResponse.json({
+          error: `Alte Rechnung ${oldNr ?? ''} wurde storniert, aber die NEUE Ausstellung schlug fehl: ${r.error ?? '—'} — bitte erneut versuchen.`,
+        }, { status: 500 })
+      }
       const fresh = await loadState(bookingId)
       return NextResponse.json({
         ...fresh,
         hinweis: oldNr
-          ? `Neu ausgestellt (${r.voucherNumber ?? '—'}) — alte Rechnung ${oldNr} bitte in lexoffice stornieren/löschen.`
+          ? `Alte Rechnung ${oldNr} automatisch storniert · neu ausgestellt als ${r.voucherNumber ?? '—'}.`
           : `Neu ausgestellt (${r.voucherNumber ?? '—'}).`,
       }, NO_STORE)
     }
