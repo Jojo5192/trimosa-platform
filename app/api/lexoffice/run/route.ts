@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -35,6 +35,10 @@ export async function POST(request: NextRequest) {
   if (!me?.is_admin && !me?.is_host) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
     const b = await request.json().catch(() => ({}))
+    // §160: Q2-Nachschau — reine Abgleich-LISTE, nichts wird erstellt
+    if (b.action === 'q2-check') {
+      return NextResponse.json(await q2Check(typeof b.from === 'string' ? b.from : '2026-04-01'))
+    }
     return NextResponse.json(await runInvoiceRun({ dryRun: b.dryRun !== false }))
   } catch (err) {
     const detail = String(err instanceof Error ? err.message : err).slice(0, 300)
