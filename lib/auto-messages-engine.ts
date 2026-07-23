@@ -94,7 +94,34 @@ async function translateProtected(text: string, lang: string): Promise<{ text: s
   return { text: restored, translated: true }
 }
 
-/* ── Gastsprache: letzte erkannte Gast-Nachricht > guest_lang > de ── */
+/* ── Telefon-Vorwahl → Sprach-Schätzung (§117-Map, gespiegelt aus ChatPanel):
+ * Fallback für Portal-Gäste, die noch nie geschrieben haben. ── */
+const PHONE_LANG: Record<string, string> = {
+  '49': 'de', '43': 'de', '41': 'de',
+  '31': 'nl', '32': 'nl',
+  '33': 'fr', '352': 'fr',
+  '44': 'en', '1': 'en', '353': 'en', '47': 'en', '358': 'en', '36': 'en', '30': 'en',
+  '39': 'it', '34': 'es', '351': 'pt', '45': 'da', '46': 'sv',
+  '48': 'pl', '420': 'cs', '90': 'tr', '7': 'ru',
+}
+async function phoneLangFor(bookingId: string): Promise<string | null> {
+  try {
+    // Die Vorwahl steckt in der Smoobu-Bestätigungs-Nachricht („Guest Phone Number: +32…")
+    const { data: pm } = await supabaseAdmin
+      .from('messages').select('content').eq('booking_id', bookingId)
+      .ilike('content', '%phone number%').limit(1)
+    const digits = pm?.[0]?.content?.match(/\+\s?(\d{6,})/)?.[1]
+    if (!digits) return null
+    for (const len of [3, 2, 1]) {
+      const lang = PHONE_LANG[digits.slice(0, len)]
+      if (lang) return lang
+    }
+  } catch { /* best effort */ }
+  return null
+}
+
+/* ── Gastsprache: letzte erkannte Gast-Nachricht > guest_lang (Website) >
+ * Telefon-Vorwahl-Schätzung > de ── */
 async function guestLangFor(b: BookingRow, convId?: string, convGuestId?: string | null): Promise<string> {
   try {
     const { data: bm } = await supabaseAdmin
@@ -109,7 +136,8 @@ async function guestLangFor(b: BookingRow, convId?: string, convGuestId?: string
       if (dm?.[0]?.lang) return String(dm[0].lang)
     }
   } catch { /* Sprach-Erkennung ist best effort */ }
-  return b.guest_lang || 'de'
+  if (b.guest_lang) return b.guest_lang
+  return (await phoneLangFor(b.id)) ?? 'de'
 }
 
 async function guestEmailFor(b: BookingRow): Promise<string | null> {
