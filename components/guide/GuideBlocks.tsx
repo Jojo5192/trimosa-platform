@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { GuideBlock, GuideCtx, GuideLabels } from '@/lib/guide'
 import { blockHasContent } from '@/lib/guide'
 
@@ -38,6 +38,31 @@ function CopyValue({ label, value, labels }: { label: string; value: string; lab
           color: '#fff', fontSize: 12, fontWeight: 700, transition: 'background .15s',
         }}
       >{copied ? labels.copied : labels.copy}</button>
+    </div>
+  )
+}
+
+/** §165: WLAN-QR — Kamera scannen = verbinden (zweites Gerät/Tablet/Laptop;
+ *  ein Web-„Verbinden"-Klick am selben Gerät ist vom OS nicht erlaubt).
+ *  Client-seitig generiert — das Passwort verlässt die Seite nie. */
+function WifiQr({ ssid, password, hint }: { ssid: string; password: string; hint: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    const esc = (v: string) => v.replace(/([\\;,:"])/g, '\\$1')
+    const payload = `WIFI:T:WPA;S:${esc(ssid)};P:${esc(password)};;`
+    import('qrcode')
+      .then((QR) => QR.toDataURL(payload, { width: 320, margin: 1, color: { dark: '#1A1400', light: '#FFFFFF' } }))
+      .then((u) => { if (alive) setUrl(u) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [ssid, password])
+  if (!url) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, borderTop: '1px solid #F0EDE5', paddingTop: 12, marginTop: 4 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="WLAN-QR-Code" style={{ width: 96, height: 96, borderRadius: 10, flexShrink: 0 }} />
+      <span style={{ fontSize: 11.5, color: '#8A8065', lineHeight: 1.55 }}>📷 {hint}</span>
     </div>
   )
 }
@@ -124,6 +149,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                     <CopyValue label={labels.password} value={b.password} labels={labels} />
                   </div>
                 )}
+                {b.ssid && b.password && <WifiQr ssid={b.ssid} password={b.password} hint={labels.wifiQrHint} />}
               </div>
             )
           case 'door':
