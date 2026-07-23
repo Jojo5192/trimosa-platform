@@ -37,7 +37,7 @@ function linkify(text: string | null): React.ReactNode {
   return out.length ? out : text
 }
 
-export default function MappeChat({ token, labels }: { token: string; labels: MappeChatLabels }) {
+export default function MappeChat({ token, labels, lang = 'de' }: { token: string; labels: MappeChatLabels; lang?: string }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[] | null>(null)
   const [draft, setDraft] = useState('')
@@ -48,7 +48,7 @@ export default function MappeChat({ token, labels }: { token: string; labels: Ma
 
   async function load() {
     try {
-      const r = await fetch('/api/mappe/chat?token=' + encodeURIComponent(token), { cache: 'no-store' })
+      const r = await fetch('/api/mappe/chat?token=' + encodeURIComponent(token) + '&lang=' + encodeURIComponent(lang), { cache: 'no-store' })
       if (!r.ok) return
       const { messages } = await r.json()
       const sig = (messages ?? []).map((m: Msg) => m.id).join(',')
