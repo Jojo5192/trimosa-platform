@@ -13,7 +13,7 @@ import OccupancyGrid from '@/components/team/OccupancyGrid'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null; totalPrice?: number | null }
-type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean }
+type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean; assigneeName?: string | null }
 type CalQs = { id: string; listingId: string; dueDate: string }
 type ListingInfo = { title: string; group: string | null }
 
@@ -40,6 +40,11 @@ function fmtShort(iso: string): string {
   return `${Number(d)}.${Number(m)}.`
 }
 
+/** §162: Aufgabe im Aufgaben-Tab öffnen (TeamShell wechselt Tab + fokussiert). */
+function openTask(id: string | null) {
+  window.dispatchEvent(new CustomEvent('trimosa-open-task', { detail: { id } }))
+}
+
 /** Offene Aufgaben, die zu dieser Wohnung passen (direkt oder via Standort). */
 function tasksForListing(tasks: CalTask[], listingId: string, group: string | null): CalTask[] {
   return tasks.filter((t) =>
@@ -53,14 +58,15 @@ function TaskChips({ tasks, max = 3 }: { tasks: CalTask[]; max?: number }) {
   return (
     <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 5, verticalAlign: 'middle' }}>
       {shown.map((t) => (
-        <span key={t.id} style={{
+        <button key={t.id} type="button" onClick={(e) => { e.stopPropagation(); openTask(t.id) }} style={{
           display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
           padding: '3px 9px', borderRadius: 999, background: '#fff', color: '#4A4438',
-          boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.2)',
+          boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.2)', border: 'none', cursor: 'pointer',
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: PRIO_DOT[t.prio] ?? '#9CA3AF', flexShrink: 0 }} />
           {t.title.length > 34 ? t.title.slice(0, 34) + '…' : t.title}
-        </span>
+          {t.assigneeName && <span style={{ color: '#8A7020', fontWeight: 700 }}>· {t.assigneeName}</span>}
+        </button>
       ))}
       {rest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#8A7020' }}>+{rest} weitere</span>}
     </span>
@@ -194,7 +200,7 @@ export default function CalendarPanel() {
   const planningVisible = planning.filter((p) => p.tasks.length > 0)
 
   /* ── Agenda: nur Tage mit Ereignissen (heute bis +56) ── */
-  type Ev = { type: 'abreise' | 'anreise' | 'aufgabe' | 'qs'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[] }
+  type Ev = { type: 'abreise' | 'anreise' | 'aufgabe' | 'qs'; label: string; sub?: string; wechsel?: boolean; gapText?: string; gapTasks?: CalTask[]; taskId?: string | null }
   const days: { iso: string; events: Ev[] }[] = []
   for (let i = 0; i <= 56; i++) {
     const iso = isoOffset(i)
@@ -234,12 +240,14 @@ export default function CalendarPanel() {
     for (const [key, list] of dueByScope) {
       const scope = key.startsWith('g:') ? `📍 ${key.slice(2)}` : key === 'allg' ? 'Allgemein' : listings[key]?.title ?? 'Wohnung'
       if (list.length === 1) {
-        events.push({ type: 'aufgabe', label: list[0].title, sub: scope })
+        const wer = list[0].assigneeName ? `👤 ${list[0].assigneeName}` : '👤 nicht zugewiesen'
+        events.push({ type: 'aufgabe', label: list[0].title, sub: `${scope} · ${wer}`, taskId: list[0].id })
       } else {
         events.push({
           type: 'aufgabe',
           label: `${list.length} Aufgaben fällig · ${scope}`,
-          sub: list.map((t) => t.title).join(' · ').slice(0, 110),
+          sub: list.map((t) => `${t.title}${t.assigneeName ? ` (${t.assigneeName})` : ''}`).join(' · ').slice(0, 140),
+          taskId: list[0].id,
         })
       }
     }
@@ -259,9 +267,10 @@ export default function CalendarPanel() {
       {events.map((e, i) => {
         const meta = EVENT_META[e.type]
         return (
-          <div key={i} style={{
+          <div key={i} onClick={e.taskId ? () => openTask(e.taskId!) : undefined} style={{
             background: '#fff', borderRadius: 14, padding: '10px 13px',
             boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+            cursor: e.taskId ? 'pointer' : 'default',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
               <span style={{
@@ -444,11 +453,16 @@ export default function CalendarPanel() {
               <p style={{ fontSize: 13, fontWeight: 800, color: '#B91C1C', margin: '0 0 8px' }}>⚠︎ Überfällig</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {overdue.map((t) => (
-                  <div key={t.id} style={{
-                    background: '#fff', borderRadius: 14, padding: '11px 14px',
+                  <div key={t.id} onClick={() => openTask(t.id)} style={{
+                    background: '#fff', borderRadius: 14, padding: '11px 14px', cursor: 'pointer',
                     boxShadow: 'inset 0 0 0 1.5px #EF4444', display: 'flex', justifyContent: 'space-between', gap: 10,
                   }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{t.title}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>
+                      {t.title}
+                      <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#8E8E93', marginTop: 1 }}>
+                        👤 {t.assigneeName ?? 'nicht zugewiesen'}
+                      </span>
+                    </span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', flexShrink: 0 }}>seit {fmtShort(t.due_date!)}</span>
                   </div>
                 ))}
