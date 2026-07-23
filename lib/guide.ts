@@ -66,8 +66,10 @@ export interface TimesBlock extends GuideBlockBase { type: 'times'; show?: 'beid
 export interface RulesBlock extends GuideBlockBase { type: 'rules' }
 export interface RegionBlock extends GuideBlockBase { type: 'region' }
 /** §163: frei platzierbarer Gäste-Chat — die Mappe rendert den echten Chat
- *  an dieser Stelle (ohne chat-Block wie bisher am Ende). */
-export interface ChatBlock extends GuideBlockBase { type: 'chat' }
+ *  an dieser Stelle (ohne chat-Block wie bisher am Ende). phone/note werden
+ *  NICHT gespeichert, sondern zur Render-Zeit aus dem Kontakt-Baustein
+ *  angereichert (mergeContactIntoChat, §166: „Kontakt & Chat" = EIN Punkt). */
+export interface ChatBlock extends GuideBlockBase { type: 'chat'; phone?: string; note?: string }
 
 export type GuideBlock =
   | HeadingBlock | TextBlock | InfoBlock | WarningBlock | StepsBlock
@@ -202,6 +204,29 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'region': return !!ctx.regionSlug
     case 'chat': return true
   }
+}
+
+/** §166: Kontakt + Chat = EIN Punkt „Kontakt & Chat". Entfernt alle
+ *  contact-Bausteine; Telefon/Hinweis des ERSTEN wandern in den chat-Block
+ *  (bzw. der erste contact wird selbst zum Chat-Standort, wenn kein
+ *  chat-Baustein existiert). Geteilt zwischen öffentlicher Mappe und
+ *  Builder-Vorschau — beide zeigen exakt dasselbe. */
+export function mergeContactIntoChat(blocks: GuideBlock[]): GuideBlock[] {
+  const contact = blocks.find((b): b is ContactBlock => b.type === 'contact')
+  const hasChat = blocks.some((b) => b.type === 'chat')
+  let first = true
+  return blocks.flatMap((b): GuideBlock[] => {
+    if (b.type === 'chat') {
+      return [contact ? { ...b, phone: contact.phone, note: contact.note } : b]
+    }
+    if (b.type !== 'contact') return [b]
+    const wasFirst = first
+    first = false
+    if (wasFirst && !hasChat) {
+      return [{ id: 'auto-chat', type: 'chat', phase: b.phase, phases: b.phases, minNights: b.minNights, phone: b.phone, note: b.note }]
+    }
+    return []
+  })
 }
 
 /** Alle übersetzbaren Textfelder eines Block-Sets (für makeTr auf der Mappe). */
