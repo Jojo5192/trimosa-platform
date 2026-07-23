@@ -6,7 +6,7 @@ import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
+import { parseGuide, collectGuideTexts, translateBlocks, blockVisibleInPhase, blockForListing, DE_LABELS, type GuideCtx, type GuideLabels, type GuidePhase } from '@/lib/guide'
 import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import MappeChat from '@/components/guide/MappeChat'
@@ -69,7 +69,14 @@ export default async function MappePage({ params, searchParams }: {
     typeof listing.location === 'string' && listing.location.includes(r.locationMatch)
   )
 
-  const blocksDe = parseGuide(listing.guide)
+  // §150 Pool-Modell: Der gemeinsame Baustein-Pool (app_settings
+  // 'guide_global') gewinnt, sobald er für DIESE Wohnung Bausteine enthält;
+  // sonst greift weiter die alte Wohnungs-Mappe (sanfte Migration).
+  const { data: poolRow } = await supabaseAdmin
+    .from('app_settings').select('value').eq('key', 'guide_global').maybeSingle()
+  const poolForListing = parseGuide(poolRow?.value)
+    .filter((b) => blockForListing(b, String(booking.listing_id)))
+  const blocksDe = poolForListing.length ? poolForListing : parseGuide(listing.guide)
 
   // ── Türcode-Automatik (§132): Code on-demand erzeugen, sobald das
   //    Anzeige-Fenster erreicht ist (deckt kurzfristige Buchungen ohne
@@ -176,10 +183,9 @@ export default async function MappePage({ params, searchParams }: {
       {/* Kopf */}
       <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '34px 20px 28px' }}>
         <div style={{ maxWidth: 560, margin: '0 auto' }}>
-          <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--gold, #AE8D2D)', letterSpacing: '0.02em', marginBottom: 16 }}>
-            TRIMOSA
-            <span style={{ display: 'block', fontSize: 7.5, fontWeight: 400, color: '#B9B2A4', letterSpacing: '0.2em', marginTop: 2 }}>APARTMENTS &amp; HOMES</span>
-          </div>
+          {/* §150: echtes Logo statt Text-Wortmarke */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="TRIMOSA Apartments & Homes" style={{ height: 46, width: 'auto', maxWidth: '60%', display: 'block', marginBottom: 16 }} />
           <h1 style={{ margin: '0 0 6px', fontSize: 25, fontWeight: 800, color: '#F5F0E8', letterSpacing: '-0.3px' }}>
             {firstName ? `${ui.hallo} ${firstName}! 👋` : ui.untitled}
           </h1>
