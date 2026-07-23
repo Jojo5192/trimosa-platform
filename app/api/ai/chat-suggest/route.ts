@@ -58,13 +58,13 @@ export async function POST(request: Request) {
   const historyQuery = typeof bookingId === 'string'
     ? supabaseAdmin
         .from('messages')
-        .select('sender_id, sender_type, content, created_at')
+        .select('sender_id, sender_type, content, content_de, created_at')
         .eq('booking_id', bookingId)
         .order('created_at', { ascending: false })
         .limit(12)
     : supabaseAdmin
         .from('messages')
-        .select('sender_id, sender_type, content, created_at')
+        .select('sender_id, sender_type, content, content_de, created_at')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
         .limit(12)
@@ -83,7 +83,11 @@ export async function POST(request: Request) {
       const fromHost = m.sender_type
         ? m.sender_type !== 'guest'
         : m.sender_id === conv.host_id
-      return `${fromHost ? 'GASTGEBER' : 'GAST'}: ${m.content.slice(0, 600)}`
+      // Deutsche Fassung bevorzugen: ein fremdsprachiger Original-Verlauf
+      // zieht das Modell sonst trotz "IMMER auf Deutsch"-Regel in die
+      // Gastsprache (§162-Bugfix, Edwina/fr)
+      const text = (m as { content_de?: string | null }).content_de || m.content
+      return `${fromHost ? 'GASTGEBER' : 'GAST'}: ${text.slice(0, 600)}`
     })
     .join('\n')
   if (!history) return NextResponse.json({ error: 'Noch keine Nachrichten.' }, { status: 400 })
