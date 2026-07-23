@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
-  blockVisibleInPhase, DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
+  blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import AiPolishButton from '@/components/AiPolishButton'
@@ -59,10 +59,10 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
   // Vorschau: nur aktive Bausteine der Vorschau-Wohnung (+ Phasen-Filter;
   // nights=99, damit „ab X Nächten"-Bausteine die Phasen-Vorschau nicht stören)
   const previewBlocks = useMemo(
-    () => blocks.filter((b) =>
+    () => mergeContactIntoChat(blocks.filter((b) =>
       !b.disabled
       && (!previewListing || blockForListing(b, previewListing.id))
-      && (previewPhase === 'alle' || blockVisibleInPhase(b, previewPhase, 99))),
+      && (previewPhase === 'alle' || blockVisibleInPhase(b, previewPhase, 99)))),
     [blocks, previewListing, previewPhase],
   )
 
