@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, DE_LABELS, type GuideBlock, type GuideCtx,
+  BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
+  DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import AiPolishButton from '@/components/AiPolishButton'
@@ -27,10 +28,11 @@ function fmtD(iso: string): string {
   return `${d}.${m}.${y.slice(2)}`
 }
 
-export default function MappeBuilder({ listings }: { listings: BuilderListing[] }) {
-  const [listingId, setListingId] = useState(listings[0]?.id ?? '')
-  const current = useMemo(() => listings.find((l) => l.id === listingId), [listings, listingId])
-  const [blocks, setBlocks] = useState<GuideBlock[]>(current?.blocks ?? [])
+export default function MappeBuilder({ listings, pool }: { listings: BuilderListing[]; pool: GuideBlock[] }) {
+  // §150 Pool-Modell: EIN Baustein-Bestand für alle Wohnungen; `filter`
+  // steuert, welche Wohnung in Liste + Vorschau gezeigt wird ('' = alle).
+  const [blocks, setBlocks] = useState<GuideBlock[]>(pool)
+  const [filter, setFilter] = useState(listings[0]?.id ?? '')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -39,33 +41,46 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
   const [links, setLinks] = useState<MappeLink[]>([])
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
-  // Wohnungswechsel: Blöcke der neuen Wohnung laden (ungespeicherte Änderungen verwerfen nach Rückfrage)
-  function switchListing(id: string) {
-    if (dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) return
-    setListingId(id)
-    const next = listings.find((l) => l.id === id)
-    setBlocks(next?.blocks ?? [])
-    setDirty(false)
-    setError(null)
-  }
+  // Vorschau-Wohnung: der Filter (bzw. die erste Wohnung bei „Alle")
+  const previewListing = useMemo(
+    () => listings.find((l) => l.id === filter) ?? listings[0],
+    [listings, filter],
+  )
+  const linksListingId = previewListing?.id ?? ''
+
+  // Sichtbare Bausteine in der Liste (Filter nach Wohnung)
+  const visibleBlocks = useMemo(
+    () => (filter ? blocks.filter((b) => blockForListing(b, filter)) : blocks),
+    [blocks, filter],
+  )
+  // Vorschau: nur aktive Bausteine der Vorschau-Wohnung
+  const previewBlocks = useMemo(
+    () => blocks.filter((b) => !b.disabled && (!previewListing || blockForListing(b, previewListing.id))),
+    [blocks, previewListing],
+  )
 
   useEffect(() => {
-    if (!listingId) return
-    fetch(`/api/mappe-links?listingId=${listingId}`, { cache: 'no-store' })
+    if (!linksListingId) return
+    fetch(`/api/mappe-links?listingId=${linksListingId}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { bookings: [] }))
       .then((d) => setLinks(d.bookings ?? []))
       .catch(() => setLinks([]))
-  }, [listingId])
+  }, [linksListingId])
 
   function update(id: string, patch: Partial<GuideBlock>) {
     setBlocks((bs) => bs.map((b) => (b.id === id ? ({ ...b, ...patch } as GuideBlock) : b)))
     setDirty(true)
   }
+  /** Verschieben innerhalb der SICHTBAREN Liste (Filter!) — getauscht wird
+   *  mit dem sichtbaren Nachbarn, Positionen im Gesamt-Pool. */
   function move(id: string, dir: -1 | 1) {
     setBlocks((bs) => {
+      const vis = filter ? bs.filter((b) => blockForListing(b, filter)) : bs
+      const vi = vis.findIndex((b) => b.id === id)
+      const partner = vis[vi + dir]
+      if (vi < 0 || !partner) return bs
       const i = bs.findIndex((b) => b.id === id)
-      const j = i + dir
-      if (i < 0 || j < 0 || j >= bs.length) return bs
+      const j = bs.findIndex((b) => b.id === partner.id)
       const copy = [...bs]
       ;[copy[i], copy[j]] = [copy[j], copy[i]]
       return copy
@@ -77,25 +92,41 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
     setDirty(true)
   }
   function add(type: GuideBlock['type']) {
-    setBlocks((bs) => [...bs, emptyBlock(type)])
+    // Neuer Baustein übernimmt den aktiven Wohnungs-Filter als Vorbelegung
+    const nb = emptyBlock(type)
+    if (filter) nb.listingIds = [filter]
+    setBlocks((bs) => [...bs, nb])
     setPaletteOpen(false)
     setDirty(true)
   }
 
+  /** Einmal-Import: bestehende Wohnungs-Mappen in den Pool übernehmen
+   *  (je Baustein der Wohnung zugeordnet — danach im Pool konsolidierbar). */
+  function importLegacy() {
+    const imported: GuideBlock[] = []
+    for (const l of listings) {
+      for (const b of l.blocks) {
+        imported.push({ ...b, id: newBlockId(), listingIds: [l.id] } as GuideBlock)
+      }
+    }
+    if (!imported.length) return
+    setBlocks(imported)
+    setDirty(true)
+  }
+  const hasLegacy = listings.some((l) => l.blocks.length > 0)
+
   async function save() {
-    if (!current) return
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch(`/api/listings/${current.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guide: { blocks } }),
+      const res = await fetch('/api/guide-global', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocks }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.error || `HTTP ${res.status}`)
       }
-      current.blocks = blocks
       setDirty(false)
       setSavedAt(Date.now())
       setTimeout(() => setSavedAt(null), 2500)
@@ -106,20 +137,30 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
     }
   }
 
-  if (!current) return <p style={{ color: '#777', fontSize: 14 }}>Keine aktiven Inserate gefunden.</p>
+  if (!previewListing) return <p style={{ color: '#777', fontSize: 14 }}>Keine aktiven Inserate gefunden.</p>
 
   return (
     <div>
-      {/* Kopfzeile: Wohnungswahl + Speichern */}
+      {/* Kopfzeile: Wohnungs-Filter (Liste + Vorschau) + Speichern */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
-        <select value={listingId} onChange={(e) => switchListing(e.target.value)} style={{ ...INPUT, width: 'auto', minWidth: 220, fontWeight: 600 }}>
+        <span style={{ fontSize: 12, color: '#888' }}>Filter &amp; Vorschau:</span>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...INPUT, width: 'auto', minWidth: 220, fontWeight: 600 }}>
+          <option value="">🌐 Alle Bausteine</option>
           {listings.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
         </select>
         {blocks.length === 0 && (
-          <button type="button" onClick={() => { setBlocks(defaultTemplate()); setDirty(true) }} style={{
-            padding: '9px 16px', borderRadius: 999, border: '1.5px solid var(--gold)', background: '#fff',
-            color: '#8A7020', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-          }}>✨ Standard-Vorlage laden</button>
+          <>
+            {hasLegacy && (
+              <button type="button" onClick={importLegacy} style={{
+                padding: '9px 16px', borderRadius: 999, border: 'none', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+              }}>📥 Bestehende Wohnungs-Mappen übernehmen</button>
+            )}
+            <button type="button" onClick={() => { setBlocks(defaultTemplate()); setDirty(true) }} style={{
+              padding: '9px 16px', borderRadius: 999, border: '1.5px solid var(--gold)', background: '#fff',
+              color: '#8A7020', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+            }}>✨ Standard-Vorlage laden</button>
+          </>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {savedAt && <span style={{ fontSize: 12.5, fontWeight: 700, color: '#16A34A' }}>✓ Gespeichert</span>}
@@ -140,10 +181,17 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
       <div className="mappe-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 24, alignItems: 'start' }}>
         {/* ── Linke Spalte: Blöcke ── */}
         <div>
+          {filter && visibleBlocks.length < blocks.length && (
+            <p style={{ fontSize: 11.5, color: '#A8A292', margin: '0 0 8px' }}>
+              Gefiltert: {visibleBlocks.length} von {blocks.length} Bausteinen gelten für {previewListing.title} —
+              „🌐 Alle Bausteine" zeigt den kompletten Bestand.
+            </p>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {blocks.map((b, i) => (
+            {visibleBlocks.map((b, i) => (
               <BlockEditor
-                key={b.id} block={b} index={i} total={blocks.length}
+                key={b.id} block={b} index={i} total={visibleBlocks.length}
+                listings={listings}
                 onChange={(patch) => update(b.id, patch)}
                 onMove={(dir) => move(b.id, dir)}
                 onRemove={() => remove(b.id)}
@@ -223,22 +271,23 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
         {/* ── Rechte Spalte: Live-Vorschau ── */}
         <div style={{ position: 'sticky', top: 100 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: '#A8A292', marginBottom: 8, textAlign: 'center' }}>
-            LIVE-VORSCHAU · SO SIEHT ES DEIN GAST
+            LIVE-VORSCHAU · {previewListing.title.toUpperCase()}
           </div>
           <div style={{ borderRadius: 34, background: '#2B2F33', padding: 7, boxShadow: '0 14px 44px rgba(0,0,0,0.18)' }}>
             <div style={{ borderRadius: 28, overflow: 'hidden', background: '#F5F3EE', height: 620, overflowY: 'auto' }}>
-              <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '22px 16px 18px' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--gold)', marginBottom: 9 }}>TRIMOSA</div>
+              <div style={{ background: 'linear-gradient(160deg, #12222E 0%, #172A22 100%)', padding: '20px 16px 16px' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.png" alt="TRIMOSA" style={{ height: 32, width: 'auto', maxWidth: '60%', display: 'block', marginBottom: 10 }} />
                 <div style={{ fontSize: 18, fontWeight: 800, color: '#F5F0E8' }}>Hallo Anna! 👋</div>
                 <div style={{ fontSize: 11.5, color: 'rgba(245,240,232,0.7)', marginTop: 3 }}>
-                  Dein Aufenthalt im <strong style={{ color: '#E3C878' }}>{current.ctx.listingTitle}</strong>
+                  Dein Aufenthalt im <strong style={{ color: '#E3C878' }}>{previewListing.ctx.listingTitle}</strong>
                 </div>
               </div>
               <div style={{ padding: '16px 12px 30px' }}>
-                <GuideBlocks blocks={blocks} ctx={current.ctx} labels={DE_LABELS} preview />
-                {blocks.length === 0 && (
+                <GuideBlocks blocks={previewBlocks} ctx={previewListing.ctx} labels={DE_LABELS} preview />
+                {previewBlocks.length === 0 && (
                   <p style={{ fontSize: 12.5, color: '#A8A292', textAlign: 'center', marginTop: 30, lineHeight: 1.6 }}>
-                    Noch keine Bausteine.<br />Lade links die Standard-Vorlage oder füge Bausteine hinzu.
+                    Keine aktiven Bausteine für diese Wohnung.<br />Füge Bausteine hinzu oder ordne bestehende zu.
                   </p>
                 )}
               </div>
@@ -251,16 +300,72 @@ export default function MappeBuilder({ listings }: { listings: BuilderListing[] 
   )
 }
 
+/* ── Foto-Kompression (Task-Foto-Muster §89) ── */
+async function compressToJpeg(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const max = 1600
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bmp.width * scale)
+    canvas.height = Math.round(bmp.height * scale)
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    return await new Promise<Blob>((res) => canvas.toBlob((b) => res(b ?? file), 'image/jpeg', 0.82))
+  } catch {
+    return file
+  }
+}
+
 /* ── Einzelner Block im Editor ── */
-function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
+function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove }: {
   block: GuideBlock
   index: number
   total: number
+  listings: { id: string; title: string }[]
   onChange: (patch: Partial<GuideBlock>) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
 }) {
   const meta = BLOCK_META[block.type]
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
+
+  async function uploadImage(file: File) {
+    setUploadBusy(true)
+    setUploadErr('')
+    try {
+      const blob = await compressToJpeg(file)
+      const fd = new FormData()
+      fd.append('file', new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' }))
+      const res = await fetch('/api/guide-image', { method: 'POST', body: fd })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      onChange({ url: d.url } as Partial<GuideBlock>)
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  // §150: Mehrfach-Phasen (leer = immer) + Wohnungs-Zuordnung (leer = alle)
+  const activePhases = blockPhases(block)
+  function togglePhase(p: GuidePhase) {
+    if (p === 'immer') { onChange({ phases: undefined, phase: undefined } as Partial<GuideBlock>); return }
+    const set = new Set(activePhases)
+    const key = p as Exclude<GuidePhase, 'immer'>
+    if (set.has(key)) set.delete(key)
+    else set.add(key)
+    onChange({
+      phases: set.size > 0 && set.size < 3 ? [...set] : undefined,
+      phase: undefined,
+    } as Partial<GuideBlock>)
+  }
+  function toggleListing(id: string) {
+    const cur = block.listingIds ?? []
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    onChange({ listingIds: next.length > 0 && next.length < listings.length ? next : undefined } as Partial<GuideBlock>)
+  }
   const btn: React.CSSProperties = {
     width: 26, height: 26, borderRadius: 8, border: '1px solid #E5E1D6', background: '#fff',
     cursor: 'pointer', fontSize: 12, color: '#777', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -277,13 +382,25 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
     else onChange({ text: v } as Partial<GuideBlock>)
   }
   return (
-    <div style={{ border: '1px solid #E5E1D6', borderRadius: 14, background: '#fff', padding: '12px 14px' }}>
+    <div style={{
+      border: block.disabled ? '1px dashed #D8D2C4' : '1px solid #E5E1D6', borderRadius: 14,
+      background: '#fff', padding: '12px 14px', opacity: block.disabled ? 0.55 : 1,
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: meta.smart ? 0 : 10 }}>
         <span style={{ fontSize: 15 }}>{meta.icon}</span>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: '#333', flex: 1 }}>
           {meta.label}
+          {block.disabled && <span style={{ fontWeight: 700, color: '#B45309', marginLeft: 8, fontSize: 11 }}>⏸ pausiert</span>}
           {meta.smart && <span style={{ fontWeight: 400, color: '#A8A292', marginLeft: 8, fontSize: 11.5 }}>befüllt sich aus dem Inserat</span>}
         </span>
+        {/* Aktiv/Inaktiv (§150) */}
+        <button type="button" onClick={() => onChange({ disabled: block.disabled ? undefined : true } as Partial<GuideBlock>)}
+          title={block.disabled ? 'Baustein aktivieren' : 'Baustein pausieren'} style={{
+            width: 40, height: 22, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative',
+            background: block.disabled ? '#D1D1D6' : '#34C759', transition: 'background .15s', flexShrink: 0,
+          }}>
+          <span style={{ position: 'absolute', top: 2, left: block.disabled ? 2 : 20, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+        </button>
         <button type="button" style={{ ...btn, opacity: index === 0 ? 0.35 : 1 }} disabled={index === 0} onClick={() => onMove(-1)} title="Nach oben">↑</button>
         <button type="button" style={{ ...btn, opacity: index === total - 1 ? 0.35 : 1 }} disabled={index === total - 1} onClick={() => onMove(1)} title="Nach unten">↓</button>
         <button type="button" style={{ ...btn, color: '#DC2626' }} onClick={onRemove} title="Entfernen">✕</button>
@@ -337,6 +454,26 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
           <textarea style={{ ...INPUT, resize: 'vertical' }} rows={2} placeholder="Hinweis (z. B. wann ihr erreichbar seid)" value={block.note} onChange={(e) => onChange({ note: e.target.value })} />
         </div>
       )}
+      {block.type === 'image' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {block.url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={block.url} alt={block.caption || 'Foto'} style={{ width: '100%', maxWidth: 320, height: 'auto', borderRadius: 12, display: 'block' }} />
+          )}
+          <label style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start',
+            padding: '8px 15px', borderRadius: 999, border: '1.5px solid var(--gold)', background: '#fff',
+            color: '#8A7020', fontSize: 12, fontWeight: 700, cursor: uploadBusy ? 'wait' : 'pointer',
+            opacity: uploadBusy ? 0.6 : 1,
+          }}>
+            {uploadBusy ? '⏳ Lädt hoch…' : block.url ? '🔄 Foto ersetzen' : '📷 Foto hochladen'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = '' }} />
+          </label>
+          {uploadErr && <span style={{ fontSize: 11.5, color: '#B91C1C' }}>⚠️ {uploadErr}</span>}
+          <input style={INPUT} placeholder="Bildunterschrift (optional, z. B. „Dein Parkplatz — Nr. 3")" value={block.caption} onChange={(e) => onChange({ caption: e.target.value })} />
+        </div>
+      )}
 
       {aiText !== null && (
         <AiPolishButton
@@ -350,14 +487,14 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
         />
       )}
 
-      {/* §136: Sichtbarkeits-Phase je Baustein + optional Mindest-Nächte */}
+      {/* §136/§150: Sichtbarkeits-Phasen (MEHRFACH wählbar) + Mindest-Nächte */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', color: '#A8A292' }}>⏰ SICHTBAR:</span>
         {PHASE_META.map((p) => {
-          const active = (block.phase ?? 'immer') === p.id
+          const active = p.id === 'immer' ? activePhases.length === 0 : activePhases.includes(p.id as Exclude<GuidePhase, 'immer'>)
           return (
-            <button key={p.id} type="button" title={p.label}
-              onClick={() => onChange({ phase: p.id === 'immer' ? undefined : p.id } as Partial<GuideBlock>)}
+            <button key={p.id} type="button" title={p.id === 'immer' ? p.label : `${p.label} (kombinierbar)`}
+              onClick={() => togglePhase(p.id)}
               style={{
                 padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
                 border: active ? '1px solid transparent' : '1px solid #E5E1D6',
@@ -377,6 +514,28 @@ function BlockEditor({ block, index, total, onChange, onMove, onRemove }: {
           style={{ width: 44, border: '1px solid #E5E1D6', borderRadius: 8, padding: '3px 6px', fontSize: 11.5, textAlign: 'center' }}
         />
         <span style={{ fontSize: 11, color: '#A8A292' }}>Nächten</span>
+      </div>
+
+      {/* §150: Wohnungs-Zuordnung je Baustein (leer = alle Wohnungen) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', color: '#A8A292' }}>🏠 GILT FÜR:</span>
+        <button type="button" onClick={() => onChange({ listingIds: undefined } as Partial<GuideBlock>)} style={{
+          padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
+          border: !block.listingIds?.length ? '1px solid transparent' : '1px solid #E5E1D6',
+          background: !block.listingIds?.length ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+          color: !block.listingIds?.length ? '#fff' : '#8A857B',
+        }}>Alle</button>
+        {listings.map((l) => {
+          const on = (block.listingIds ?? []).includes(l.id)
+          return (
+            <button key={l.id} type="button" onClick={() => toggleListing(l.id)} style={{
+              padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
+              border: on ? '1px solid transparent' : '1px solid #E5E1D6',
+              background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+              color: on ? '#fff' : '#8A857B',
+            }}>{l.title}</button>
+          )
+        })}
       </div>
     </div>
   )
