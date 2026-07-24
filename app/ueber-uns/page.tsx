@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang, type UiLang } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 import { getHostTeam } from '@/lib/hosts'
@@ -16,19 +17,33 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.
 export const revalidate = 3600
 export const maxDuration = 120
 
-export const metadata: Metadata = {
-  // Layout-Template hängt „| TRIMOSA" an — Marke hier nicht doppeln
-  title: 'Über uns — drei Freunde, eine Region',
-  description:
-    'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar. TRI·MO·SA — unser Name ist unsere Heimat. Lerne uns kennen.',
-  alternates: { canonical: `${siteUrl}/ueber-uns` },
-  openGraph: {
-    title: 'Über uns — TRIMOSA Apartments & Homes',
-    description: 'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar.',
-    url: `${siteUrl}/ueber-uns`,
-    images: [{ url: `${siteUrl}/og.jpg` }],
-  },
-  twitter: { card: 'summary_large_image' },
+// §173-Jupas ④ Etappe 2: metadata → generateMetadata (Sprachpfad-Variante)
+const META_TITLE = 'Über uns — drei Freunde, eine Region'
+const META_DESC = 'Drei Freunde, eine Idee: moderne Ferienwohnungen in Trier, an Mosel, Sauer und Saar. TRI·MO·SA — unser Name ist unsere Heimat. Lerne uns kennen.'
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}): Promise<Metadata> {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : 'de'
+  const tr = await makeTr(lang, lang === 'de' ? [] : [META_TITLE, META_DESC])
+  const path = '/ueber-uns'
+  const languages = {
+    de: `${siteUrl}${path}`,
+    en: `${siteUrl}/en${path}`, fr: `${siteUrl}/fr${path}`, nl: `${siteUrl}/nl${path}`,
+    'x-default': `${siteUrl}${path}`,
+  }
+  return {
+    // Layout-Template hängt „| TRIMOSA" an — Marke hier nicht doppeln
+    title: tr(META_TITLE),
+    description: tr(META_DESC),
+    alternates: { canonical: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`, languages },
+    openGraph: {
+      title: tr(META_TITLE),
+      description: tr(META_DESC),
+      url: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`,
+      images: [{ url: `${siteUrl}/og.jpg` }],
+    },
+    twitter: { card: 'summary_large_image' },
+  }
 }
 
 const HERO_TEXT = 'TRIMOSA ist ein junges, regional verwurzeltes Unternehmen aus der Region Trier. Was mit einer gemeinsamen Leidenschaft für Immobilien und Gastfreundschaft begann, sind heute moderne Ferienwohnungen zwischen Mosel und Eifel — jede einzelne handverlesen, frisch renoviert und persönlich eingerichtet.'
@@ -45,8 +60,9 @@ const VALUES = [
   { emoji: '🥾', title: 'Entdecken', text: 'Wir sind hier aufgewachsen: Von der Mosel bis zur Teufelsschlucht geben wir euch unsere Lieblingsorte mit — ohne Umwege über Reiseführer-Floskeln.' },
 ]
 
-export default async function UeberUnsPage() {
-  const lang = await getUiLang()
+export default async function UeberUnsPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
   const FOUNDERS = await getHostTeam()
   const T = await makeTr(lang, lang === 'de' ? [] : [
     ...VALUES.flatMap((v) => [v.title, v.text]),
