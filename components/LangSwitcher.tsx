@@ -8,6 +8,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { UI_COOKIE, UI_LANGS, UI_LANG_META, isUiLang, type UiLang } from '@/lib/i18n'
 
+/** Pfad-Variante der aktuellen Seite in Zielsprache — null, wenn die Seite
+ *  (noch) keine Sprachpfade hat (Gastbereich, Team-App, Rechtsseiten …). */
+function langPath(pathname: string, target: UiLang): string | null {
+  let path = pathname
+  const m = path.match(/^\/(en|fr|nl)(\/|$)/)
+  if (m) path = path.slice(m[1].length + 1) || '/'
+  const supported = path === '/' || path === '/ueber-uns' || path === '/faq'
+    || /^\/(listing|region|erlebnis)\//.test(path)
+  if (!supported) return null
+  if (target === 'de') return path
+  return `/${target}${path === '/' ? '' : path}`
+}
+
 export default function LangSwitcher({ lang = 'de', compact = false }: { lang?: UiLang; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const [cur, setCur] = useState<UiLang>(lang)
@@ -29,7 +42,12 @@ export default function LangSwitcher({ lang = 'de', compact = false }: { lang?: 
   function choose(l: UiLang) {
     document.cookie = `${UI_COOKIE}=${l}; path=/; max-age=31536000; samesite=lax`
     setOpen(false)
-    window.location.reload()
+    // §173-Jupas ④ Etappe 3: Auf Seiten MIT Sprachpfad-Struktur zur
+    // Pfad-Variante navigieren (SEO-URLs, konsistente Canonicals) —
+    // sonst wie bisher Cookie + Reload.
+    const target = langPath(window.location.pathname, l)
+    if (target) window.location.href = target + window.location.search
+    else window.location.reload()
   }
 
   return (
