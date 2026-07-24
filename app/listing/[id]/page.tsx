@@ -192,18 +192,42 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
       reviewBody: (r.review_text ?? '').slice(0, 500),
     }))
 
+  // §167b: Google-„Ferienunterkunft"-Pflichtfelder (Rich-Results-Test:
+  // identifier/geo/containsPlace waren kritisch) — Bilder fürs JSON-LD aus
+  // Galerie + Zimmern kombiniert (≥8 empfohlen), Straße/PLZ aus der Adresse
+  const jsonLdImages = [...new Set([...images, ...roomsRaw.flatMap((r) => r.images)])]
+  const addrStr = String(listing.address ?? '')
+  const streetAddress = addrStr.split(',')[0]?.trim() || undefined
+  const postalCode = addrStr.match(/\b(\d{5})\b/)?.[1]
+  const geoLat = listing.latitude != null ? Number(listing.latitude) : null
+  const geoLon = listing.longitude != null ? Number(listing.longitude) : null
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'VacationRental',
+    identifier: String(listing.slug ?? listing.id),
     name: listing.title,
     description: listing.description || undefined,
     url: `${siteUrl}/listing/${listing.slug ?? listing.id}`,
-    image: allImagesFlat.length > 0 ? allImagesFlat : undefined,
+    image: jsonLdImages.length > 0 ? jsonLdImages : undefined,
     address: {
       '@type': 'PostalAddress',
+      streetAddress,
+      postalCode,
       addressLocality: displayCity,
       addressCountry: 'DE',
     },
+    ...(geoLat != null && geoLon != null && (geoLat !== 0 || geoLon !== 0) ? {
+      geo: { '@type': 'GeoCoordinates', latitude: geoLat, longitude: geoLon },
+    } : {}),
+    containsPlace: {
+      '@type': 'Accommodation',
+      occupancy: { '@type': 'QuantitativeValue', value: listing.max_guests ?? undefined },
+      numberOfBedrooms: listing.bedrooms ?? undefined,
+      numberOfBathroomsTotal: listing.bathrooms ?? 1,
+    },
+    checkinTime: listing.check_in_time || undefined,
+    checkoutTime: listing.check_out_time || undefined,
     numberOfRooms: listing.bedrooms,
     petsAllowed: listing.rule_pets_allowed ?? undefined,
     ...(listingRating ? {
