@@ -444,7 +444,7 @@ addTranslations({
   'Inserat ansehen ↗': ['View listing ↗', 'Voir l’annonce ↗', 'Advertentie bekijken ↗'],
   'ab': ['from', 'dès', 'vanaf'],
   'Barrierefreiheit': ['Accessibility', 'Accessibilité', 'Toegankelijkheid'],
-  'Auf den Portalen': ['On the portals', 'Sur les portails', 'Op de portalen'],
+  'Durchschnittlicher Portalpreis': ['Average portal price', 'Prix moyen sur les portails', 'Gemiddelde portaalprijs'],
   'Stornierung': ['Cancellation', 'Annulation', 'Annulering'],
   'Häufige Fragen': ['Frequently asked questions', 'Questions fréquentes', 'Veelgestelde vragen'],
   'Alles Wichtige zu Buchung, Anreise und Aufenthalt — und wenn etwas fehlt, schreib uns einfach über den Chat.': ['Everything you need to know about booking, arrival and your stay — and if anything is missing, just message us in the chat.', 'Tout ce qu’il faut savoir sur la réservation, l’arrivée et le séjour — et s’il manque quelque chose, écrivez-nous simplement via le chat.', 'Alles over boeken, aankomst en je verblijf — en mis je iets, stuur ons gewoon een bericht via de chat.'],
