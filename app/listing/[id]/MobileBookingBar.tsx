@@ -7,9 +7,11 @@ import { t, type UiLang } from '@/lib/i18n'
 interface Props {
   pricePerNight: number
   lang?: UiLang
+  /** §161-Jupas ②: günstigster Nachtpreis der nächsten 90 Tage (Cache) */
+  priceFrom?: number | null
 }
 
-export default function MobileBookingBar({ pricePerNight, lang = 'de' }: Props) {
+export default function MobileBookingBar({ pricePerNight, lang = 'de', priceFrom = null }: Props) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
@@ -70,6 +72,17 @@ export default function MobileBookingBar({ pricePerNight, lang = 'de' }: Props) 
           <>
             <div>
               <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
+              <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ {t(lang, 'Nacht')}</span>
+            </div>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#16A34A', whiteSpace: 'nowrap' }}>
+              🏷️ {t(lang, 'Bestpreis-Garantie')}
+            </span>
+          </>
+        ) : priceFrom ? (
+          <>
+            <div>
+              <span style={{ fontSize: '11px', color: '#6E6E73', marginRight: '3px' }}>{t(lang, 'ab')}</span>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#111' }}>€ {priceFrom}</span>
               <span style={{ fontSize: '11px', color: '#6E6E73', marginLeft: '3px' }}>/ {t(lang, 'Nacht')}</span>
             </div>
             <span style={{ fontSize: '10px', fontWeight: 700, color: '#16A34A', whiteSpace: 'nowrap' }}>
