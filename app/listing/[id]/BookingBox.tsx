@@ -332,6 +332,11 @@ export default function BookingBox({
             <span style={{ fontSize: '14px', fontWeight: 600, color: '#6E6E73' }}>{t(lang, 'ab')}</span>
             <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {priceFrom}</span>
             <span style={{ fontSize: '13px', color: '#999' }}>/ {t(lang, 'Nacht')}</span>
+            {/* Portal-Vergleich (§168b): Portale bepreisen mit Aufschlag —
+                ~7 % = konservative Mitte der realen 5-10-%-Spanne */}
+            <span style={{ fontSize: '13px', color: '#B0B0B5', textDecoration: 'line-through', marginLeft: '4px' }}>
+              ~€ {Math.round(priceFrom * 1.07)}
+            </span>
           </>
         ) : (
           <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>{t(lang, 'Zeitraum eingeben für Preisangabe')}</span>
@@ -356,7 +361,7 @@ export default function BookingBox({
         {bppOpen && (
           <div style={{ padding: '0 12px 10px' }}>
             <p style={{ fontSize: '11.5px', color: '#166534', lineHeight: 1.55, margin: '0 0 6px' }}>
-              {t(lang, 'Auf trimosa.de zahlst du keine Vermittlungs- und Servicegebühren. Dieselbe Wohnung kostet dich zum selben Zeitraum auf Airbnb, Booking.com oder FeWo-direkt mehr — du buchst hier direkt bei uns Gastgebern.')}
+              {t(lang, 'Auf trimosa.de zahlst du keine Vermittlungs- und Servicegebühren: Dieselbe Wohnung kostet dich zum selben Zeitraum auf Airbnb, Booking.com oder FeWo-direkt im Schnitt 5–10 % mehr — du buchst hier direkt bei uns Gastgebern.')}
             </p>
             <p style={{ fontSize: '11.5px', color: '#166534', lineHeight: 1.55, margin: 0, fontWeight: 600 }}>
               {t(lang, 'Findest du denselben Zeitraum dort trotzdem günstiger, gleichen wir den Preis an — schreib uns einfach.')}
