@@ -10,6 +10,7 @@ export interface MapListing {
   lat: number
   lon: number
   price: number        // per night
+  priceFrom?: number   // §161: „ab X €" ohne Datumswahl
   totalPrice?: number  // for the searched period
   nights?: number
   image?: string       // cover image for the popup
@@ -216,7 +217,11 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
                <span style="font-size:11px;color:#888;margin-left:3px">gesamt · ${listing.nights} Nächte</span>`
             : `<span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${displayPrice}</span>
                <span style="font-size:11px;color:#888;margin-left:3px">${t(lang, '/Nacht')}</span>`
-          : `<span style="font-size:12px;font-weight:500;color:#888">${t(lang, 'Preis auf Anfrage')}</span>`
+          : (listing.priceFrom ?? 0) > 0
+            ? `<span style="font-size:11px;color:#888;margin-right:3px">${t(lang, 'ab')}</span>
+               <span style="font-size:15px;font-weight:800;color:var(--gold)">€\u202F${listing.priceFrom}</span>
+               <span style="font-size:11px;color:#888;margin-left:3px">${t(lang, '/Nacht')}</span>`
+            : `<span style="font-size:12px;font-weight:500;color:#888">${t(lang, 'Preis auf Anfrage')}</span>`
 
         const imageHeader = listing.image
           ? `<div style="width:100%;height:132px;overflow:hidden;background:#EDEBE4">
