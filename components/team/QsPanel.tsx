@@ -9,7 +9,7 @@
  *    PDF server-seitig. Overlay via createPortal(body) — position:fixed darf
  *    auf iOS NIE in einem Touch-Scroller leben (§83-Lektion).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { QsSection, QsReport, QsItemValue } from '@/lib/qs'
 
@@ -64,6 +64,8 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
   const [moveFor, setMoveFor] = useState<string | null>(null)
   const [moveDate, setMoveDate] = useState('')
   const [moving, setMoving] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const expandTouched = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -105,11 +107,38 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
   const done = checks.filter((c) => c.status === 'erledigt' && matchesPerson(c))
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
     .slice(0, 3)
+  const overdueCount = planned.filter((c) => c.dueDate < today).length
+  // §175: Block ist standardmäßig EINGEKLAPPT (nahm sonst den ganzen Aufgaben-
+  // Tab ein) — überfällige Checks klappen ihn einmalig automatisch auf.
+  useEffect(() => {
+    if (overdueCount > 0 && !expandTouched.current) setExpanded(true)
+  }, [overdueCount])
   if (!planned.length && !done.length) return null
+
+  const next = [...planned].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0]
 
   return (
     <div style={{ padding: '12px 16px 0' }}>
-      <p style={{ fontSize: 13, fontWeight: 800, color: TEAL, margin: '0 0 8px' }}>🧾 Qualitätssicherung</p>
+      <button onClick={() => { expandTouched.current = true; setExpanded((e) => !e) }} style={{
+        width: '100%', border: 'none', cursor: 'pointer', textAlign: 'left',
+        background: expanded ? 'transparent' : TEAL_BG,
+        borderRadius: 14, padding: expanded ? '0 0 8px' : '11px 14px',
+        boxShadow: expanded ? 'none' : TEAL_RING,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 800, color: TEAL }}>🧾 Qualitätssicherung</span>
+        {!expanded && (
+          <span style={{ fontSize: 12, color: '#3C3C43', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {overdueCount > 0
+              ? <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠︎ {overdueCount} überfällig</span>
+              : next ? `${planned.length} anstehend · nächster: ${next.listingTitle} ${fmtDate(next.dueDate)}` : 'alles erledigt'}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: TEAL, flexShrink: 0 }}>
+          {expanded ? '▾ Einklappen' : '▸'}
+        </span>
+      </button>
+      {expanded && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {planned.map((c) => {
           const overdue = c.dueDate < today
@@ -167,6 +196,7 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
           </button>
         ))}
       </div>
+      )}
       {openCheck && (
         <QsProtocol
           check={openCheck}
