@@ -338,7 +338,7 @@ export async function listReservations(
   page: number,
   pageSize = 25,
   apiKey?: string,
-): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean }> {
+): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; adults: number | null; children: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean }> {
   const params = new URLSearchParams({
     from: fromIso,
     to: toIso,
@@ -372,6 +372,8 @@ export async function listReservations(
       guestName: typeof obj['guest-name'] === 'string' ? (obj['guest-name'] as string) : null,
       channelName: typeof channel?.name === 'string' ? (channel.name as string) : null,
       price: typeof obj.price === 'number' ? obj.price : null,
+      adults: typeof obj.adults === 'number' ? obj.adults : null,
+      children: typeof obj.children === 'number' ? obj.children : null,
       cancelled: String(obj.type ?? '').toLowerCase().includes('cancel'),
       blocked: obj['is-blocked-booking'] === true,
     }
