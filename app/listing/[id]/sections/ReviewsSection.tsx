@@ -31,11 +31,16 @@ interface ReviewsAggregate {
   sources: Record<string, { avg: number; count: number }>
 }
 
-export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' }: { listingId: string; showReviewForm?: boolean; lang?: UiLang }) {
-  const [data, setData] = useState<ReviewsAggregate | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [offset, setOffset] = useState(0)
-  const [allReviews, setAllReviews] = useState<ReviewData[]>([])
+export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de', initial = null }: {
+  listingId: string; showReviewForm?: boolean; lang?: UiLang
+  /** §161: serverseitig geladene Erst-Daten — Review-Texte stehen damit im
+   *  initialen HTML (SEO); der Client lädt nur bei Bedarf (lang ≠ de) nach */
+  initial?: ReviewsAggregate | null
+}) {
+  const [data, setData] = useState<ReviewsAggregate | null>(initial)
+  const [loading, setLoading] = useState(!initial)
+  const [offset, setOffset] = useState(initial?.reviews.length ?? 0)
+  const [allReviews, setAllReviews] = useState<ReviewData[]>(initial?.reviews ?? [])
   const [filterSource, setFilterSource] = useState<string | null>(null)
   const [guestFormOpen, setGuestFormOpen] = useState(showReviewForm)
   const [guestRating, setGuestRating] = useState(5)
@@ -44,8 +49,10 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error' | 'no-booking'>('idle')
   const LIMIT = 6
 
-  // Initial load
+  // Initial load — mit Server-Daten (initial) nur nötig, wenn übersetzt
+  // werden muss (lang ≠ de); sonst steht alles schon im SSR-HTML
   useEffect(() => {
+    if (initial && lang === 'de') return
     setLoading(true)
     fetch(`/api/reviews?listingId=${listingId}&limit=${LIMIT}&offset=0&lang=${lang}`)
       .then(r => r.json())
@@ -56,6 +63,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de' 
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId])
 
   function loadMore() {
