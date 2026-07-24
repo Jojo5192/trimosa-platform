@@ -314,7 +314,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
                 <img src="/logo.png" alt="TRIMOSA" style={{ maxHeight: 32, maxWidth: '60%', width: 'auto', height: 'auto', display: 'block', marginBottom: 10 }} />
                 <div style={{ fontSize: 18, fontWeight: 800, color: '#F5F0E8' }}>Hallo Anna! 👋</div>
                 <div style={{ fontSize: 11.5, color: 'rgba(245,240,232,0.7)', marginTop: 3 }}>
-                  Dein Aufenthalt im <strong style={{ color: '#E3C878' }}>{previewListing.ctx.listingTitle}</strong>
+                  Dein Zuhause auf Zeit: <strong style={{ color: '#E3C878' }}>{previewListing.ctx.listingTitle}</strong>
                 </div>
               </div>
               <div style={{ padding: '16px 12px 30px' }}>
