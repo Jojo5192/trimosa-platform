@@ -96,6 +96,34 @@ export async function POST(request: Request) {
     if (filtered.length === 1) booking = filtered[0]
   }
 
+  // Website-Buchungen tragen den Namen oft nur im PROFIL (guest_name null).
+  // Zwei getrennte Queries statt or() — Sonderzeichen/Umlaute im or()-String
+  // sind eine bekannte PostgREST-Falle (§134-Lektion).
+  if (!booking && lastName && /^\d{4}-\d{2}-\d{2}$/.test(arrival)) {
+    try {
+      const [byDisplay, byLast] = await Promise.all([
+        supabaseAdmin.from('profiles').select('id').ilike('display_name', `%${lastName}%`).limit(10),
+        supabaseAdmin.from('profiles').select('id').ilike('guest_last_name', `%${lastName}%`).limit(10),
+      ])
+      const ids = [...new Set([...(byDisplay.data ?? []), ...(byLast.data ?? [])].map((p) => String(p.id)))]
+      if (ids.length) {
+        const { data } = await supabaseAdmin
+          .from('bookings')
+          .select('id, guest_name, guest_id, check_in, check_out, door_code, portal_token, listings(title)')
+          .eq('status', 'confirmed')
+          .eq('check_in', arrival)
+          .in('guest_id', ids)
+          .limit(3)
+        const rows = (data ?? []) as unknown as (BRow & { guest_id: string | null })[]
+        const filtered = apartment
+          ? rows.filter((r) => String(r.listings?.title ?? '').toLowerCase().includes(apartment))
+          : rows
+        // Profil-Treffer = Name bereits geprüft → guest_name-Lücke überbrücken
+        if (filtered.length === 1) booking = { ...filtered[0], guest_name: filtered[0].guest_name ?? lastName }
+      }
+    } catch { /* best effort */ }
+  }
+
   if (!booking) {
     return Response.json({
       verified: false,
@@ -105,10 +133,28 @@ export async function POST(request: Request) {
 
   // ── Verifizieren ──
   const codeOk = !!booking.door_code && codeIn.length >= 5 && codeIn === booking.door_code
-  const guestLast = (booking.guest_name ?? '').trim().toLowerCase()
-  const nameOk = !!lastName && guestLast.includes(lastName)
+  const guestFull = (booking.guest_name ?? '').trim().toLowerCase()
+  let nameOk = !!lastName && guestFull.includes(lastName)
+  // Portale liefern oft NUR den Vornamen („Johannes", „Michiel") — der
+  // Buchungs-Nachname ist dann unprüfbar. Ersatzprüfungen:
+  // (a) Profil-Namen der Buchung (Website-Gäste), (b) bei per RUFNUMMER
+  // gefundener Buchung + einteiligem guest_name reicht das Datum — die
+  // bekannte Nummer ist selbst ein starker Identitätsfaktor.
+  if (!nameOk && lastName) {
+    try {
+      const { data: b2 } = await supabaseAdmin
+        .from('bookings').select('guest_id').eq('id', booking.id).maybeSingle()
+      if (b2?.guest_id) {
+        const { data: prof } = await supabaseAdmin
+          .from('profiles').select('display_name, guest_last_name').eq('id', b2.guest_id).maybeSingle()
+        const profNames = `${prof?.display_name ?? ''} ${prof?.guest_last_name ?? ''}`.toLowerCase()
+        if (profNames.includes(lastName)) nameOk = true
+      }
+    } catch { /* best effort */ }
+  }
+  const singleNameBooking = guestFull.length > 0 && !guestFull.includes(' ')
   const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && arrival === booking.check_in
-  const dataOk = nameOk && dateOk
+  const dataOk = (nameOk && dateOk) || (dateOk && singleNameBooking && !!byPhone)
 
   if (!codeOk && !dataOk) {
     return Response.json({
