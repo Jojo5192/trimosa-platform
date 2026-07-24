@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
+import WallboxPanel from '@/components/team/WallboxPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -61,6 +62,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
   const [oncallPeople, setOncallPeople] = useState<{ id: string; name: string; role: string }[] | null>(null)
   const [oncallSel, setOncallSel] = useState<string[]>([])
+  // ⚡ Wallbox (§185) — nur Admins (probe liefert sonst 403 → Bereich + Toggles bleiben aus)
+  const [showWallbox, setShowWallbox] = useState(false)
+  const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
@@ -76,7 +80,21 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) { setOncallPeople(d.people ?? []); setOncallSel(d.selected ?? []) } })
       .catch(() => {})
+    fetch('/api/wallbox?probe=1', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.settings) setWb({ pushStart: d.settings.pushStart, pushEnd: d.settings.pushEnd }) })
+      .catch(() => {})
   }, [])
+
+  async function toggleWallboxPush(key: 'pushStart' | 'pushEnd') {
+    if (!wb) return
+    const next = { ...wb, [key]: !wb[key] }
+    setWb(next)
+    await fetch('/api/wallbox', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: next[key] }),
+    }).catch(() => {})
+  }
 
   async function toggleOncall(id: string) {
     const next = oncallSel.includes(id) ? oncallSel.filter((x) => x !== id) : [...oncallSel, id]
@@ -150,6 +168,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               <button onClick={() => setShowQs(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
                 background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: wb ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
               }}>
                 <span style={{ fontSize: 19 }}>🧾</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -158,6 +177,19 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                 </span>
                 <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
               </button>
+              {wb && (
+                <button onClick={() => setShowWallbox(true)} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                }}>
+                  <span style={{ fontSize: 19 }}>⚡</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Wallbox</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Ladehistorie — kWh, Umsatz & Gewinn</span>
+                  </span>
+                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                </button>
+              )}
             </div>
           </>
         )}
@@ -184,9 +216,19 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               <Switch on={prefs?.guestChats ?? true} disabled={!prefs} onChange={() => togglePref('guestChats')} />
             </Row>
           )}
-          <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last>
+          <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last={!wb}>
             <Switch on={prefs?.teamChats ?? true} disabled={!prefs} onChange={() => togglePref('teamChats')} />
           </Row>
+          {wb && (
+            <Row title="⚡ Ladevorgang gestartet" subtitle="Push, sobald ein Gast zu laden beginnt">
+              <Switch on={wb.pushStart} onChange={() => toggleWallboxPush('pushStart')} />
+            </Row>
+          )}
+          {wb && (
+            <Row title="⚡ Ladevorgang beendet" subtitle="Push mit kWh, Umsatz & Gewinn-Schätzung" last>
+              <Switch on={wb.pushEnd} onChange={() => toggleWallboxPush('pushEnd')} />
+            </Row>
+          )}
         </div>
         <div style={{ fontSize: 12, color: '#8A8578', lineHeight: 1.55, margin: '9px 16px 0' }}>
           Die Kategorien gelten für alle deine Geräte. Aufgaben-Zuweisungen und wichtige Systemmeldungen werden immer zugestellt.
@@ -219,6 +261,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       </div>
       {showQs && <QsArchive onClose={() => setShowQs(false)} />}
       {showTrends && <ScoreTrends onClose={() => setShowTrends(false)} />}
+      {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
     </div>
   )
 }
