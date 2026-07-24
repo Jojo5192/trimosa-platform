@@ -24,6 +24,7 @@ interface Conversation {
   guestLang?: string | null
   mappeUrl?: string | null
   bookingId?: string | null
+  listingId?: string | null
 }
 
 /** §158: Erläuterung für Rechnungsanfragen VOR dem Anreisetag (wird beim
@@ -65,6 +66,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     guestLang: t.guestLang ?? null,
     mappeUrl: (t.mappeUrl as string | null) ?? null,
     bookingId: (t.bookingId as string | null) ?? (t.kind === 'booking' ? (t.id as string) : null),
+    listingId: (t.listingId as string | null) ?? null,
   } as unknown as Conversation
 }
 
@@ -256,6 +258,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [archivThreads, setArchivThreads] = useState<Conversation[] | null>(null)
   const [archivLoading, setArchivLoading] = useState(false)
   const [bookingHintFor, setBookingHintFor] = useState<string | null>(null)
+  // 📋 Aufgabe aus dem Chat erstellen (§183) — Inline-Panel unter dem Header
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskTitle, setTaskTitle] = useState('')
+  const [taskDesc, setTaskDesc] = useState('')
+  const [taskBusy, setTaskBusy] = useState(false)
+  const [taskInfo, setTaskInfo] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
@@ -291,6 +299,44 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         body: JSON.stringify({ kind: active.kind ?? 'direct', id: active.id, value, field }),
       })
     } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
+  }
+
+  // 📋 §183: Aufgabe direkt aus dem Chat — vorbefüllt mit der letzten
+  // Gast-Nachricht, Wohnung wird über den Thread zugeordnet.
+  function openTaskPanel() {
+    if (!active) return
+    const lastGuest = [...msgs].reverse().find((m) => !isOurSide(m, active))
+    const raw = lastGuest as unknown as { content_de?: string | null; content?: string | null } | undefined
+    const txt = String(raw?.content_de ?? raw?.content ?? active.lastPreview ?? '').replace(/\s+/g, ' ').trim()
+    setTaskTitle(`💬 ${partner(active)}: ${txt.slice(0, 70)}`.slice(0, 120))
+    setTaskDesc([txt, '', `Aus dem Chat mit ${partner(active)} (${active.listing_title ?? '—'})`].join('\n').slice(0, 1800))
+    setTaskInfo(null)
+    setTaskOpen(true)
+  }
+
+  async function createTaskFromChat() {
+    if (!active || !taskTitle.trim() || taskBusy) return
+    setTaskBusy(true)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({
+          title: taskTitle.trim(),
+          description: taskDesc.trim(),
+          prio: 'mittel',
+          visibility: 'team',
+          ...(active.listingId ? { listing_id: active.listingId } : {}),
+        }),
+      })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      setTaskOpen(false)
+      setTaskInfo('✓ Aufgabe erstellt — liegt im Aufgaben-Tab.')
+      setTimeout(() => setTaskInfo((cur) => (cur?.startsWith('✓') ? null : cur)), 6000)
+    } catch (e) {
+      setTaskInfo('Aufgabe konnte nicht erstellt werden (' + (e as Error).message + ').')
+    } finally {
+      setTaskBusy(false)
+    }
   }
 
   async function suggestReply() {
@@ -532,6 +578,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setShowOriginal({})
     setShowGuestInfo(false)
     setMappeMenu(false)
+    setTaskOpen(false)
+    setTaskInfo(null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id])
 
@@ -1056,6 +1104,19 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </span>
                 )}
                 <ThreadBadges c={active} size={10.5} />
+                {team && (
+                  <button
+                    onClick={openTaskPanel}
+                    title="Aufgabe aus diesem Chat erstellen"
+                    style={{
+                      width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                      background: taskOpen ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : 'rgba(118,118,128,0.12)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      fontSize: 13, transition: 'all .15s',
+                      filter: taskOpen ? 'none' : 'grayscale(1) opacity(0.6)',
+                    }}
+                  >📋</button>
+                )}
                 {team && active.lastSender === 'guest' && (
                   <>
                     <button
@@ -1084,6 +1145,51 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 )}
               </div>
             )}
+          </div>
+        )}
+        {/* 📋 §183: Aufgabe aus dem Chat — Inline-Panel */}
+        {team && taskOpen && active && (
+          <div style={{
+            padding: '10px 16px 12px', background: '#FFF9E8', flexShrink: 0,
+            borderBottom: '0.5px solid rgba(60,60,67,0.15)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#8A6D1F', letterSpacing: 0.3 }}>
+              📋 AUFGABE AUS DIESEM CHAT{active.listing_title ? ` · ${active.listing_title}` : ''}
+            </div>
+            <input
+              value={taskTitle}
+              onChange={(e) => setTaskTitle(e.target.value)}
+              placeholder="Titel der Aufgabe"
+              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid #E3DCC8', background: '#fff', minWidth: 0 }}
+            />
+            <textarea
+              value={taskDesc}
+              onChange={(e) => setTaskDesc(e.target.value)}
+              rows={3}
+              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid #E3DCC8', background: '#fff', resize: 'vertical', overscrollBehavior: 'contain' }}
+            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={createTaskFromChat}
+                disabled={taskBusy || !taskTitle.trim()}
+                style={{
+                  padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff',
+                  fontSize: 13, fontWeight: 700, opacity: taskBusy || !taskTitle.trim() ? 0.5 : 1,
+                }}
+              >{taskBusy ? '…' : '✓ Aufgabe erstellen'}</button>
+              <button
+                onClick={() => setTaskOpen(false)}
+                style={{ padding: '8px 12px', borderRadius: 999, border: '1px solid #E3DCC8', background: '#fff', color: '#8A8578', fontSize: 13, cursor: 'pointer' }}
+              >Abbrechen</button>
+              {taskInfo && <span style={{ fontSize: 12, color: '#B91C1C' }}>{taskInfo}</span>}
+            </div>
+          </div>
+        )}
+        {team && taskInfo?.startsWith('✓') && !taskOpen && (
+          <div style={{ padding: '8px 16px', fontSize: 12.5, background: '#F0FDF4', color: '#166534', flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.1)' }}>
+            {taskInfo}
           </div>
         )}
         {/* Ausklappbare Gast-Karte: die Fakten, die man beim Antworten braucht */}
