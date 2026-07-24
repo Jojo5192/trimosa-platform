@@ -38,20 +38,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ]
   })
 
+  // §173 Etappe 2: Reiseführer-Seiten ebenfalls mit Sprachpfad-Varianten
+  const langAlternates = (path: string) => ({
+    de: `${siteUrl}${path}`,
+    ...Object.fromEntries(LANGS.map((x) => [x, `${siteUrl}/${x}${path}`])),
+    'x-default': `${siteUrl}${path}`,
+  })
+  const multiLang = (path: string, priority: number): MetadataRoute.Sitemap => {
+    const languages = langAlternates(path)
+    return [
+      { url: `${siteUrl}${path}`, changeFrequency: 'monthly' as const, priority, alternates: { languages } },
+      ...LANGS.map((x) => ({
+        url: `${siteUrl}/${x}${path}`, changeFrequency: 'monthly' as const,
+        priority: Math.max(priority - 0.2, 0.1), alternates: { languages },
+      })),
+    ]
+  }
+
   const contentEntries: MetadataRoute.Sitemap = [
     ...Object.keys(REGIONS).map((slug) => `/region/${slug}`),
     '/ueber-uns',
-  ].map((path) => ({
-    url: `${siteUrl}${path}`,
-    changeFrequency: 'monthly',
-    priority: 0.7,
-  }))
+  ].flatMap((path) => multiLang(path, 0.7))
 
-  const poiEntries: MetadataRoute.Sitemap = allPois().map(({ poi }) => ({
-    url: `${siteUrl}/erlebnis/${poi.slug}`,
-    changeFrequency: 'monthly',
-    priority: 0.6,
-  }))
+  const poiEntries: MetadataRoute.Sitemap = allPois().flatMap(({ poi }) => multiLang(`/erlebnis/${poi.slug}`, 0.6))
 
   const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb', '/barrierefreiheit', '/faq', '/stornierung'].map((path) => ({
     url: `${siteUrl}${path}`,
