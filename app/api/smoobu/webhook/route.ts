@@ -207,7 +207,11 @@ export async function POST(request: Request) {
     || [resData.firstname ?? payload.firstName, resData.lastname ?? payload.lastName].filter(Boolean).join(' ')
     || 'Externer Gast'
   const guestEmail = (resData.email ?? payload.email ?? '') as string
-  const totalPrice = Number(resData.price ?? payload.price ?? payload.totalPrice ?? 0)
+  // bookings.total_price ist INTEGER — Smoobu liefert Cent-Beträge („1086.31"),
+  // ungerundet warf der Update-Zweig 22P02 und verwarf das GANZE Update (§175)
+  const totalPrice = Math.round(Number(resData.price ?? payload.price ?? payload.totalPrice ?? 0))
+  const adults = Math.round(Number(resData.adults ?? 0))
+  const children = Math.round(Number(resData.children ?? 0))
 
   // Storno: Smoobu-Action 'cancelReservation'/'deleteReservation' bzw.
   // type-Feld mit „cancel" (gleiche Semantik wie listReservations)
@@ -271,6 +275,10 @@ export async function POST(request: Request) {
     if (totalPrice > 0) upd.total_price = totalPrice
     if (guestName && guestName !== 'Externer Gast') upd.guest_name = guestName
     if (guestEmail) upd.guest_email = guestEmail
+    // Gastanzahl aus dem Update übernehmen (Michiel-Fall §175: Gast ergänzt
+    // 2+2 nachträglich — vorher blieb persons auf dem Import-Stand 1)
+    if (adults > 0) upd.adults = adults
+    if (adults > 0 || children > 0) upd.children = children
     const { error } = await supabaseAdmin.from('bookings').update(upd).eq('id', known.id)
     if (error) console.error('[Smoobu Webhook] Update error:', error)
     else console.log(`[Smoobu Webhook] Updated reservation ${reservationId} for listing ${listing.id}`)
@@ -284,6 +292,8 @@ export async function POST(request: Request) {
         check_in: checkIn,
         check_out: checkOut,
         total_price: totalPrice,
+        adults: adults > 0 ? adults : 1,
+        children,
         status: 'confirmed',
         channel: channel,
         guest_name: guestName,
