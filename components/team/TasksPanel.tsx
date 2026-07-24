@@ -111,6 +111,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   const [manage, setManage] = useState(role === 'team')
   const [viewAll, setViewAll] = useState(role === 'team')
   const [apiRole, setApiRole] = useState<string>('')
+  const [oncall, setOncall] = useState(true)
   const [analyzing, setAnalyzing] = useState(false)
   const [aiNote, setAiNote] = useState<string | null>(null)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
@@ -162,6 +163,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         setManage(!!json.manage)
         setViewAll(!!json.viewAll)
         setApiRole(json.role ?? '')
+        setOncall(json.oncall !== false)
         setCommentCounts(json.commentCounts ?? {})
         if (json.viewAll && !personTouched.current) {
           personTouched.current = true
@@ -210,7 +212,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     const PRIO_RANK: Record<string, number> = { hoch: 0, mittel: 1, niedrig: 2 }
     return tasks
       .filter((t) => t.status !== 'vorschlag' && t.status !== 'verworfen')
-      .filter((t) => !(t.source === 'anruf' && t.status !== 'erledigt'))
+      // Anrufe: bei Bereitschaft in der Akut-Sektion; ohne Dienst normale Liste
+      .filter((t) => !(oncall && t.source === 'anruf' && t.status !== 'erledigt'))
       .filter((t) => filter === 'alle' ? true : filter === 'erledigt' ? t.status === 'erledigt' : t.status !== 'erledigt')
       .filter((t) => !personFilter ? true : personFilter === 'none' ? !t.assignee_id : t.assignee_id === personFilter)
       .sort((a, b) => {
@@ -222,7 +225,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         if (a.due_date !== b.due_date) return (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999')
         return b.created_at.localeCompare(a.created_at)
       })
-  }, [tasks, filter, personFilter, isOverdue])
+  }, [tasks, filter, personFilter, isOverdue, oncall])
 
   const counts = useMemo(() => ({
     aktiv: tasks.filter((t) => ['offen', 'in_arbeit'].includes(t.status)).length,
@@ -346,8 +349,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         </div>
       )}
 
-      {/* ☎️ Telefonische Meldungen — immer ganz oben, unabhängig vom Personen-Filter */}
-      {filter !== 'vorschlaege' && filter !== 'erledigt' && calls.length > 0 && (
+      {/* ☎️ Telefonische Meldungen — ganz oben, unabhängig vom Personen-Filter;
+          erscheint nur bei BEREITSCHAFT (§175, Admin-steuerbar) */}
+      {oncall && filter !== 'vorschlaege' && filter !== 'erledigt' && calls.length > 0 && (
         <div style={{ padding: '12px 16px 0' }}>
           <p style={{ fontSize: 13, fontWeight: 800, color: '#B91C1C', margin: '0 0 8px' }}>
             ☎️ Telefonische Meldungen ({calls.length}) — Gast wartet auf Rückmeldung
@@ -1084,7 +1088,21 @@ function CallCard({ task, onDone, onError }: {
           background: open ? 'var(--gold, #AE8D2D)' : 'rgba(174,141,45,0.14)',
           color: open ? '#fff' : 'var(--gold-dark, #8A7020)', cursor: 'pointer',
         }}>✨ Lösungsvorschlag</button>
-        <button onClick={() => { if (confirm('Meldung als erledigt markieren?')) onDone() }} style={{
+        <button onClick={async () => {
+          // §175 Lern-Kreislauf: Beim Abschluss die LÖSUNG erfassen — sie wird
+          // als Kommentar gespeichert und fließt in die KI-Wissensbasis ein,
+          // damit der Bot dieselbe Frage künftig selbst beantwortet.
+          const sol = window.prompt('Wie wurde das Anliegen gelöst?\n(Kurz reicht — fließt in die KI-Wissensbasis, damit der Bot es beim nächsten Anruf selbst weiß.)')
+          if (sol === null) return
+          if (!sol.trim() && !confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) return
+          if (sol.trim()) {
+            await fetch(`/api/tasks/${task.id}/comments`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: `✅ Lösung (Telefonat): ${sol.trim()}` }),
+            }).catch(() => {})
+          }
+          onDone()
+        }} style={{
           padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
           background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
         }}>✓ Erledigt</button>
