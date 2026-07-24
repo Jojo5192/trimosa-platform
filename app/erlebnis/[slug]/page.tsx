@@ -12,6 +12,7 @@ import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { buildCardRating } from '@/lib/rating'
 import { POI_CATEGORIES, allPois, findPoi } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang, type UiLang } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
@@ -25,28 +26,39 @@ export function generateStaticParams() {
   return allPois().map(({ poi }) => ({ slug: poi.slug }))
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ lang?: string }> }): Promise<Metadata> {
   const { slug } = await params
   const hit = findPoi(slug)
   if (!hit) return {}
   const { region, poi } = hit
-  const title = `${poi.name} — Ausflugsziel in ${region.name}`
-  const description = `${poi.text} Tipps & Karte von TRIMOSA — mit Ferienwohnungen in der Nähe.`
+  // §173-Jupas ④ Etappe 2: Sprachpfad-Variante + übersetzte Metadaten
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : 'de'
+  const titleDe = `${poi.name} — Ausflugsziel in ${region.name}`
+  const descDe = `${poi.text} Tipps & Karte von TRIMOSA — mit Ferienwohnungen in der Nähe.`
+  const tr = await makeTr(lang, lang === 'de' ? [] : [titleDe, descDe])
+  const path = `/erlebnis/${poi.slug}`
+  const languages = {
+    de: `${siteUrl}${path}`,
+    en: `${siteUrl}/en${path}`, fr: `${siteUrl}/fr${path}`, nl: `${siteUrl}/nl${path}`,
+    'x-default': `${siteUrl}${path}`,
+  }
   return {
-    title,
-    description,
-    alternates: { canonical: `${siteUrl}/erlebnis/${poi.slug}` },
-    openGraph: { title, description, url: `${siteUrl}/erlebnis/${poi.slug}`, ...(poi.image ? { images: [poi.image.src] } : {}) },
+    title: tr(titleDe),
+    description: tr(descDe),
+    alternates: { canonical: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`, languages },
+    openGraph: { title: tr(titleDe), description: tr(descDe), url: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`, ...(poi.image ? { images: [poi.image.src] } : {}) },
   }
 }
 
-export default async function ErlebnisPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ErlebnisPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ lang?: string }> }) {
   const { slug } = await params
   const hit = findPoi(slug)
   if (!hit) notFound()
   const { region, poi } = hit
   const category = POI_CATEGORIES[poi.category]
-  const lang = await getUiLang()
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
   const foreignPois = allPois().filter(({ region: r }) => r.slug !== region.slug).map(({ poi: p }) => p)
   const siblingsAll = region.pois
   const T = await makeTr(lang, lang === 'de' ? [] : [
