@@ -126,14 +126,79 @@ export async function findBookingByPhone(callerNumber: string): Promise<VoiceBoo
   const upcoming = matched.find((r) => r.check_in > today)
   const best = running ?? upcoming ?? matched[matched.length - 1]
 
+  return toVoiceBooking(best, today)
+}
+
+function toVoiceBooking(b: BRow, today: string): VoiceBooking {
   return {
-    id: best.id,
-    guestName: String(best.guest_name ?? '').trim(),
-    listingTitle: best.listings?.title ?? 'unbekannt',
-    checkIn: best.check_in,
-    checkOut: best.check_out,
-    adults: best.adults,
-    children: best.children,
-    stayStatus: running && best.id === running.id ? 'laufend' : best.check_in > today ? 'kommend' : 'vergangen',
+    id: b.id,
+    guestName: String(b.guest_name ?? '').trim(),
+    listingTitle: b.listings?.title ?? 'unbekannt',
+    checkIn: b.check_in,
+    checkOut: b.check_out,
+    adults: b.adults,
+    children: b.children,
+    stayStatus: b.check_in <= today && b.check_out >= today ? 'laufend' : b.check_in > today ? 'kommend' : 'vergangen',
   }
+}
+
+/**
+ * Buchung aus GESPRÄCHSDATEN finden (§182): Der Anrufer nennt Wohnung,
+ * Zeitraum und Namen oft selbst — ohne dass seine Nummer bekannt ist
+ * (Browser-Test, fremdes Telefon, unterdrückte Nummer). Konservativ:
+ * nur bei EINDEUTIGEM Treffer wird zugeordnet. Fenster reicht 90 Tage
+ * in die Vergangenheit (Fundsachen-Anrufe kommen nach der Abreise).
+ */
+export async function findBookingByDetails(opts: {
+  name?: string
+  apartment?: string
+  arrival?: string
+  departure?: string
+}): Promise<VoiceBooking | null> {
+  const name = String(opts.name ?? '').trim().toLowerCase()
+  const apartment = String(opts.apartment ?? '').trim().toLowerCase()
+  const arrival = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.arrival ?? '')) ? String(opts.arrival) : ''
+  const departure = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.departure ?? '')) ? String(opts.departure) : ''
+  // Mindest-Anker: ein Datum ODER Wohnung+Name — sonst wäre jedes Match Raterei
+  if (!arrival && !departure && !(apartment && name)) return null
+
+  const today = new Date().toISOString().slice(0, 10)
+  const pastCutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+
+  let q = supabaseAdmin
+    .from('bookings')
+    .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title)')
+    .eq('status', 'confirmed')
+  if (arrival) q = q.eq('check_in', arrival)
+  else if (departure) q = q.eq('check_out', departure)
+  else q = q.gte('check_out', pastCutoff)
+  const { data } = await q.order('check_in', { ascending: true }).limit(400)
+  let rows = (data ?? []) as unknown as BRow[]
+  if (arrival && departure) rows = rows.filter((r) => r.check_out === departure)
+
+  if (apartment) {
+    rows = rows.filter((r) => {
+      const title = String(r.listings?.title ?? '').toLowerCase()
+      if (!title) return false
+      if (title.includes(apartment) || apartment.includes(title)) return true
+      const words = apartment.split(/\s+/).filter((w) => w.length >= 3)
+      return words.length > 0 && words.every((w) => title.includes(w))
+    })
+  }
+
+  const nameMatches = (g: string | null): boolean => {
+    const guest = String(g ?? '').toLowerCase()
+    if (!guest) return false
+    const tokens = name.split(/\s+/).filter((w) => w.length >= 3)
+    return tokens.some((w) => guest.includes(w))
+  }
+  // Ohne Datum ist der Name Pflichtkriterium; mit Datum entschärft er nur Mehrdeutigkeit
+  if (!arrival && !departure) rows = rows.filter((r) => nameMatches(r.guest_name))
+  else if (rows.length > 1 && name) {
+    const byName = rows.filter((r) => nameMatches(r.guest_name))
+    if (byName.length) rows = byName
+  }
+
+  if (rows.length !== 1) return null
+  return toVoiceBooking(rows[0], today)
 }
