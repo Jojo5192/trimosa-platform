@@ -150,7 +150,7 @@ export default async function MappePage({ params, searchParams }: {
 
   // ── Übersetzung (Blöcke + Labels + UI + Hausregeln) in einem Batch ──
   const UI_DE = {
-    hallo: 'Hallo', deinAufenthalt: 'Dein Aufenthalt im', zeitraum: 'Zeitraum',
+    hallo: 'Hallo', deinAufenthalt: 'Dein Zuhause auf Zeit:', zeitraum: 'Zeitraum',
     untitled: 'Deine Gästemappe', fallback: 'Der Gastgeber hat diese Mappe noch nicht befüllt — bei Fragen melde dich gern direkt.',
   }
   const CHAT_DE = {
