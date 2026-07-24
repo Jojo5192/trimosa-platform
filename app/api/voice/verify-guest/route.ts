@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
   let body: {
     caller_number?: string; door_code?: string; last_name?: string
-    arrival_date?: string; apartment_name?: string; request?: string
+    arrival_date?: string; departure_date?: string; apartment_name?: string; request?: string
   }
   try { body = await request.json() } catch { body = {} }
 
@@ -49,6 +49,7 @@ export async function POST(request: Request) {
   const codeIn = String(body.door_code ?? '').replace(/\D/g, '')
   const lastName = String(body.last_name ?? '').trim().toLowerCase()
   const arrival = String(body.arrival_date ?? '').trim()
+  const departure = String(body.departure_date ?? '').trim()
   const apartment = String(body.apartment_name ?? '').trim().toLowerCase()
   const wants = body.request === 'tuercode' ? 'tuercode' : 'info'
 
@@ -131,20 +132,14 @@ export async function POST(request: Request) {
     })
   }
 
-  // ── Verifizieren ──
+  // ── Verifizieren (§180, Inhaber: „nicht so streng — wie ein Mensch") ──
+  // Wege: (a) Zugangscode · (b) Name (Vor- ODER Nachname reicht) + Anreise-
+  // UND Abreisedatum · (c) per Rufnummer gefundene Buchung + Anreisedatum
+  // (die bekannte Nummer ist selbst ein Identitätsfaktor).
   const codeOk = !!booking.door_code && codeIn.length >= 5 && codeIn === booking.door_code
   const guestFull = (booking.guest_name ?? '').trim().toLowerCase()
-  // Der VORNAME darf bei mehrteiligen Buchungs-Namen NICHT als Nachweis
-  // durchgehen (§179-Test: „Christopher" hätte gereicht) — geprüft wird
-  // gegen die Namensteile AB Position 2; einteilige Namen bleiben Ganzes.
-  const nameParts = guestFull.split(/\s+/).filter(Boolean)
-  const checkable = nameParts.length > 1 ? nameParts.slice(1).join(' ') : guestFull
-  let nameOk = !!lastName && checkable.includes(lastName)
-  // Portale liefern oft NUR den Vornamen („Johannes", „Michiel") — der
-  // Buchungs-Nachname ist dann unprüfbar. Ersatzprüfungen:
-  // (a) Profil-Namen der Buchung (Website-Gäste), (b) bei per RUFNUMMER
-  // gefundener Buchung + einteiligem guest_name reicht das Datum — die
-  // bekannte Nummer ist selbst ein starker Identitätsfaktor.
+  let nameOk = !!lastName && guestFull.includes(lastName)
+  // Website-Buchungen tragen den Namen oft nur im Profil
   if (!nameOk && lastName) {
     try {
       const { data: b2 } = await supabaseAdmin
@@ -157,52 +152,76 @@ export async function POST(request: Request) {
       }
     } catch { /* best effort */ }
   }
-  const singleNameBooking = guestFull.length > 0 && !guestFull.includes(' ')
-  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && arrival === booking.check_in
-  const dataOk = (nameOk && dateOk) || (dateOk && singleNameBooking && !!byPhone)
+  const arrivalOk = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && arrival === booking.check_in
+  const departureOk = /^\d{4}-\d{2}-\d{2}$/.test(departure) && departure === booking.check_out
+  const dataOk = (nameOk && arrivalOk && departureOk) || (arrivalOk && !!byPhone)
 
   if (!codeOk && !dataOk) {
     return Response.json({
       verified: false,
-      hint: 'Angaben passen nicht zur Buchung. EINE weitere Rückfrage stellen oder die andere Methode anbieten (Zugangscode ODER Nachname + Anreisedatum). Danach: Team-Rückruf via nachricht_aufnehmen.',
+      hint: 'Angaben passen nicht zur Buchung. EINE beiläufige Rückfrage (fehlt Abreisedatum oder Name?) oder die andere Methode anbieten (Zugangscode). Danach: Team-Rückruf via nachricht_aufnehmen.',
     })
   }
 
   const firstName = (booking.guest_name ?? '').split(/\s+/)[0] ?? ''
   const title = booking.listings?.title ?? 'deiner Wohnung'
 
-  // ── Türcode-Anfrage (§179, Inhaber-Policy): Der Code wird am Telefon NIE
-  //    vorgelesen — er wird dem ECHTEN Gast in dessen Chat/Gästemappe
-  //    zugestellt. Selbst eine geglückte Täuschung liefe damit ins Leere.
+  // ── Türcode-Anfrage (§180, Inhaber-Policy): Ab ANREISETAG bis Ende
+  //    Abreisetag wird der Code ganz normal am Telefon genannt (Gast ist
+  //    vor Ort). VOR der Anreise: nicht nennen — Gästemappen-Link in den
+  //    Chat senden, Code erscheint dort automatisch im Reveal-Fenster.
   if (wants === 'tuercode') {
-    let code = booking.door_code
-    if (!code) {
-      // Kurz vor/bei Anreise darf der Code frisch erzeugt werden (gleiche
-      // Guards wie die Gästemappe — ensureDoorCode prüft selbst)
-      try {
-        const { ensureDoorCode, getRevealDays } = await import('@/lib/locks')
-        const reveal = await getRevealDays()
-        const daysToArrival = Math.ceil((new Date(booking.check_in).getTime() - Date.now()) / 86400000)
-        if (daysToArrival <= reveal) code = await ensureDoorCode(booking.id)
-      } catch (e) { console.error('[voice-verify] ensureDoorCode:', e) }
-    }
-    if (!code || booking.check_out < today) {
+    const staying = booking.check_in <= today && booking.check_out >= today
+    const mappe = booking.portal_token ? `https://trimosa.de/mappe/${booking.portal_token}` : null
+
+    if (booking.check_out < today) {
       return Response.json({
-        verified: true,
-        guest_first_name: firstName,
-        apartment: title,
-        hint: 'Verifiziert. Der Code ist noch nicht freigeschaltet — er erscheint automatisch wenige Tage vor der Anreise in der Gästemappe und kommt zusätzlich per Nachricht. Das dem Gast freundlich erklären; NICHTS weiter nötig.',
+        verified: true, guest_first_name: firstName, apartment: title,
+        hint: 'Der Aufenthalt ist bereits beendet — Codes sind abgelaufen. Anliegen ggf. per nachricht_aufnehmen ans Team.',
       })
     }
 
-    // Code + Mappen-Link in den Buchungs-Thread des Gasts legen
+    if (!staying) {
+      // Vor der Anreise: Mappe-Link in den Chat, Code kommt automatisch
+      let chatSent = false
+      try {
+        const content = [
+          `📖 Wie eben am Telefon besprochen: Hier nochmal der Link zu deiner Gästemappe${mappe ? ` — ${mappe}` : ' (der Link kam mit deiner Buchung)'}.`,
+          'Dein Türcode erscheint dort automatisch wenige Tage vor der Anreise.',
+        ].join('\n')
+        const { error } = await supabaseAdmin.from('messages').insert({
+          booking_id: booking.id, sender_type: 'host', content, lang: 'de',
+        })
+        chatSent = !error
+      } catch { /* best effort */ }
+      return Response.json({
+        verified: true, guest_first_name: firstName, apartment: title,
+        mappe_link_sent: chatSent,
+        hint: 'Code jetzt noch NICHT nennen (Anreise liegt in der Zukunft). Dem Gast sagen: Der Code erscheint automatisch wenige Tage vor der Anreise in der Gästemappe' + (chatSent ? ' — den Mappen-Link haben wir ihm gerade nochmal in den Chat geschickt.' : ' (Link kam mit der Buchung).'),
+      })
+    }
+
+    // Aufenthalt läuft (Anreisetag bis Abreisetag): Code nennen
+    let code = booking.door_code
+    if (!code) {
+      try {
+        const { ensureDoorCode } = await import('@/lib/locks')
+        code = await ensureDoorCode(booking.id)
+      } catch (e) { console.error('[voice-verify] ensureDoorCode:', e) }
+    }
+    if (!code) {
+      return Response.json({
+        verified: true, guest_first_name: firstName, apartment: title,
+        hint: 'Kein Code verfügbar (technisches Problem) — per nachricht_aufnehmen mit urgent=true SOFORT ans Team, der Gast wartet vermutlich vor der Tür.',
+      })
+    }
+
     let chatSent = false
     try {
-      const mappe = booking.portal_token ? `https://trimosa.de/mappe/${booking.portal_token}` : null
       const content = [
-        `🔐 Wie eben am Telefon besprochen: Dein Türcode für ${title} steht in deiner Gästemappe${mappe ? ` — ${mappe}` : ''}.`,
-        `Zur Sicherheit hier nochmal direkt: ${code}`,
-      ].join('\n')
+        `🔐 Wie eben am Telefon besprochen: Dein Türcode für ${title} ist ${code}.`,
+        mappe ? `Du findest ihn jederzeit auch in deiner Gästemappe: ${mappe}` : '',
+      ].filter(Boolean).join('\n')
       const { error } = await supabaseAdmin.from('messages').insert({
         booking_id: booking.id, sender_type: 'host', content, lang: 'de',
       })
@@ -213,10 +232,9 @@ export async function POST(request: Request) {
       verified: true,
       guest_first_name: firstName,
       apartment: title,
-      code_sent_via_chat: chatSent,
-      hint: chatSent
-        ? 'Den Code NICHT vorlesen! Dem Gast sagen: Der Code steht in seiner Gästemappe, und wir haben ihm den Link samt Code soeben zusätzlich in den Chat geschickt.'
-        : 'Den Code NICHT vorlesen! Auf die Gästemappe verweisen (Link kam mit der Buchung); bei akutem Problem vor der Tür per nachricht_aufnehmen mit urgent=true ans Team.',
+      door_code: code,
+      chat_sent: chatSent,
+      hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + (chatSent ? ' — und erwähnen, dass er zusätzlich im Chat und in der Gästemappe steht.' : '.'),
     })
   }
 
