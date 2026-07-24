@@ -57,7 +57,11 @@ export async function GET(req: NextRequest) {
     // any of the four sources configured
     .or('airbnb_url.not.is.null,booking_url.not.is.null,vrbo_url.not.is.null,google_place_id.not.is.null')
     .order('reviews_synced_at', { ascending: true, nullsFirst: true })
-    .limit(3)
+    // §172-Kosten: 1 Inserat/Tag (jede Wohnung ~wöchentlich frisch — das
+    // ursprüngliche Design). Bei 3/Tag lief jede Wohnung alle ~2 Tage und
+    // Apify kostete ~29 $/Monat (Bezahl-Actors rechnen je gescraptem
+    // Review, und jeder Lauf holt ALLE Reviews neu) → jetzt ~⅓ davon.
+    .limit(1)
 
   const out = []
   for (const listing of listings ?? []) {
