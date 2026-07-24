@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData, type ComboSuggestion } from '@/components/SearchResults'
 import { t, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 import QuickFilters from '@/components/QuickFilters'
 import ScoreBadge from '@/components/ScoreBadge'
@@ -19,19 +20,36 @@ const ogSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
 
 // Startseiten-SEO: Canonical + Social-Share-Tags (WhatsApp/Facebook zeigen
 // sonst kein Bild). Titel/Beschreibung erben vom Root-Layout.
-export const metadata: Metadata = {
-  alternates: { canonical: ogSiteUrl },
-  openGraph: {
-    title: 'TRIMOSA — Ferienwohnungen in Sirzenich, Trier, Bitburg & der Südeifel',
-    description:
-      'Handverlesene Ferienwohnungen in Sirzenich bei Trier, Bitburg und der Südeifel — direkt vom Gastgeber, ohne Vermittler und ohne versteckte Gebühren.',
-    url: ogSiteUrl,
-    siteName: 'TRIMOSA Apartments & Homes',
-    images: [{ url: `${ogSiteUrl}/og.jpg`, width: 1200, height: 630 }],
-    locale: 'de_DE',
-    type: 'website',
-  },
-  twitter: { card: 'summary_large_image' },
+// §173-Jupas ④ Etappe 3: metadata → generateMetadata (Sprachpfad /en …)
+const HOME_OG_TITLE = 'TRIMOSA — Ferienwohnungen in Sirzenich, Trier, Bitburg & der Südeifel'
+const HOME_OG_DESC = 'Handverlesene Ferienwohnungen in Sirzenich bei Trier, Bitburg und der Südeifel — direkt vom Gastgeber, ohne Vermittler und ohne versteckte Gebühren.'
+const HOME_LOCALES: Record<string, string> = { de: 'de_DE', en: 'en_GB', fr: 'fr_FR', nl: 'nl_NL' }
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}): Promise<Metadata> {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : 'de'
+  const tr = await makeTr(lang, lang === 'de' ? [] : [HOME_OG_TITLE, HOME_OG_DESC])
+  const languages = {
+    de: ogSiteUrl,
+    en: `${ogSiteUrl}/en`, fr: `${ogSiteUrl}/fr`, nl: `${ogSiteUrl}/nl`,
+    'x-default': ogSiteUrl,
+  }
+  const url = lang === 'de' ? ogSiteUrl : `${ogSiteUrl}/${lang}`
+  return {
+    ...(lang !== 'de' ? { title: tr(HOME_OG_TITLE) } : {}),
+    ...(lang !== 'de' ? { description: tr(HOME_OG_DESC) } : {}),
+    alternates: { canonical: url, languages },
+    openGraph: {
+      title: tr(HOME_OG_TITLE),
+      description: tr(HOME_OG_DESC),
+      url,
+      siteName: 'TRIMOSA Apartments & Homes',
+      images: [{ url: `${ogSiteUrl}/og.jpg`, width: 1200, height: 630 }],
+      locale: HOME_LOCALES[lang] ?? 'de_DE',
+      type: 'website',
+    },
+    twitter: { card: 'summary_large_image' },
+  }
 }
 
 /* ── Refined, muted card gradients ── */
@@ -177,10 +195,10 @@ function rankListings(
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string; flex?: string }>
+  searchParams: Promise<{ q?: string; guests?: string; checkin?: string; checkout?: string; view?: string; flex?: string; lang?: string }>
 }) {
-  const { q, guests, checkin, checkout, view, flex } = await searchParams
-  const lang = await getUiLang()
+  const { q, guests, checkin, checkout, view, flex, lang: spLang } = await searchParams
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
   const T = await makeTr(lang, lang === 'de' ? [] : Object.values(REGIONS).map((r) => r.claim))
   const guestsNum = guests ? parseInt(guests) : undefined
 
