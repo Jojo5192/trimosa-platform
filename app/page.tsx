@@ -647,6 +647,7 @@ export default async function Home({
               { label: t(lang, 'Impressum'), href: '/impressum' },
               { label: t(lang, 'Datenschutz'), href: '/datenschutz' },
               { label: t(lang, 'AGB'), href: '/agb' },
+              { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
