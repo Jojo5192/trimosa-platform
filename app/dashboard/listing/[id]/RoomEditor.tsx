@@ -12,7 +12,7 @@ export interface Room {
 
 const ROOM_PRESETS = [
   'Wohnzimmer', 'Schlafzimmer', 'Badezimmer', 'Küche', 'Esszimmer',
-  'Arbeitszimmer', 'Kinderzimmer', 'Terasse / Balkon', 'Garten', 'Eingangsbereich',
+  'Arbeitszimmer', 'Kinderzimmer', 'Terrasse / Balkon', 'Garten', 'Eingangsbereich',
 ]
 
 function genId() {
