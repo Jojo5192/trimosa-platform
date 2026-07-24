@@ -332,16 +332,24 @@ export default function BookingBox({
             <span style={{ fontSize: '14px', fontWeight: 600, color: '#6E6E73' }}>{t(lang, 'ab')}</span>
             <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {priceFrom}</span>
             <span style={{ fontSize: '13px', color: '#999' }}>/ {t(lang, 'Nacht')}</span>
-            {/* Portal-Vergleich (§168b): Portale bepreisen mit Aufschlag —
-                ~7 % = konservative Mitte der realen 5-10-%-Spanne */}
-            <span style={{ fontSize: '13px', color: '#B0B0B5', textDecoration: 'line-through', marginLeft: '4px' }}>
-              ~€ {Math.round(priceFrom * 1.07)}
-            </span>
           </>
         ) : (
           <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>{t(lang, 'Zeitraum eingeben für Preisangabe')}</span>
         )}
       </div>
+
+      {/* §168b: Portal-Vergleich als eigene, ruhige Zeile — Portale bepreisen
+          mit Aufschlag (~7 % = konservative Mitte der realen 5-10-%-Spanne) */}
+      {!loadingRates && !(hasBothDates && displayPrice) && pricePerNight <= 0 && priceFrom ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-10px', marginBottom: '16px' }}>
+          <span style={{ fontSize: '12.5px', color: '#98989E' }}>
+            {t(lang, 'Auf den Portalen')}: <s style={{ textDecorationColor: '#C7C7CC' }}>~€ {Math.round(priceFrom * 1.07)}</s>
+          </span>
+          <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16A34A', background: '#DCFCE7', padding: '2px 8px', borderRadius: '999px' }}>
+            −7 %
+          </span>
+        </div>
+      ) : null}
 
       {/* Bestpreis-Garantie — Direktbuchung ohne Portalgebühren */}
       <div style={{ marginBottom: '16px', borderRadius: '12px', border: '1px solid #BBF7D0', background: '#F0FDF4', overflow: 'hidden' }}>
