@@ -15,6 +15,7 @@ import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS, findPoi } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang, type UiLang } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
@@ -29,33 +30,44 @@ export function generateStaticParams() {
   return Object.keys(REGIONS).map((slug) => ({ slug }))
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ lang?: string }> }): Promise<Metadata> {
   const { slug } = await params
   const region = REGIONS[slug]
   if (!region) return {}
-  // Signaturbild der Region (erster heroSlug mit Foto) als Social-Share-Bild
+  // §173-Jupas ④ Etappe 2: Sprachpfad-Variante (/en/region/…) — Titel/
+  // Beschreibung übersetzt (makeTr-Cache), canonical je Variante, hreflang
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : 'de'
+  const tr = await makeTr(lang, lang === 'de' ? [] : [region.metaTitle, region.metaDescription])
+  const path = `/region/${region.slug}`
+  const languages = {
+    de: `${siteUrl}${path}`,
+    en: `${siteUrl}/en${path}`, fr: `${siteUrl}/fr${path}`, nl: `${siteUrl}/nl${path}`,
+    'x-default': `${siteUrl}${path}`,
+  }
   const heroImage = region.heroSlugs
     .map((s) => findPoi(s)?.poi.image?.src)
     .find(Boolean)
   return {
-    title: region.metaTitle,
-    description: region.metaDescription,
-    alternates: { canonical: `${siteUrl}/region/${region.slug}` },
+    title: tr(region.metaTitle),
+    description: tr(region.metaDescription),
+    alternates: { canonical: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`, languages },
     openGraph: {
-      title: region.metaTitle,
-      description: region.metaDescription,
-      url: `${siteUrl}/region/${region.slug}`,
+      title: tr(region.metaTitle),
+      description: tr(region.metaDescription),
+      url: lang === 'de' ? `${siteUrl}${path}` : `${siteUrl}/${lang}${path}`,
       images: heroImage ? [{ url: heroImage }] : undefined,
     },
     twitter: { card: heroImage ? 'summary_large_image' : 'summary' },
   }
 }
 
-export default async function RegionPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function RegionPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ lang?: string }> }) {
   const { slug } = await params
   const region = REGIONS[slug]
   if (!region) notFound()
-  const lang = await getUiLang()
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
 
   const { data: listings } = await supabaseAdmin
     .from('listings')
