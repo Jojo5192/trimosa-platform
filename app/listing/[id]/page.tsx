@@ -18,6 +18,7 @@ import RegionMap from '@/components/RegionMap'
 import Link from 'next/link'
 import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
+import { getInitialReviews } from '@/lib/reviews-data'
 import { REGIONS } from '@/lib/regions'
 import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translate'
 import { t, isUiLang, type UiLang } from '@/lib/i18n'
@@ -175,6 +176,22 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   // Derive city: prefer explicit city field, then try to extract from address, fallback to location
   const displayCity = listing.city || listing.address?.split(',').pop()?.trim() || listing.location
 
+  // §161-Jupas ①: Gesamtscore + erste Bewertungen SERVERSEITIG — speist
+  // aggregateRating/review im JSON-LD (Google-Sterne-Snippets) und rendert
+  // echte Review-Texte ins initiale HTML (statt „Laden…")
+  const listingRating = buildCardRating(listing as Record<string, unknown>)
+  const initialReviews = await getInitialReviews(listing as Record<string, unknown>)
+  const reviewItems = initialReviews.reviews
+    .filter((r) => (r.review_text ?? '').trim().length >= 20 && r.rating > 0)
+    .slice(0, 8)
+    .map((r) => ({
+      '@type': 'Review',
+      author: { '@type': 'Person', name: r.author_name || 'Gast' },
+      datePublished: (r.review_date ?? '').slice(0, 10) || undefined,
+      reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5, worstRating: 1 },
+      reviewBody: (r.review_text ?? '').slice(0, 500),
+    }))
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'VacationRental',
@@ -189,6 +206,16 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     },
     numberOfRooms: listing.bedrooms,
     petsAllowed: listing.rule_pets_allowed ?? undefined,
+    ...(listingRating ? {
+      aggregateRating: {
+        '@type': 'AggregateRating',
+        ratingValue: listingRating.overall,
+        reviewCount: listingRating.count,
+        bestRating: 5,
+        worstRating: 1,
+      },
+    } : {}),
+    ...(reviewItems.length ? { review: reviewItems } : {}),
   }
 
   const regionHero = region?.heroSlugs
@@ -490,7 +517,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           )}
 
           {/* Reviews */}
-          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} lang={lang} />
+          <ReviewsSection listingId={listing.id} showReviewForm={showReviewForm === 'true'} lang={lang} initial={initialReviews} />
 
         </div>
       </div>
