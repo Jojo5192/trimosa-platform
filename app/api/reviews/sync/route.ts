@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { snapshotScores } from '@/lib/score-history'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { syncListingReviews } from '@/lib/reviews-sync'
 
@@ -66,5 +67,10 @@ export async function GET(req: NextRequest) {
   // 🎯 Das Property-Review-Matching läuft als EIGENER Cron um 4:25
   // (/api/reviews/match, §126) — als Anhang hier riss der Lauf das
   // 300s-Limit und ließ re-importierte Kopien liegen.
-  return NextResponse.json({ synced: out.length, details: out })
+
+  // §171: täglicher Score-Snapshot für die Entwicklungs-Grafiken (billig,
+  // fail-soft — bricht den Sync nie)
+  const snapshot = await snapshotScores().catch(() => ({ rows: 0 }))
+
+  return NextResponse.json({ synced: out.length, snapshot, details: out })
 }
