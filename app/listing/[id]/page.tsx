@@ -74,10 +74,12 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
     title,
     description,
     alternates: {
-      canonical: activeLang ? `${siteUrl}${canonicalPath}?lang=${activeLang}` : `${siteUrl}${canonicalPath}`,
+      // §173-Jupas ④: echte Sprach-PFADE (/en/listing/…) statt ?lang= —
+      // die ?lang=-Variante bleibt funktional, kanonisch ist der Pfad
+      canonical: activeLang ? `${siteUrl}/${activeLang}${canonicalPath}` : `${siteUrl}${canonicalPath}`,
       languages: availableLangs.length > 0 ? {
         de: `${siteUrl}${canonicalPath}`,
-        ...Object.fromEntries(availableLangs.map((l) => [l, `${siteUrl}${canonicalPath}?lang=${l}`])),
+        ...Object.fromEntries(availableLangs.map((l) => [l, `${siteUrl}/${l}${canonicalPath}`])),
         'x-default': `${siteUrl}${canonicalPath}`,
       } : undefined,
     },
