@@ -37,6 +37,8 @@ export interface CardData {
   bedrooms: number
   pricePerNight: number
   totalPrice: number
+  /** §161-Jupas ②: günstigster Nachtpreis (Cache) — Anzeige „ab X €" */
+  priceFrom?: number | null
   nights: number
   distanceKm: number | null
   issues: string[]
@@ -136,10 +138,13 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang
           <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
             {card.title}
           </h3>
-          {(card.pricePerNight > 0 || card.totalPrice > 0) && (
+          {(card.pricePerNight > 0 || card.totalPrice > 0 || (card.priceFrom ?? 0) > 0) && (
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
-                €{showTotal ? card.totalPrice : card.pricePerNight}
+                {!showTotal && card.pricePerNight <= 0 && (
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: '#999' }}>{t(lang, 'ab')} </span>
+                )}
+                €{showTotal ? card.totalPrice : card.pricePerNight > 0 ? card.pricePerNight : card.priceFrom}
               </span>
               <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>
                 {showTotal ? `${card.nights} ${t(lang, 'Nächte')}` : t(lang, '/Nacht')}
@@ -239,6 +244,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     lat: c.lat,
     lon: c.lon,
     price: c.pricePerNight,
+    priceFrom: c.priceFrom ?? undefined,
     totalPrice: c.totalPrice || undefined,
     nights: c.nights || undefined,
     image: c.image || undefined,
