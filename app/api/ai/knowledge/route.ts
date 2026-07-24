@@ -154,6 +154,49 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ konversation: conv.id, korrekturen: corrections.length, modus: doFix ? 'KORRIGIERT' : 'nur gezählt', details: corrections })
   }
+  if (action === 'google-review-dedupe') {
+    // §174: Dieselbe Google-Rezension liegt teils DOPPELT vor — die zwei
+    // Google-Quellen (Places-API-Fallback vs. Apify-Actor) nutzen
+    // verschiedene source_review_id-Räume; über mehrere Sync-Läufe hinweg
+    // entstanden Text-Duplikate (z. B. „Dami- D" 2× auf Panorama). Je
+    // Fingerprint (listing + Autor + Text) bleibt die ÄLTESTE Zeile,
+    // jüngere Kopien werden gelöscht. dryRun (Default) LÖSCHT NICHTS.
+    const { data: rows } = await supabaseAdmin
+      .from('reviews')
+      .select('id, listing_id, author_name, review_text, source_review_id, created_at')
+      .eq('source', 'google')
+      .order('created_at', { ascending: true })
+      .limit(2000)
+    const groups = new Map<string, { id: string; source_review_id: string }[]>()
+    for (const r of rows ?? []) {
+      if (!r.review_text || !r.review_text.trim()) continue
+      const key = `${r.listing_id}|${(r.author_name ?? '').trim().toLowerCase()}|${r.review_text.trim().slice(0, 60).toLowerCase()}`
+      const arr = groups.get(key) ?? []
+      arr.push({ id: r.id, source_review_id: r.source_review_id })
+      groups.set(key, arr)
+    }
+    const toDelete: string[] = []
+    const beispiele: string[] = []
+    for (const [key, arr] of groups) {
+      if (arr.length < 2) continue
+      // älteste (Index 0, created_at asc) bleibt — Rest weg
+      toDelete.push(...arr.slice(1).map((x) => x.id))
+      beispiele.push(`${arr.length}× ${key.slice(37, 95)}`)
+    }
+    const doDelete = content === 'DELETE'
+    if (doDelete && toDelete.length) {
+      for (let i = 0; i < toDelete.length; i += 100) {
+        await supabaseAdmin.from('reviews').delete().in('id', toDelete.slice(i, i + 100))
+      }
+    }
+    return NextResponse.json({
+      duplikatGruppen: beispiele.length,
+      zuLoeschen: toDelete.length,
+      geloescht: doDelete ? toDelete.length : 0,
+      modus: doDelete ? 'GELÖSCHT' : 'nur gezählt (dry-run)',
+      beispiele: beispiele.slice(0, 12),
+    })
+  }
   if (action === 'lock-msg-cleanup') {
     // §143: bereits synchronisierte Smoobu-Schloss-/Automatik-Meldungen aus
     // der messages-Tabelle finden (Betreff nicht gespeichert → Content-Muster,
