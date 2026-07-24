@@ -84,11 +84,17 @@ export async function GET() {
     for (const r of rows ?? []) commentCounts[r.task_id] = (commentCounts[r.task_id] ?? 0) + 1
   }
 
+  // ☎️ Bereitschaft (§175): steuert, ob die akute Anruf-Sektion bei diesem
+  // Nutzer erscheint (leere Liste = alle im Dienst)
+  const { isOncall } = await import('@/lib/oncall')
+  const oncall = await isOncall(auth.userId)
+
   return NextResponse.json({
     userId: auth.userId,
     role: auth.role,
     viewAll: auth.viewAll,
     manage: auth.manage,
+    oncall,
     tasks: withEditable,
     commentCounts,
     people,
