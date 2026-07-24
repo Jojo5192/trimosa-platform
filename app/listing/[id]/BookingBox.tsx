@@ -18,6 +18,8 @@ interface BookingBoxProps {
   initialCheckOut?: string
   initialGuests?: number
   lang?: UiLang
+  /** §161-Jupas ②: günstigster Nachtpreis der nächsten 90 Tage (Cache) */
+  priceFrom?: number | null
 }
 
 const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
@@ -121,6 +123,7 @@ function CalendarMonth({
 export default function BookingBox({
   listingId,
   pricePerNight,
+  priceFrom = null,
   allowInstant = true,
   allowRequests = true,
   minRequestNights = 1,
@@ -323,6 +326,12 @@ export default function BookingBox({
           <>
             <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {pricePerNight}</span>
             <span style={{ fontSize: '13px', color: '#999' }}>/ Nacht</span>
+          </>
+        ) : priceFrom ? (
+          <>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: '#6E6E73' }}>{t(lang, 'ab')}</span>
+            <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {priceFrom}</span>
+            <span style={{ fontSize: '13px', color: '#999' }}>/ {t(lang, 'Nacht')}</span>
           </>
         ) : (
           <span style={{ fontSize: '14px', fontWeight: 600, color: '#888' }}>{t(lang, 'Zeitraum eingeben für Preisangabe')}</span>
