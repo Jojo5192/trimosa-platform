@@ -444,6 +444,7 @@ addTranslations({
   'Inserat ansehen ↗': ['View listing ↗', 'Voir l’annonce ↗', 'Advertentie bekijken ↗'],
   'ab': ['from', 'dès', 'vanaf'],
   'Barrierefreiheit': ['Accessibility', 'Accessibilité', 'Toegankelijkheid'],
+  'Auf den Portalen': ['On the portals', 'Sur les portails', 'Op de portalen'],
   'Rechnung ansehen (PDF)': ['View invoice (PDF)', 'Voir la facture (PDF)', 'Factuur bekijken (PDF)'],
   'Buchung stornieren': ['Cancel booking', 'Annuler la réservation', 'Boeking annuleren'],
   'Buchung wirklich stornieren?': ['Really cancel this booking?', 'Annuler vraiment cette réservation ?', 'Boeking echt annuleren?'],
