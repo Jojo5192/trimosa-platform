@@ -1,0 +1,81 @@
+import { requireVoiceAuth, findBookingByPhone } from '@/lib/voice'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { sendPushToTeam } from '@/lib/push'
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
+/**
+ * ☎️ Anrufbot-Tool (§175): POST { caller_name, caller_number, message,
+ * urgent } — nimmt eine Nachricht aus dem Telefonat auf. Gehört die
+ * Rufnummer zu einer Buchung, landet sie als Gast-Nachricht im
+ * Buchungs-Thread (→ Team-Inbox, „unbeantwortet"-Logik greift), sonst
+ * als Team-Aufgabe. In beiden Fällen geht ein Push raus (§135: awaited).
+ */
+export async function POST(request: Request) {
+  const denied = requireVoiceAuth(request)
+  if (denied) return denied
+
+  let body: { caller_name?: string; caller_number?: string; message?: string; urgent?: boolean }
+  try { body = await request.json() } catch { body = {} }
+  const name = String(body.caller_name ?? '').trim() || 'Unbekannt'
+  const number = String(body.caller_number ?? '').trim() || 'unterdrückt'
+  const message = String(body.message ?? '').trim()
+  const urgent = body.urgent === true
+  if (!message) return Response.json({ error: 'message fehlt' }, { status: 400 })
+
+  const booking = number !== 'unterdrückt' ? await findBookingByPhone(number) : null
+  const icon = urgent ? '🚨' : '☎️'
+
+  if (booking) {
+    const content = [
+      `☎️ Telefonnachricht (vom Telefon-Assistenten aufgenommen):`,
+      `„${message}"`,
+      '',
+      `Anrufer: ${name} · Rückruf: ${number}`,
+    ].join('\n')
+    const { error } = await supabaseAdmin.from('messages').insert({
+      booking_id: booking.id,
+      sender_type: 'guest',
+      content,
+      lang: 'de',
+    })
+    if (error) {
+      console.error('[voice] take-message Insert:', error.message)
+      return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
+    }
+    await sendPushToTeam(
+      `${icon} Anruf: ${booking.guestName.split(/\s+/)[0] ?? name} · ${booking.listingTitle}`,
+      message.replace(/\s+/g, ' ').slice(0, 120),
+      '/team?conv=' + booking.id,
+      { guestChat: true },
+    ).catch(() => {})
+    return Response.json({ ok: true, delivered: 'chat', note: 'Nachricht liegt im Gast-Thread, das Team wurde benachrichtigt.' })
+  }
+
+  const { error } = await supabaseAdmin.from('tasks').insert({
+    title: `☎️ Anruf: ${name}`.slice(0, 120),
+    description: [
+      message,
+      '',
+      `Anrufer: ${name}`,
+      `Rückrufnummer: ${number}`,
+      `Aufgenommen vom Telefon-Assistenten am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`,
+    ].join('\n').slice(0, 2000),
+    source: 'anruf',
+    is_general: true,
+    prio: urgent ? 'hoch' : 'mittel',
+    status: 'offen',
+    visibility: 'team',
+  })
+  if (error) {
+    console.error('[voice] take-message Task:', error.message)
+    return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
+  }
+  await sendPushToTeam(
+    `${icon} Neue Anruf-Nachricht: ${name}`,
+    message.replace(/\s+/g, ' ').slice(0, 120),
+    '/team?tab=aufgaben',
+  ).catch(() => {})
+  return Response.json({ ok: true, delivered: 'task', note: 'Als Aufgabe fürs Team hinterlegt, Push ist raus.' })
+}
