@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang, type UiLang } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
@@ -15,10 +16,23 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.
 export const revalidate = 3600
 export const maxDuration = 120
 
-export const metadata: Metadata = {
-  title: 'Häufige Fragen (FAQ)',
-  description: 'Antworten auf die häufigsten Fragen zu Buchung, Check-in, Türcode, Stornierung und Bezahlung bei TRIMOSA Apartments & Homes.',
-  alternates: { canonical: `${siteUrl}/faq` },
+const META_TITLE = 'Häufige Fragen (FAQ)'
+const META_DESC = 'Antworten auf die häufigsten Fragen zu Buchung, Check-in, Türcode, Stornierung und Bezahlung bei TRIMOSA Apartments & Homes.'
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}): Promise<Metadata> {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : 'de'
+  const tr = await makeTr(lang, lang === 'de' ? [] : [META_TITLE, META_DESC])
+  const languages = {
+    de: `${siteUrl}/faq`,
+    en: `${siteUrl}/en/faq`, fr: `${siteUrl}/fr/faq`, nl: `${siteUrl}/nl/faq`,
+    'x-default': `${siteUrl}/faq`,
+  }
+  return {
+    title: tr(META_TITLE),
+    description: tr(META_DESC),
+    alternates: { canonical: lang === 'de' ? `${siteUrl}/faq` : `${siteUrl}/${lang}/faq`, languages },
+  }
 }
 
 // Nur belegte Fakten — keine erfundenen Leistungen.
@@ -69,8 +83,9 @@ const FAQ_ITEMS: { q: string; a: string }[] = [
   },
 ]
 
-export default async function FaqPage() {
-  const lang = await getUiLang()
+export default async function FaqPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
   const TR = await makeTr(lang, lang === 'de' ? [] : FAQ_ITEMS.flatMap((i) => [i.q, i.a]))
   const items = FAQ_ITEMS.map((i) => ({ q: TR(i.q), a: TR(i.a) }))
 
