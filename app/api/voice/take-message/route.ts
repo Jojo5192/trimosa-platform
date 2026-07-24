@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToTeam, sendPushToUser } from '@/lib/push'
 import { getOncallIds } from '@/lib/oncall'
@@ -29,7 +29,10 @@ export async function POST(request: Request) {
   const denied = requireVoiceAuth(request)
   if (denied) return denied
 
-  let body: { caller_name?: string; caller_number?: string; message?: string; urgent?: boolean }
+  let body: {
+    caller_name?: string; caller_number?: string; message?: string; urgent?: boolean
+    apartment_name?: string; arrival_date?: string; departure_date?: string
+  }
   try { body = await request.json() } catch { body = {} }
   const name = String(body.caller_name ?? '').trim() || 'Unbekannt'
   const number = String(body.caller_number ?? '').trim() || 'unterdrückt'
@@ -37,7 +40,17 @@ export async function POST(request: Request) {
   const urgent = body.urgent === true
   if (!message) return Response.json({ error: 'message fehlt' }, { status: 400 })
 
-  const booking = number !== 'unterdrückt' ? await findBookingByPhone(number) : null
+  // Buchung zuordnen: erst Anrufer-Nummer, dann Gesprächsdaten (§182 —
+  // „Frank, Magnolia Flat, 18.–20.7." reicht, auch ohne bekannte Nummer)
+  let booking = number !== 'unterdrückt' ? await findBookingByPhone(number) : null
+  if (!booking) {
+    booking = await findBookingByDetails({
+      name: name !== 'Unbekannt' ? name : '',
+      apartment: body.apartment_name,
+      arrival: body.arrival_date,
+      departure: body.departure_date,
+    })
+  }
   const icon = urgent ? '🚨' : '☎️'
 
   if (booking) {
@@ -65,6 +78,21 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, delivered: 'chat', note: 'Nachricht liegt im Gast-Thread, das Team wurde benachrichtigt.' })
   }
 
+  // Keine Buchung eindeutig? Dann wenigstens die WOHNUNG der Aufgabe
+  // zuordnen (statt „Allgemein") — Titel-Match gegen apartment_name + Text.
+  let listingId: string | null = null
+  try {
+    const { data: listings } = await supabaseAdmin
+      .from('listings').select('id, title').eq('is_active', true)
+    const hay = `${String(body.apartment_name ?? '')} ${message}`.toLowerCase()
+    const hits = (listings ?? []).filter((l) => {
+      const t = String(l.title ?? '').toLowerCase()
+      const first = t.split(/\s+/)[0] ?? ''
+      return (t.length >= 3 && hay.includes(t)) || (first.length >= 4 && hay.includes(first))
+    })
+    if (hits.length === 1) listingId = String(hits[0].id)
+  } catch { /* best effort */ }
+
   const { error } = await supabaseAdmin.from('tasks').insert({
     title: `${urgent ? '🚨 Notfall-Anruf' : '☎️ Anruf'}: ${name}`.slice(0, 120),
     description: [
@@ -77,7 +105,8 @@ export async function POST(request: Request) {
     source: 'anruf',
     // Rückrufnummer strukturiert fürs tel:-Link der Anruf-Sektion (§175)
     source_ref: number !== 'unterdrückt' ? number : null,
-    is_general: true,
+    listing_id: listingId,
+    is_general: !listingId,
     // Telefonische Meldungen sind IMMER dringlich — ein Gast wartet auf Rückmeldung
     prio: 'hoch',
     status: 'offen',
