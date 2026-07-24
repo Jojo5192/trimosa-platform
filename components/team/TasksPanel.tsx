@@ -981,34 +981,41 @@ function CallCard({ task, onDone, onError }: {
   onError: (msg: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [suggestion, setSuggestion] = useState<string | null>(null)
+  const [options, setOptions] = useState<{ text: string; reasoning: string }[] | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
+  const [infoOpen, setInfoOpen] = useState<number | null>(null)
   const [loadingAi, setLoadingAi] = useState(false)
   const [instruction, setInstruction] = useState('')
-  const [recording, setRecording] = useState(false)
+  // Erledigt-Panel (§175: Lösung wird IMMER erfasst — Futter für die Wissensbasis)
+  const [doneOpen, setDoneOpen] = useState(false)
+  const [doneText, setDoneText] = useState('')
+  const [doneBusy, setDoneBusy] = useState(false)
+  const [recording, setRecording] = useState<'none' | 'instruction' | 'solution'>('none')
   const [speechOk, setSpeechOk] = useState(false)
-  const recRef = useRef<{ stop: () => void; finish: () => void } | null>(null)
+  const recRef = useRef<{ stop: () => void } | null>(null)
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>
     setSpeechOk(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
   }, [])
 
   const urgent = task.title.startsWith('🚨')
-  // Nachricht vom Meta-Block trennen (description = Nachricht + "\n\nAnrufer: …")
   const metaIdx = task.description.indexOf('\n\nAnrufer:')
   const message = metaIdx > 0 ? task.description.slice(0, metaIdx) : task.description
   const phone = task.source_ref
     ?? (task.description.match(/Rückrufnummer:\s*([+\d][\d\s\-()/]{5,})/)?.[1] ?? '').trim()
   const callerName = task.title.replace(/^(🚨 Notfall-Anruf|☎️ Anruf):\s*/, '')
 
-  async function fetchSuggestion(instructionText?: string) {
+  async function fetchOptions(instructionText?: string) {
     setLoadingAi(true)
+    setSelected(null)
+    setInfoOpen(null)
     try {
       const res = await fetch('/api/ai/call-suggest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId: task.id, instruction: instructionText || undefined }),
       })
       const j = await res.json().catch(() => ({}))
-      if (res.ok) setSuggestion(j.suggestion)
+      if (res.ok) setOptions(j.options ?? [])
       else onError(j.error ?? 'KI-Vorschlag fehlgeschlagen.')
     } catch {
       onError('Netzwerkfehler beim KI-Vorschlag.')
@@ -1019,11 +1026,11 @@ function CallCard({ task, onDone, onError }: {
   function toggleAi() {
     const next = !open
     setOpen(next)
-    if (next && !suggestion && !loadingAi) fetchSuggestion()
+    if (next && !options && !loadingAi) fetchOptions()
   }
 
-  // 🎤 Diktat: sammelt intern, Stopp → Anweisung wird direkt ausgeführt (§105-Muster)
-  function startDictation() {
+  // 🎤 Diktat (§105-Muster): sammelt intern; Stopp → Ziel-Aktion
+  function startDictation(target: 'instruction' | 'solution') {
     const w = window as unknown as Record<string, unknown>
     const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => {
       lang: string; continuous: boolean; interimResults: boolean
@@ -1047,19 +1054,59 @@ function CallCard({ task, onDone, onError }: {
     const finish = () => {
       if (done) return
       done = true
-      setRecording(false)
+      setRecording('none')
       recRef.current = null
       const text = spoken.trim()
-      if (text) { setInstruction(text); fetchSuggestion(text) }
+      if (!text) return
+      if (target === 'instruction') { setInstruction(text); fetchOptions(text) }
+      else formulateSolution(text)
     }
     sr.onend = finish
     sr.onerror = finish
-    recRef.current = {
-      stop: () => { try { sr.stop() } catch { /* noop */ } setTimeout(finish, 1200) },
-      finish,
-    }
-    setRecording(true)
+    recRef.current = { stop: () => { try { sr.stop() } catch { /* noop */ } setTimeout(finish, 1200) } }
+    setRecording(target)
     try { sr.start() } catch { finish() }
+  }
+
+  /** Diktierte Erklärung → KI formuliert den sauberen Lösungs-Eintrag */
+  async function formulateSolution(rawText: string) {
+    setDoneBusy(true)
+    try {
+      const res = await fetch('/api/ai/call-suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, action: 'solution', rawText }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok && j.solution) setDoneText(j.solution)
+      else onError(j.error ?? 'Formulieren fehlgeschlagen.')
+    } catch {
+      onError('Netzwerkfehler beim Formulieren.')
+    }
+    setDoneBusy(false)
+  }
+
+  function openDone() {
+    // Gewählte Option vorbefüllen — null Tipparbeit, wenn die KI-Lösung passte
+    if (!doneText && selected !== null && options?.[selected]) setDoneText(options[selected].text)
+    setDoneOpen(true)
+  }
+
+  async function saveDone(withSolution: boolean) {
+    if (doneBusy) return
+    setDoneBusy(true)
+    try {
+      if (withSolution && doneText.trim()) {
+        await fetch(`/api/tasks/${task.id}/comments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `✅ Lösung (Telefonat): ${doneText.trim()}` }),
+        }).catch(() => {})
+      }
+      onDone()
+    } finally { setDoneBusy(false) }
+  }
+
+  const goldBtn: CSSProperties = {
+    padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
   }
 
   return (
@@ -1084,37 +1131,50 @@ function CallCard({ task, onDone, onError }: {
           }}>📞 Zurückrufen</a>
         )}
         <button onClick={toggleAi} style={{
-          padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+          ...goldBtn,
           background: open ? 'var(--gold, #AE8D2D)' : 'rgba(174,141,45,0.14)',
-          color: open ? '#fff' : 'var(--gold-dark, #8A7020)', cursor: 'pointer',
-        }}>✨ Lösungsvorschlag</button>
-        <button onClick={async () => {
-          // §175 Lern-Kreislauf: Beim Abschluss die LÖSUNG erfassen — sie wird
-          // als Kommentar gespeichert und fließt in die KI-Wissensbasis ein,
-          // damit der Bot dieselbe Frage künftig selbst beantwortet.
-          const sol = window.prompt('Wie wurde das Anliegen gelöst?\n(Kurz reicht — fließt in die KI-Wissensbasis, damit der Bot es beim nächsten Anruf selbst weiß.)')
-          if (sol === null) return
-          if (!sol.trim() && !confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) return
-          if (sol.trim()) {
-            await fetch(`/api/tasks/${task.id}/comments`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: `✅ Lösung (Telefonat): ${sol.trim()}` }),
-            }).catch(() => {})
-          }
-          onDone()
-        }} style={{
-          padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-          background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
-        }}>✓ Erledigt</button>
+          color: open ? '#fff' : 'var(--gold-dark, #8A7020)',
+        }}>✨ Lösungen</button>
+        <button onClick={openDone} style={{ ...goldBtn, background: 'rgba(120,120,128,0.12)', color: '#3C3C43' }}>✓ Erledigt</button>
       </div>
 
-      {open && (
+      {/* ✨ Lösungs-Optionen: anklickbar, ⓘ zeigt die Herleitung */}
+      {open && !doneOpen && (
         <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(174,141,45,0.25)' }}>
-          {loadingAi && <p style={{ fontSize: 12.5, color: '#8E8E93', margin: 0 }}>✨ Claude prüft Anliegen gegen die Wissensbasis…</p>}
-          {!loadingAi && suggestion && (
-            <p style={{ fontSize: 13, color: '#111', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{suggestion}</p>
+          {loadingAi && <p style={{ fontSize: 12.5, color: '#8E8E93', margin: 0 }}>✨ Claude prüft das Anliegen gegen die Wissensbasis…</p>}
+          {!loadingAi && options && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {options.map((o, i) => (
+                <div key={i} style={{
+                  borderRadius: 11, padding: '9px 11px', cursor: 'pointer',
+                  background: selected === i ? 'rgba(174,141,45,0.1)' : '#FAFAFA',
+                  boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)' : 'inset 0 0 0 1px #ECECEC',
+                }} onClick={() => setSelected(selected === i ? null : i)}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 13, color: '#111', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
+                      {selected === i ? '✓ ' : ''}{o.text}
+                    </span>
+                    <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt Claude darauf?" style={{
+                      width: 24, height: 24, borderRadius: 999, border: 'none', flexShrink: 0, fontSize: 12, fontWeight: 800,
+                      background: infoOpen === i ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+                      color: infoOpen === i ? '#fff' : '#6B7280', cursor: 'pointer',
+                    }}>i</button>
+                  </div>
+                  {infoOpen === i && (
+                    <p style={{ fontSize: 12, color: '#6B7280', margin: '7px 0 0', lineHeight: 1.5, fontStyle: 'italic' }}>
+                      💡 {o.reasoning}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {selected !== null && (
+                <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '2px 2px 0' }}>
+                  Gewählte Lösung wird beim ✓ Erledigen automatisch übernommen.
+                </p>
+              )}
+            </div>
           )}
-          {recording ? (
+          {recording === 'instruction' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               marginTop: 10, width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
               background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
@@ -1122,7 +1182,7 @@ function CallCard({ task, onDone, onError }: {
           ) : (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
               {speechOk && (
-                <button onClick={startDictation} title="Anweisung diktieren" style={{
+                <button onClick={() => startDictation('instruction')} title="Sagen, was geantwortet werden soll" style={{
                   width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
                   background: 'rgba(174,141,45,0.14)', cursor: 'pointer', fontSize: 15,
                 }}>🎤</button>
@@ -1130,16 +1190,56 @@ function CallCard({ task, onDone, onError }: {
               <input
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && instruction.trim()) fetchSuggestion(instruction.trim()) }}
-                placeholder="Anweisung an Claude…"
+                onKeyDown={(e) => { if (e.key === 'Enter' && instruction.trim()) fetchOptions(instruction.trim()) }}
+                placeholder="Eigene Lösung / Anweisung…"
                 style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff' }}
               />
-              <button onClick={() => instruction.trim() && fetchSuggestion(instruction.trim())} disabled={loadingAi} style={{
+              <button onClick={() => instruction.trim() && fetchOptions(instruction.trim())} disabled={loadingAi} style={{
                 width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
                 background: 'var(--gold, #AE8D2D)', color: '#fff', cursor: 'pointer', fontSize: 15,
               }}>✨</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ✓ Erledigt-Panel: Lösung erfassen (tippen, diktieren, oder gewählte Option) */}
+      {doneOpen && (
+        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(22,101,52,0.3)' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#166534', margin: '0 0 7px' }}>
+            ✅ Wie wurde das Anliegen gelöst? <span style={{ fontWeight: 400, color: '#6B7280' }}>(fließt in die KI-Wissensbasis)</span>
+          </p>
+          {recording === 'solution' ? (
+            <button onClick={() => recRef.current?.stop()} style={{
+              width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
+              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>🔴 Ich höre zu… — kurz erklären, dann antippen</button>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              {speechOk && (
+                <button onClick={() => startDictation('solution')} title="Lösung kurz mündlich erklären — Claude formuliert sie aus" style={{
+                  width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
+                  background: 'rgba(22,101,52,0.12)', cursor: 'pointer', fontSize: 15,
+                }}>🎤</button>
+              )}
+              <textarea
+                value={doneBusy ? 'Claude formuliert…' : doneText}
+                onChange={(e) => setDoneText(e.target.value)}
+                rows={2}
+                placeholder="Kurz reicht — oder 🎤 antippen und erklären"
+                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
+            <button onClick={() => saveDone(true)} disabled={doneBusy || !doneText.trim()} style={{
+              ...goldBtn, background: '#166534', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
+            }}>💾 Speichern & Erledigt</button>
+            <button onClick={() => { if (confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) saveDone(false) }} disabled={doneBusy} style={{
+              ...goldBtn, background: 'rgba(120,120,128,0.12)', color: '#6B7280',
+            }}>Ohne Lösung</button>
+            <button onClick={() => setDoneOpen(false)} style={{ ...goldBtn, background: 'none', color: '#8E8E93' }}>✕</button>
+          </div>
         </div>
       )}
     </div>
