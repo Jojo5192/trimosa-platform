@@ -49,6 +49,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/voice/learn",
+      "schedule": "40 4 * * *"
+    },
+    {
       "path": "/api/voice/kb-sync",
       "schedule": "50 4 * * *"
     }
