@@ -442,6 +442,7 @@ addTranslations({
   'Gemäß den Stornierungsbedingungen erfolgt keine Rückerstattung.': ['According to the cancellation policy, no refund applies.', 'Selon les conditions d’annulation, aucun remboursement n’est dû.', 'Volgens de annuleringsvoorwaarden vindt geen terugbetaling plaats.'],
   'Zum Chat': ['Open chat', 'Ouvrir le chat', 'Naar de chat'],
   'Inserat ansehen ↗': ['View listing ↗', 'Voir l’annonce ↗', 'Advertentie bekijken ↗'],
+  'ab': ['from', 'dès', 'vanaf'],
   'Rechnung ansehen (PDF)': ['View invoice (PDF)', 'Voir la facture (PDF)', 'Factuur bekijken (PDF)'],
   'Buchung stornieren': ['Cancel booking', 'Annuler la réservation', 'Boeking annuleren'],
   'Buchung wirklich stornieren?': ['Really cancel this booking?', 'Annuler vraiment cette réservation ?', 'Boeking echt annuleren?'],
