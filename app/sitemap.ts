@@ -10,12 +10,33 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .select('id, slug, created_at')
     .eq('is_active', true)
 
-  const listingEntries: MetadataRoute.Sitemap = (listings ?? []).map((l) => ({
-    url: `${siteUrl}/listing/${l.slug ?? l.id}`,
-    lastModified: l.created_at ?? undefined,
-    changeFrequency: 'weekly',
-    priority: 0.8,
-  }))
+  // §173-Jupas ④: je Listing auch die Sprachpfade (/en|fr|nl/…) mit
+  // vollständigen hreflang-Annotationen an JEDER Variante
+  const LANGS = ['en', 'fr', 'nl'] as const
+  const listingEntries: MetadataRoute.Sitemap = (listings ?? []).flatMap((l) => {
+    const path = `/listing/${l.slug ?? l.id}`
+    const languages = {
+      de: `${siteUrl}${path}`,
+      ...Object.fromEntries(LANGS.map((x) => [x, `${siteUrl}/${x}${path}`])),
+      'x-default': `${siteUrl}${path}`,
+    }
+    return [
+      {
+        url: `${siteUrl}${path}`,
+        lastModified: l.created_at ?? undefined,
+        changeFrequency: 'weekly' as const,
+        priority: 0.8,
+        alternates: { languages },
+      },
+      ...LANGS.map((x) => ({
+        url: `${siteUrl}/${x}${path}`,
+        lastModified: l.created_at ?? undefined,
+        changeFrequency: 'weekly' as const,
+        priority: 0.6,
+        alternates: { languages },
+      })),
+    ]
+  })
 
   const contentEntries: MetadataRoute.Sitemap = [
     ...Object.keys(REGIONS).map((slug) => `/region/${slug}`),
