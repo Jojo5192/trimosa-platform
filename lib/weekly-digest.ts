@@ -7,6 +7,7 @@
  * weekly_digests und dienen künftigen Läufen als Gedächtnis.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getScoreHistory, globalScoreAt } from '@/lib/score-history'
 import { askClaude } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 import { sendViaResend } from '@/lib/email'
@@ -115,8 +116,10 @@ function renderDigestHtml(opts: {
   content: DigestContent
   taskLine: string | null
   responseLine: string | null
+  /** §171: Score-Trend-Zeilen (Quelle · aktuell · Δ Woche · Δ Monat) */
+  scoreTrend?: { label: string; color: string; current: string; week: Delta; month: Delta }[]
 }): string {
-  const { rangeLabel, stats, deltas, content, taskLine, responseLine } = opts
+  const { rangeLabel, stats, deltas, content, taskLine, responseLine, scoreTrend } = opts
 
   const statCell = (value: string, label: string, delta: Delta = null) => `
     <td width="25%" align="center" style="padding:14px 4px;background:#FCFBF7;border:1px solid #EDE9DE;border-radius:12px;">
@@ -180,6 +183,23 @@ function renderDigestHtml(opts: {
             ${statCell(stats.antwortzeit, 'Ø Antwortzeit', deltas.antwortzeit)}
           </tr></table>
           ${responseLine ? `<p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:#8A8065;text-align:center;">${responseLine}</p>` : ''}
+
+          ${scoreTrend && scoreTrend.length ? `
+          <h2 style="margin:26px 0 10px;font-size:15px;color:#1A1400;letter-spacing:-0.1px;">📈 Bewertungs-Trend</h2>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EDE9DE;border-radius:12px;background:#FCFBF7;">
+            ${scoreTrend.map((r, i) => `
+            <tr>
+              <td style="padding:10px 14px;${i < scoreTrend.length - 1 ? 'border-bottom:1px solid #F0EDE5;' : ''}">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.color};margin-right:8px;"></span>
+                <span style="font-size:13px;font-weight:600;color:#1A1400;">${r.label}</span>
+              </td>
+              <td align="right" style="padding:10px 6px;${i < scoreTrend.length - 1 ? 'border-bottom:1px solid #F0EDE5;' : ''}font-size:14px;font-weight:800;color:#1A1400;">${r.current}</td>
+              <td align="right" style="padding:10px 8px;${i < scoreTrend.length - 1 ? 'border-bottom:1px solid #F0EDE5;' : ''}font-size:11px;font-weight:700;color:${r.week?.color ?? '#A8A292'};">${r.week?.text ?? '—'}</td>
+              <td align="right" style="padding:10px 14px;${i < scoreTrend.length - 1 ? 'border-bottom:1px solid #F0EDE5;' : ''}font-size:11px;font-weight:700;color:${r.month?.color ?? '#A8A292'};">${r.month?.text ?? '—'}</td>
+            </tr>`).join('')}
+          </table>
+          <p style="margin:6px 0 0;font-size:10.5px;color:#B0A090;text-align:right;">Spalten: aktuell · vs. Vorwoche · vs. Vormonat</p>
+          ` : ''}
 
           ${section(`🔴 Kritik &amp; Mängel (${content.kritik.length})`, kritikRows, 'Keine Kritik diese Woche — starke Leistung!')}
           ${section(`💡 Verbesserungsvorschläge (${content.vorschlaege.length})`, vorschlagRows, 'Keine neuen Vorschläge diese Woche.')}
@@ -404,6 +424,34 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
   const raw = await askClaude(system, user, 32000)
   const content = parseDigest(raw)
 
+  // §171: Score-Trend (global gewichtet; „—" solange die Historie jünger
+  // als der Vergleichszeitraum ist — score_history wächst täglich)
+  const trendDelta = (cur: number | null | undefined, prev: number | null | undefined): Delta => {
+    if (cur == null || prev == null) return null
+    const d = Math.round((cur - prev) * 100) / 100
+    if (d === 0) return { text: '±0,00', color: '#A8A292' }
+    return { text: `${d > 0 ? '▲ +' : '▼ −'}${Math.abs(d).toFixed(2).replace('.', ',')}`, color: d > 0 ? '#16A34A' : '#DC2626' }
+  }
+  let scoreTrend: { label: string; color: string; current: string; week: Delta; month: Delta }[] = []
+  try {
+    const pts = await getScoreHistory(40)
+    const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400_000).toISOString().slice(0, 10)
+    const rows: [string, string, string][] = [
+      ['overall', 'Gesamt', '#AE8D2D'], ['airbnb', 'Airbnb', '#E0565B'],
+      ['booking', 'Booking.com', '#2E7CF6'], ['google', 'Google', '#34A853'], ['vrbo', 'FeWo-direkt', '#8B5CF6'],
+    ]
+    for (const [src, label, color] of rows) {
+      const cur = globalScoreAt(pts, src, iso(0))
+      if (!cur) continue
+      scoreTrend.push({
+        label, color,
+        current: cur.score.toFixed(2).replace('.', ','),
+        week: trendDelta(cur.score, globalScoreAt(pts, src, iso(7))?.score),
+        month: trendDelta(cur.score, globalScoreAt(pts, src, iso(30))?.score),
+      })
+    }
+  } catch { scoreTrend = [] }
+
   const html = renderDigestHtml({
     rangeLabel,
     stats: { nachrichten: messages.length, bewertungen: reviews.length, note: avgNote, antwortzeit },
@@ -416,6 +464,7 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
     content,
     taskLine,
     responseLine,
+    scoreTrend,
   })
 
   // ── Empfänger: Admins, Gastgeber, Mitarbeiter (nicht Dienstleister) —
