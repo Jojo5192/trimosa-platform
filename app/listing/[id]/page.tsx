@@ -551,6 +551,18 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
       </div>
 
       {/* Fixed mobile booking bar — only visible on mobile via CSS */}
+      {/* ── Footer (§170: Konsistenz mit den übrigen Seiten) ── */}
+      <footer style={{ borderTop: '1px solid #EEEBE4', padding: '24px 20px 90px', background: '#fff', marginTop: '40px' }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: 'FAQ', href: '/faq' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
+              <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
+            ))}
+          </div>
+        </div>
+      </footer>
+
       <MobileBookingBar pricePerNight={listing.price_per_night} priceFrom={priceFrom} lang={lang} />
     </div>
   )
