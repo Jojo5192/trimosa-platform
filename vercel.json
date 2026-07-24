@@ -49,6 +49,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/wallbox/poll",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/voice/learn",
       "schedule": "40 4 * * *"
     },
