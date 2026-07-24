@@ -11,6 +11,7 @@ import QuickFilters from '@/components/QuickFilters'
 import ScoreBadge from '@/components/ScoreBadge'
 import { checkAvailability, findFlexibleStay } from '@/lib/smoobu'
 import { getHostMarkupMap } from '@/lib/pricing'
+import { getPriceFromMap } from '@/lib/price-from'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
 
@@ -258,6 +259,9 @@ export default async function Home({
     }
   }
 
+  // §161-Jupas ②: „ab X €/Nacht" ohne Datumswahl (täglicher Preis-Cache)
+  const priceFromMap = await getPriceFromMap()
+
   // Serialize all card data for the client component
   const cardData: CardData[] = ranked.map(({ listing, distanceKm, issues, matched }) => {
     const l = listing as Record<string, unknown>
@@ -285,6 +289,7 @@ export default async function Home({
       maxGuests: (l.max_guests as number) || 0,
       bedrooms: (l.bedrooms as number) || 0,
       pricePerNight: ppn,
+      priceFrom: priceFromMap[id] ?? null,
       totalPrice: tp,
       nights,
       distanceKm,
@@ -504,10 +509,13 @@ export default async function Home({
                     <div className="card-info" style={{ padding: card.rating ? '7px 13px 13px' : '11px 13px 13px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
                         <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3, flex: 1 }}>{card.title}</h3>
-                        {(card.pricePerNight > 0 || card.totalPrice > 0) && (
+                        {(card.pricePerNight > 0 || card.totalPrice > 0 || (card.priceFrom ?? 0) > 0) && (
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontSize: '14px', fontWeight: 700, color: '#111' }}>
-                              €{card.totalPrice > 0 ? card.totalPrice : card.pricePerNight}
+                              {card.totalPrice <= 0 && card.pricePerNight <= 0 && (
+                                <span style={{ fontSize: '10px', fontWeight: 600, color: '#999' }}>{t(lang, 'ab')} </span>
+                              )}
+                              €{card.totalPrice > 0 ? card.totalPrice : card.pricePerNight > 0 ? card.pricePerNight : card.priceFrom}
                             </span>
                             <span style={{ fontSize: '10px', color: '#999', display: 'block', lineHeight: 1 }}>
                               {card.totalPrice > 0 ? `${card.nights} ${t(lang, 'Nächte')}` : t(lang, '/Nacht')}
