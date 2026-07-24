@@ -16,6 +16,7 @@ export interface Task {
   title: string
   description: string
   source: string
+  source_ref?: string | null
   listing_id: string | null
   location_group: string | null
   is_general: boolean
@@ -196,10 +197,20 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   const isOverdue = useCallback((t: Task) =>
     !!t.due_date && t.due_date < today && t.status !== 'erledigt' && t.status !== 'verworfen', [today])
 
+  // ☎️ Offene Telefon-Meldungen (§175): eigener Bereich GANZ OBEN — ein Gast
+  // wartet auf Rückmeldung. Bewusst UNABHÄNGIG vom Personen-Filter (Anrufe
+  // sind nie zugewiesen und dürfen niemandem entgehen).
+  const calls = useMemo(() =>
+    tasks
+      .filter((t) => t.source === 'anruf' && ['offen', 'in_arbeit'].includes(t.status))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+  [tasks])
+
   const visible = useMemo(() => {
     const PRIO_RANK: Record<string, number> = { hoch: 0, mittel: 1, niedrig: 2 }
     return tasks
       .filter((t) => t.status !== 'vorschlag' && t.status !== 'verworfen')
+      .filter((t) => !(t.source === 'anruf' && t.status !== 'erledigt'))
       .filter((t) => filter === 'alle' ? true : filter === 'erledigt' ? t.status === 'erledigt' : t.status !== 'erledigt')
       .filter((t) => !personFilter ? true : personFilter === 'none' ? !t.assignee_id : t.assignee_id === personFilter)
       .sort((a, b) => {
@@ -332,6 +343,23 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
           }}>Erneut laden</button>
           <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+        </div>
+      )}
+
+      {/* ☎️ Telefonische Meldungen — immer ganz oben, unabhängig vom Personen-Filter */}
+      {filter !== 'vorschlaege' && filter !== 'erledigt' && calls.length > 0 && (
+        <div style={{ padding: '12px 16px 0' }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: '#B91C1C', margin: '0 0 8px' }}>
+            ☎️ Telefonische Meldungen ({calls.length}) — Gast wartet auf Rückmeldung
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {calls.map((t) => (
+              <CallCard key={t.id} task={t}
+                onDone={() => providerStatus(t, 'erledigt')}
+                onError={setError}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -929,6 +957,173 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ═══════════ ☎️ Telefonische Meldung (§175) ═══════════ */
+
+function relTime(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  if (mins < 60) return `vor ${mins} Min.`
+  const h = Math.round(mins / 60)
+  if (h < 24) return `vor ${h} Std.`
+  return `vor ${Math.round(h / 24)} Tg.`
+}
+
+function CallCard({ task, onDone, onError }: {
+  task: Task
+  onDone: () => void
+  onError: (msg: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [suggestion, setSuggestion] = useState<string | null>(null)
+  const [loadingAi, setLoadingAi] = useState(false)
+  const [instruction, setInstruction] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [speechOk, setSpeechOk] = useState(false)
+  const recRef = useRef<{ stop: () => void; finish: () => void } | null>(null)
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>
+    setSpeechOk(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
+  }, [])
+
+  const urgent = task.title.startsWith('🚨')
+  // Nachricht vom Meta-Block trennen (description = Nachricht + "\n\nAnrufer: …")
+  const metaIdx = task.description.indexOf('\n\nAnrufer:')
+  const message = metaIdx > 0 ? task.description.slice(0, metaIdx) : task.description
+  const phone = task.source_ref
+    ?? (task.description.match(/Rückrufnummer:\s*([+\d][\d\s\-()/]{5,})/)?.[1] ?? '').trim()
+  const callerName = task.title.replace(/^(🚨 Notfall-Anruf|☎️ Anruf):\s*/, '')
+
+  async function fetchSuggestion(instructionText?: string) {
+    setLoadingAi(true)
+    try {
+      const res = await fetch('/api/ai/call-suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, instruction: instructionText || undefined }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok) setSuggestion(j.suggestion)
+      else onError(j.error ?? 'KI-Vorschlag fehlgeschlagen.')
+    } catch {
+      onError('Netzwerkfehler beim KI-Vorschlag.')
+    }
+    setLoadingAi(false)
+  }
+
+  function toggleAi() {
+    const next = !open
+    setOpen(next)
+    if (next && !suggestion && !loadingAi) fetchSuggestion()
+  }
+
+  // 🎤 Diktat: sammelt intern, Stopp → Anweisung wird direkt ausgeführt (§105-Muster)
+  function startDictation() {
+    const w = window as unknown as Record<string, unknown>
+    const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => {
+      lang: string; continuous: boolean; interimResults: boolean
+      onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void
+      onend: (() => void) | null; onerror: (() => void) | null
+      start: () => void; stop: () => void
+    }) | undefined
+    if (!SR) return
+    let spoken = ''
+    let done = false
+    const sr = new SR()
+    sr.lang = 'de-DE'
+    sr.continuous = true
+    sr.interimResults = false
+    sr.onresult = (e) => {
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) spoken += (spoken ? ' ' : '') + r[0].transcript
+      }
+    }
+    const finish = () => {
+      if (done) return
+      done = true
+      setRecording(false)
+      recRef.current = null
+      const text = spoken.trim()
+      if (text) { setInstruction(text); fetchSuggestion(text) }
+    }
+    sr.onend = finish
+    sr.onerror = finish
+    recRef.current = {
+      stop: () => { try { sr.stop() } catch { /* noop */ } setTimeout(finish, 1200) },
+      finish,
+    }
+    setRecording(true)
+    try { sr.start() } catch { finish() }
+  }
+
+  return (
+    <div style={{
+      background: urgent ? 'linear-gradient(135deg, #FFF5F5, #FEE9E7)' : 'linear-gradient(135deg, #FFFDF9, #FFF3EC)',
+      borderRadius: 16, padding: '13px 15px',
+      boxShadow: urgent ? 'inset 0 0 0 1.5px #EF4444' : 'inset 0 0 0 1px #F3C9B4',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>
+          {urgent ? '🚨 ' : '☎️ '}{callerName}
+        </span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: '#8E8E93', flexShrink: 0 }}>{relTime(task.created_at)}</span>
+      </div>
+      <p style={{ fontSize: 13.5, color: '#3C3C43', margin: '6px 0 0', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{message}</p>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 11, flexWrap: 'wrap', alignItems: 'center' }}>
+        {phone && (
+          <a href={`tel:${phone.replace(/[^+\d]/g, '')}`} style={{
+            padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, textDecoration: 'none',
+            background: '#111', color: '#fff',
+          }}>📞 Zurückrufen</a>
+        )}
+        <button onClick={toggleAi} style={{
+          padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+          background: open ? 'var(--gold, #AE8D2D)' : 'rgba(174,141,45,0.14)',
+          color: open ? '#fff' : 'var(--gold-dark, #8A7020)', cursor: 'pointer',
+        }}>✨ Lösungsvorschlag</button>
+        <button onClick={() => { if (confirm('Meldung als erledigt markieren?')) onDone() }} style={{
+          padding: '8px 14px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
+          background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
+        }}>✓ Erledigt</button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(174,141,45,0.25)' }}>
+          {loadingAi && <p style={{ fontSize: 12.5, color: '#8E8E93', margin: 0 }}>✨ Claude prüft Anliegen gegen die Wissensbasis…</p>}
+          {!loadingAi && suggestion && (
+            <p style={{ fontSize: 13, color: '#111', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{suggestion}</p>
+          )}
+          {recording ? (
+            <button onClick={() => recRef.current?.stop()} style={{
+              marginTop: 10, width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
+              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>🔴 Ich höre zu… — zum Fertigstellen antippen</button>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
+              {speechOk && (
+                <button onClick={startDictation} title="Anweisung diktieren" style={{
+                  width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
+                  background: 'rgba(174,141,45,0.14)', cursor: 'pointer', fontSize: 15,
+                }}>🎤</button>
+              )}
+              <input
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && instruction.trim()) fetchSuggestion(instruction.trim()) }}
+                placeholder="Anweisung an Claude…"
+                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff' }}
+              />
+              <button onClick={() => instruction.trim() && fetchSuggestion(instruction.trim())} disabled={loadingAi} style={{
+                width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
+                background: 'var(--gold, #AE8D2D)', color: '#fff', cursor: 'pointer', fontSize: 15,
+              }}>✨</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
