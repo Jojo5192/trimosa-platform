@@ -345,7 +345,7 @@ export default async function RegionPage({ params }: { params: Promise<{ slug: s
         <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
+            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: 'FAQ', href: '/faq' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>
