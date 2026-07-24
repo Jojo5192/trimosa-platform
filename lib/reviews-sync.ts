@@ -296,6 +296,30 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
  * them (name, stars, text, date, avatar). The official API remains the
  * authoritative source for the overall score/count.
  */
+/** §174: Actor- und Places-API-Reviews haben VERSCHIEDENE ID-Räume — über
+ *  mehrere Läufe hinweg entstanden Text-Duplikate derselben Rezension
+ *  (gleicher Autor+Text unter zwei source_review_ids, z. B. „Dami- D" 2×).
+ *  Kandidaten, deren Autor+Text-Fingerprint schon unter ANDERER ID
+ *  existiert, werden übersprungen (textlose Reviews nie — dort wäre der
+ *  Fingerprint nicht eindeutig). */
+async function dedupeGoogleCandidates(listingId: string, candidates: NormalizedReview[]): Promise<NormalizedReview[]> {
+  if (!candidates.length) return candidates
+  const fp = (a: string | null | undefined, t: string | null | undefined) =>
+    `${(a ?? '').trim().toLowerCase()}|${(t ?? '').trim().slice(0, 60).toLowerCase()}`
+  const { data } = await supabaseAdmin
+    .from('reviews').select('source_review_id, author_name, review_text')
+    .eq('listing_id', listingId).eq('source', 'google').limit(1000)
+  const existing = new Map<string, string>()
+  for (const r of data ?? []) {
+    if (r.review_text && r.review_text.trim()) existing.set(fp(r.author_name, r.review_text), r.source_review_id)
+  }
+  return candidates.filter((c) => {
+    if (!c.review_text || !c.review_text.trim()) return true
+    const known = existing.get(fp(c.author_name, c.review_text))
+    return !known || known === c.source_review_id // gleiche ID → Upsert aktualisiert nur
+  })
+}
+
 async function runGoogleReviewsActor(placeId: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
@@ -517,15 +541,15 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
             .map(i => normalizeScraperItem(i, 'google'))
             .filter((r): r is NormalizedReview => r !== null)
           fetched = normalized.length
-          upserted = await upsertReviews(listing.id, 'google', normalized)
+          upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, normalized))
         } catch (e) {
           detail = `Volltexte: ${String(e).slice(0, 220)}`
           fetched = apiReviews.length
-          upserted = await upsertReviews(listing.id, 'google', apiReviews)
+          upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, apiReviews))
         }
       } else {
         fetched = apiReviews.length
-        upserted = await upsertReviews(listing.id, 'google', apiReviews)
+        upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, apiReviews))
       }
 
       return { source: 'google', status: 'ok', fetched, upserted, score: rating ?? undefined, count: count ?? undefined, detail }
