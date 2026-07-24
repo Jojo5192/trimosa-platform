@@ -17,6 +17,7 @@ import QsTemplateEditor from './QsTemplateEditor'
 import CalendarVisibilityCard from './CalendarVisibilityCard'
 import CleaningCard from './CleaningCard'
 import LocksCard from './LocksCard'
+import OncallCard from './OncallCard'
 
 type TabId = 'team' | 'betrieb' | 'zugang' | 'ki' | 'sichtbarkeit'
 
@@ -78,6 +79,7 @@ export default function AdminSections() {
         vergeben und festgelegt, wer welche Wohnungen im Kalender sieht.</>,
         <>
           <AdminUsersClient />
+          <OncallCard />
           <TaskPermissionsCard />
           <CalendarVisibilityCard />
         </>)}
