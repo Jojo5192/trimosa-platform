@@ -105,6 +105,20 @@ async function buildDocs(): Promise<{ name: string; text: string }[]> {
     }
   } catch { /* fail-soft */ }
 
+  // ── 4. Telefon-Erkenntnisse (Phase 2b, §183): Destillat aus echten
+  //      Anruf-Transkripten + den Erledigt-Lösungen der Anruf-Aufgaben ──
+  try {
+    const { data: pk } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'voice_phone_knowledge').maybeSingle()
+    const md = String((pk?.value as { md?: string } | null)?.md ?? '').trim()
+    if (md) {
+      docs.push({
+        name: `${PREFIX}Telefon-Erkenntnisse`,
+        text: `# Erkenntnisse aus bisherigen Telefonaten (automatisch aktualisiert)\n\n${md.slice(0, 20000)}`,
+      })
+    }
+  } catch { /* fail-soft */ }
+
   return docs
 }
 
