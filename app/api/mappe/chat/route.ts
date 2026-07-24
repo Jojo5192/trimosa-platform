@@ -81,6 +81,8 @@ export async function GET(req: NextRequest) {
   }
   let out = rows
     .filter((m) => (m.content ?? '').trim())
+    // Interne Telefonnotizen (§183) sind nur fürs Team — dem Gast nicht zeigen
+    .filter((m) => !String(m.content ?? '').startsWith('☎️ Telefonnotiz'))
     .map((m) => ({
       id: m.id, created_at: m.created_at, mine: m.mine,
       content: m.content_de || m.content, // deutsche Basis
