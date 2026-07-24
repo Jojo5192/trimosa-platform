@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   }
 
   const { error } = await supabaseAdmin.from('tasks').insert({
-    title: `☎️ Anruf: ${name}`.slice(0, 120),
+    title: `${urgent ? '🚨 Notfall-Anruf' : '☎️ Anruf'}: ${name}`.slice(0, 120),
     description: [
       message,
       '',
@@ -63,8 +63,11 @@ export async function POST(request: Request) {
       `Aufgenommen vom Telefon-Assistenten am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`,
     ].join('\n').slice(0, 2000),
     source: 'anruf',
+    // Rückrufnummer strukturiert fürs tel:-Link der Anruf-Sektion (§175)
+    source_ref: number !== 'unterdrückt' ? number : null,
     is_general: true,
-    prio: urgent ? 'hoch' : 'mittel',
+    // Telefonische Meldungen sind IMMER dringlich — ein Gast wartet auf Rückmeldung
+    prio: 'hoch',
     status: 'offen',
     visibility: 'team',
   })
