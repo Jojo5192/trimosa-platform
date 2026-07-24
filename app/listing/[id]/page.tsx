@@ -19,6 +19,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
 import { getInitialReviews } from '@/lib/reviews-data'
+import { getPriceFromMap } from '@/lib/price-from'
 import { REGIONS } from '@/lib/regions'
 import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translate'
 import { t, isUiLang, type UiLang } from '@/lib/i18n'
@@ -181,6 +182,8 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   // echte Review-Texte ins initiale HTML (statt „Laden…")
   const listingRating = buildCardRating(listing as Record<string, unknown>)
   const initialReviews = await getInitialReviews(listing as Record<string, unknown>)
+  // §161-Jupas ②: „ab X €/Nacht" vor der Datumswahl (täglicher Preis-Cache)
+  const priceFrom = (await getPriceFromMap())[listing.id] ?? null
   const reviewItems = initialReviews.reviews
     .filter((r) => (r.review_text ?? '').trim().length >= 20 && r.rating > 0)
     .slice(0, 8)
@@ -375,6 +378,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           {/* RIGHT COLUMN — Booking Box */}
           <div className="detail-booking-col" style={{ position: 'sticky', top: 'calc(var(--navbar-h, 88px) + 16px)' }}>
             <BookingBox
+              priceFrom={priceFrom}
               lang={lang}
               listingId={listing.id}
               pricePerNight={listing.price_per_night}
@@ -547,7 +551,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
       </div>
 
       {/* Fixed mobile booking bar — only visible on mobile via CSS */}
-      <MobileBookingBar pricePerNight={listing.price_per_night} lang={lang} />
+      <MobileBookingBar pricePerNight={listing.price_per_night} priceFrom={priceFrom} lang={lang} />
     </div>
   )
 }
