@@ -45,6 +45,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 6 Tabs:
 
 ⚙️ MEHR:
 - Push-Einstellungen: „Push auf diesem Gerät" + Kategorien „Gäste-Chats", „Interne Gruppen" und „Neue Buchungen".
+- 📈 Entwicklung: Bewertungs-Scores im Zeitverlauf (Gesamt + je Plattform, je Wohnung filterbar, Zeiträume 30 T/90 T/1 Jahr) als Grafik, mit Veränderung vs. Vorwoche/Vormonat auf 2 Nachkommastellen. Datenbasis: täglicher automatischer Score-Snapshot (Historie wächst ab 24.07.2026). Derselbe Trend steht als Tabelle im wöchentlichen Team-Bericht.
 - 🧾 Qualitätssicherung: Archiv aller QS-Protokolle je Wohnung, PDF auf Abruf.
 
 🔔 PUSH-BENACHRICHTIGUNGEN (was wann kommt):
