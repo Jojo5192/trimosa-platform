@@ -62,18 +62,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const poiEntries: MetadataRoute.Sitemap = allPois().flatMap(({ poi }) => multiLang(`/erlebnis/${poi.slug}`, 0.6))
 
-  const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb', '/barrierefreiheit', '/faq', '/stornierung'].map((path) => ({
+  const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb', '/barrierefreiheit', '/stornierung'].map((path) => ({
     url: `${siteUrl}${path}`,
     changeFrequency: 'yearly',
     priority: 0.3,
   }))
 
+  // §173 Etappe 3: FAQ + Startseite ebenfalls mit Sprachpfad-Varianten
+  const faqEntries: MetadataRoute.Sitemap = multiLang('/faq', 0.5)
+  const homeLanguages = {
+    de: siteUrl,
+    ...Object.fromEntries(LANGS.map((x) => [x, `${siteUrl}/${x}`])),
+    'x-default': siteUrl,
+  }
+  const homeEntries: MetadataRoute.Sitemap = [
+    { url: siteUrl, changeFrequency: 'daily' as const, priority: 1, alternates: { languages: homeLanguages } },
+    ...LANGS.map((x) => ({
+      url: `${siteUrl}/${x}`, changeFrequency: 'daily' as const, priority: 0.8, alternates: { languages: homeLanguages },
+    })),
+  ]
+
   return [
-    {
-      url: siteUrl,
-      changeFrequency: 'daily',
-      priority: 1,
-    },
+    ...homeEntries,
+    ...faqEntries,
     ...listingEntries,
     ...contentEntries,
     ...poiEntries,
