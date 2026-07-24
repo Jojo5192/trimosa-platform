@@ -1,6 +1,19 @@
 import { requireVoiceAuth, findBookingByPhone } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendPushToTeam } from '@/lib/push'
+import { sendPushToTeam, sendPushToUser } from '@/lib/push'
+import { getOncallIds } from '@/lib/oncall'
+
+/** Push an die Bereitschaft (§175) — leere Liste = ganzes Team (Fallback).
+    Eine explizite Bereitschaftsliste übersteuert bewusst auch stummgeschaltete
+    Gäste-Chat-Präferenzen: Wer Dienst hat, bekommt den Anruf-Push. */
+async function pushOncall(title: string, body: string, url: string): Promise<void> {
+  const ids = await getOncallIds()
+  if (!ids.length) {
+    await sendPushToTeam(title, body, url)
+    return
+  }
+  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url).catch(() => {})))
+}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -44,11 +57,10 @@ export async function POST(request: Request) {
       console.error('[voice] take-message Insert:', error.message)
       return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
     }
-    await sendPushToTeam(
+    await pushOncall(
       `${icon} Anruf: ${booking.guestName.split(/\s+/)[0] ?? name} · ${booking.listingTitle}`,
       message.replace(/\s+/g, ' ').slice(0, 120),
       '/team?conv=' + booking.id,
-      { guestChat: true },
     ).catch(() => {})
     return Response.json({ ok: true, delivered: 'chat', note: 'Nachricht liegt im Gast-Thread, das Team wurde benachrichtigt.' })
   }
@@ -75,7 +87,7 @@ export async function POST(request: Request) {
     console.error('[voice] take-message Task:', error.message)
     return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
   }
-  await sendPushToTeam(
+  await pushOncall(
     `${icon} Neue Anruf-Nachricht: ${name}`,
     message.replace(/\s+/g, ' ').slice(0, 120),
     '/team?tab=aufgaben',
