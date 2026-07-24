@@ -58,6 +58,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
+  // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
+  const [oncallPeople, setOncallPeople] = useState<{ id: string; name: string; role: string }[] | null>(null)
+  const [oncallSel, setOncallSel] = useState<string[]>([])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
@@ -69,7 +72,20 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats, bookings: d.bookings !== false }) })
       .catch(() => {})
+    fetch('/api/admin/oncall', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) { setOncallPeople(d.people ?? []); setOncallSel(d.selected ?? []) } })
+      .catch(() => {})
   }, [])
+
+  async function toggleOncall(id: string) {
+    const next = oncallSel.includes(id) ? oncallSel.filter((x) => x !== id) : [...oncallSel, id]
+    setOncallSel(next)
+    await fetch('/api/admin/oncall', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userIds: next }),
+    }).catch(() => {})
+  }
 
   async function toggleDevice() {
     if (pushState === 'unsupported' || busy) return
@@ -182,6 +198,23 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           }}>
             💡 Auf dem iPhone: <strong>trimosa.de/team</strong> in Safari öffnen → Teilen → „Zum Home-Bildschirm" — in der installierten App lässt sich Push hier aktivieren.
           </div>
+        )}
+
+        {/* ☎️ Bereitschaft (§175) — nur Admins sichtbar */}
+        {oncallPeople && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '24px 16px 7px' }}>☎️ BEREITSCHAFT (TELEFON-ASSISTENTIN)</div>
+            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+              {oncallPeople.map((p, i) => (
+                <Row key={p.id} title={p.name} subtitle={p.role} last={i === oncallPeople.length - 1}>
+                  <Switch on={oncallSel.includes(p.id)} onChange={() => toggleOncall(p.id)} />
+                </Row>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: '#8A8578', lineHeight: 1.55, margin: '9px 16px 0' }}>
+              Ausgewählte Personen sehen akute Anruf-Meldungen ganz oben im Aufgaben-Tab und bekommen die Anruf-Pushes. <strong>Niemand ausgewählt = das ganze Team.</strong>
+            </div>
+          </>
         )}
       </div>
       {showQs && <QsArchive onClose={() => setShowQs(false)} />}
