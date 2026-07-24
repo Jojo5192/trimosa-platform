@@ -338,16 +338,12 @@ export default function BookingBox({
         )}
       </div>
 
-      {/* §168b: Portal-Vergleich als eigene, ruhige Zeile — Portale bepreisen
-          mit Aufschlag (~7 % = konservative Mitte der realen 5-10-%-Spanne) */}
+      {/* §168b: Portal-Vergleich — Label + Portalpreis ROT durchgestrichen
+          (~7 % = konservative Mitte der realen 5-10-%-Spanne) */}
       {!loadingRates && !(hasBothDates && displayPrice) && pricePerNight <= 0 && priceFrom ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-10px', marginBottom: '16px' }}>
-          <span style={{ fontSize: '12.5px', color: '#98989E' }}>
-            {t(lang, 'Auf den Portalen')}: <s style={{ textDecorationColor: '#C7C7CC' }}>~€ {Math.round(priceFrom * 1.07)}</s>
-          </span>
-          <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16A34A', background: '#DCFCE7', padding: '2px 8px', borderRadius: '999px' }}>
-            −7 %
-          </span>
+        <div style={{ marginTop: '-10px', marginBottom: '16px', fontSize: '12.5px', color: '#98989E' }}>
+          {t(lang, 'Durchschnittlicher Portalpreis')}:{' '}
+          <s style={{ color: '#DC2626', fontWeight: 700, textDecorationColor: '#DC2626' }}>~€ {Math.round(priceFrom * 1.07)}</s>
         </div>
       ) : null}
 
