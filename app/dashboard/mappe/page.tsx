@@ -48,6 +48,7 @@ export default async function MappePage() {
       regionName: region ? region[1].name : null,
       regionSlug: region ? region[0] : null,
       regionClaim: region ? region[1].claim : null,
+      googlePlaceId: l.google_place_id ?? null,
     }
     return { id: l.id as string, title: String(l.title ?? ''), blocks: parseGuide(l.guide), ctx }
   })
