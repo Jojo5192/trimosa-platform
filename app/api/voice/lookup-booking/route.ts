@@ -14,16 +14,20 @@ export async function POST(request: Request) {
 
   let body: { caller_number?: string }
   try { body = await request.json() } catch { body = {} }
+  // §192: Die Nicht-gefunden-Hints steuern zur SCHNELL-Verifizierung
+  // (gast_verifizieren mit Wohnung + An-/Abreisedatum) — NICHT mehr zur
+  // Namensabfrage, das kollidierte mit der „Name nur Anrede"-Doktrin.
+  const NOT_FOUND_HINT = 'Kein Problem — arbeite ohne Rufnummern-Erkennung weiter: Beantworte allgemeine Fragen direkt. Wird es buchungsspezifisch, nutze gast_verifizieren mit WOHNUNG + Anreise- und Abreisedatum (das reicht zur Verifizierung; der Name ist nur für die Anrede).'
   const caller = String(body.caller_number ?? '').trim()
   if (!caller) {
-    return Response.json({ found: false, hint: 'Keine Rufnummer übermittelt (z. B. unterdrückt oder Browser-Test).' })
+    return Response.json({ found: false, hint: 'Keine Rufnummer übermittelt (z. B. unterdrückt oder Browser-Test). ' + NOT_FOUND_HINT })
   }
 
   const booking = await findBookingByPhone(caller)
   if (!booking) {
     return Response.json({
       found: false,
-      hint: 'Keine Buchung zu dieser Nummer gefunden. Freundlich nach Name und Wohnung fragen.',
+      hint: 'Keine Buchung zu dieser Nummer gefunden. ' + NOT_FOUND_HINT,
     })
   }
 
