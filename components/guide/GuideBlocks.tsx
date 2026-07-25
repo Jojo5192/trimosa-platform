@@ -255,6 +255,30 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
               </figure>
             )
           }
+          case 'review': {
+            const pid = ctx.googlePlaceId
+            if (!pid && !preview) return null
+            return wrap(
+              <div style={{ ...CARD, textAlign: 'center' }}>
+                <div style={{ fontSize: 25, letterSpacing: 5, color: '#D9A62E', marginBottom: 5 }}>★★★★★</div>
+                <div style={{ fontSize: 15.5, fontWeight: 800, color: '#1A1400', marginBottom: 5 }}>{b.title || labels.reviewTitle}</div>
+                <p style={{ margin: '0 0 13px', fontSize: 13.5, lineHeight: 1.6, color: '#4A4438' }}>{b.text || labels.reviewText}</p>
+                {pid
+                  ? (
+                    <a href={`https://search.google.com/local/writereview?placeid=${pid}`} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 24px', borderRadius: 999,
+                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                      fontSize: 13.5, fontWeight: 700, textDecoration: 'none',
+                    }}>⭐ {labels.reviewButton}</a>
+                  )
+                  : (
+                    <span style={{ fontSize: 11.5, color: '#B45309' }}>
+                      ⚠️ Ohne Google-Place-ID am Inserat bleibt der Baustein beim Gast unsichtbar (Inserats-Editor → Plattform-URLs).
+                    </span>
+                  )}
+              </div>
+            )
+          }
           case 'map': {
             const q = ctx.lat && ctx.lon ? `${ctx.lat},${ctx.lon}` : encodeURIComponent(ctx.address ?? '')
             return wrap(
