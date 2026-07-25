@@ -310,7 +310,10 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                         {g.items.map((it: InventarItem) => (
                           <li key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#4A4438', lineHeight: 1.45 }}>
                             <span style={{ fontSize: 14, flexShrink: 0 }}>{it.emoji}</span>
-                            <span style={{ minWidth: 0 }}>{it.label}</span>
+                            <span style={{ minWidth: 0 }}>
+                              {it.label}
+                              {it.note && <span style={{ display: 'block', fontSize: 11, color: '#8A8065', lineHeight: 1.4 }}>{it.note}</span>}
+                            </span>
                             {typeof it.count === 'number' && it.count > 0 && (
                               <span style={{
                                 fontSize: 10.5, fontWeight: 800, color: '#8A7020', background: '#FAF5E4',
