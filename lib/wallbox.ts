@@ -103,19 +103,49 @@ export async function listWallboxCharges(page = 0, perPage = 50, fromDate?: stri
   hasMore: boolean
   rawSample: Record<string, unknown> | null
 }> {
-  const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
-  if (fromDate) params.set('fromDate', fromDate)
-  const j = await montaGet(`/charges?${params}`)
-  const rows = unwrapList(j)
+  // §185-Nachtrag (Inhaber-Fund „Ladevorgänge fehlen"): OHNE chargePointId
+  // liefert /charges nur die EIGENEN Fahrer-Ladevorgänge des API-Nutzers —
+  // Gäste-Ladungen an unserer Station fehlten. Deshalb Betreiber-Sicht:
+  // je eigenem Ladepunkt abfragen und mergen (aktuell 1 Ladepunkt).
+  const names = await getChargePointNames()
+  const ids = [...names.keys()]
+  const all: Record<string, unknown>[] = []
+  let hasMore = false
+
+  const query = async (extra: Record<string, string>) => {
+    const params = new URLSearchParams({ page: String(page), perPage: String(perPage), ...extra })
+    if (fromDate) params.set('fromDate', fromDate)
+    const rows = unwrapList(await montaGet(`/charges?${params}`))
+    if (rows.length >= perPage) hasMore = true
+    all.push(...rows)
+  }
+
+  if (ids.length) {
+    for (const id of ids) await query({ chargePointId: String(id) })
+  } else {
+    await query({})
+  }
+
+  // Dedupe (Sicherheitsnetz) + neueste zuerst
+  const seen = new Set<string>()
+  const rows = all.filter((r) => {
+    const id = String(r.id ?? '')
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  }).sort((a, b) => String(b.createdAt ?? b.startedAt ?? '').localeCompare(String(a.createdAt ?? a.startedAt ?? '')))
+
   return {
     charges: rows.map(normCharge),
-    hasMore: rows.length >= perPage,
+    hasMore,
     rawSample: rows[0] ?? null,
   }
 }
 
-/** Ladepunkt-Namen nachschlagen (id → name), best effort */
+/** Ladepunkt-Namen nachschlagen (id → name), 10-Min-Cache (Rate-Limit schonen) */
 export async function getChargePointNames(): Promise<Map<number, string>> {
+  const g = globalThis as typeof globalThis & { __montaCps?: { map: Map<number, string>; exp: number } }
+  if (g.__montaCps && Date.now() < g.__montaCps.exp) return g.__montaCps.map
   try {
     const j = await montaGet('/charge-points?page=0&perPage=50')
     const rows = unwrapList(j)
@@ -125,9 +155,10 @@ export async function getChargePointNames(): Promise<Map<number, string>> {
       const name = typeof r.name === 'string' && r.name ? r.name : (typeof r.serialNumber === 'string' ? r.serialNumber : null)
       if (id != null && name) map.set(id, name)
     }
+    if (map.size) g.__montaCps = { map, exp: Date.now() + 10 * 60_000 }
     return map
   } catch {
-    return new Map()
+    return g.__montaCps?.map ?? new Map()
   }
 }
 
@@ -158,10 +189,15 @@ export async function saveWallboxSettings(s: WallboxSettings): Promise<void> {
   await supabaseAdmin.from('app_settings').upsert({ key: SETTINGS_KEY, value: s }, { onConflict: 'key' })
 }
 
-/** Brutto-Gewinn-Schätzung: Umsatz − Stromkosten (Monta-Kosten, sonst kWh × Satz) */
+/** Brutto-Gewinn-Schätzung: Umsatz − Stromkosten. Montas cost-Feld nur
+ *  verwenden, wenn es wirklich befüllt ist (>0) — ohne hinterlegten
+ *  Einkaufspreis liefert Monta cost:0, dann gilt kWh × unser Strompreis
+ *  (Kalibrier-Befund §185: Felder consumedKwh/price/cost bestätigt). */
 export function estimateProfitEur(c: WallboxCharge, kwhCostCents: number): number | null {
   if (c.revenueEur == null) return null
-  const cost = c.costEur ?? (c.kwh != null ? (c.kwh * kwhCostCents) / 100 : null)
+  const cost = c.costEur != null && c.costEur > 0
+    ? c.costEur
+    : c.kwh != null ? (c.kwh * kwhCostCents) / 100 : null
   if (cost == null) return null
   return Math.round((c.revenueEur - cost) * 100) / 100
 }
