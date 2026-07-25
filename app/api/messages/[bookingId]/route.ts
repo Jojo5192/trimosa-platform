@@ -150,9 +150,10 @@ export async function GET(
     })
   }
 
-  // Interne Telefonnotizen (§183) sind nur fürs Team — Gäste sehen sie nicht
+  // Interne Telefon-Einträge (§183/§189: Notizen UND aufgenommene
+  // Telefonnachrichten) sind nur fürs Team — Gäste sehen sie nicht
   if (!isHost) {
-    out = out.filter((m) => !String(m.content ?? '').startsWith('☎️ Telefonnotiz'))
+    out = out.filter((m) => !String(m.content ?? '').startsWith('☎️'))
   }
 
   return NextResponse.json({ messages: out })
