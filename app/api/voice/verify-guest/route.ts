@@ -19,6 +19,8 @@ export const maxDuration = 60
 type BRow = {
   id: string
   guest_name: string | null
+  adults: number | null
+  children: number | null
   check_in: string
   check_out: string
   door_code: string | null
@@ -29,7 +31,7 @@ type BRow = {
 async function loadBooking(id: string): Promise<BRow | null> {
   const { data } = await supabaseAdmin
     .from('bookings')
-    .select('id, guest_name, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+    .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
     .eq('id', id)
     .maybeSingle()
   return (data as unknown as BRow) ?? null
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
   if (!booking && codeIn.length >= 5) {
     const { data } = await supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
       .eq('status', 'confirmed')
       .eq('door_code', codeIn)
       .gte('check_out', cutoff)
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
   if (!booking && lastName && /^\d{4}-\d{2}-\d{2}$/.test(arrival)) {
     const { data } = await supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
       .eq('status', 'confirmed')
       .eq('check_in', arrival)
       .ilike('guest_name', `%${lastName}%`)
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
       if (ids.length) {
         const { data } = await supabaseAdmin
           .from('bookings')
-          .select('id, guest_name, guest_id, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+          .select('id, guest_name, guest_id, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
           .eq('status', 'confirmed')
           .eq('check_in', arrival)
           .in('guest_id', ids)
@@ -291,10 +293,20 @@ export async function POST(request: Request) {
     })
   }
 
+  // §192: Buchungsdetails DIREKT mitliefern — der Bot behauptete sonst,
+  // er habe „keinen Zugriff auf die Personenzahl"
+  const persons = (booking.adults ?? 0) + (booking.children ?? 0)
+  const nights = Math.round((new Date(`${booking.check_out}T00:00:00Z`).getTime() - new Date(`${booking.check_in}T00:00:00Z`).getTime()) / 86400000)
   return Response.json({
     verified: true,
     guest_first_name: firstName,
     apartment: title,
-    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Türcodes nur über request=tuercode.',
+    check_in: booking.check_in,
+    check_out: booking.check_out,
+    nights,
+    persons: persons > 0 ? persons : null,
+    adults: booking.adults,
+    children: booking.children,
+    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Personenzahl und Zeitraum stehen DIREKT in dieser Antwort — nutze sie und sag nie, du hättest keinen Zugriff auf Buchungsdetails. Türcodes nur über request=tuercode.',
   })
 }
