@@ -136,9 +136,19 @@ export async function POST(request: Request) {
   }
 
   if (!booking) {
+    // §186-Trichter: Der Server sagt dem Bot GENAU, was er als Nächstes fragen
+    // soll — eine Frage pro Runde, dann erneuter Tool-Aufruf mit ALLEN Angaben.
+    const missing: string[] = []
+    if (!arrival) missing.push('das Anreisedatum')
+    if (!departure) missing.push('das Abreisedatum')
+    if (!lastName) missing.push('den Namen der Person, die gebucht hat')
+    if (!apartment) missing.push('den Namen der Wohnung')
+    const hint = missing.length
+      ? `Keine passende Buchung gefunden — es fehlt noch: ${missing.join(', ')}. Frag beiläufig GENAU EINE dieser Angaben nach (in dieser Reihenfolge) und rufe das Tool danach mit ALLEN bisher bekannten Angaben erneut auf.`
+      : 'Zu diesen Angaben passt keine Buchung. Kläre die wahrscheinlichste Ursache — EINE Rückfrage pro Runde, danach Tool erneut aufrufen: 1) Datum verhört oder falsch erinnert („Magst du kurz in deiner Buchungsbestätigung nachschauen?") · 2) Buchung läuft auf einen ANDEREN Namen (Partner, Familie, Firma — nach dem Namen der buchenden Person fragen) · 3) über ein Portal gebucht (Airbnb/Booking/FeWo — der dort hinterlegte Name kann abweichen). Nach spätestens ZWEI erfolglosen Runden nicht weiter verhören: nachricht_aufnehmen — das Team meldet sich schnell.'
     return Response.json({
       verified: false,
-      hint: 'Keine passende Buchung gefunden. Wohnung, Anreise- UND Abreisedatum erfragen und erneut aufrufen. WICHTIG: Steht der Anrufer ausgesperrt VOR DER TÜR, ist das ein NOTFALL — dann NICHT weiter suchen, sondern SOFORT nachricht_aufnehmen mit urgent=true (das Team meldet sich umgehend); den Anrufer nie unverrichteter Dinge auflegen lassen.',
+      hint: hint + ' WICHTIG: Steht der Anrufer ausgesperrt VOR DER TÜR, ist das ein NOTFALL — dann NICHT weiter suchen, sondern SOFORT nachricht_aufnehmen mit urgent=true; den Anrufer nie unverrichteter Dinge auflegen lassen.',
     })
   }
 
