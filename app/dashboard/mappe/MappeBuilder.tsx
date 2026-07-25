@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
   blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, INVENTAR_KATALOG, inventarGroupLabel, inventarGroupOf,
-  type GuideBlock, type GuideCtx, type GuidePhase, type InventarBlock, type InventarItem, type InventarCatalogItem,
+  type GuideBlock, type GuideCtx, type GuidePhase, type InventarBlock, type InventarItem, type InventarCatalogItem, type StepsBlock,
   type InventarGroupKey,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
@@ -404,6 +404,51 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
     }
   }
 
+  // 📷 je Schritt (§196): Fotos hängen index-parallel zu steps (stepImages)
+  function stepImagesAligned(b: StepsBlock): string[] {
+    const imgs = [...(b.stepImages ?? [])].map((x) => x || '')
+    while (imgs.length < b.steps.length) imgs.push('')
+    return imgs
+  }
+  async function uploadStepImage(b: StepsBlock, i: number, file: File) {
+    setUploadBusy(true)
+    setUploadErr('')
+    try {
+      const blob = await compressToJpeg(file)
+      const fd = new FormData()
+      fd.append('file', new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' }))
+      const res = await fetch('/api/guide-image', { method: 'POST', body: fd })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
+      const imgs = stepImagesAligned(b)
+      imgs[i] = d.url
+      onChange({ stepImages: imgs } as Partial<GuideBlock>)
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+  function moveStep(b: StepsBlock, i: number, dir: -1 | 1) {
+    const j = i + dir
+    if (j < 0 || j >= b.steps.length) return
+    const st = [...b.steps]
+    ;[st[i], st[j]] = [st[j], st[i]]
+    const imgs = stepImagesAligned(b)
+    ;[imgs[i], imgs[j]] = [imgs[j], imgs[i]]
+    onChange({ steps: st, stepImages: imgs } as Partial<GuideBlock>)
+  }
+  function removeStep(b: StepsBlock, i: number) {
+    const imgs = stepImagesAligned(b)
+    imgs.splice(i, 1)
+    onChange({ steps: b.steps.filter((_, j) => j !== i), stepImages: imgs } as Partial<GuideBlock>)
+  }
+  function clearStepImage(b: StepsBlock, i: number) {
+    const imgs = stepImagesAligned(b)
+    imgs[i] = ''
+    onChange({ stepImages: imgs } as Partial<GuideBlock>)
+  }
+
   // §150: Mehrfach-Phasen (leer = immer) + Wohnungs-Zuordnung (leer = alle)
   const activePhases = blockPhases(block)
   function togglePhase(p: GuidePhase) {
@@ -433,7 +478,10 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
     : (block.type === 'text' || block.type === 'warning' || block.type === 'info' || block.type === 'door') ? (block.text ?? '')
     : null
   const aiAccept = (v: string) => {
-    if (block.type === 'steps') onChange({ steps: v.split('\n') } as Partial<GuideBlock>)
+    if (block.type === 'steps') {
+      const lines = v.split('\n')
+      onChange({ steps: lines, stepImages: (block.stepImages ?? []).slice(0, lines.length) } as Partial<GuideBlock>)
+    }
     else if (block.type === 'contact') onChange({ note: v } as Partial<GuideBlock>)
     else onChange({ text: v } as Partial<GuideBlock>)
   }
@@ -484,13 +532,45 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
       {block.type === 'steps' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <input style={INPUT} placeholder="Titel (z. B. So kommst du rein)" value={block.title} onChange={(e) => onChange({ title: e.target.value })} />
-          <textarea
-            style={{ ...INPUT, resize: 'vertical' }} rows={Math.max(3, block.steps.length + 1)}
-            placeholder={'Ein Schritt pro Zeile…'}
-            value={block.steps.join('\n')}
-            onChange={(e) => onChange({ steps: e.target.value.split('\n') })}
-          />
-          <span style={{ fontSize: 11, color: '#A8A292' }}>Eine Zeile = ein Schritt (wird automatisch nummeriert)</span>
+          {block.steps.map((st, i) => {
+            const img = block.stepImages?.[i] || ''
+            return (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: '#FAF5E4',
+                    color: '#8A7020', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{i + 1}</span>
+                  <input style={{ ...INPUT, flex: 1, minWidth: 0 }} placeholder={`Schritt ${i + 1}…`} value={st}
+                    onChange={(e) => onChange({ steps: block.steps.map((x, j) => (j === i ? e.target.value : x)) })} />
+                  <label title={img ? 'Foto ersetzen' : 'Foto zu diesem Schritt hinzufügen'} style={{
+                    ...btn, cursor: uploadBusy ? 'wait' : 'pointer', opacity: uploadBusy ? 0.5 : 1,
+                    borderColor: img ? 'var(--gold)' : '#E5E1D6', background: img ? '#FAF5E4' : '#fff',
+                  }}>
+                    📷
+                    <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadStepImage(block, i, f); e.target.value = '' }} />
+                  </label>
+                  <button type="button" style={{ ...btn, opacity: i === 0 ? 0.35 : 1 }} disabled={i === 0} onClick={() => moveStep(block, i, -1)} title="Schritt nach oben">↑</button>
+                  <button type="button" style={{ ...btn, opacity: i === block.steps.length - 1 ? 0.35 : 1 }} disabled={i === block.steps.length - 1} onClick={() => moveStep(block, i, 1)} title="Schritt nach unten">↓</button>
+                  <button type="button" style={{ ...btn, color: '#DC2626' }} onClick={() => removeStep(block, i)} title="Schritt entfernen">✕</button>
+                </div>
+                {img && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 28 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img} alt={`Foto zu Schritt ${i + 1}`} style={{ width: 92, height: 60, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                    <button type="button" style={{ ...btn, color: '#DC2626' }} onClick={() => clearStepImage(block, i)} title="Foto entfernen">✕</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          <button type="button" onClick={() => onChange({ steps: [...block.steps, ''] })} style={{
+            alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 999, border: '1.5px dashed #D8D2C4',
+            background: '#FCFBF7', color: '#8A7020', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          }}>+ Schritt</button>
+          {uploadErr && <span style={{ fontSize: 11.5, color: '#B91C1C' }}>⚠️ {uploadErr}</span>}
+          <span style={{ fontSize: 11, color: '#A8A292' }}>Wird automatisch nummeriert — 📷 hängt ein Foto an den Schritt (z. B. die richtige Tür oder der Schlüsselkasten).</span>
         </div>
       )}
       {block.type === 'wifi' && (
