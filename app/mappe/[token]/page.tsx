@@ -98,19 +98,27 @@ export default async function MappePage({ params, searchParams }: {
   //    nächtlichen Cron-Lauf ab); vorher nur der Hinweis, ab wann er kommt ──
   let doorCode: string | null = null
   let doorNoteDe: string | null = null
-  const todayIso = new Date().toISOString().slice(0, 10)
   const locksArr = (listing.locks as { provider: string }[] | null) ?? []
   console.log('[mappe] door-check:', { booking: String(booking.id).slice(0, 8), locks: locksArr.length, checkIn: booking.check_in, checkOut: booking.check_out, status: booking.status })
-  // §202: „Nach Abreise nie sichtbar" — Code zeigt sich bis zur Check-out-
-  // UHRZEIT des Abreisetags (morgens braucht ihn der Gast noch), danach weg
+  // §202/§203: Aufenthalts-Fenster mit Stunden-Puffer (Inhaber-Doktrin) —
+  // „Während"-Inhalte ab PHASE_LEAD_H Stunden vor Check-in bis PHASE_TAIL_H
+  // Stunden nach Check-out; der Türcode verschwindet mit demselben Ende.
+  const PHASE_LEAD_H = 4
+  const PHASE_TAIL_H = 4
   const berlinNow = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Berlin', hour12: false,
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   }).format(new Date())
-  const [berlinDate, berlinTime] = berlinNow.split(' ')
+  const shiftHours = (hhmm: string, delta: number) => {
+    const [h, m] = hhmm.split(':').map(Number)
+    const t = Math.min(Math.max((h || 0) + delta, 0), 23)
+    return `${String(t).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`
+  }
+  const ciTime = String(listing.check_in_time ?? '16:00').slice(0, 5)
   const coTime = String(listing.check_out_time ?? '10:00').slice(0, 5)
-  const abgereist = String(booking.check_out ?? '') < berlinDate
-    || (String(booking.check_out ?? '') === berlinDate && berlinTime >= coTime)
+  const stayStart = `${booking.check_in} ${shiftHours(ciTime, -PHASE_LEAD_H)}`
+  const stayEnd = `${booking.check_out} ${shiftHours(coTime, PHASE_TAIL_H)}`
+  const abgereist = berlinNow > stayEnd
   if (locksArr.length && !abgereist) {
     const revealDays = await getRevealDays()
     const daysToArrival = Math.ceil((new Date(String(booking.check_in) + 'T00:00:00Z').getTime() - Date.now()) / 86400_000)
@@ -200,7 +208,7 @@ export default async function MappePage({ params, searchParams }: {
   const nights = Math.max(1, Math.round(
     (new Date(String(booking.check_out) + 'T00:00:00Z').getTime() - new Date(String(booking.check_in) + 'T00:00:00Z').getTime()) / 86400_000,
   ))
-  const guidePhase: GuidePhase = todayIso < String(booking.check_in) ? 'vor' : todayIso < String(booking.check_out) ? 'waehrend' : 'nach'
+  const guidePhase: GuidePhase = berlinNow < stayStart ? 'vor' : berlinNow <= stayEnd ? 'waehrend' : 'nach'
   blocks = blocks.filter((b) => blockVisibleInPhase(b, guidePhase, nights))
 
   // §166: Kontakt + Chat = EIN Punkt „Kontakt & Chat" (geteilte Logik mit
