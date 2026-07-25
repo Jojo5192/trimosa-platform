@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
-  blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, type GuideBlock, type GuideCtx, type GuidePhase,
+  blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, INVENTAR_KATALOG, inventarGroupLabel,
+  type GuideBlock, type GuideCtx, type GuidePhase, type InventarBlock, type InventarItem, type InventarCatalogItem,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import AiPolishButton from '@/components/AiPolishButton'
@@ -513,6 +514,10 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
         </div>
       )}
 
+      {block.type === 'inventar' && (
+        <InventarEditor block={block} onChange={onChange} />
+      )}
+
       {/* §160-Kleinigkeit: Check-in-/Check-out-Zeit getrennt anzeigbar — als
           zwei duplizierte Bausteine mit je eigener Phasen-Sichtbarkeit */}
       {block.type === 'times' && (
@@ -596,6 +601,124 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
             }}>{l.title}</button>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+/** 📦 Inventar-Editor (§195): Katalog anklicken, Stückzahlen eintragen,
+ *  eigene Einträge ergänzen. Gespeichert werden nur die AKTIVEN Punkte. */
+function InventarEditor({ block, onChange }: {
+  block: InventarBlock
+  onChange: (patch: Partial<GuideBlock>) => void
+}) {
+  const [cEmoji, setCEmoji] = useState('')
+  const [cLabel, setCLabel] = useState('')
+  const items = block.items ?? []
+  const active = new Map(items.map((i) => [i.id, i]))
+  const set = (next: InventarItem[]) => onChange({ items: next } as Partial<GuideBlock>)
+
+  function toggleCatalog(cat: InventarCatalogItem) {
+    if (active.has(cat.id)) set(items.filter((i) => i.id !== cat.id))
+    else set([...items, { id: cat.id, emoji: cat.emoji, label: cat.label }])
+  }
+  function setCount(id: string, raw: string) {
+    const n = Number(raw)
+    set(items.map((i) => (i.id === id ? { ...i, count: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined } : i)))
+  }
+  function addCustom() {
+    const label = cLabel.trim()
+    if (!label) return
+    const id = `x-${label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').slice(0, 30)}-${Math.random().toString(36).slice(2, 5)}`
+    set([...items, { id, emoji: (cEmoji.trim() || '🔹').slice(0, 4), label }])
+    setCEmoji('')
+    setCLabel('')
+  }
+  const customs = items.filter((i) => i.id.startsWith('x-'))
+  const countInput: React.CSSProperties = {
+    width: 46, border: '1px solid #E5E1D6', borderRadius: 8, padding: '3px 5px',
+    fontSize: 11.5, textAlign: 'center', background: '#fff',
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <input
+        style={{ ...INPUT, fontWeight: 600 }} placeholder="Titel (z. B. Inventar & Ausstattung)"
+        value={block.title} onChange={(e) => onChange({ title: e.target.value } as Partial<GuideBlock>)}
+      />
+      {INVENTAR_KATALOG.map((g) => (
+        <div key={g.key}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', marginBottom: 6 }}>
+            {g.emoji} {inventarGroupLabel(DE_LABELS, g.key).toUpperCase()}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {g.items.map((cat) => {
+              const on = active.has(cat.id)
+              return (
+                <span key={cat.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <button type="button" onClick={() => toggleCatalog(cat)} title={on ? 'Entfernen' : 'Als vorhanden markieren'} style={{
+                    padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+                    border: on ? '1px solid transparent' : '1px solid #E5E1D6',
+                    background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                    color: on ? '#fff' : '#8A857B',
+                  }}>{cat.emoji} {cat.label}</button>
+                  {on && cat.countable && (
+                    <input
+                      type="number" min={1} max={99} placeholder="Stk."
+                      value={active.get(cat.id)?.count ?? ''}
+                      onChange={(e) => setCount(cat.id, e.target.value)}
+                      style={countInput} title="Stückzahl (optional)"
+                    />
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+      {/* Eigene Einträge */}
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', marginBottom: 6 }}>
+          🔹 EIGENE EINTRÄGE
+        </div>
+        {customs.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+            {customs.map((it) => (
+              <span key={it.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999,
+                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 11.5, fontWeight: 600,
+                }}>
+                  {it.emoji} {it.label}
+                  <button type="button" onClick={() => set(items.filter((x) => x.id !== it.id))} title="Entfernen" style={{
+                    border: 'none', background: 'rgba(255,255,255,0.25)', color: '#fff', cursor: 'pointer',
+                    width: 16, height: 16, borderRadius: '50%', fontSize: 10, lineHeight: 1, padding: 0,
+                  }}>✕</button>
+                </span>
+                <input
+                  type="number" min={1} max={99} placeholder="Stk."
+                  value={it.count ?? ''}
+                  onChange={(e) => setCount(it.id, e.target.value)}
+                  style={countInput} title="Stückzahl (optional)"
+                />
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input style={{ ...INPUT, width: 52, textAlign: 'center' }} maxLength={4} placeholder="🔹" value={cEmoji}
+            onChange={(e) => setCEmoji(e.target.value)} title="Emoji (optional)" />
+          <input style={{ ...INPUT, flex: 1 }} placeholder="Eigener Eintrag (z. B. Nespresso Vertuo, Fondue-Set …)" value={cLabel}
+            onChange={(e) => setCLabel(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }} />
+          <button type="button" onClick={addCustom} disabled={!cLabel.trim()} style={{
+            padding: '8px 14px', borderRadius: 10, border: 'none', cursor: cLabel.trim() ? 'pointer' : 'default',
+            background: cLabel.trim() ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E1D6',
+            color: '#fff', fontSize: 12, fontWeight: 700,
+          }}>+ Hinzufügen</button>
+        </div>
+        <span style={{ fontSize: 11, color: '#A8A292', display: 'block', marginTop: 5 }}>
+          Tipp: Trag beim eigenen Eintrag ruhig Marke/Modell ein (z. B. „☕ Nespresso Vertuo") — das nutzt auch die Telefon-KI.
+        </span>
       </div>
     </div>
   )
