@@ -40,7 +40,7 @@ function blockToText(b: GuideBlock): string | null {
       // §195: die Checkliste macht Ausstattungs-Antworten des Bots FUNDIERT
       // („Salz & Pfeffer vorhanden", „Weingläser: 6 Stück")
       return (b.items ?? []).length
-        ? `${b.title || 'Inventar'}: ${(b.items ?? []).map((i) => (typeof i.count === 'number' && i.count > 0 ? `${i.label} (${i.count} Stück)` : i.label)).join(', ')}.`
+        ? `${b.title || 'Inventar'}: ${(b.items ?? []).map((i) => { const extra = [i.note, typeof i.count === 'number' && i.count > 0 ? `${i.count} Stück` : ''].filter(Boolean).join(', '); return extra ? `${i.label} (${extra})` : i.label }).join(', ')}.`
         : null
     default: return null        // contact/image/map/times/rules/region/chat → an anderer Stelle abgedeckt
   }
