@@ -312,7 +312,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   warning: { icon: '⚠️', label: 'Hinweis-Box', hint: 'Hervorgehobener wichtiger Hinweis' },
   steps: { icon: '1.', label: 'Schritt-für-Schritt', hint: 'Nummerierte Anleitung (z. B. Check-in)' },
   wifi: { icon: '📶', label: 'WLAN', hint: 'Netzwerkname + Passwort mit Kopier-Knopf' },
-  door: { icon: '🔑', label: 'Schlüssel & Zugang', hint: 'Zugangs-Infos — zeigt automatisch den Türcode der Buchung, sobald der Wohnung Schlösser zugeordnet sind (Admin → 🔑 Türcodes)' },
+  door: { icon: '🔑', label: 'Türcode', hint: 'Zeigt automatisch den Türcode der Buchung, sobald der Wohnung Schlösser zugeordnet sind (Admin → 🔑 Türcodes); Freitext optional' },
   contact: { icon: '📞', label: 'Kontakt', hint: 'Telefonnummer + Hinweis — erscheint in der Mappe ZUSAMMEN mit dem Gäste-Chat als ein Punkt „Kontakt & Chat" (an dieser Position, falls kein eigener Chat-Baustein platziert ist)' },
   image: { icon: '📷', label: 'Foto', hint: 'Bild mit optionaler Bildunterschrift (z. B. Parkplatz, Mülltonnen-Standort)' },
   map: { icon: '📍', label: 'Adresse & Anfahrt', hint: 'Aus dem Inserat: Adresse + Google-Maps-Route', smart: true },
@@ -339,7 +339,7 @@ export function emptyBlock(type: GuideBlock['type']): GuideBlock {
     case 'warning': return { id, type, text: '' }
     case 'steps': return { id, type, title: '', steps: [''] }
     case 'wifi': return { id, type, ssid: '', password: '' }
-    case 'door': return { id, type, title: 'Schlüssel & Zugang', text: '' }
+    case 'door': return { id, type, title: 'Türcode', text: '' }
     case 'contact': return { id, type, phone: '', note: '' }
     case 'image': return { id, type, url: '', caption: '' }
     case 'review': return { id, type, title: '', text: '', phases: ['nach'] }
@@ -359,7 +359,7 @@ export function defaultTemplate(): GuideBlock[] {
     { id: newBlockId(), type: 'times' },
     { id: newBlockId(), type: 'map' },
     { id: newBlockId(), type: 'steps', title: 'So kommst du rein', steps: ['Beispiel: Parke direkt vor dem Haus.', 'Beispiel: Die Wohnung findest du im 1. OG links.', 'Beispiel: Den Schlüssel bekommst du …'] },
-    { id: newBlockId(), type: 'door', title: 'Schlüssel & Zugang', text: '' },
+    { id: newBlockId(), type: 'door', title: 'Türcode', text: '' },
     { id: newBlockId(), type: 'wifi', ssid: '', password: '' },
     { id: newBlockId(), type: 'info', emoji: '🅿️', title: 'Parken', text: '' },
     { id: newBlockId(), type: 'rules' },
