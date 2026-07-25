@@ -10,6 +10,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToUser, sendPushToTeam } from '@/lib/push'
+import { blockForListing, type GuideBlock, type InventarBlock } from '@/lib/guide'
 
 export interface QsItem {
   id: string
@@ -167,6 +168,38 @@ export function resolveQsTemplate(store: QsTemplateStore, listingId: string, loc
   return store.listings[listingId]
     ?? (locationGroup ? store.groups[locationGroup.trim()] : undefined)
     ?? store.base
+}
+
+/**
+ * 📦 §195: Die Inventar-Checkliste aus der GÄSTEMAPPE ist automatisch die
+ * Basis der QS-Protokolle — je Inventar-Punkt entsteht ein Prüf-Punkt
+ * (mit Soll-Stückzahl → Typ 'anzahl'). Wird an die aufgelöste Vorlage
+ * ANGEHÄNGT (nie gespeichert; das Snapshot-Prinzip beim Abschluss hält
+ * alte Protokolle stabil). Bei >18 Punkten wird in mehrere Sektionen
+ * geteilt (UI-freundlich).
+ */
+export function inventarQsSections(blocks: GuideBlock[], listingId: string): QsSection[] {
+  const items = blocks
+    .filter((b): b is InventarBlock => b.type === 'inventar' && !b.disabled && blockForListing(b, listingId))
+    .flatMap((b) => b.items ?? [])
+  if (!items.length) return []
+  const qsItems: QsItem[] = items.map((it) => ({
+    id: `inv-${it.id}`,
+    label: `${it.emoji} ${it.label}${typeof it.count === 'number' && it.count > 0 ? ` (Soll: ${it.count})` : ''}`,
+    type: typeof it.count === 'number' && it.count > 0 ? 'anzahl' : 'zustand',
+    hint: typeof it.count === 'number' && it.count > 0 ? 'Ist-Anzahl zählen + Zustand prüfen' : undefined,
+  }))
+  const sections: QsSection[] = []
+  for (let i = 0; i < qsItems.length; i += 18) {
+    const part = Math.floor(i / 18)
+    sections.push({
+      id: part === 0 ? 'inventar-mappe' : `inventar-mappe-${part + 1}`,
+      title: part === 0 ? 'Inventar (aus der Gästemappe)' : `Inventar (aus der Gästemappe) — Teil ${part + 1}`,
+      emoji: '📦',
+      items: qsItems.slice(i, i + 18),
+    })
+  }
+  return sections
 }
 
 /* ── Terminplanung ── */
