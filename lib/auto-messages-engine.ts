@@ -164,7 +164,7 @@ interface BookingRow {
 }
 interface ListingRow {
   id: string; title: string | null; address: string | null; location: string | null
-  check_in_time: string | null; check_out_time: string | null
+  check_in_time: string | null; check_out_time: string | null; google_place_id: string | null
 }
 interface ConvRow { id: string; guest_id: string | null; host_id: string | null; booking_id: string | null }
 
@@ -213,7 +213,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   if (!bookings.length) return report
 
   const { data: lRows } = await supabaseAdmin
-    .from('listings').select('id, title, address, location, check_in_time, check_out_time')
+    .from('listings').select('id, title, address, location, check_in_time, check_out_time, google_place_id')
   const listings = new Map((lRows ?? []).map(l => [l.id as string, l as ListingRow]))
 
   // Bereits versendete Paare (300er-Chunks — §129-URL-Längen-Lektion)
@@ -305,6 +305,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         tuercode: code ?? '',
         mappe: b.portal_token ? `${siteUrl}/mappe/${b.portal_token}` : '',
         adresse: listing?.address || listing?.location || '',
+        google_bewertung: listing?.google_place_id
+          ? `https://search.google.com/local/writereview?placeid=${listing.google_place_id}`
+          : '',
       }
       let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL), ctx)
       // Nicht auflösbare Rest-Tokens säubern (nie kaputte {platzhalter} an Gäste)
