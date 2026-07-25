@@ -60,8 +60,6 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [kwhCost, setKwhCost] = useState<string>('')
-  const [costSaved, setCostSaved] = useState(false)
 
   async function load(p: number, append: boolean) {
     if (p === 0) setLoading(true)
@@ -72,7 +70,6 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
       setCharges((prev) => (append ? [...prev, ...j.charges] : j.charges))
       setHasMore(!!j.hasMore)
       setPage(p)
-      if (!append) setKwhCost(String(j.settings?.kwhCostCents ?? 35).replace('.', ','))
       setError(null)
     } catch (e) {
       setError((e as Error).message)
@@ -82,20 +79,6 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(() => { load(0, false) }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function saveKwhCost() {
-    const n = Number(kwhCost.replace(',', '.'))
-    if (!Number.isFinite(n) || n < 0) return
-    const res = await fetch('/api/wallbox', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kwhCostCents: n }),
-    }).catch(() => null)
-    if (res?.ok) {
-      setCostSaved(true)
-      setTimeout(() => setCostSaved(false), 2500)
-      load(0, false) // Gewinn-Spalte mit neuem Satz neu rechnen
-    }
-  }
 
   // Summen über die GELADENE Liste (Kopf-Kacheln)
   const done = charges.filter((c) => c.state === 'completed' || c.state === 'stopped')
@@ -147,30 +130,8 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
             {tile('Umsatz', eur(sumRev))}
             {tile('Gewinn ~', eur(sumProfit), sumProfit >= 0 ? '#16A34A' : '#DC2626')}
           </div>
-          <div style={{ fontSize: 11, color: '#8A8578', margin: '-6px 4px 14px' }}>
-            Summen über die {charges.length} geladenen Vorgänge · Gewinn = Umsatz − Stromkosten (geschätzt)
-          </div>
-
-          {/* Strompreis */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 12,
-            padding: '11px 14px', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 16,
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1814' }}>Unser Strompreis</div>
-              <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: 1 }}>Cent/kWh — Basis der Gewinn-Schätzung</div>
-            </div>
-            <input
-              value={kwhCost}
-              onChange={(e) => setKwhCost(e.target.value)}
-              onBlur={saveKwhCost}
-              inputMode="decimal"
-              style={{
-                width: 76, fontSize: 16, padding: '7px 10px', borderRadius: 10,
-                border: '1px solid #E3DCC8', textAlign: 'right', background: '#FDFCF8',
-              }}
-            />
-            <span style={{ fontSize: 13, color: '#8A8578' }}>ct{costSaved ? ' ✓' : ''}</span>
+          <div style={{ fontSize: 11, color: '#8A8578', margin: '-6px 4px 16px' }}>
+            Summen über die {charges.length} geladenen Vorgänge · Gewinn = Umsatz − Stromkosten (aus click2charge)
           </div>
 
           {/* Ladehistorie */}
