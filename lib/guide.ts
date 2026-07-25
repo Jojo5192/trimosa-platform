@@ -87,8 +87,9 @@ export type GuideBlock =
 export type InventarGroupKey = 'kueche' | 'geschirr' | 'geraete' | 'bad' | 'wohnen' | 'verbrauch' | 'eigene'
 export interface InventarCatalogItem { id: string; emoji: string; label: string; countable?: boolean }
 
-/** Kuratierter Inventar-Katalog — im Builder anklickbar; eigene Einträge
- *  (id-Präfix 'x-') landen in der Gruppe „Weiteres". */
+/** Kuratierter Inventar-Katalog — im Builder anklickbar. Eigene Einträge
+ *  tragen ihre Kategorie im id-Präfix ('x-<gruppe>-…'); Alt-Einträge ohne
+ *  Gruppen-Präfix landen in „Weiteres". */
 export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji: string; items: InventarCatalogItem[] }[] = [
   { key: 'kueche', emoji: '🍳', items: [
     { id: 'salz-pfeffer', emoji: '🧂', label: 'Salz & Pfeffer' },
@@ -106,6 +107,17 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'kuechenhelfer', emoji: '🥄', label: 'Kochlöffel & Küchenhelfer' },
     { id: 'dosenoeffner', emoji: '🥫', label: 'Dosen- & Flaschenöffner' },
     { id: 'schuesseln', emoji: '🥗', label: 'Schüsseln' },
+    { id: 'korkenzieher', emoji: '🍾', label: 'Korkenzieher' },
+    { id: 'nudelsieb', emoji: '🍝', label: 'Nudelsieb' },
+    { id: 'reibe', emoji: '🧀', label: 'Reibe' },
+    { id: 'messbecher', emoji: '⚖️', label: 'Messbecher & Küchenwaage' },
+    { id: 'backzubehoer', emoji: '🧁', label: 'Backzubehör (Rührschüssel, Formen)' },
+    { id: 'salatschleuder', emoji: '🥬', label: 'Salatschleuder & -besteck' },
+    { id: 'frischhaltedosen', emoji: '🥡', label: 'Frischhaltedosen' },
+    { id: 'folien', emoji: '🌯', label: 'Alu- & Frischhaltefolie' },
+    { id: 'servietten', emoji: '🎀', label: 'Servietten' },
+    { id: 'topflappen', emoji: '🧤', label: 'Topflappen & Ofenhandschuhe' },
+    { id: 'tablett', emoji: '🛎️', label: 'Serviertablett' },
   ] },
   { key: 'geschirr', emoji: '🍽️', items: [
     { id: 'teller-gross', emoji: '🍽️', label: 'Große Teller', countable: true },
@@ -117,6 +129,12 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'sektglaeser', emoji: '🥂', label: 'Sektgläser', countable: true },
     { id: 'besteck', emoji: '🍴', label: 'Besteck-Sets', countable: true },
     { id: 'eierbecher', emoji: '🥚', label: 'Eierbecher', countable: true },
+    { id: 'muesli-schalen', emoji: '🍚', label: 'Müslischalen', countable: true },
+    { id: 'espressotassen', emoji: '☕', label: 'Espressotassen', countable: true },
+    { id: 'bierglaeser', emoji: '🍺', label: 'Biergläser', countable: true },
+    { id: 'karaffe', emoji: '🫗', label: 'Wasserkaraffe' },
+    { id: 'servierplatten', emoji: '🍱', label: 'Servierplatten' },
+    { id: 'kindergeschirr', emoji: '🧒', label: 'Kindergeschirr & -besteck' },
   ] },
   { key: 'geraete', emoji: '🔌', items: [
     { id: 'kaffeemaschine', emoji: '☕', label: 'Kaffeemaschine' },
@@ -132,6 +150,19 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'buegeleisen', emoji: '👔', label: 'Bügeleisen & -brett' },
     { id: 'staubsauger', emoji: '🧹', label: 'Staubsauger' },
     { id: 'smarttv', emoji: '📺', label: 'Smart-TV' },
+    { id: 'mixer', emoji: '🥤', label: 'Mixer / Pürierstab' },
+    { id: 'airfryer', emoji: '🍟', label: 'Heißluftfritteuse (Airfryer)' },
+    { id: 'raclette', emoji: '🫕', label: 'Raclette- / Fondue-Gerät' },
+    { id: 'waffeleisen', emoji: '🧇', label: 'Waffeleisen' },
+    { id: 'sandwichmaker', emoji: '🥪', label: 'Sandwichmaker / Kontaktgrill' },
+    { id: 'eierkocher', emoji: '🥚', label: 'Eierkocher' },
+    { id: 'spielkonsole', emoji: '🎮', label: 'Spielkonsole' },
+    { id: 'soundbox', emoji: '🔊', label: 'Bluetooth-Box / Soundbar' },
+    { id: 'radio', emoji: '📻', label: 'Radio' },
+    { id: 'ventilator', emoji: '💨', label: 'Ventilator' },
+    { id: 'klimaanlage', emoji: '❄️', label: 'Klimaanlage' },
+    { id: 'heizluefter', emoji: '🌡️', label: 'Zusatz-Heizlüfter' },
+    { id: 'ladekabel', emoji: '🔋', label: 'Ladekabel / USB-Steckdosen' },
   ] },
   { key: 'bad', emoji: '🛁', items: [
     { id: 'handtuecher', emoji: '🛁', label: 'Handtücher (groß & klein)', countable: true },
@@ -139,6 +170,15 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'zusatzdecken', emoji: '🛌', label: 'Zusatzdecken & -kissen' },
     { id: 'toilettenpapier', emoji: '🧻', label: 'Toilettenpapier (Startvorrat)' },
     { id: 'seife', emoji: '🧼', label: 'Handseife / Duschgel' },
+    { id: 'badematten', emoji: '🚿', label: 'Badematten' },
+    { id: 'strandtuecher', emoji: '🏖️', label: 'Strand- / Saunatücher', countable: true },
+    { id: 'shampoo', emoji: '🧴', label: 'Shampoo & Spülung' },
+    { id: 'kosmetiktuecher', emoji: '💄', label: 'Kosmetiktücher' },
+    { id: 'zahnputzbecher', emoji: '🪥', label: 'Zahnputzbecher' },
+    { id: 'kosmetikspiegel', emoji: '🪞', label: 'Kosmetikspiegel' },
+    { id: 'personenwaage', emoji: '⚖️', label: 'Personenwaage' },
+    { id: 'wc-buerste', emoji: '🚽', label: 'WC-Bürste' },
+    { id: 'waeschekorb', emoji: '🧺', label: 'Wäschekorb' },
   ] },
   { key: 'wohnen', emoji: '🛋️', items: [
     { id: 'waeschestaender', emoji: '🌬️', label: 'Wäscheständer' },
@@ -152,6 +192,25 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'erstehilfe', emoji: '⛑️', label: 'Erste-Hilfe-Set' },
     { id: 'feuerloescher', emoji: '🧯', label: 'Feuerlöscher' },
     { id: 'rauchmelder', emoji: '🚨', label: 'Rauchmelder' },
+    { id: 'schlafsofa', emoji: '🛋️', label: 'Schlafsofa' },
+    { id: 'luftmatratze', emoji: '🛟', label: 'Luftmatratze / Gästebett' },
+    { id: 'arbeitsplatz', emoji: '💻', label: 'Arbeitsplatz / Schreibtisch' },
+    { id: 'safe', emoji: '🔐', label: 'Safe' },
+    { id: 'verdunkelung', emoji: '🌙', label: 'Verdunkelungsvorhänge' },
+    { id: 'fliegengitter', emoji: '🪰', label: 'Fliegengitter' },
+    { id: 'kaminofen', emoji: '🔥', label: 'Kamin / Ofen (inkl. Holz)' },
+    { id: 'sonnenschirm', emoji: '⛱️', label: 'Sonnenschirm' },
+    { id: 'grillzubehoer', emoji: '🍢', label: 'Grillbesteck & Kohle' },
+    { id: 'picknickdecke', emoji: '🧺', label: 'Picknickdecke' },
+    { id: 'kinderspielzeug', emoji: '🧸', label: 'Kinderspielzeug' },
+    { id: 'yogamatte', emoji: '🧘', label: 'Yogamatte' },
+    { id: 'regenschirm', emoji: '☂️', label: 'Regenschirme' },
+    { id: 'taschenlampe', emoji: '🔦', label: 'Taschenlampe' },
+    { id: 'werkzeugset', emoji: '🔧', label: 'Kleines Werkzeug-Set' },
+    { id: 'naehset', emoji: '🧵', label: 'Nähset' },
+    { id: 'fahrradabstell', emoji: '🚲', label: 'Fahrrad-Abstellmöglichkeit' },
+    { id: 'wallbox', emoji: '⚡', label: 'E-Auto-Lademöglichkeit' },
+    { id: 'co-melder', emoji: '⚠️', label: 'CO-Melder' },
   ] },
   { key: 'verbrauch', emoji: '🧴', items: [
     { id: 'spuelmittel', emoji: '🧴', label: 'Spülmittel & Schwamm' },
@@ -160,13 +219,24 @@ export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji
     { id: 'kuechenrolle', emoji: '📜', label: 'Küchenrolle' },
     { id: 'waschmittel', emoji: '🫧', label: 'Waschmittel' },
     { id: 'putzmittel', emoji: '🧽', label: 'Putzmittel-Grundausstattung' },
+    { id: 'kaffeefilter', emoji: '☕', label: 'Kaffeefilter' },
+    { id: 'gefrierbeutel', emoji: '🧊', label: 'Gefrierbeutel' },
+    { id: 'taschentuecher', emoji: '🤧', label: 'Taschentücher' },
+    { id: 'streichhoelzer', emoji: '🔥', label: 'Streichhölzer / Feuerzeug' },
+    { id: 'kerzen', emoji: '🕯️', label: 'Kerzen / Teelichter' },
+    { id: 'batterien', emoji: '🔋', label: 'Ersatzbatterien' },
+    { id: 'gluehbirnen', emoji: '💡', label: 'Ersatz-Glühbirnen' },
   ] },
 ]
 
 const INVENTAR_GROUP_OF: Record<string, InventarGroupKey> = {}
 for (const g of INVENTAR_KATALOG) for (const it of g.items) INVENTAR_GROUP_OF[it.id] = g.key
 export function inventarGroupOf(itemId: string): InventarGroupKey {
-  return INVENTAR_GROUP_OF[itemId] ?? 'eigene'
+  const hit = INVENTAR_GROUP_OF[itemId]
+  if (hit) return hit
+  // Eigene Einträge tragen ihre Kategorie im id-Präfix: x-<gruppe>-<slug>-<rand>
+  const m = /^x-(kueche|geschirr|geraete|bad|wohnen|verbrauch)-/.exec(itemId)
+  return m ? (m[1] as InventarGroupKey) : 'eigene'
 }
 export function inventarGroupLabel(labels: GuideLabels, key: InventarGroupKey): string {
   switch (key) {
