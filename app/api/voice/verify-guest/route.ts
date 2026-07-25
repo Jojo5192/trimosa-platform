@@ -192,8 +192,8 @@ export async function POST(request: Request) {
   if (!codeOk && !dataOk) {
     return Response.json({
       verified: false,
-      hint: nameOk
-        ? 'Zeitraum passt nicht zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären.'
+      hint: (nameOk || apartmentOk)
+        ? 'Zeitraum passt nicht ganz zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären (Gäste irren sich oft um einen Tag; im Zweifel kurz in die Buchungsbestätigung schauen lassen), dann erneut aufrufen.'
         : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Drei Wege, je EINE Frage pro Runde: 1) Fehlt die WOHNUNG noch, frag danach — Wohnung + exakter Zeitraum reichen zur Verifizierung, ganz ohne Namens-Klärung. 2) Den Anrufer den Nachnamen langsam BUCHSTABIEREN lassen (die Spracherkennung verhört Namen oft) und mit dem buchstabierten Namen erneut aufrufen. 3) Vielleicht hat der Partner/die Familie/die Firma gebucht — nach dem Namen der buchenden Person fragen. Klappt nichts davon: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
     })
   }
