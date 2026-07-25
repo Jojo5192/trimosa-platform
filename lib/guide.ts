@@ -71,10 +71,114 @@ export interface RegionBlock extends GuideBlockBase { type: 'region' }
  *  angereichert (mergeContactIntoChat, §166: „Kontakt & Chat" = EIN Punkt). */
 export interface ChatBlock extends GuideBlockBase { type: 'chat'; phone?: string; note?: string }
 
+/** 📦 Inventar-Checkliste (§195): kuratierter Katalog zum Anklicken +
+ *  eigene Einträge; optionale Stückzahl je Punkt. Gespeichert werden NUR
+ *  die vorhandenen Punkte (Anwesenheit im Array = „ist da"). Die Liste
+ *  ist zugleich die automatische Basis der QS-Protokolle (lib/qs) und
+ *  fließt über den KB-Sync in die Anrufbot-Wissensbasis. */
+export interface InventarItem { id: string; emoji: string; label: string; count?: number }
+export interface InventarBlock extends GuideBlockBase { type: 'inventar'; title: string; items: InventarItem[] }
+
 export type GuideBlock =
   | HeadingBlock | TextBlock | InfoBlock | WarningBlock | StepsBlock
   | WifiBlock | DoorBlock | ContactBlock | ImageBlock
-  | MapBlock | TimesBlock | RulesBlock | RegionBlock | ChatBlock
+  | MapBlock | TimesBlock | RulesBlock | RegionBlock | ChatBlock | InventarBlock
+
+export type InventarGroupKey = 'kueche' | 'geschirr' | 'geraete' | 'bad' | 'wohnen' | 'verbrauch' | 'eigene'
+export interface InventarCatalogItem { id: string; emoji: string; label: string; countable?: boolean }
+
+/** Kuratierter Inventar-Katalog — im Builder anklickbar; eigene Einträge
+ *  (id-Präfix 'x-') landen in der Gruppe „Weiteres". */
+export const INVENTAR_KATALOG: { key: Exclude<InventarGroupKey, 'eigene'>; emoji: string; items: InventarCatalogItem[] }[] = [
+  { key: 'kueche', emoji: '🍳', items: [
+    { id: 'salz-pfeffer', emoji: '🧂', label: 'Salz & Pfeffer' },
+    { id: 'gewuerze', emoji: '🌿', label: 'Basis-Gewürze' },
+    { id: 'oel', emoji: '🫒', label: 'Speiseöl' },
+    { id: 'essig', emoji: '🍶', label: 'Essig' },
+    { id: 'kaffee', emoji: '🫘', label: 'Kaffee / Pads / Kapseln' },
+    { id: 'tee', emoji: '🍵', label: 'Tee-Auswahl' },
+    { id: 'zucker', emoji: '🍬', label: 'Zucker' },
+    { id: 'toepfe', emoji: '🍲', label: 'Töpfe', countable: true },
+    { id: 'pfannen', emoji: '🍳', label: 'Pfannen', countable: true },
+    { id: 'backblech', emoji: '🥧', label: 'Backblech / Auflaufform' },
+    { id: 'messerset', emoji: '🔪', label: 'Messerset' },
+    { id: 'schneidebretter', emoji: '🪵', label: 'Schneidebretter', countable: true },
+    { id: 'kuechenhelfer', emoji: '🥄', label: 'Kochlöffel & Küchenhelfer' },
+    { id: 'dosenoeffner', emoji: '🥫', label: 'Dosen- & Flaschenöffner' },
+    { id: 'schuesseln', emoji: '🥗', label: 'Schüsseln' },
+  ] },
+  { key: 'geschirr', emoji: '🍽️', items: [
+    { id: 'teller-gross', emoji: '🍽️', label: 'Große Teller', countable: true },
+    { id: 'teller-tief', emoji: '🥣', label: 'Tiefe Teller', countable: true },
+    { id: 'teller-klein', emoji: '🍰', label: 'Kleine Teller', countable: true },
+    { id: 'tassen', emoji: '☕', label: 'Tassen & Becher', countable: true },
+    { id: 'glaeser', emoji: '🥛', label: 'Wassergläser', countable: true },
+    { id: 'weinglaeser', emoji: '🍷', label: 'Weingläser', countable: true },
+    { id: 'sektglaeser', emoji: '🥂', label: 'Sektgläser', countable: true },
+    { id: 'besteck', emoji: '🍴', label: 'Besteck-Sets', countable: true },
+    { id: 'eierbecher', emoji: '🥚', label: 'Eierbecher', countable: true },
+  ] },
+  { key: 'geraete', emoji: '🔌', items: [
+    { id: 'kaffeemaschine', emoji: '☕', label: 'Kaffeemaschine' },
+    { id: 'wasserkocher', emoji: '🫖', label: 'Wasserkocher' },
+    { id: 'toaster', emoji: '🍞', label: 'Toaster' },
+    { id: 'mikrowelle', emoji: '♨️', label: 'Mikrowelle' },
+    { id: 'backofen', emoji: '🔥', label: 'Backofen & Herd' },
+    { id: 'spuelmaschine', emoji: '🫧', label: 'Spülmaschine' },
+    { id: 'kuehlschrank', emoji: '🧊', label: 'Kühlschrank mit Gefrierfach' },
+    { id: 'waschmaschine', emoji: '🧺', label: 'Waschmaschine' },
+    { id: 'trockner', emoji: '🌀', label: 'Wäschetrockner' },
+    { id: 'foen', emoji: '💇', label: 'Fön' },
+    { id: 'buegeleisen', emoji: '👔', label: 'Bügeleisen & -brett' },
+    { id: 'staubsauger', emoji: '🧹', label: 'Staubsauger' },
+    { id: 'smarttv', emoji: '📺', label: 'Smart-TV' },
+  ] },
+  { key: 'bad', emoji: '🛁', items: [
+    { id: 'handtuecher', emoji: '🛁', label: 'Handtücher (groß & klein)', countable: true },
+    { id: 'bettwaesche', emoji: '🛏️', label: 'Bettwäsche (bezogen)' },
+    { id: 'zusatzdecken', emoji: '🛌', label: 'Zusatzdecken & -kissen' },
+    { id: 'toilettenpapier', emoji: '🧻', label: 'Toilettenpapier (Startvorrat)' },
+    { id: 'seife', emoji: '🧼', label: 'Handseife / Duschgel' },
+  ] },
+  { key: 'wohnen', emoji: '🛋️', items: [
+    { id: 'waeschestaender', emoji: '🌬️', label: 'Wäscheständer' },
+    { id: 'kleiderbuegel', emoji: '🪝', label: 'Kleiderbügel', countable: true },
+    { id: 'spiele', emoji: '🎲', label: 'Gesellschaftsspiele' },
+    { id: 'buecher', emoji: '📚', label: 'Bücher & Reiseführer' },
+    { id: 'kinderhochstuhl', emoji: '🪑', label: 'Kinderhochstuhl' },
+    { id: 'reisebett', emoji: '👶', label: 'Reisebett' },
+    { id: 'grill', emoji: '🍖', label: 'Grill' },
+    { id: 'terrassenmoebel', emoji: '🪴', label: 'Terrassen-/Balkonmöbel' },
+    { id: 'erstehilfe', emoji: '⛑️', label: 'Erste-Hilfe-Set' },
+    { id: 'feuerloescher', emoji: '🧯', label: 'Feuerlöscher' },
+    { id: 'rauchmelder', emoji: '🚨', label: 'Rauchmelder' },
+  ] },
+  { key: 'verbrauch', emoji: '🧴', items: [
+    { id: 'spuelmittel', emoji: '🧴', label: 'Spülmittel & Schwamm' },
+    { id: 'tabs', emoji: '💊', label: 'Spülmaschinen-Tabs' },
+    { id: 'muellbeutel', emoji: '🗑️', label: 'Müllbeutel' },
+    { id: 'kuechenrolle', emoji: '📜', label: 'Küchenrolle' },
+    { id: 'waschmittel', emoji: '🫧', label: 'Waschmittel' },
+    { id: 'putzmittel', emoji: '🧽', label: 'Putzmittel-Grundausstattung' },
+  ] },
+]
+
+const INVENTAR_GROUP_OF: Record<string, InventarGroupKey> = {}
+for (const g of INVENTAR_KATALOG) for (const it of g.items) INVENTAR_GROUP_OF[it.id] = g.key
+export function inventarGroupOf(itemId: string): InventarGroupKey {
+  return INVENTAR_GROUP_OF[itemId] ?? 'eigene'
+}
+export function inventarGroupLabel(labels: GuideLabels, key: InventarGroupKey): string {
+  switch (key) {
+    case 'kueche': return labels.invGrpKueche
+    case 'geschirr': return labels.invGrpGeschirr
+    case 'geraete': return labels.invGrpGeraete
+    case 'bad': return labels.invGrpBad
+    case 'wohnen': return labels.invGrpWohnen
+    case 'verbrauch': return labels.invGrpVerbrauch
+    case 'eigene': return labels.invGrpEigene
+  }
+}
 
 /** Kontext aus Inserat/Region für die Smart-Blöcke. */
 export interface GuideCtx {
@@ -103,6 +207,8 @@ export interface GuideLabels {
   rulesTitle: string; regionTitle: string; regionCta: string; contactTitle: string
   emptyBlock: string; doorCodeLabel: string
   wifiQrHint: string
+  invGrpKueche: string; invGrpGeschirr: string; invGrpGeraete: string; invGrpBad: string
+  invGrpWohnen: string; invGrpVerbrauch: string; invGrpEigene: string; invShowAll: string
 }
 
 export const DE_LABELS: GuideLabels = {
@@ -114,6 +220,9 @@ export const DE_LABELS: GuideLabels = {
   emptyBlock: 'Noch nicht ausgefüllt — erscheint erst mit Inhalt.',
   doorCodeLabel: 'Dein Türcode',
   wifiQrHint: 'Zweites Gerät verbinden? Diesen Code einfach mit der Kamera scannen — das WLAN verbindet sich direkt.',
+  invGrpKueche: 'Küche & Kochen', invGrpGeschirr: 'Geschirr & Besteck', invGrpGeraete: 'Elektrogeräte',
+  invGrpBad: 'Bad & Wäsche', invGrpWohnen: 'Wohnen & Sonstiges', invGrpVerbrauch: 'Verbrauchsmaterial',
+  invGrpEigene: 'Weiteres', invShowAll: 'Antippen zum Ausklappen',
 }
 
 export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: string; hint: string; smart?: boolean }> = {
@@ -130,6 +239,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   times: { icon: '🕓', label: 'Check-in/-out-Zeiten', hint: 'Aus dem Inserat: An- und Abreisezeit', smart: true },
   rules: { icon: '🏠', label: 'Hausregeln', hint: 'Aus dem Inserat: Ruhezeiten, Rauchen, Haustiere …', smart: true },
   region: { icon: '🗺️', label: 'Region entdecken', hint: 'Link auf den Reiseführer der Region', smart: true },
+  inventar: { icon: '📦', label: 'Inventar-Checkliste', hint: 'Anklickbare Ausstattungs-Liste mit Stückzahlen — in der Mappe ausklappbar; ist automatisch die Basis der QS-Protokolle und des Anrufbot-Wissens' },
   chat: { icon: '💬', label: 'Gäste-Chat', hint: 'Direkter Draht zum Team — bestimmt, WO „Kontakt & Chat" in der Mappe sitzt (Telefon/Hinweis kommen aus dem Kontakt-Baustein; ohne Chat-Baustein: an der Kontakt-Position bzw. am Ende)', smart: true },
 }
 
@@ -156,6 +266,7 @@ export function emptyBlock(type: GuideBlock['type']): GuideBlock {
     case 'rules': return { id, type }
     case 'region': return { id, type }
     case 'chat': return { id, type }
+    case 'inventar': return { id, type, title: 'Inventar & Ausstattung', items: [] }
   }
 }
 
@@ -203,6 +314,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'rules': return ctx.rules.length > 0
     case 'region': return !!ctx.regionSlug
     case 'chat': return true
+    case 'inventar': return Array.isArray(b.items) && b.items.length > 0
   }
 }
 
@@ -238,6 +350,7 @@ export function collectGuideTexts(blocks: GuideBlock[]): string[] {
     if ('note' in b && b.note) out.push(b.note)
     if ('caption' in b && b.caption) out.push(b.caption)
     if (b.type === 'steps') out.push(...b.steps.filter(Boolean))
+    if (b.type === 'inventar') out.push(...(b.items ?? []).map((i) => i.label).filter(Boolean))
   }
   return out
 }
@@ -251,6 +364,7 @@ export function translateBlocks(blocks: GuideBlock[], tr: (de: string) => string
     if ('note' in c && c.note) c.note = tr(c.note)
     if ('caption' in c && c.caption) c.caption = tr(c.caption)
     if (c.type === 'steps') c.steps = c.steps.map((s) => (s ? tr(s) : s))
+    if (c.type === 'inventar') c.items = (c.items ?? []).map((i) => ({ ...i, label: i.label ? tr(i.label) : i.label }))
     return c
   })
 }
