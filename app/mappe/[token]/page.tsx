@@ -101,7 +101,17 @@ export default async function MappePage({ params, searchParams }: {
   const todayIso = new Date().toISOString().slice(0, 10)
   const locksArr = (listing.locks as { provider: string }[] | null) ?? []
   console.log('[mappe] door-check:', { booking: String(booking.id).slice(0, 8), locks: locksArr.length, checkIn: booking.check_in, checkOut: booking.check_out, status: booking.status })
-  if (locksArr.length && String(booking.check_out ?? '') >= todayIso) {
+  // §202: „Nach Abreise nie sichtbar" — Code zeigt sich bis zur Check-out-
+  // UHRZEIT des Abreisetags (morgens braucht ihn der Gast noch), danach weg
+  const berlinNow = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Berlin', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).format(new Date())
+  const [berlinDate, berlinTime] = berlinNow.split(' ')
+  const coTime = String(listing.check_out_time ?? '10:00').slice(0, 5)
+  const abgereist = String(booking.check_out ?? '') < berlinDate
+    || (String(booking.check_out ?? '') === berlinDate && berlinTime >= coTime)
+  if (locksArr.length && !abgereist) {
     const revealDays = await getRevealDays()
     const daysToArrival = Math.ceil((new Date(String(booking.check_in) + 'T00:00:00Z').getTime() - Date.now()) / 86400_000)
     console.log('[mappe] door-window:', { daysToArrival, revealDays, hatCode: !!booking.door_code })
