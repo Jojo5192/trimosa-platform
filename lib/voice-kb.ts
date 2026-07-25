@@ -36,6 +36,12 @@ function blockToText(b: GuideBlock): string | null {
       // Passwort NIE — nur die Existenz + wo es steht
       return b.ssid ? `WLAN vorhanden (Netzwerk „${b.ssid}") — das Passwort steht in der persönlichen Gästemappe des Gasts.` : null
     case 'door': return null    // Türcode-Infos komplett draußen (nur via Verifizierung)
+    case 'inventar':
+      // §195: die Checkliste macht Ausstattungs-Antworten des Bots FUNDIERT
+      // („Salz & Pfeffer vorhanden", „Weingläser: 6 Stück")
+      return (b.items ?? []).length
+        ? `${b.title || 'Inventar'}: ${(b.items ?? []).map((i) => (typeof i.count === 'number' && i.count > 0 ? `${i.label} (${i.count} Stück)` : i.label)).join(', ')}.`
+        : null
     default: return null        // contact/image/map/times/rules/region/chat → an anderer Stelle abgedeckt
   }
 }
@@ -83,7 +89,9 @@ async function buildDocs(): Promise<{ name: string; text: string }[]> {
   try {
     const { data: pool } = await supabaseAdmin
       .from('app_settings').select('value').eq('key', 'guide_global').maybeSingle()
-    const poolBlocks = parseGuide((pool?.value as { blocks?: unknown } | null)?.blocks)
+    // §195-Bugfix: parseGuide erwartet den WRAPPER { blocks: [...] } — vorher
+    // wurde das innere Array übergeben → Pool wurde immer ignoriert
+    const poolBlocks = parseGuide(pool?.value)
     const parts: string[] = []
     for (const l of active) {
       let blocks = poolBlocks.filter((b) => blockForListing(b, l.id))
