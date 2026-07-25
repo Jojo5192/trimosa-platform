@@ -53,7 +53,8 @@ export interface HeadingBlock extends GuideBlockBase { type: 'heading'; text: st
 export interface TextBlock extends GuideBlockBase { type: 'text'; text: string }
 export interface InfoBlock extends GuideBlockBase { type: 'info'; emoji: string; title: string; text: string }
 export interface WarningBlock extends GuideBlockBase { type: 'warning'; text: string }
-export interface StepsBlock extends GuideBlockBase { type: 'steps'; title: string; steps: string[] }
+// stepImages ist index-parallel zu steps ('' = kein Foto am Schritt)
+export interface StepsBlock extends GuideBlockBase { type: 'steps'; title: string; steps: string[]; stepImages?: string[] }
 export interface WifiBlock extends GuideBlockBase { type: 'wifi'; ssid: string; password: string }
 export interface DoorBlock extends GuideBlockBase { type: 'door'; title: string; text: string }
 export interface ContactBlock extends GuideBlockBase { type: 'contact'; phone: string; note: string }
@@ -371,7 +372,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
   switch (b.type) {
     case 'heading': case 'text': case 'warning': return b.text.trim().length > 0
     case 'info': return (b.title.trim() + b.text.trim()).length > 0
-    case 'steps': return b.steps.some((s) => s.trim().length > 0)
+    case 'steps': return b.steps.some((s) => s.trim().length > 0) || (b.stepImages ?? []).some(Boolean)
     case 'wifi': return b.ssid.trim().length > 0
     case 'door': return b.text.trim().length > 0 || !!ctx.doorCode || !!ctx.doorNote
     case 'contact': return b.phone.trim().length > 0 || b.note.trim().length > 0
