@@ -641,6 +641,17 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
         </div>
       )}
 
+      {block.type === 'review' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input style={INPUT} placeholder={'Titel (leer = Standard: Wie war dein Aufenthalt?)'} value={block.title} onChange={(e) => onChange({ title: e.target.value })} />
+          <textarea style={{ ...INPUT, resize: 'vertical' }} rows={2} placeholder={'Text (leer = Standardtext mit Dankeschön)'} value={block.text} onChange={(e) => onChange({ text: e.target.value })} />
+          <span style={{ fontSize: 11, color: '#A8A292' }}>
+            Der Bewertungs-Button verlinkt automatisch über die Google-Place-ID des Inserats (Inserats-Editor → Plattform-URLs).
+            Ohne Place-ID bleibt der Baustein beim Gast unsichtbar. Tipp: Sichtbarkeit „Danach" = erscheint erst nach der Abreise.
+          </span>
+        </div>
+      )}
+
       {block.type === 'inventar' && (
         <InventarEditor block={block} onChange={onChange} pool={inventarPool} />
       )}
