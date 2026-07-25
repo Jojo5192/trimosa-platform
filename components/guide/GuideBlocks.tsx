@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { GuideBlock, GuideCtx, GuideLabels } from '@/lib/guide'
-import { blockHasContent } from '@/lib/guide'
+import type { GuideBlock, GuideCtx, GuideLabels, InventarGroupKey, InventarItem } from '@/lib/guide'
+import { blockHasContent, inventarGroupOf, inventarGroupLabel, INVENTAR_KATALOG } from '@/lib/guide'
 
 /**
  * 📖 Gästemappe: rendert die Block-Liste — geteilt zwischen der öffentlichen
@@ -271,6 +271,61 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#E3C878' }}>{labels.regionCta} →</span>
               </a>
             )
+          case 'inventar': {
+            // §195: ausklappbare Inventar-Checkliste — Gruppierung folgt dem
+            // Katalog (eigene Einträge unter „Weiteres"), Stückzahl als Badge
+            const groupOrder: InventarGroupKey[] = [...INVENTAR_KATALOG.map((g) => g.key), 'eigene']
+            const grouped = groupOrder
+              .map((key) => ({
+                key,
+                emoji: INVENTAR_KATALOG.find((g) => g.key === key)?.emoji ?? '🔹',
+                items: (b.items ?? []).filter((it: InventarItem) => inventarGroupOf(it.id) === key),
+              }))
+              .filter((g) => g.items.length > 0)
+            return wrap(
+              <details style={{ ...CARD, padding: 0, overflow: 'hidden' }}>
+                <summary style={{
+                  cursor: 'pointer', listStyle: 'none', padding: '14px 18px',
+                  display: 'flex', alignItems: 'center', gap: 10, WebkitTapHighlightColor: 'transparent',
+                }}>
+                  <span style={{ fontSize: 18 }}>📦</span>
+                  <span style={{ flex: 1, fontSize: 14.5, fontWeight: 700, color: '#1A1400' }}>{b.title || '…'}</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: '#8A7020', background: '#FAF5E4',
+                    padding: '3px 9px', borderRadius: 999, flexShrink: 0,
+                  }}>{(b.items ?? []).length}</span>
+                  <span style={{ fontSize: 11, color: '#B0A793', flexShrink: 0 }}>▾</span>
+                </summary>
+                <div style={{ padding: '0 18px 16px', borderTop: '1px solid #F0EDE5' }}>
+                  {grouped.map((g) => (
+                    <div key={g.key} style={{ marginTop: 13 }}>
+                      <div style={{
+                        fontSize: 10.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase',
+                        color: '#8A8065', marginBottom: 7,
+                      }}>{g.emoji} {inventarGroupLabel(labels, g.key)}</div>
+                      <ul style={{
+                        margin: 0, padding: 0, listStyle: 'none',
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '5px 12px',
+                      }}>
+                        {g.items.map((it: InventarItem) => (
+                          <li key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#4A4438', lineHeight: 1.45 }}>
+                            <span style={{ fontSize: 14, flexShrink: 0 }}>{it.emoji}</span>
+                            <span style={{ minWidth: 0 }}>{it.label}</span>
+                            {typeof it.count === 'number' && it.count > 0 && (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 800, color: '#8A7020', background: '#FAF5E4',
+                                padding: '1px 7px', borderRadius: 999, flexShrink: 0,
+                              }}>× {it.count}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )
+          }
           case 'chat':
             // §163/§166: Positions-Marker — den ECHTEN Chat rendert die
             // Mappe-Seite an dieser Stelle; die Builder-Vorschau zeigt die
