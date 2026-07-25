@@ -122,23 +122,38 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 </p>
               </div>
             )
-          case 'steps':
+          case 'steps': {
+            // §196: Foto je Schritt — Zuordnung über den ORIGINAL-Index
+            // (der Leer-Filter darf die Bild-Zuordnung nicht verschieben)
+            const list = b.steps
+              .map((s, idx) => ({ s, img: b.stepImages?.[idx] || '' }))
+              .filter((x) => preview || x.s.trim() || x.img)
             return wrap(
               <div style={CARD}>
                 {b.title && <div style={{ fontSize: 14.5, fontWeight: 700, color: '#1A1400', marginBottom: 10 }}>{b.title}</div>}
                 <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {b.steps.filter((s) => preview || s.trim()).map((s, i) => (
+                  {list.map((x, i) => (
                     <li key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
                       <span style={{
                         flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: '#FAF5E4',
                         color: '#8A7020', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>{i + 1}</span>
-                      <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#4A4438', paddingTop: 1 }}>{s || '…'}</span>
+                      <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#4A4438', paddingTop: 1, flex: 1, minWidth: 0 }}>
+                        {x.s || '…'}
+                        {x.img && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={x.img} alt="" style={{
+                            display: 'block', width: '100%', height: 'auto', borderRadius: 12,
+                            marginTop: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                          }} />
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ol>
               </div>
             )
+          }
           case 'wifi':
             return wrap(
               <div style={CARD}>
