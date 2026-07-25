@@ -230,7 +230,11 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const due: { t: AutoMessage; b: BookingRow }[] = []
   for (const t of templates) {
     for (const b of bookings) {
-      if (t.listing_id && t.listing_id !== b.listing_id) continue
+      // §204: Mehrfach-Auswahl hat Vorrang; sonst Alt-Feld listing_id
+      const tl = t.listing_ids
+      if (Array.isArray(tl) && tl.length) {
+        if (!b.listing_id || !tl.includes(b.listing_id)) continue
+      } else if (t.listing_id && t.listing_id !== b.listing_id) continue
       const nights = dayDiff(b.check_in, b.check_out)
       if (t.min_nights && nights < t.min_nights) continue
       if (t.channel_filter?.length) {
