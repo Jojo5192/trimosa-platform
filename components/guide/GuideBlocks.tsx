@@ -208,23 +208,40 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 )}
               </div>
             )
-          case 'image':
+          case 'image': {
+            // §196b: Zwei Fotos nebeneinander (z. B. Straßenfoto + Parkplatz-
+            // Skizze) — quadratisch zugeschnitten, damit die Reihe bündig ist
+            const single = b.url || b.url2 || ''
+            const pair = !!(b.url && b.url2)
             return wrap(
               <figure style={{ margin: 0 }}>
-                {b.url
+                {pair
                   ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={b.url} alt={b.caption || 'Foto'} style={{
-                      display: 'block', width: '100%', height: 'auto', borderRadius: 16,
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                    }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {[b.url, b.url2 as string].map((u, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={u} alt={b.caption || 'Foto'} style={{
+                          display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: 'cover',
+                          borderRadius: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                        }} />
+                      ))}
+                    </div>
                   )
-                  : <div style={{ borderRadius: 16, background: '#ECE8DE', padding: '34px 0', textAlign: 'center', fontSize: 22 }}>📷</div>}
+                  : single
+                    ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={single} alt={b.caption || 'Foto'} style={{
+                        display: 'block', width: '100%', height: 'auto', borderRadius: 16,
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                      }} />
+                    )
+                    : <div style={{ borderRadius: 16, background: '#ECE8DE', padding: '34px 0', textAlign: 'center', fontSize: 22 }}>📷</div>}
                 {b.caption && (
                   <figcaption style={{ margin: '7px 4px 0', fontSize: 12, color: '#8A8065', lineHeight: 1.5 }}>{b.caption}</figcaption>
                 )}
               </figure>
             )
+          }
           case 'map': {
             const q = ctx.lat && ctx.lon ? `${ctx.lat},${ctx.lon}` : encodeURIComponent(ctx.address ?? '')
             return wrap(
