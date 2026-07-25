@@ -254,13 +254,23 @@ export async function POST(request: Request) {
       chatSent = !error
     } catch { /* best effort */ }
 
+    // §189: Ausgesperrt = erst GEMEINSAM lösen, nicht sofort eskalieren —
+    // Troubleshooting-Fahrplan je nach Schloss-Situation der Wohnung
+    const sirzenich = /cozy|magnolia|sweet/i.test(title)
+    const river = /river/i.test(title)
+    const doorInfo = sirzenich
+      ? 'Diese Wohnung ist in Sirzenich: HAUSTÜR und WOHNUNGSTÜR haben je ein Keypad — DIESER Code gilt für beide Türen.'
+      : river
+        ? 'Diese Wohnung hat ein tedee-Keypad an der Wohnungstür.'
+        : 'Diese Wohnung hat ein Keypad an der Wohnungstür.'
     return Response.json({
       verified: true,
       guest_first_name: firstName,
       apartment: title,
       door_code: code,
       chat_sent: chatSent,
-      hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + (chatSent ? ' — und erwähnen, dass er zusätzlich im Chat und in der Gästemappe steht.' : '.'),
+      hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + (chatSent ? ' — er steht jetzt zusätzlich im Chat bzw. in der Gästemappe.' : '.')
+        + ` ${doorInfo} Kommt der Gast damit NICHT rein, das Problem GEMEINSAM eingrenzen (locker, eine Frage nach der anderen): 1) Welchen Code hat er bisher eingetippt? Mit diesem Code abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. 2) Keypad zuerst durch BERÜHREN aufwecken, dann den Code eingeben und mit dem Häkchen (✓) bestätigen. 3) Was passiert genau — rotes Licht, gar kein Licht, ein Ton? (Gar kein Licht kann leere Batterie heißen.) Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.`,
     })
   }
 
