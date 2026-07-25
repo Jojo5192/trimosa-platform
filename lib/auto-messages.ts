@@ -36,6 +36,9 @@ export interface AutoMessage {
   offset_days: number
   send_hour: number
   listing_id: string | null
+  /** §204: MEHRERE Wohnungen (jsonb-Array); hat Vorrang vor listing_id.
+   *  null/leer = alle Wohnungen. */
+  listing_ids?: string[] | null
   channel_filter: string[] | null
   min_nights: number | null
   lead_filter: LeadFilter
