@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -55,8 +55,9 @@ export async function POST(request: Request) {
 
   // Fehlversuchs-Bremse je Rufnummer (Anrufer-ID-Spoofing bleibt Restrisiko,
   // aber Brute-Force über wiederholte Anrufe wird teuer)
+  // 12/Std.: der Frage-Trichter braucht mehrere Tool-Runden pro Gespräch
   const rlKey = `voice-verify:${normalizePhone(caller) || 'anon'}`
-  const allowed = await checkRateLimit(rlKey, 6, 3600)
+  const allowed = await checkRateLimit(rlKey, 12, 3600)
   if (!allowed) {
     return Response.json({ verified: false, hint: 'Zu viele Versuche — der Anrufer soll es später erneut versuchen oder das Team ruft zurück.' })
   }
@@ -158,21 +159,20 @@ export async function POST(request: Request) {
   // (die bekannte Nummer ist selbst ein Identitätsfaktor).
   const codeOk = !!booking.door_code && codeIn.length >= 5 && codeIn === booking.door_code
   const guestFull = (booking.guest_name ?? '').trim().toLowerCase()
-  // §183-Nachtrag: TOKEN-Vergleich statt Ganz-String — „Johannes Bozma"
-  // (ASR-Verhörer) muss über den korrekten Vornamen „Johannes" matchen
-  // (§181-Policy: Vor- ODER Nachname reicht).
-  const nameTokens = lastName.split(/\s+/).filter((t) => t.length >= 3)
-  let nameOk = nameTokens.some((t) => guestFull.includes(t))
+  // §188: FUZZY-Vergleich (Akzente gefaltet + kleine Edit-Distanz) — die
+  // Spracherkennung verstümmelt Namen massiv („Bozma" ↔ „Bootsma",
+  // „Edmes Läppchen" ↔ „Edmée Sleijpen"). §181-Policy: EIN Namensteil reicht.
+  let nameOk = nameLooselyMatches(lastName, guestFull)
   // Website-Buchungen tragen den Namen oft nur im Profil
-  if (!nameOk && nameTokens.length) {
+  if (!nameOk && lastName) {
     try {
       const { data: b2 } = await supabaseAdmin
         .from('bookings').select('guest_id').eq('id', booking.id).maybeSingle()
       if (b2?.guest_id) {
         const { data: prof } = await supabaseAdmin
           .from('profiles').select('display_name, guest_last_name').eq('id', b2.guest_id).maybeSingle()
-        const profNames = `${prof?.display_name ?? ''} ${prof?.guest_last_name ?? ''}`.toLowerCase()
-        if (nameTokens.some((t) => profNames.includes(t))) nameOk = true
+        const profNames = `${prof?.display_name ?? ''} ${prof?.guest_last_name ?? ''}`
+        if (nameLooselyMatches(lastName, profNames)) nameOk = true
       }
     } catch { /* best effort */ }
   }
@@ -185,7 +185,7 @@ export async function POST(request: Request) {
       verified: false,
       hint: nameOk
         ? 'Zeitraum passt nicht zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären.'
-        : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Freundlich klären: Vielleicht hat der Partner/die Familie gebucht — nach dem Namen der buchenden Person fragen und erneut aufrufen. Klappt auch das nicht: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
+        : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Zwei Wege, je EINE Frage pro Runde: 1) Den Anrufer den Nachnamen langsam BUCHSTABIEREN lassen (die Spracherkennung verhört Namen oft) und mit dem buchstabierten Namen erneut aufrufen. 2) Vielleicht hat der Partner/die Familie/die Firma gebucht — nach dem Namen der buchenden Person fragen. Klappt beides nicht: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
     })
   }
 
