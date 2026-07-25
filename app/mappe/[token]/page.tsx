@@ -215,6 +215,7 @@ export default async function MappePage({ params, searchParams }: {
       case 'map': navItems.push({ id: anchor, label: labels.addressTitle, icon: '📍' }); break
       case 'rules': navItems.push({ id: anchor, label: labels.rulesTitle, icon: '🏠' }); break
       case 'region': navItems.push({ id: anchor, label: labels.regionTitle, icon: '🗺️' }); break
+      case 'inventar': if (b.title.trim()) navItems.push({ id: anchor, label: b.title.trim(), icon: '📦' }); break
       case 'chat': navItems.push({ id: 'mb-chat', label: chatLabels.navLabel, icon: '💬' }); break
       default: break // text/warning/times/image ohne eigenen Chip
     }
