@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, normalizePhone } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -125,10 +125,20 @@ export async function POST(request: Request) {
     } catch { /* best effort */ }
   }
 
+  // §183-Nachtrag „Bootsma-Fall": Buchung auch über Wohnung+Daten finden
+  // (Datum als Anker, Name nur zum Entschärfen) — ein verhörter Nachname
+  // darf die SUCHE nicht scheitern lassen; verifiziert wird danach separat.
+  if (!booking && (arrival || departure)) {
+    const byDetails = await findBookingByDetails({
+      name: lastName, apartment, arrival, departure,
+    }).catch(() => null)
+    if (byDetails) booking = await loadBooking(byDetails.id)
+  }
+
   if (!booking) {
     return Response.json({
       verified: false,
-      hint: 'Keine passende Buchung gefunden. Nachname, Anreisedatum und ggf. Wohnung erfragen — oder das Anliegen per nachricht_aufnehmen ans Team geben.',
+      hint: 'Keine passende Buchung gefunden. Wohnung, Anreise- UND Abreisedatum erfragen und erneut aufrufen. WICHTIG: Steht der Anrufer ausgesperrt VOR DER TÜR, ist das ein NOTFALL — dann NICHT weiter suchen, sondern SOFORT nachricht_aufnehmen mit urgent=true (das Team meldet sich umgehend); den Anrufer nie unverrichteter Dinge auflegen lassen.',
     })
   }
 
@@ -138,9 +148,13 @@ export async function POST(request: Request) {
   // (die bekannte Nummer ist selbst ein Identitätsfaktor).
   const codeOk = !!booking.door_code && codeIn.length >= 5 && codeIn === booking.door_code
   const guestFull = (booking.guest_name ?? '').trim().toLowerCase()
-  let nameOk = !!lastName && guestFull.includes(lastName)
+  // §183-Nachtrag: TOKEN-Vergleich statt Ganz-String — „Johannes Bozma"
+  // (ASR-Verhörer) muss über den korrekten Vornamen „Johannes" matchen
+  // (§181-Policy: Vor- ODER Nachname reicht).
+  const nameTokens = lastName.split(/\s+/).filter((t) => t.length >= 3)
+  let nameOk = nameTokens.some((t) => guestFull.includes(t))
   // Website-Buchungen tragen den Namen oft nur im Profil
-  if (!nameOk && lastName) {
+  if (!nameOk && nameTokens.length) {
     try {
       const { data: b2 } = await supabaseAdmin
         .from('bookings').select('guest_id').eq('id', booking.id).maybeSingle()
@@ -148,7 +162,7 @@ export async function POST(request: Request) {
         const { data: prof } = await supabaseAdmin
           .from('profiles').select('display_name, guest_last_name').eq('id', b2.guest_id).maybeSingle()
         const profNames = `${prof?.display_name ?? ''} ${prof?.guest_last_name ?? ''}`.toLowerCase()
-        if (profNames.includes(lastName)) nameOk = true
+        if (nameTokens.some((t) => profNames.includes(t))) nameOk = true
       }
     } catch { /* best effort */ }
   }
@@ -159,7 +173,9 @@ export async function POST(request: Request) {
   if (!codeOk && !dataOk) {
     return Response.json({
       verified: false,
-      hint: 'Angaben passen nicht zur Buchung. EINE beiläufige Rückfrage (fehlt Abreisedatum oder Name?) oder die andere Methode anbieten (Zugangscode). Danach: Team-Rückruf via nachricht_aufnehmen.',
+      hint: nameOk
+        ? 'Zeitraum passt nicht zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären.'
+        : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Freundlich klären: Vielleicht hat der Partner/die Familie gebucht — nach dem Namen der buchenden Person fragen und erneut aufrufen. Klappt auch das nicht: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
     })
   }
 
