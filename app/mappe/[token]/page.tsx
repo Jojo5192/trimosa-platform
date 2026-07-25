@@ -128,7 +128,7 @@ export default async function MappePage({ params, searchParams }: {
     if (idx < 0) idx = Math.min(1, blocksDe.length)
     blocksAll = [
       ...blocksDe.slice(0, idx),
-      { id: 'auto-door', type: 'door' as const, title: 'Schlüssel & Zugang', text: '' },
+      { id: 'auto-door', type: 'door' as const, title: 'Türcode', text: '' },
       ...blocksDe.slice(idx),
     ]
   }
@@ -270,7 +270,7 @@ export default async function MappePage({ params, searchParams }: {
           ? <GuideBlocks blocks={blocksBefore} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
         {/* 💬 Direkter Draht zum Team (§136) — Position folgt dem chat-Baustein (§163) */}
-        <div id="mb-chat" style={{ scrollMarginTop: 70 }}>
+        <div id="mb-chat" style={{ scrollMarginTop: 70, margin: '14px 0' }}>
           <MappeChat token={token} labels={chatLabels} lang={lang} phone={chatBlock?.phone || null} note={chatBlock?.note || null} />
         </div>
         {blocksAfter.length > 0 && <GuideBlocks blocks={blocksAfter} ctx={ctx} labels={labels} />}
