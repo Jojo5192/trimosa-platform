@@ -143,12 +143,12 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
     {
       name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
       offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 0,
-      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung}! Wir freuen uns auf deinen Aufenthalt vom {anreise} bis {abreise}.\n\nAlle Infos zu Anreise, WLAN und Umgebung findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nHerzliche Grüße\nDein TRIMOSA-Team',
+      body: 'Hallo {vorname}, schön, dass du kommst! 🎉\n\nDeine Buchung im {wohnung} ist bestätigt:\n🗓 {anreise} – {abreise} · {naechte} Nächte · {gaeste} Gäste\n\nDein wichtigster Begleiter ist deine persönliche digitale Gästemappe 📲 — Anreise, Self-Check-in, Parken, WLAN und die besten Tipps für die Region, immer aktuell und ganz ohne Papierkram:\n\n{mappe_button}\n\n🔑 Deinen persönlichen Türcode findest du dort automatisch wenige Tage vor der Anreise — kein Schlüssel, keine Übergabe, du kommst an, wann es dir passt.\n🕓 Check-in ab {checkin} Uhr am Anreisetag.\n\nFragen? Antworte einfach auf diese Nachricht — wir sind schnell für dich da. 😊\n\nWir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Kurzfristige Buchung — alles Wichtige', enabled: true, trigger_type: 'nach_buchung',
       offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'kurzfristig', send_email: true, sort: 1,
-      body: 'Hallo {vorname},\n\nvielen Dank für deine Buchung im {wohnung} — schön, dass es so bald losgeht! Anreise am {anreise} ab {checkin} Uhr.\n\nDein Türcode: {tuercode}\n\nCheck-in-Anleitung, WLAN und alle weiteren Infos findest du in deiner persönlichen Gästemappe:\n\n{mappe_button}\n\nBis gleich!\nDein TRIMOSA-Team',
+      body: 'Hallo {vorname}, deine Buchung im {wohnung} ist bestätigt — und es geht ja schon bald los! 🎉\n\n🗓 {anreise} – {abreise} · Check-in ab {checkin} Uhr\n🔑 Dein Türcode: {tuercode} — einfach am Keypad eingeben, kein Schlüssel nötig.\n\nAlles Weitere (Anreise, Parken, WLAN und die besten Tipps für die Region 📲) findest du in deiner persönlichen digitalen Gästemappe:\n\n{mappe_button}\n\nFragen? Antworte einfach auf diese Nachricht — wir sind schnell für dich da. 😊\n\nBis gleich — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
