@@ -58,7 +58,8 @@ export interface StepsBlock extends GuideBlockBase { type: 'steps'; title: strin
 export interface WifiBlock extends GuideBlockBase { type: 'wifi'; ssid: string; password: string }
 export interface DoorBlock extends GuideBlockBase { type: 'door'; title: string; text: string }
 export interface ContactBlock extends GuideBlockBase { type: 'contact'; phone: string; note: string }
-export interface ImageBlock extends GuideBlockBase { type: 'image'; url: string; caption: string }
+// url2: optionales zweites Foto — beide rendern NEBENEINANDER (§196b)
+export interface ImageBlock extends GuideBlockBase { type: 'image'; url: string; caption: string; url2?: string }
 export interface MapBlock extends GuideBlockBase { type: 'map' }
 /** show: 'checkin'/'checkout' zeigt nur die eine Zeit — so lassen sich beide
  *  Zeiten als getrennte Bausteine mit EIGENER Phasen-Sichtbarkeit pflegen
@@ -376,7 +377,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'wifi': return b.ssid.trim().length > 0
     case 'door': return b.text.trim().length > 0 || !!ctx.doorCode || !!ctx.doorNote
     case 'contact': return b.phone.trim().length > 0 || b.note.trim().length > 0
-    case 'image': return b.url.trim().length > 0
+    case 'image': return b.url.trim().length > 0 || !!(b.url2 && b.url2.trim())
     case 'map': return !!ctx.address
     case 'times':
       if (b.show === 'checkin') return !!ctx.checkIn
