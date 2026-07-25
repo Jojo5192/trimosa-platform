@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { GuideBlock, GuideCtx, GuideLabels, InventarGroupKey, InventarItem } from '@/lib/guide'
 import { blockHasContent, inventarGroupOf, inventarGroupLabel, INVENTAR_KATALOG } from '@/lib/guide'
 
@@ -74,6 +75,8 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
   preview?: boolean
 }) {
   const visible = preview ? blocks : blocks.filter((b) => blockHasContent(b, ctx))
+  // §198b: Fotos als Thumbnail, Tipp = Vollbild-Lightbox (Portal — §83: nie fixed im Scroller)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {visible.map((b) => {
@@ -141,11 +144,21 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                       <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#4A4438', paddingTop: 1, flex: 1, minWidth: 0 }}>
                         {x.s || '…'}
                         {x.img && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={x.img} alt="" style={{
-                            display: 'block', width: '100%', height: 'auto', borderRadius: 12,
-                            marginTop: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                          }} />
+                          <button type="button" onClick={() => setLightbox(x.img)} style={{
+                            border: 'none', padding: 0, background: 'none', cursor: 'zoom-in',
+                            display: 'block', marginTop: 8, position: 'relative',
+                          }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={x.img} alt="" style={{
+                              display: 'block', width: 128, height: 84, objectFit: 'cover',
+                              borderRadius: 10, boxShadow: '0 1px 6px rgba(0,0,0,0.14)',
+                            }} />
+                            <span style={{
+                              position: 'absolute', right: 5, bottom: 5, width: 22, height: 22, borderRadius: '50%',
+                              background: 'rgba(18,34,46,0.75)', color: '#fff', fontSize: 11,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>🔍</span>
+                          </button>
                         )}
                       </span>
                     </li>
@@ -220,9 +233,9 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       {[b.url, b.url2 as string].map((u, i) => (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img key={i} src={u} alt={b.caption || 'Foto'} style={{
+                        <img key={i} src={u} alt={b.caption || 'Foto'} onClick={() => setLightbox(u)} style={{
                           display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: 'cover',
-                          borderRadius: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                          borderRadius: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.08)', cursor: 'zoom-in',
                         }} />
                       ))}
                     </div>
@@ -230,9 +243,9 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                   : single
                     ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={single} alt={b.caption || 'Foto'} style={{
+                      <img src={single} alt={b.caption || 'Foto'} onClick={() => setLightbox(single)} style={{
                         display: 'block', width: '100%', height: 'auto', borderRadius: 16,
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.08)', cursor: 'zoom-in',
                       }} />
                     )
                     : <div style={{ borderRadius: 16, background: '#ECE8DE', padding: '34px 0', textAlign: 'center', fontSize: 22 }}>📷</div>}
@@ -396,6 +409,24 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
               : null
         }
       })}
+      {lightbox && createPortal(
+        <div onClick={() => setLightbox(null)} style={{
+          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,14,18,0.9)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18, cursor: 'zoom-out',
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" style={{
+            maxWidth: '100%', maxHeight: '94%', borderRadius: 14,
+            boxShadow: '0 12px 44px rgba(0,0,0,0.55)',
+          }} />
+          <button type="button" onClick={() => setLightbox(null)} aria-label="Schließen" style={{
+            position: 'absolute', top: 'calc(14px + env(safe-area-inset-top))', right: 16,
+            width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer',
+            background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 17, fontWeight: 700,
+          }}>✕</button>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
