@@ -614,6 +614,8 @@ function InventarEditor({ block, onChange }: {
 }) {
   const [cEmoji, setCEmoji] = useState('')
   const [cLabel, setCLabel] = useState('')
+  // 📝-Notiz je Punkt (z. B. Kaffeemaschinen-Modell) — ein Feld zugleich offen
+  const [noteFor, setNoteFor] = useState<string | null>(null)
   const items = block.items ?? []
   const active = new Map(items.map((i) => [i.id, i]))
   const set = (next: InventarItem[]) => onChange({ items: next } as Partial<GuideBlock>)
@@ -625,6 +627,34 @@ function InventarEditor({ block, onChange }: {
   function setCount(id: string, raw: string) {
     const n = Number(raw)
     set(items.map((i) => (i.id === id ? { ...i, count: Number.isFinite(n) && n > 0 ? Math.round(n) : undefined } : i)))
+  }
+  function setNote(id: string, raw: string) {
+    set(items.map((i) => (i.id === id ? { ...i, note: raw ? raw : undefined } : i)))
+  }
+  function noteButton(id: string) {
+    const hasNote = !!active.get(id)?.note
+    const open = noteFor === id
+    return (
+      <button type="button" onClick={() => setNoteFor(open ? null : id)}
+        title={hasNote ? `Notiz: ${active.get(id)?.note}` : 'Notiz hinzufügen (z. B. Marke/Modell)'} style={{
+          width: 24, height: 24, borderRadius: 8, cursor: 'pointer', fontSize: 11, padding: 0,
+          border: hasNote || open ? '1.5px solid var(--gold)' : '1px solid #E5E1D6',
+          background: hasNote ? '#FAF5E4' : '#fff',
+        }}>📝</button>
+    )
+  }
+  function noteInput(id: string, label: string) {
+    if (noteFor !== id) return null
+    return (
+      <input
+        autoFocus
+        style={{ ...INPUT, flexBasis: '100%', marginTop: 2 }}
+        placeholder={`Notiz zu „${label}" — z. B. Marke/Modell (Nespresso Vertuo), Standort, Besonderheit …`}
+        value={active.get(id)?.note ?? ''}
+        onChange={(e) => setNote(id, e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setNoteFor(null) } }}
+      />
+    )
   }
   function addCustom() {
     const label = cLabel.trim()
@@ -654,7 +684,7 @@ function InventarEditor({ block, onChange }: {
             {g.items.map((cat) => {
               const on = active.has(cat.id)
               return (
-                <span key={cat.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span key={cat.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, ...(noteFor === cat.id ? { flexBasis: '100%' } : {}) }}>
                   <button type="button" onClick={() => toggleCatalog(cat)} title={on ? 'Entfernen' : 'Als vorhanden markieren'} style={{
                     padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
                     border: on ? '1px solid transparent' : '1px solid #E5E1D6',
@@ -669,6 +699,8 @@ function InventarEditor({ block, onChange }: {
                       style={countInput} title="Stückzahl (optional)"
                     />
                   )}
+                  {on && noteButton(cat.id)}
+                  {noteInput(cat.id, cat.label)}
                 </span>
               )
             })}
@@ -683,7 +715,7 @@ function InventarEditor({ block, onChange }: {
         {customs.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 }}>
             {customs.map((it) => (
-              <span key={it.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span key={it.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, ...(noteFor === it.id ? { flexBasis: '100%' } : {}) }}>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999,
                   background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 11.5, fontWeight: 600,
@@ -700,6 +732,8 @@ function InventarEditor({ block, onChange }: {
                   onChange={(e) => setCount(it.id, e.target.value)}
                   style={countInput} title="Stückzahl (optional)"
                 />
+                {noteButton(it.id)}
+                {noteInput(it.id, it.label)}
               </span>
             ))}
           </div>
