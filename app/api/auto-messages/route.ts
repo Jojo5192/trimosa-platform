@@ -61,6 +61,8 @@ export async function PUT(req: NextRequest) {
     offset_days: clampInt(b.offset_days, 0, 60, 0),
     send_hour: clampInt(b.send_hour, 0, 23, 10),
     listing_id: b.listing_id ? String(b.listing_id) : null,
+    listing_ids: Array.isArray(b.listing_ids) && b.listing_ids.length
+      ? b.listing_ids.map(String).slice(0, 20) : null,
     channel_filter: Array.isArray(b.channel_filter) && b.channel_filter.length
       ? b.channel_filter.map(String).slice(0, 8) : null,
     min_nights: b.min_nights ? clampInt(b.min_nights, 1, 60, 1) : null,
@@ -78,9 +80,9 @@ export async function PUT(req: NextRequest) {
     ? supabaseAdmin.from('auto_messages').update(r).eq('id', String(b.id)).select('id').maybeSingle()
     : supabaseAdmin.from('auto_messages').insert(r).select('id').single()) as unknown as Promise<WriteRes>
   let { data, error } = await write(row)
-  if (error && /lead_filter|send_email/.test(error.message)) {
-    const { lead_filter: _lf, send_email: _se, ...rest } = row
-    void _lf; void _se
+  if (error && /lead_filter|send_email|listing_ids/.test(error.message)) {
+    const { lead_filter: _lf, send_email: _se, listing_ids: _li, ...rest } = row
+    void _lf; void _se; void _li
     ;({ data, error } = await write(rest))
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
