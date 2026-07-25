@@ -31,6 +31,45 @@ function phoneKey(raw: string): string {
   return normalizePhone(raw).slice(-9)
 }
 
+/** Akzente/Umlaute falten + lowercase — „Edmée" → „edmee", „Müller" → „muller" */
+export function foldName(s: string): string {
+  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss')
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0
+  const m = a.length, n = b.length
+  if (!m || !n) return Math.max(m, n)
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+/**
+ * Fuzzy-Namensvergleich (§188): Die Spracherkennung verstümmelt Namen
+ * massiv („Bozma" ↔ „Bootsma", „Edmes" ↔ „Edmée") — ein Kandidaten-Token
+ * zählt als Treffer, wenn er als Substring vorkommt ODER zu einem
+ * Namens-Token eine kleine Edit-Distanz hat (≤1 ab 4, ≤2 ab 6 Zeichen).
+ * §181-Policy bleibt: EIN passender Namensteil (Vor- ODER Nachname) reicht.
+ */
+export function nameLooselyMatches(candidate: string, guestNames: string): boolean {
+  const guest = foldName(guestNames).trim()
+  if (!guest) return false
+  const gTokens = guest.split(/\s+/).filter((t) => t.length >= 3)
+  const cTokens = foldName(candidate).split(/\s+/).filter((t) => t.length >= 3)
+  return cTokens.some((c) => {
+    if (guest.includes(c)) return true
+    const tol = c.length >= 6 ? 2 : c.length >= 4 ? 1 : 0
+    return tol > 0 && gTokens.some((g) => Math.abs(g.length - c.length) <= tol && levenshtein(c, g) <= tol)
+  })
+}
+
 export interface VoiceBooking {
   id: string
   guestName: string
@@ -168,17 +207,14 @@ export async function findBookingByDetails(opts: {
   const shift = (iso: string, days: number) =>
     new Date(new Date(`${iso}T00:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10)
 
-  const nameMatches = (g: string | null): boolean => {
-    const guest = String(g ?? '').toLowerCase()
-    if (!guest) return false
-    const tokens = name.split(/\s+/).filter((w) => w.length >= 3)
-    return tokens.some((w) => guest.includes(w))
-  }
+  // §188: fuzzy statt exakt — ASR-Verhörer („Edmes Läppchen" ↔ „Edmée
+  // Sleijpen") dürfen weder Suche noch Entschärfung scheitern lassen
+  const nameMatches = (g: string | null): boolean => nameLooselyMatches(name, g ?? '')
 
   const attempt = async (fuzzyDays: number): Promise<VoiceBooking | null> => {
     let q = supabaseAdmin
       .from('bookings')
-      .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title)')
+      .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title, location_group)')
       .eq('status', 'confirmed')
     if (arrival) {
       q = fuzzyDays
@@ -201,10 +237,13 @@ export async function findBookingByDetails(opts: {
 
     if (apartment) {
       const byApt = rows.filter((r) => {
-        const title = String(r.listings?.title ?? '').toLowerCase()
+        // §188: „Wohnung" darf auch der STANDORT sein — Anrufer sagen
+        // „ich bin in Sirzenich", nicht „im Cozy Flat"
+        const title = foldName(`${r.listings?.title ?? ''} ${(r.listings as { location_group?: string | null } | null)?.location_group ?? ''}`).trim()
+        const apt = foldName(apartment)
         if (!title) return false
-        if (title.includes(apartment) || apartment.includes(title)) return true
-        const words = apartment.split(/\s+/).filter((w) => w.length >= 3)
+        if (title.includes(apt) || apt.includes(title)) return true
+        const words = apt.split(/\s+/).filter((w) => w.length >= 3)
         return words.length > 0 && words.every((w) => title.includes(w))
       })
       // Mit Datums-Anker ist die Wohnung nur Entschärfer — die Spracherkennung
