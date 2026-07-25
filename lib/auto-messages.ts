@@ -68,6 +68,7 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{mappe}',        label: 'Link zur Gästemappe' },
   { key: '{mappe_button}', label: 'Gästemappe als Button' },
   { key: '{adresse}',      label: 'Adresse der Wohnung' },
+  { key: '{google_bewertung}', label: 'Google-Bewertungs-Link der Wohnung' },
 ]
 
 /** Sentinel, der {mappe_button} unbeschadet durch Übersetzung & Versand trägt
@@ -87,6 +88,7 @@ export interface MessageContext {
   tuercode: string
   mappe: string
   adresse: string
+  google_bewertung: string
 }
 
 /** Ersetzt alle {platzhalter} im Text mit den Werten aus dem Kontext. */
@@ -110,6 +112,7 @@ export function demoContext(wohnung: string, checkin: string, checkout: string):
     checkin: checkin || '16:00',
     checkout: checkout || '10:00',
     tuercode: '4 7 2 9 1 5',
+    google_bewertung: 'https://search.google.com/local/writereview?placeid=…',
     mappe: 'trimosa.de/mappe/…',
     adresse: 'Beispielstraße 1, 54634 Bitburg',
   }
