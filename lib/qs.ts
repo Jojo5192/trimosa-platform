@@ -185,7 +185,7 @@ export function inventarQsSections(blocks: GuideBlock[], listingId: string): QsS
   if (!items.length) return []
   const qsItems: QsItem[] = items.map((it) => ({
     id: `inv-${it.id}`,
-    label: `${it.emoji} ${it.label}${typeof it.count === 'number' && it.count > 0 ? ` (Soll: ${it.count})` : ''}`,
+    label: `${it.emoji} ${it.label}${it.note ? ` — ${it.note}` : ''}${typeof it.count === 'number' && it.count > 0 ? ` (Soll: ${it.count})` : ''}`,
     type: typeof it.count === 'number' && it.count > 0 ? 'anzahl' : 'zustand',
     hint: typeof it.count === 'number' && it.count > 0 ? 'Ist-Anzahl zählen + Zustand prüfen' : undefined,
   }))
