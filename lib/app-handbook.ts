@@ -47,7 +47,7 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 6 Tabs:
 - Push-Einstellungen: „Push auf diesem Gerät" + Kategorien „Gäste-Chats", „Interne Gruppen" und „Neue Buchungen"; Admins zusätzlich „⚡ Ladevorgang gestartet" und „⚡ Ladevorgang beendet" (getrennt schaltbar).
 - 📈 Entwicklung: Bewertungs-Scores im Zeitverlauf (Gesamt + je Plattform, je Wohnung filterbar, Zeiträume 30 T/90 T/1 Jahr) als Grafik, mit Veränderung vs. Vorwoche/Vormonat auf 2 Nachkommastellen. Datenbasis: täglicher automatischer Score-Snapshot (Historie wächst ab 24.07.2026). Derselbe Trend steht als Tabelle im wöchentlichen Team-Bericht.
 - 🧾 Qualitätssicherung: Archiv aller QS-Protokolle je Wohnung, PDF auf Abruf.
-- ⚡ Wallbox (NUR Admins, seit 25.07.): Ladehistorie der click2charge/DaheimLaden-Wallbox (Monta-Anbindung) — je Ladevorgang kWh, Umsatz und geschätzter Brutto-Gewinn (Umsatz − Stromkosten; eigener Strompreis in Cent/kWh direkt im Bereich einstellbar), Summen-Kacheln oben, ältere Vorgänge nachladbar.
+- ⚡ Wallbox (NUR Admins, seit 25.07.): Ladehistorie der click2charge/DaheimLaden-Wallbox (Monta-Anbindung) — je Ladevorgang kWh, Umsatz und Brutto-Gewinn (Umsatz − echte Stromkosten aus click2charge, dort ist der Einkaufspreis hinterlegt), Summen-Kacheln oben, ältere Vorgänge nachladbar.
 
 🔔 PUSH-BENACHRICHTIGUNGEN (was wann kommt):
 - Neue Gast-Nachricht (alle Kanäle SOFORT — Smoobu-Webhook bzw. Website direkt; 10-Min-Poll als Sicherheitsnetz) — deutsch übersetzt mit Sprach-Flagge, Tipp öffnet den Thread.
