@@ -165,26 +165,8 @@ export async function findBookingByDetails(opts: {
   const today = new Date().toISOString().slice(0, 10)
   const pastCutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
 
-  let q = supabaseAdmin
-    .from('bookings')
-    .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title)')
-    .eq('status', 'confirmed')
-  if (arrival) q = q.eq('check_in', arrival)
-  else if (departure) q = q.eq('check_out', departure)
-  else q = q.gte('check_out', pastCutoff)
-  const { data } = await q.order('check_in', { ascending: true }).limit(400)
-  let rows = (data ?? []) as unknown as BRow[]
-  if (arrival && departure) rows = rows.filter((r) => r.check_out === departure)
-
-  if (apartment) {
-    rows = rows.filter((r) => {
-      const title = String(r.listings?.title ?? '').toLowerCase()
-      if (!title) return false
-      if (title.includes(apartment) || apartment.includes(title)) return true
-      const words = apartment.split(/\s+/).filter((w) => w.length >= 3)
-      return words.length > 0 && words.every((w) => title.includes(w))
-    })
-  }
+  const shift = (iso: string, days: number) =>
+    new Date(new Date(`${iso}T00:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10)
 
   const nameMatches = (g: string | null): boolean => {
     const guest = String(g ?? '').toLowerCase()
@@ -192,13 +174,59 @@ export async function findBookingByDetails(opts: {
     const tokens = name.split(/\s+/).filter((w) => w.length >= 3)
     return tokens.some((w) => guest.includes(w))
   }
-  // Ohne Datum ist der Name Pflichtkriterium; mit Datum entschärft er nur Mehrdeutigkeit
-  if (!arrival && !departure) rows = rows.filter((r) => nameMatches(r.guest_name))
-  else if (rows.length > 1 && name) {
-    const byName = rows.filter((r) => nameMatches(r.guest_name))
-    if (byName.length) rows = byName
+
+  const attempt = async (fuzzyDays: number): Promise<VoiceBooking | null> => {
+    let q = supabaseAdmin
+      .from('bookings')
+      .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title)')
+      .eq('status', 'confirmed')
+    if (arrival) {
+      q = fuzzyDays
+        ? q.gte('check_in', shift(arrival, -fuzzyDays)).lte('check_in', shift(arrival, fuzzyDays))
+        : q.eq('check_in', arrival)
+    } else if (departure) {
+      q = fuzzyDays
+        ? q.gte('check_out', shift(departure, -fuzzyDays)).lte('check_out', shift(departure, fuzzyDays))
+        : q.eq('check_out', departure)
+    } else {
+      q = q.gte('check_out', pastCutoff)
+    }
+    const { data } = await q.order('check_in', { ascending: true }).limit(400)
+    let rows = (data ?? []) as unknown as BRow[]
+    if (arrival && departure) {
+      rows = fuzzyDays
+        ? rows.filter((r) => r.check_out >= shift(departure, -fuzzyDays) && r.check_out <= shift(departure, fuzzyDays))
+        : rows.filter((r) => r.check_out === departure)
+    }
+
+    if (apartment) {
+      const byApt = rows.filter((r) => {
+        const title = String(r.listings?.title ?? '').toLowerCase()
+        if (!title) return false
+        if (title.includes(apartment) || apartment.includes(title)) return true
+        const words = apartment.split(/\s+/).filter((w) => w.length >= 3)
+        return words.length > 0 && words.every((w) => title.includes(w))
+      })
+      // Mit Datums-Anker ist die Wohnung nur Entschärfer — die Spracherkennung
+      // verhört Wohnungsnamen („Cosy" statt „Cozy"), das darf einen eindeutigen
+      // Datums-Treffer nicht killen. Ohne Datum bleibt sie Pflicht-Anker.
+      if (arrival || departure) { if (byApt.length) rows = byApt }
+      else rows = byApt
+    }
+
+    // Ohne Datum ist der Name Pflichtkriterium; mit Datum entschärft er nur Mehrdeutigkeit
+    if (!arrival && !departure) rows = rows.filter((r) => nameMatches(r.guest_name))
+    else if (rows.length > 1 && name) {
+      const byName = rows.filter((r) => nameMatches(r.guest_name))
+      if (byName.length) rows = byName
+    }
+
+    if (rows.length !== 1) return null
+    return toVoiceBooking(rows[0], today)
   }
 
-  if (rows.length !== 1) return null
-  return toVoiceBooking(rows[0], today)
+  // Exakte Daten zuerst; verhörte/falsch erinnerte Daten (±1 Tag) als Rettungsnetz.
+  // Die VERIFIZIERUNG in verify-guest prüft danach weiter exakt — ein Fuzzy-Fund
+  // führt dort zur gezielten Rückfrage („Zeitraum nochmal klären"), nie zur Auskunft.
+  return (await attempt(0)) ?? ((arrival || departure) ? attempt(1) : null)
 }
