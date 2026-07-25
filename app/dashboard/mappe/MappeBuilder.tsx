@@ -386,7 +386,7 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
 
-  async function uploadImage(file: File) {
+  async function uploadImage(file: File, field: 'url' | 'url2' = 'url') {
     setUploadBusy(true)
     setUploadErr('')
     try {
@@ -396,7 +396,8 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
       const res = await fetch('/api/guide-image', { method: 'POST', body: fd })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
-      onChange({ url: d.url } as Partial<GuideBlock>)
+      if (field === 'url2') onChange({ url2: d.url } as Partial<GuideBlock>)
+      else onChange({ url: d.url } as Partial<GuideBlock>)
     } catch (e) {
       setUploadErr(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
     } finally {
@@ -607,8 +608,36 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
             <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = '' }} />
           </label>
+          {/* §196b: optionales zweites Foto — rendert NEBENEINANDER (Foto + Skizze) */}
+          {block.url && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {block.url2 && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={block.url2} alt="Zweites Foto" style={{ width: 92, height: 92, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+              )}
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                padding: '8px 15px', borderRadius: 999,
+                border: block.url2 ? '1.5px solid var(--gold)' : '1.5px dashed #C9BE93',
+                background: '#fff', color: '#8A7020', fontSize: 12, fontWeight: 700,
+                cursor: uploadBusy ? 'wait' : 'pointer', opacity: uploadBusy ? 0.6 : 1,
+              }}>
+                {uploadBusy ? '⏳ Lädt hoch…' : block.url2 ? '🔄 2. Foto ersetzen' : '＋ 2. Foto daneben'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadBusy}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, 'url2'); e.target.value = '' }} />
+              </label>
+              {block.url2 && (
+                <button type="button" style={{ ...btn, color: '#DC2626' }} onClick={() => onChange({ url2: undefined } as Partial<GuideBlock>)} title="2. Foto entfernen">✕</button>
+              )}
+            </div>
+          )}
           {uploadErr && <span style={{ fontSize: 11.5, color: '#B91C1C' }}>⚠️ {uploadErr}</span>}
           <input style={INPUT} placeholder="Bildunterschrift (optional, z. B. Dein Parkplatz Nr. 3)" value={block.caption} onChange={(e) => onChange({ caption: e.target.value })} />
+          {block.url && (
+            <span style={{ fontSize: 11, color: '#A8A292' }}>
+              Mit zweitem Foto erscheinen beide NEBENEINANDER (quadratisch zugeschnitten) — z. B. Straßenfoto + Parkplatz-Skizze.
+            </span>
+          )}
         </div>
       )}
 
