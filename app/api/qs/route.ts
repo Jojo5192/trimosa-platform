@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { ensureQsChecks, rescheduleConflictingChecks, findFreeDay, getQsTemplateStore, resolveQsTemplate } from '@/lib/qs'
+import { ensureQsChecks, rescheduleConflictingChecks, findFreeDay, getQsTemplateStore, resolveQsTemplate, inventarQsSections } from '@/lib/qs'
+import { parseGuide } from '@/lib/guide'
 
 /**
  * 🧾 QS-Termine:
@@ -36,20 +37,27 @@ export async function GET(req: NextRequest) {
 
   const listingIds = [...new Set((checks ?? []).map((c) => c.listing_id))]
   const userIds = [...new Set((checks ?? []).flatMap((c) => [c.assignee_id, c.completed_by]).filter(Boolean))] as string[]
-  const [{ data: listings }, { data: people }, tplStore] = await Promise.all([
+  const [{ data: listings }, { data: people }, tplStore, { data: poolRow }] = await Promise.all([
     listingIds.length
-      ? supabaseAdmin.from('listings').select('id, title, location_group').in('id', listingIds)
-      : Promise.resolve({ data: [] as { id: string; title: string; location_group: string | null }[] }),
+      ? supabaseAdmin.from('listings').select('id, title, location_group, guide').in('id', listingIds)
+      : Promise.resolve({ data: [] as { id: string; title: string; location_group: string | null; guide: unknown }[] }),
     userIds.length
       ? supabaseAdmin.from('profiles').select('id, display_name').in('id', userIds)
       : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
     getQsTemplateStore(),
+    supabaseAdmin.from('app_settings').select('value').eq('key', 'guide_global').maybeSingle(),
   ])
   const titleOf = Object.fromEntries((listings ?? []).map((l) => [l.id, l.title]))
   const nameOf = Object.fromEntries((people ?? []).map((p) => [p.id, (p.display_name ?? '').split(/\s+/)[0] || '—']))
   // Aufgelöste Checkliste je betroffener Wohnung (Wohnung > Standort > Standard)
+  // + §195: Inventar-Sektionen aus der GÄSTEMAPPE automatisch anhängen
+  // (Pool gewinnt, sobald er Bausteine hat — sonst listings.guide, wie die Mappe)
+  const poolBlocks = parseGuide(poolRow?.value)
   const templates = Object.fromEntries(
-    (listings ?? []).map((l) => [l.id, resolveQsTemplate(tplStore, l.id, l.location_group)])
+    (listings ?? []).map((l) => {
+      const guideBlocks = poolBlocks.length ? poolBlocks : parseGuide(l.guide)
+      return [l.id, [...resolveQsTemplate(tplStore, l.id, l.location_group), ...inventarQsSections(guideBlocks, l.id)]]
+    })
   )
 
   return NextResponse.json({
