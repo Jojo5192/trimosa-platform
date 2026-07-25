@@ -187,10 +187,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 {/* Türcode-Automatik (§132): Code groß, sobald das Anzeige-
                     Fenster erreicht ist; vorher der Hinweis, ab wann er kommt */}
                 {ctx.doorCode && (
-                  <div style={{ margin: '4px 0 10px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(245,240,232,0.55)', marginBottom: 4 }}>
-                      {labels.doorCodeLabel}
-                    </div>
+                  <div style={{ margin: '6px 0 10px', textAlign: 'center' }}>
                     <div style={{
                       display: 'inline-block', padding: '10px 22px', borderRadius: 14,
                       background: 'rgba(227,200,120,0.12)', border: '1px solid rgba(227,200,120,0.4)',
@@ -200,7 +197,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                   </div>
                 )}
                 {!ctx.doorCode && ctx.doorNote && (
-                  <p style={{ margin: '0 0 8px', fontSize: 13, lineHeight: 1.6, color: 'rgba(227,200,120,0.85)' }}>⏳ {ctx.doorNote}</p>
+                  <p style={{ margin: '0 0 8px', fontSize: 13, lineHeight: 1.6, color: 'rgba(227,200,120,0.85)', textAlign: 'center' }}>⏳ {ctx.doorNote}</p>
                 )}
                 {(b.text || (!ctx.doorCode && !ctx.doorNote)) && (
                   <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'rgba(245,240,232,0.85)', whiteSpace: 'pre-line' }}>{b.text || '…'}</p>
