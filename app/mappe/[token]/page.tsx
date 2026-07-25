@@ -146,6 +146,7 @@ export default async function MappePage({ params, searchParams }: {
     regionClaim: region ? region[1].claim : null,
     doorCode,
     doorNote: doorNoteDe,
+    googlePlaceId: (listing.google_place_id as string | null) ?? null,
   }
 
   // ── Übersetzung (Blöcke + Labels + UI + Hausregeln) in einem Batch ──
@@ -216,6 +217,7 @@ export default async function MappePage({ params, searchParams }: {
       case 'rules': navItems.push({ id: anchor, label: labels.rulesTitle, icon: '🏠' }); break
       case 'region': navItems.push({ id: anchor, label: labels.regionTitle, icon: '🗺️' }); break
       case 'inventar': if (b.title.trim()) navItems.push({ id: anchor, label: b.title.trim(), icon: '📦' }); break
+      case 'review': navItems.push({ id: anchor, label: b.title.trim() || labels.reviewTitle, icon: '⭐' }); break
       case 'chat': navItems.push({ id: 'mb-chat', label: chatLabels.navLabel, icon: '💬' }); break
       default: break // text/warning/times/image ohne eigenen Chip
     }
