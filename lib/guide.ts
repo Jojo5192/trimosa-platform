@@ -76,7 +76,7 @@ export interface ChatBlock extends GuideBlockBase { type: 'chat'; phone?: string
  *  die vorhandenen Punkte (Anwesenheit im Array = „ist da"). Die Liste
  *  ist zugleich die automatische Basis der QS-Protokolle (lib/qs) und
  *  fließt über den KB-Sync in die Anrufbot-Wissensbasis. */
-export interface InventarItem { id: string; emoji: string; label: string; count?: number }
+export interface InventarItem { id: string; emoji: string; label: string; count?: number; note?: string }
 export interface InventarBlock extends GuideBlockBase { type: 'inventar'; title: string; items: InventarItem[] }
 
 export type GuideBlock =
@@ -350,7 +350,7 @@ export function collectGuideTexts(blocks: GuideBlock[]): string[] {
     if ('note' in b && b.note) out.push(b.note)
     if ('caption' in b && b.caption) out.push(b.caption)
     if (b.type === 'steps') out.push(...b.steps.filter(Boolean))
-    if (b.type === 'inventar') out.push(...(b.items ?? []).map((i) => i.label).filter(Boolean))
+    if (b.type === 'inventar') out.push(...(b.items ?? []).flatMap((i) => [i.label, i.note ?? '']).filter(Boolean))
   }
   return out
 }
@@ -364,7 +364,7 @@ export function translateBlocks(blocks: GuideBlock[], tr: (de: string) => string
     if ('note' in c && c.note) c.note = tr(c.note)
     if ('caption' in c && c.caption) c.caption = tr(c.caption)
     if (c.type === 'steps') c.steps = c.steps.map((s) => (s ? tr(s) : s))
-    if (c.type === 'inventar') c.items = (c.items ?? []).map((i) => ({ ...i, label: i.label ? tr(i.label) : i.label }))
+    if (c.type === 'inventar') c.items = (c.items ?? []).map((i) => ({ ...i, label: i.label ? tr(i.label) : i.label, note: i.note ? tr(i.note) : i.note }))
     return c
   })
 }
