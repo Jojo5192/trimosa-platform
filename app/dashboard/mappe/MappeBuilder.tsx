@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   BLOCK_META, PHASE_META, defaultTemplate, emptyBlock, newBlockId, blockPhases, blockForListing,
-  blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, INVENTAR_KATALOG, inventarGroupLabel,
+  blockVisibleInPhase, mergeContactIntoChat, DE_LABELS, INVENTAR_KATALOG, inventarGroupLabel, inventarGroupOf,
   type GuideBlock, type GuideCtx, type GuidePhase, type InventarBlock, type InventarItem, type InventarCatalogItem,
+  type InventarGroupKey,
 } from '@/lib/guide'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import AiPolishButton from '@/components/AiPolishButton'
@@ -54,6 +55,21 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
     () => (filter ? blocks.filter((b) => blockForListing(b, filter)) : blocks),
     [blocks, filter],
   )
+  // §195-Ausbau: eigene Inventar-Einträge ALLER Listen als wohnungs-
+  // übergreifende Vorschläge (dedupliziert nach Kategorie + Label)
+  const inventarPool = useMemo(() => {
+    const seen = new Map<string, { id: string; emoji: string; label: string }>()
+    for (const b of blocks) {
+      if (b.type !== 'inventar') continue
+      for (const it of b.items ?? []) {
+        if (!it.id.startsWith('x-')) continue
+        const key = `${inventarGroupOf(it.id)}|${it.label.trim().toLowerCase()}`
+        if (!seen.has(key)) seen.set(key, { id: it.id, emoji: it.emoji, label: it.label })
+      }
+    }
+    return [...seen.values()]
+  }, [blocks])
+
   // §160-Ergänzung: Vorschau-Phase — zeigt die Mappe so, wie sie zum
   // jeweiligen Zeitpunkt aussieht ('alle' = ohne Phasen-Filter).
   const [previewPhase, setPreviewPhase] = useState<'alle' | Exclude<GuidePhase, 'immer'>>('alle')
@@ -211,6 +227,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
               <BlockEditor
                 key={b.id} block={b} index={i} total={visibleBlocks.length}
                 listings={listings}
+                inventarPool={inventarPool}
                 onChange={(patch) => update(b.id, patch)}
                 onMove={(dir) => move(b.id, dir)}
                 onRemove={() => remove(b.id)}
@@ -354,11 +371,12 @@ async function compressToJpeg(file: File): Promise<Blob> {
 }
 
 /* ── Einzelner Block im Editor ── */
-function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove, onDuplicate }: {
+function BlockEditor({ block, index, total, listings, inventarPool, onChange, onMove, onRemove, onDuplicate }: {
   block: GuideBlock
   index: number
   total: number
   listings: { id: string; title: string }[]
+  inventarPool: { id: string; emoji: string; label: string }[]
   onChange: (patch: Partial<GuideBlock>) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
@@ -515,7 +533,7 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
       )}
 
       {block.type === 'inventar' && (
-        <InventarEditor block={block} onChange={onChange} />
+        <InventarEditor block={block} onChange={onChange} pool={inventarPool} />
       )}
 
       {/* §160-Kleinigkeit: Check-in-/Check-out-Zeit getrennt anzeigbar — als
@@ -608,16 +626,20 @@ function BlockEditor({ block, index, total, listings, onChange, onMove, onRemove
 
 /** 📦 Inventar-Editor (§195): Katalog anklicken, Stückzahlen eintragen,
  *  eigene Einträge ergänzen. Gespeichert werden nur die AKTIVEN Punkte. */
-function InventarEditor({ block, onChange }: {
+function InventarEditor({ block, onChange, pool }: {
   block: InventarBlock
   onChange: (patch: Partial<GuideBlock>) => void
+  pool: { id: string; emoji: string; label: string }[]
 }) {
   const [cEmoji, setCEmoji] = useState('')
   const [cLabel, setCLabel] = useState('')
+  // Kategorie für den nächsten eigenen Eintrag (§195-Ausbau)
+  const [cGroup, setCGroup] = useState<InventarGroupKey>('wohnen')
   // 📝-Notiz je Punkt (z. B. Kaffeemaschinen-Modell) — ein Feld zugleich offen
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const items = block.items ?? []
   const active = new Map(items.map((i) => [i.id, i]))
+  const activeLabels = new Set(items.map((i) => i.label.trim().toLowerCase()))
   const set = (next: InventarItem[]) => onChange({ items: next } as Partial<GuideBlock>)
 
   function toggleCatalog(cat: InventarCatalogItem) {
@@ -659,15 +681,58 @@ function InventarEditor({ block, onChange }: {
   function addCustom() {
     const label = cLabel.trim()
     if (!label) return
-    const id = `x-${label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').slice(0, 30)}-${Math.random().toString(36).slice(2, 5)}`
+    // Kategorie steckt im id-Präfix (x-<gruppe>-…) — so sortiert sich der
+    // Eintrag in Builder + Mappe in die richtige Gruppe und erscheint bei den
+    // anderen Wohnungen als Vorschlag derselben Kategorie.
+    const id = `x-${cGroup}-${label.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').slice(0, 30)}-${Math.random().toString(36).slice(2, 5)}`
     set([...items, { id, emoji: (cEmoji.trim() || '🔹').slice(0, 4), label }])
     setCEmoji('')
     setCLabel('')
   }
-  const customs = items.filter((i) => i.id.startsWith('x-'))
+  // Eigene Einträge DIESER Liste je Kategorie + Vorschläge aus anderen Listen
+  function customsOf(key: InventarGroupKey) {
+    return items.filter((i) => i.id.startsWith('x-') && inventarGroupOf(i.id) === key)
+  }
+  function suggestionsOf(key: InventarGroupKey) {
+    return pool.filter((s) => inventarGroupOf(s.id) === key && !active.has(s.id) && !activeLabels.has(s.label.trim().toLowerCase()))
+  }
   const countInput: React.CSSProperties = {
     width: 46, border: '1px solid #E5E1D6', borderRadius: 8, padding: '3px 5px',
     fontSize: 11.5, textAlign: 'center', background: '#fff',
+  }
+  function customPill(it: InventarItem) {
+    return (
+      <span key={it.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, ...(noteFor === it.id ? { flexBasis: '100%' } : {}) }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999,
+          background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 11.5, fontWeight: 600,
+        }}>
+          {it.emoji} {it.label}
+          <button type="button" onClick={() => set(items.filter((x) => x.id !== it.id))} title="Entfernen" style={{
+            border: 'none', background: 'rgba(255,255,255,0.25)', color: '#fff', cursor: 'pointer',
+            width: 16, height: 16, borderRadius: '50%', fontSize: 10, lineHeight: 1, padding: 0,
+          }}>✕</button>
+        </span>
+        <input
+          type="number" min={1} max={99} placeholder="Stk."
+          value={it.count ?? ''}
+          onChange={(e) => setCount(it.id, e.target.value)}
+          style={countInput} title="Stückzahl (optional)"
+        />
+        {noteButton(it.id)}
+        {noteInput(it.id, it.label)}
+      </span>
+    )
+  }
+  function suggestionChips(key: InventarGroupKey) {
+    return suggestionsOf(key).map((s) => (
+      <button key={`sug-${s.id}`} type="button"
+        onClick={() => set([...items, { id: s.id, emoji: s.emoji, label: s.label }])}
+        title="Vorschlag — in einer anderen Wohnungs-Liste vorhanden. Antippen zum Übernehmen." style={{
+          padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+          border: '1px dashed #C9BE93', background: '#FCFBF7', color: '#8A7020',
+        }}>＋ {s.emoji} {s.label}</button>
+    ))
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -704,44 +769,33 @@ function InventarEditor({ block, onChange }: {
                 </span>
               )
             })}
+            {customsOf(g.key).map((it) => customPill(it))}
+            {suggestionChips(g.key)}
           </div>
         </div>
       ))}
-      {/* Eigene Einträge */}
+      {/* Eigene Einträge (mit Kategorie-Auswahl) */}
       <div>
         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', marginBottom: 6 }}>
           🔹 EIGENE EINTRÄGE
         </div>
-        {customs.length > 0 && (
+        {(customsOf('eigene').length > 0 || suggestionsOf('eigene').length > 0) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 }}>
-            {customs.map((it) => (
-              <span key={it.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, ...(noteFor === it.id ? { flexBasis: '100%' } : {}) }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999,
-                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 11.5, fontWeight: 600,
-                }}>
-                  {it.emoji} {it.label}
-                  <button type="button" onClick={() => set(items.filter((x) => x.id !== it.id))} title="Entfernen" style={{
-                    border: 'none', background: 'rgba(255,255,255,0.25)', color: '#fff', cursor: 'pointer',
-                    width: 16, height: 16, borderRadius: '50%', fontSize: 10, lineHeight: 1, padding: 0,
-                  }}>✕</button>
-                </span>
-                <input
-                  type="number" min={1} max={99} placeholder="Stk."
-                  value={it.count ?? ''}
-                  onChange={(e) => setCount(it.id, e.target.value)}
-                  style={countInput} title="Stückzahl (optional)"
-                />
-                {noteButton(it.id)}
-                {noteInput(it.id, it.label)}
-              </span>
-            ))}
+            {customsOf('eigene').map((it) => customPill(it))}
+            {suggestionChips('eigene')}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input style={{ ...INPUT, width: 52, textAlign: 'center' }} maxLength={4} placeholder="🔹" value={cEmoji}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={cGroup} onChange={(e) => setCGroup(e.target.value as InventarGroupKey)}
+            title="Kategorie des neuen Eintrags" style={{ ...INPUT, width: 'auto', minWidth: 0, flex: '0 1 auto' }}>
+            {INVENTAR_KATALOG.map((g) => (
+              <option key={g.key} value={g.key}>{g.emoji} {inventarGroupLabel(DE_LABELS, g.key)}</option>
+            ))}
+            <option value="eigene">🔹 {inventarGroupLabel(DE_LABELS, 'eigene')}</option>
+          </select>
+          <input style={{ ...INPUT, width: 52, textAlign: 'center', flex: '0 0 auto' }} maxLength={4} placeholder="🔹" value={cEmoji}
             onChange={(e) => setCEmoji(e.target.value)} title="Emoji (optional)" />
-          <input style={{ ...INPUT, flex: 1 }} placeholder="Eigener Eintrag (z. B. Nespresso Vertuo, Fondue-Set …)" value={cLabel}
+          <input style={{ ...INPUT, flex: '1 1 160px', minWidth: 0 }} placeholder="Eigener Eintrag (z. B. Fondue-Set, Weinkühler …)" value={cLabel}
             onChange={(e) => setCLabel(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }} />
           <button type="button" onClick={addCustom} disabled={!cLabel.trim()} style={{
@@ -751,7 +805,8 @@ function InventarEditor({ block, onChange }: {
           }}>+ Hinzufügen</button>
         </div>
         <span style={{ fontSize: 11, color: '#A8A292', display: 'block', marginTop: 5 }}>
-          Tipp: Trag beim eigenen Eintrag ruhig Marke/Modell ein (z. B. „☕ Nespresso Vertuo") — das nutzt auch die Telefon-KI.
+          Der Eintrag landet in der gewählten Kategorie — und erscheint bei den Listen der anderen Wohnungen
+          automatisch als ＋-Vorschlag. Marke/Modell gern per 📝-Notiz dazu — das nutzt auch die Telefon-KI.
         </span>
       </div>
     </div>
