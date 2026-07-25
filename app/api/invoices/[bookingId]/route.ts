@@ -57,6 +57,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
   const body = await req.json().catch(() => ({}))
   const recipient = sanitizeRecipient(body.recipient)
 
+  // §201: „Auf Rechnung" — mit Zahlungsziel, explizit auch VOR Anreise
+  if (body.aufRechnung === true) {
+    const zielTage = Math.min(Math.max(Number(body.zielTage) || 5, 1), 30)
+    const r = await createInvoiceForBooking(bookingId, { ...(recipient ? { recipient } : {}), aufRechnung: { zielTage } })
+    if (!r.ok) return NextResponse.json({ error: r.error ?? r.skipped ?? 'Erstellung fehlgeschlagen.' }, { status: 500 })
+    return NextResponse.json({
+      ...(await loadState(bookingId)),
+      hinweis: `Auf Rechnung erstellt (${r.voucherNumber ?? '—'}) — Zahlungsziel ${zielTage} Werktage.`,
+    }, NO_STORE)
+  }
+
   // §159: Empfänger mitgeschickt (vom Gast im Chat/bei Buchung) →
   // speichern; existiert schon eine Rechnung → NEU ausstellen (alte in der
   // lexoffice-UI stornieren — Hinweis in der Antwort); vor Anreisetag →
