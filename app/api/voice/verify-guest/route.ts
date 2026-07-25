@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches, foldName } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -178,14 +178,23 @@ export async function POST(request: Request) {
   }
   const arrivalOk = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && arrival === booking.check_in
   const departureOk = /^\d{4}-\d{2}-\d{2}$/.test(departure) && departure === booking.check_out
-  const dataOk = (nameOk && arrivalOk && departureOk) || (arrivalOk && !!byPhone)
+  // §191: SCHNELL-Verifizierung (Inhaber: „Zuordnung darf nicht so schwer
+  // sein") — wer WOHNUNG + exakten Zeitraum kennt, ist der Gast; der Name
+  // dient dann nur noch der Anrede, kein Buchstabier-Zirkus mehr nötig.
+  const aptFold = foldName(apartment)
+  const titleFold = foldName(String(booking.listings?.title ?? ''))
+  const apartmentOk = !!aptFold && !!titleFold && (
+    titleFold.includes(aptFold) || aptFold.includes(titleFold) ||
+    (() => { const w = aptFold.split(/\s+/).filter((x) => x.length >= 3); return w.length > 0 && w.every((x) => titleFold.includes(x)) })()
+  )
+  const dataOk = (arrivalOk && departureOk && (nameOk || apartmentOk)) || (arrivalOk && !!byPhone)
 
   if (!codeOk && !dataOk) {
     return Response.json({
       verified: false,
       hint: nameOk
         ? 'Zeitraum passt nicht zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären.'
-        : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Zwei Wege, je EINE Frage pro Runde: 1) Den Anrufer den Nachnamen langsam BUCHSTABIEREN lassen (die Spracherkennung verhört Namen oft) und mit dem buchstabierten Namen erneut aufrufen. 2) Vielleicht hat der Partner/die Familie/die Firma gebucht — nach dem Namen der buchenden Person fragen. Klappt beides nicht: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
+        : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Drei Wege, je EINE Frage pro Runde: 1) Fehlt die WOHNUNG noch, frag danach — Wohnung + exakter Zeitraum reichen zur Verifizierung, ganz ohne Namens-Klärung. 2) Den Anrufer den Nachnamen langsam BUCHSTABIEREN lassen (die Spracherkennung verhört Namen oft) und mit dem buchstabierten Namen erneut aufrufen. 3) Vielleicht hat der Partner/die Familie/die Firma gebucht — nach dem Namen der buchenden Person fragen. Klappt nichts davon: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
     })
   }
 
