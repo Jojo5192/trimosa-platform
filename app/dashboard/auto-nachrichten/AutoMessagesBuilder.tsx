@@ -52,7 +52,9 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
   const bodyRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   const active = useMemo(() => messages.find((m) => m.id === activeId) ?? messages[0] ?? null, [messages, activeId])
-  const activeListing = active?.listing_id ? listings.find((l) => l.id === active.listing_id) : listings[0]
+  // §204: effektive Wohnungs-Auswahl (Mehrfach-Feld > Alt-Einzelfeld; leer = alle)
+  const selOf = (m: Draft): string[] => (m.listing_ids?.length ? m.listing_ids : m.listing_id ? [m.listing_id] : [])
+  const activeListing = (active && selOf(active).length ? listings.find((l) => l.id === selOf(active)[0]) : null) ?? listings[0]
 
   function patch(id: string, p: Partial<Draft>) {
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, ...p, _dirty: true } : m)))
@@ -113,7 +115,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
         body: JSON.stringify({
           id: m._new ? undefined : m.id,
           name: m.name, enabled: m.enabled, trigger_type: m.trigger_type,
-          offset_days: m.offset_days, send_hour: m.send_hour, listing_id: m.listing_id,
+          offset_days: m.offset_days, send_hour: m.send_hour, listing_id: m.listing_id, listing_ids: m.listing_ids ?? null,
           channel_filter: m.channel_filter, min_nights: m.min_nights,
           lead_filter: m.lead_filter, send_email: m.send_email, body: m.body, sort: m.sort,
         }),
@@ -295,13 +297,28 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   )}
                 </div>
 
-                {/* Geltung */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
+                {/* Geltung (§204: Mehrfach-Auswahl per Chips; leer = alle) */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
                   <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>Gilt für:</span>
-                  <select value={m.listing_id ?? ''} onChange={(e) => patch(m.id, { listing_id: e.target.value || null })} style={{ ...INPUT, width: 'auto', flex: 1 }}>
-                    <option value="">Alle Wohnungen</option>
-                    {listings.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
-                  </select>
+                  <button type="button" onClick={() => patch(m.id, { listing_ids: null, listing_id: null })} style={{
+                    padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                    border: !selOf(m).length ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+                    background: !selOf(m).length ? '#FAF5E4' : '#fff', color: !selOf(m).length ? '#8A7020' : '#888',
+                  }}>Alle Wohnungen</button>
+                  {listings.map((l) => {
+                    const sel = selOf(m)
+                    const on = sel.includes(l.id)
+                    return (
+                      <button key={l.id} type="button" onClick={() => {
+                        const next = on ? sel.filter((x) => x !== l.id) : [...sel, l.id]
+                        patch(m.id, { listing_ids: next.length ? next : null, listing_id: null })
+                      }} style={{
+                        padding: '5px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                        border: on ? '1.5px solid var(--gold)' : '1.5px solid #E0DDD6',
+                        background: on ? '#FAF5E4' : '#fff', color: on ? '#8A7020' : '#888',
+                      }}>{l.title}</button>
+                    )
+                  })}
                 </div>
 
                 {/* 📬 Kanäle + Versandweg */}
@@ -463,7 +480,9 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
             <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 12, background: '#fff', border: '1px solid #E5E1D6' }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#8A7020' }}>⏱ {triggerSummary(active)}</div>
               <div style={{ fontSize: 11, color: '#999', marginTop: 3 }}>
-                {active.listing_id ? (activeListing?.title ?? 'Eine Wohnung') : 'Alle Wohnungen'}
+                {selOf(active).length
+                  ? selOf(active).map((id) => listings.find((l) => l.id === id)?.title ?? '?').join(' + ')
+                  : 'Alle Wohnungen'}
                 {active.channel_filter?.length
                   ? ` · ${active.channel_filter.map((c) => CHANNEL_META.find((x) => x.id === c)?.label ?? c).join(' + ')}`
                   : ' · alle Kanäle'}
