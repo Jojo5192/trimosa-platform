@@ -149,6 +149,9 @@ export async function createInvoiceForBooking(bookingId: string, opts: {
   /** §160-Backfill: abweichendes Belegdatum (YYYY-MM-DD, z. B. Anreisetag
    *  vergangener Buchungen — Inhaber-Regel: Rechnungsdatum = Anreisedatum) */
   voucherDate?: string
+  /** §201: „Auf Rechnung" — Rechnung mit Zahlungsziel statt „bereits
+   *  bezahlt"; darf explizit auch VOR dem Anreisetag erstellt werden. */
+  aufRechnung?: { zielTage: number }
 } = {}): Promise<{
   ok: boolean; lexofficeId?: string; voucherNumber?: string | null; skipped?: string; error?: string
 }> {
@@ -167,9 +170,9 @@ export async function createInvoiceForBooking(bookingId: string, opts: {
     .eq('id', bookingId).maybeSingle() as { data: BookingRow | null }
   if (!b) return { ok: false, error: 'Buchung nicht gefunden' }
   if (b.status !== 'confirmed') return { ok: false, skipped: `status=${b.status}` }
-  if (b.source === 'trimosa' && b.payment_status !== 'paid') return { ok: false, skipped: 'unbezahlte Website-Buchung' }
+  if (!opts.aufRechnung && b.source === 'trimosa' && b.payment_status !== 'paid') return { ok: false, skipped: 'unbezahlte Website-Buchung' }
   const today = berlinToday()
-  if (String(b.check_in) > today) return { ok: false, skipped: 'Anreisetag noch nicht erreicht' }
+  if (!opts.aufRechnung && String(b.check_in) > today) return { ok: false, skipped: 'Anreisetag noch nicht erreicht' }
   const amount = Number(b.total_price)
   if (!Number.isFinite(amount) || amount <= 0) {
     await upsertRow(bookingId, { status: 'fehler', error: 'kein Betrag (total_price fehlt)' })
@@ -211,7 +214,16 @@ export async function createInvoiceForBooking(bookingId: string, opts: {
       shippingDate: `${b.check_in}T12:00:00.000Z`,
       shippingEndDate: `${b.check_out}T12:00:00.000Z`,
     },
-    remark: `Bereits bezahlt über ${kanal}. Vielen Dank für deinen Aufenthalt!`,
+    remark: opts.aufRechnung
+      ? `Zahlung auf Rechnung — bitte überweise den Betrag innerhalb von ${opts.aufRechnung.zielTage} Werktagen nach Rechnungserhalt. Vielen Dank!`
+      : `Bereits bezahlt über ${kanal}. Vielen Dank für deinen Aufenthalt!`,
+    // §201: Zahlungsziel nur bei „auf Rechnung" (Werktage → Kalendertage +2)
+    ...(opts.aufRechnung ? {
+      paymentConditions: {
+        paymentTermLabel: `Zahlbar innerhalb von ${opts.aufRechnung.zielTage} Werktagen nach Rechnungserhalt.`,
+        paymentTermDuration: opts.aufRechnung.zielTage + 2,
+      },
+    } : {}),
   }
 
   const res = await lexFetch('/invoices?finalize=true', { method: 'POST', body: JSON.stringify(payload) })
