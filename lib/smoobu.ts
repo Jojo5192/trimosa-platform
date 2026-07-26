@@ -481,7 +481,7 @@ export async function sendMessageToGuest(
   smoobuReservationId: number,
   message: string,
   apiKey?: string,
-): Promise<number | null> {
+): Promise<{ sent: boolean; id: number | null }> {
   const res = await fetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-guest`,
     {
@@ -493,12 +493,21 @@ export async function sendMessageToGuest(
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     console.error('[Smoobu] sendMessageToGuest failed', res.status, errText)
-    return null
+    return { sent: false, id: null }
   }
   const data = await res.json().catch(() => null)
-  const smoobuMsgId = (data?.id ?? data?.messageId ?? null) as number | null
-  console.log('[Smoobu] sendMessageToGuest ok, smoobuMsgId:', smoobuMsgId)
-  return smoobuMsgId
+  const id = (data?.id ?? data?.messageId ?? null) as number | null
+  // ⚠️ §210: Smoobu quittiert den Versand teils mit 2xx OHNE Message-ID —
+  // die Nachricht IST beim Gast. Wer das als Fehlschlag liest, schickt
+  // zusätzlich eine E-Mail → der Gast bekommt alles DOPPELT. Darum trennt
+  // die Rückgabe „gesendet" (HTTP ok) von „ID bekannt" (für den Dedupe).
+  if (id == null) {
+    console.warn('[Smoobu] sendMessageToGuest ok, aber KEINE Message-ID in der Antwort:',
+      JSON.stringify(data).slice(0, 200))
+  } else {
+    console.log('[Smoobu] sendMessageToGuest ok, smoobuMsgId:', id)
+  }
+  return { sent: true, id }
 }
 
 /**
