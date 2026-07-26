@@ -28,7 +28,7 @@ function blankMessage(): Draft {
   return {
     id: `tmp-${++tmpCounter}`, name: 'Neue Nachricht', enabled: true, trigger_type: 'vor_anreise',
     offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null,
-    lead_filter: 'alle', send_email: true, body: '', sort: 999,
+    lead_filter: 'alle', send_email: true, subject: null, body: '', sort: 999,
     _dirty: true, _new: true,
   }
 }
@@ -95,7 +95,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
     try {
       const res = await fetch('/api/auto-messages/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: m.body, wohnung: activeListing?.title ?? '' }),
+        body: JSON.stringify({ body: m.body, subject: m.subject ?? null, wohnung: activeListing?.title ?? '' }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`)
@@ -117,7 +117,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
           name: m.name, enabled: m.enabled, trigger_type: m.trigger_type,
           offset_days: m.offset_days, send_hour: m.send_hour, listing_id: m.listing_id, listing_ids: m.listing_ids ?? null,
           channel_filter: m.channel_filter, min_nights: m.min_nights,
-          lead_filter: m.lead_filter, send_email: m.send_email, body: m.body, sort: m.sort,
+          lead_filter: m.lead_filter, send_email: m.send_email, subject: m.subject ?? null, body: m.body, sort: m.sort,
         }),
       })
       const d = await res.json().catch(() => ({}))
@@ -281,6 +281,14 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                       : '📅 Geht nur an Gäste, die mehr als 3 Tage vor der Anreise gebucht haben (kurzfristige Bucher bekommen stattdessen die ⚡-Vorlage).'}
                   </p>
                 )}
+
+                {/* Betreff (§208 — nur E-Mail-Zustellung; Platzhalter erlaubt) */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
+                  <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>📧 Betreff:</span>
+                  <input style={{ ...INPUT, flex: 1 }} value={m.subject ?? ''}
+                    placeholder={'leer = Standard: Infos zu deinem Aufenthalt'}
+                    onChange={(e) => patch(m.id, { subject: e.target.value || null })} />
+                </div>
 
                 {/* Auslöser */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
@@ -529,7 +537,7 @@ function renderBody(text: string, mode: 'email' | 'chat'): React.ReactNode {
       return <a key={i} href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{ color: linkColor, fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all' }}>{DEMO_MAPPE_URL.replace('https://', '')}</a>
     }
     if (p === '{bewertung_button}') {
-      const demoReview = 'https://search.google.com/local/writereview?placeid=…'
+      const demoReview = 'https://search.google.com/local/writereview?placeid=ChIJk0rIYv1hlUcRQtsXHL5QEWo'
       if (mode === 'email') {
         return (
           <span key={i} style={{ display: 'block', margin: '16px 0 6px' }}>
