@@ -91,14 +91,19 @@ function renderEmail({ preheader, heading, paragraphs, details, cta, secondaryCt
           </table>
         </td></tr>
 
-        <!-- Footer -->
-        <tr><td style="background-color:#ffffff;border-radius:0 0 18px 18px;border-top:1px solid #F0EDE5;padding:18px 36px 22px;text-align:center;">
-          <p style="margin:0 0 4px;font-size:11.5px;color:#A8A292;">TRIMOSA Apartments &amp; Homes eGbR · Ferienwohnungen in Trier, Bitburg &amp; der Südeifel</p>
-          <p style="margin:0;font-size:11.5px;color:#A8A292;">
-            <a href="${siteUrl}" style="color:#8A7020;text-decoration:none;">trimosa.de</a> ·
-            <a href="${siteUrl}/impressum" style="color:#A8A292;text-decoration:none;">Impressum</a> ·
-            <a href="${siteUrl}/datenschutz" style="color:#A8A292;text-decoration:none;">Datenschutz</a>
+        <!-- Footer (§208: Navy-Band im Marken-Look) -->
+        <tr><td style="background-color:#12222E;border-radius:0 0 18px 18px;padding:26px 36px 24px;text-align:center;">
+          <p style="margin:0 0 3px;font-size:16px;font-weight:800;letter-spacing:0.22em;color:#E3C878;">TRIMOSA</p>
+          <p style="margin:0 0 14px;font-size:9px;font-weight:600;letter-spacing:0.34em;color:rgba(245,240,232,0.55);">APARTMENTS &amp; HOMES</p>
+          <p style="margin:0 0 16px;font-size:12.5px;color:rgba(245,240,232,0.8);">Dein Zuhause auf Zeit — in Trier, Bitburg &amp; der Südeifel</p>
+          <p style="margin:0;font-size:12px;">
+            <a href="${siteUrl}" style="color:#E3C878;font-weight:700;text-decoration:none;">trimosa.de</a>
+            <span style="color:rgba(245,240,232,0.3);">&nbsp;·&nbsp;</span>
+            <a href="${siteUrl}/impressum" style="color:rgba(245,240,232,0.6);text-decoration:none;">Impressum</a>
+            <span style="color:rgba(245,240,232,0.3);">&nbsp;·&nbsp;</span>
+            <a href="${siteUrl}/datenschutz" style="color:rgba(245,240,232,0.6);text-decoration:none;">Datenschutz</a>
           </p>
+          <p style="margin:14px 0 0;font-size:10px;color:rgba(245,240,232,0.35);">TRIMOSA Apartments &amp; Homes eGbR</p>
         </td></tr>
 
       </table>
@@ -194,6 +199,8 @@ export async function sendAutoMessageEmail(opts: {
   text: string
   mappeUrl?: string | null
   reviewUrl?: string | null
+  /** §208: eigener (bereits übersetzter) Betreff — null = Standard. */
+  subject?: string | null
   lang?: string | null
 }) {
   const lang: UiLang = isUiLang(opts.lang ?? '') ? (opts.lang as UiLang) : 'de'
@@ -229,7 +236,9 @@ export async function sendAutoMessageEmail(opts: {
     details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
     note: T('Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.'),
   })
-  const subject = `${T('Infos zu deinem Aufenthalt')}${opts.listingTitle ? ` — ${opts.listingTitle}` : ''}`
+  const subject = opts.subject?.trim()
+    ? opts.subject.trim()
+    : `${T('Infos zu deinem Aufenthalt')}${opts.listingTitle ? ` — ${opts.listingTitle}` : ''}`
   return sendViaResend(opts.to, subject, html)
 }
 
