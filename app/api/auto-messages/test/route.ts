@@ -29,13 +29,24 @@ export async function POST(req: NextRequest) {
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
   const demoMappe = `${siteUrl}/mappe/beispiel`
-  const ctx = { ...demoContext(String(b.wohnung ?? '') || 'City Home', '16:00', '10:00'), mappe: demoMappe }
+  // §208: echte Place-ID fürs Test-Mail-Button-Ziel (Demo-'…' war ein 404)
+  const { data: lrow } = await supabaseAdmin
+    .from('listings').select('google_place_id').eq('is_active', true)
+    .not('google_place_id', 'is', null).limit(1).maybeSingle()
+  const placeId = (lrow as { google_place_id?: string } | null)?.google_place_id
+  const ctx = {
+    ...demoContext(String(b.wohnung ?? '') || 'City Home', '16:00', '10:00'),
+    mappe: demoMappe,
+    google_bewertung: placeId ? `https://search.google.com/local/writereview?placeid=${placeId}` : '',
+  }
   const text = resolvePlaceholders(body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
     .replace(/\{\w+\}/g, '').replace(/\n{3,}/g, '\n\n').trim()
 
   const res = await sendAutoMessageEmail({
     to, guestName: ctx.name, listingTitle: `TEST · ${ctx.wohnung}`,
-    text, mappeUrl: demoMappe, reviewUrl: ctx.google_bewertung || null, lang: 'de',
+    text, mappeUrl: demoMappe, reviewUrl: ctx.google_bewertung || null,
+    subject: b.subject ? resolvePlaceholders(String(b.subject), ctx).replace(/\{\w+\}/g, '').trim() : null,
+    lang: 'de',
   })
   if (!res.ok) return NextResponse.json({ error: res.error ?? 'Versand fehlgeschlagen.' }, { status: 500 })
   return NextResponse.json({ ok: true, an: to })
