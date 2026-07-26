@@ -62,6 +62,10 @@ export interface ContactBlock extends GuideBlockBase { type: 'contact'; phone: s
 export interface ReviewBlock extends GuideBlockBase { type: 'review'; title: string; text: string }
 // url2: optionales zweites Foto — beide rendern NEBENEINANDER (§196b)
 export interface ImageBlock extends GuideBlockBase { type: 'image'; url: string; caption: string; url2?: string }
+/** §216: freier Link-Button (Ladepunkt, Fahrplan, Speisekarte …). Der
+ *  Beschriftungs-Text heißt bewusst `title` — so übersetzen ihn
+ *  collectGuideTexts/translateBlocks automatisch mit, die `url` nicht. */
+export interface LinkBlock extends GuideBlockBase { type: 'link'; title: string; url: string; note: string }
 export interface MapBlock extends GuideBlockBase { type: 'map' }
 /** show: 'checkin'/'checkout' zeigt nur die eine Zeit — so lassen sich beide
  *  Zeiten als getrennte Bausteine mit EIGENER Phasen-Sichtbarkeit pflegen
@@ -86,7 +90,7 @@ export interface InventarBlock extends GuideBlockBase { type: 'inventar'; title:
 export type GuideBlock =
   | HeadingBlock | TextBlock | InfoBlock | WarningBlock | StepsBlock
   | WifiBlock | DoorBlock | ContactBlock | ImageBlock
-  | MapBlock | TimesBlock | RulesBlock | RegionBlock | ChatBlock | InventarBlock | ReviewBlock
+  | MapBlock | TimesBlock | RulesBlock | RegionBlock | ChatBlock | InventarBlock | ReviewBlock | LinkBlock
 
 export type InventarGroupKey = 'kueche' | 'geschirr' | 'geraete' | 'bad' | 'wohnen' | 'verbrauch' | 'eigene'
 export interface InventarCatalogItem { id: string; emoji: string; label: string; countable?: boolean }
@@ -320,6 +324,7 @@ export const BLOCK_META: Record<GuideBlock['type'], { icon: string; label: strin
   rules: { icon: '🏠', label: 'Hausregeln', hint: 'Aus dem Inserat: Ruhezeiten, Rauchen, Haustiere …', smart: true },
   region: { icon: '🗺️', label: 'Region entdecken', hint: 'Link auf den Reiseführer der Region', smart: true },
   inventar: { icon: '📦', label: 'Inventar-Checkliste', hint: 'Anklickbare Ausstattungs-Liste mit Stückzahlen — in der Mappe ausklappbar; ist automatisch die Basis der QS-Protokolle und des Anrufbot-Wissens' },
+  link: { icon: '🔗', label: 'Link-Button', hint: 'Gold-Button zu einer Webseite — z. B. Ladepunkt, Busfahrplan, Speisekarte' },
   review: { icon: '⭐', label: 'Google-Bewertung', hint: 'Bittet den Gast um eine Google-Rezension — der Button verlinkt automatisch über die Google-Place-ID des Inserats. Tipp: Sichtbarkeit „Danach"', smart: true },
   chat: { icon: '💬', label: 'Gäste-Chat', hint: 'Direkter Draht zum Team — bestimmt, WO „Kontakt & Chat" in der Mappe sitzt (Telefon/Hinweis kommen aus dem Kontakt-Baustein; ohne Chat-Baustein: an der Kontakt-Position bzw. am Ende)', smart: true },
 }
@@ -343,6 +348,7 @@ export function emptyBlock(type: GuideBlock['type']): GuideBlock {
     case 'contact': return { id, type, phone: '', note: '' }
     case 'image': return { id, type, url: '', caption: '' }
     case 'review': return { id, type, title: '', text: '', phases: ['nach'] }
+    case 'link': return { id, type, title: '', url: '', note: '' }
     case 'map': return { id, type }
     case 'times': return { id, type }
     case 'rules': return { id, type }
@@ -398,6 +404,7 @@ export function blockHasContent(b: GuideBlock, ctx: GuideCtx): boolean {
     case 'chat': return true
     case 'inventar': return Array.isArray(b.items) && b.items.length > 0
     case 'review': return !!ctx.googlePlaceId
+    case 'link': return b.url.trim().length > 0 && b.title.trim().length > 0
   }
 }
 
