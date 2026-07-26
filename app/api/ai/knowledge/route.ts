@@ -241,6 +241,16 @@ export async function POST(request: Request) {
       sample: msgs.slice(0, 12).map((m) => ({ type: m.type, sender: m.sender, subject: m.subject, content: m.message.slice(0, 90) })),
     })
   }
+  if (action === 'ai-model-test') {
+    // §211: prüft die Qualitätsstufe (SMART_MODEL) und das Standardmodell —
+    // zeigt, welches Modell die API wirklich zurückmeldet.
+    const { probeModel, SMART_MODEL } = await import('@/lib/ai')
+    return NextResponse.json({
+      smartModelKonfiguriert: SMART_MODEL,
+      smart: await probeModel(SMART_MODEL),
+      standard: await probeModel('claude-sonnet-5'),
+    })
+  }
   if (action === 'places-resolve') {
     // Resolve ALL kulinarik googleQuery entries to place ids (run once when
     // quota is available; result gets pasted into regions.ts as googlePlaceId).
