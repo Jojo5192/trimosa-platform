@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function ImpressumPage() {
   return (
     <LegalShell title="Impressum">
-      <LegalSection heading="Angaben gemäß § 5 TMG">
+      <LegalSection heading="Angaben gemäß § 5 DDG">
         <LegalP>
           TRIMOSA Apartments &amp; Homes eGbR<br />
           Feldkirchener Str. 18a<br />
@@ -24,6 +24,14 @@ export default function ImpressumPage() {
         <LegalP>eingetragene Gesellschaft bürgerlichen Rechts (eGbR)</LegalP>
       </LegalSection>
 
+      <LegalSection heading="Registereintrag">
+        <LegalP>
+          Eingetragen im Gesellschaftsregister<br />
+          Registergericht: Amtsgericht München<br />
+          Registernummer: GsR 2785
+        </LegalP>
+      </LegalSection>
+
       <LegalSection heading="Vertreten durch">
         <LegalP>
           Die TRIMOSA Apartments &amp; Homes eGbR wird vertreten durch die Inhaber
@@ -33,6 +41,7 @@ export default function ImpressumPage() {
 
       <LegalSection heading="Kontakt">
         <LegalP>
+          Telefon: <a href="tel:+4965143614036" style={{ color: 'var(--gold)' }}>+49 651 43614036</a><br />
           E-Mail: <a href="mailto:mail@trimosa.de" style={{ color: 'var(--gold)' }}>mail@trimosa.de</a>
         </LegalP>
       </LegalSection>
@@ -45,14 +54,6 @@ export default function ImpressumPage() {
       </LegalSection>
 
       <LegalSection heading="Verbraucherstreitbeilegung / Universalschlichtungsstelle">
-        <LegalP>
-          Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS)
-          bereit, die Sie unter{' '}
-          <a href="https://ec.europa.eu/consumers/odr/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold)' }}>
-            ec.europa.eu/consumers/odr/
-          </a>{' '}
-          finden. Unsere E-Mail-Adresse finden Sie oben im Impressum.
-        </LegalP>
         <LegalP>
           Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer
           Verbraucherschlichtungsstelle teilzunehmen.
