@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
+import { haptic } from '@/components/team/ux'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
@@ -186,7 +187,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
         {tabs.map((t) => {
           const active = tab === t.id
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
+            <button key={t.id} onClick={() => { haptic(); setTab(t.id) }} style={{
               flex: 1, border: 'none', background: 'none', cursor: 'pointer',
               padding: '7px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
