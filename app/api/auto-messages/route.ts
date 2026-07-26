@@ -68,6 +68,7 @@ export async function PUT(req: NextRequest) {
     min_nights: b.min_nights ? clampInt(b.min_nights, 1, 60, 1) : null,
     lead_filter: LEADS.includes(b.lead_filter) ? b.lead_filter : 'alle',
     send_email: b.send_email !== false,
+    subject: b.subject ? String(b.subject).slice(0, 150) : null,
     body: String(b.body ?? '').slice(0, 4000),
     sort: clampInt(b.sort, 0, 9999, 0),
     updated_at: new Date().toISOString(),
@@ -80,9 +81,9 @@ export async function PUT(req: NextRequest) {
     ? supabaseAdmin.from('auto_messages').update(r).eq('id', String(b.id)).select('id').maybeSingle()
     : supabaseAdmin.from('auto_messages').insert(r).select('id').single()) as unknown as Promise<WriteRes>
   let { data, error } = await write(row)
-  if (error && /lead_filter|send_email|listing_ids/.test(error.message)) {
-    const { lead_filter: _lf, send_email: _se, listing_ids: _li, ...rest } = row
-    void _lf; void _se; void _li
+  if (error && /lead_filter|send_email|listing_ids|subject/.test(error.message)) {
+    const { lead_filter: _lf, send_email: _se, listing_ids: _li, subject: _su, ...rest } = row
+    void _lf; void _se; void _li; void _su
     ;({ data, error } = await write(rest))
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
