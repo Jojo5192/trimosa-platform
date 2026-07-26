@@ -164,7 +164,6 @@ export async function sendGuestChatEmail(opts: {
     'Hallo {name},',
     'du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:',
     'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
-    'Auf Google bewerten',
   ])
   const firstName = (opts.guestName ?? '').trim().split(/\s+/)[0] || 'Gast'
   const safeText = opts.text
@@ -207,7 +206,7 @@ export async function sendAutoMessageEmail(opts: {
     'Infos zu deinem Aufenthalt',
     'Zur Gästemappe',
     'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
-    'Unterkunft',
+    'Auf Google bewerten',
   ])
   const escaped = opts.text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -232,7 +231,7 @@ export async function sendAutoMessageEmail(opts: {
     preheader: opts.text.replace('[[MAPPE_BUTTON]]', '').replace('[[REVIEW_BUTTON]]', '').slice(0, 90),
     heading: T('Infos zu deinem Aufenthalt'),
     paragraphs: [bodyHtml],
-    details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
+    details: [],
     note: T('Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.'),
   })
   const subject = opts.subject?.trim()
