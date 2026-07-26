@@ -337,6 +337,12 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
       const lang = await guestLangFor(b, conv?.id, conv?.guest_id)
       const tr = await translateProtected(german, lang)
+      // §208: eigener Betreff — auflösen + in Gastsprache übersetzen
+      let mailSubject: string | null = null
+      if (t.subject) {
+        const sDe = resolvePlaceholders(t.subject, ctx).replace(/\{\w+\}/g, '').replace(/\s{2,}/g, ' ').trim()
+        if (sDe) mailSubject = lang === 'de' ? sDe : (await translateProtected(sDe, lang)).text
+      }
       const chatText = tr.text.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).split(REVIEW_BTN_SENTINEL).join(ctx.google_bewertung).replace(/\n{3,}/g, '\n\n').trim()
       const germanChat = german.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).split(REVIEW_BTN_SENTINEL).join(ctx.google_bewertung).replace(/\n{3,}/g, '\n\n').trim()
       const msgLang = tr.translated ? lang : null
@@ -357,7 +363,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
+            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
           }).catch(e => console.error('[auto-messages] email:', e))
           outcome = 'chat+email'
         } else outcome = 'chat'
@@ -374,7 +380,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           if (to) {
             await sendAutoMessageEmail({
               to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-              mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
+              mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
             })
             await supabaseAdmin.from('messages').insert({
               booking_id: b.id, sender_type: 'host', content: chatText,
@@ -391,7 +397,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
+            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
           })
           await supabaseAdmin.from('messages').insert({
             booking_id: b.id, sender_type: 'host', content: chatText,
