@@ -14,7 +14,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { listReservations, getReservationMessages } from '@/lib/smoobu'
-import { askClaude } from '@/lib/ai'
+import { askClaude, SMART_MODEL } from '@/lib/ai'
 
 const BACKFILL_FROM = '2019-01-01'
 
@@ -158,7 +158,9 @@ Regeln:
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
   // Generous token budget: the model reasons internally over 150 Q&A pairs
   // before writing — a tight cap ends the request inside the thinking phase.
-  return askClaude(system, user, 8000)
+  // §211: höchste Qualitätsstufe — das Destillat ist die Faktenquelle für
+  // ALLE ✨-Antworten und den Anrufbot; Denkanteil braucht mehr Budget.
+  return askClaude(system, user, 12000, SMART_MODEL)
 }
 
 /**
