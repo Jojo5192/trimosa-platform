@@ -252,6 +252,25 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
               </figure>
             )
           }
+          case 'link': {
+            if (!b.url.trim() && !preview) return null
+            return wrap(
+              <div style={{ ...CARD, textAlign: 'center' }}>
+                {b.url.trim()
+                  ? (
+                    <a href={b.url} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 26px', borderRadius: 999,
+                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                      fontSize: 14, fontWeight: 700, textDecoration: 'none',
+                    }}>{b.title || 'Öffnen'} ↗</a>
+                  )
+                  : <span style={{ fontSize: 11.5, color: '#B45309' }}>⚠️ Noch keine Adresse (URL) eingetragen.</span>}
+                {b.note ? (
+                  <p style={{ margin: '11px 0 0', fontSize: 12.5, lineHeight: 1.55, color: '#6B6455' }}>{b.note}</p>
+                ) : null}
+              </div>
+            )
+          }
           case 'review': {
             const pid = ctx.googlePlaceId
             if (!pid && !preview) return null
