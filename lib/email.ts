@@ -164,7 +164,6 @@ export async function sendGuestChatEmail(opts: {
     'Hallo {name},',
     'du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:',
     'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
-    'Unterkunft',
     'Auf Google bewerten',
   ])
   const firstName = (opts.guestName ?? '').trim().split(/\s+/)[0] || 'Gast'
@@ -179,7 +178,7 @@ export async function sendGuestChatEmail(opts: {
       T('du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:'),
       `<span style="display:block;background:#FCFBF7;border-left:3px solid #AE8D2D;border-radius:0 10px 10px 0;padding:12px 16px;color:#1A1400;">${safeText}</span>`,
     ],
-    details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
+    details: [],
     note: T('Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.'),
   })
   const subject = `${T('Neue Nachricht von deinen Gastgebern')}${opts.listingTitle ? ` — ${opts.listingTitle}` : ''}`
