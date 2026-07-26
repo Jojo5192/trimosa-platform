@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     // (smoobu-fehler)' …). Diagnose-Werkzeug für Doppelversand-Verdacht.
     const { data: log } = await supabaseAdmin
       .from('auto_message_log')
-      .select('created_at, channel, booking_id, auto_message_id')
-      .order('created_at', { ascending: false })
+      .select('sent_at, channel, booking_id, auto_message_id')
+      .order('sent_at', { ascending: false })
       .limit(25)
     return NextResponse.json({ ...report, letzteSendungen: log ?? [] })
   } catch (err) {
