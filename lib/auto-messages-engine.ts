@@ -368,13 +368,17 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           outcome = 'chat+email'
         } else outcome = 'chat'
       } else if (b.smoobu_reservation_id) {
-        const msgId = await sendMessageToGuest(Number(b.smoobu_reservation_id), chatText)
-        if (msgId !== null) {
+        // §210: „gesendet" entscheidet der HTTP-Erfolg — NICHT das Vorhandensein
+        // einer Message-ID (Smoobu liefert sie nicht immer). Ohne ID adoptiert
+        // der nächste Sync unsere Zeile per Zwillings-Claim (§57/§131).
+        const push = await sendMessageToGuest(Number(b.smoobu_reservation_id), chatText)
+        if (push.sent) {
           await supabaseAdmin.from('messages').insert({
             booking_id: b.id, sender_type: 'host', content: chatText,
-            content_de: msgDe, lang: msgLang, smoobu_message_id: String(msgId),
+            content_de: msgDe, lang: msgLang,
+            ...(push.id !== null ? { smoobu_message_id: String(push.id) } : {}),
           })
-          outcome = 'smoobu'
+          outcome = push.id !== null ? 'smoobu' : 'smoobu (ohne id)'
         } else {
           const to = await guestEmailFor(b)
           if (to) {
