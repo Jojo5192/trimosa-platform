@@ -160,6 +160,7 @@ export async function sendGuestChatEmail(opts: {
     'du hast eine neue Nachricht von TRIMOSA zu deinem Aufenthalt:',
     'Du kannst einfach auf diese E-Mail antworten — deine Antwort erreicht uns direkt.',
     'Unterkunft',
+    'Auf Google bewerten',
   ])
   const firstName = (opts.guestName ?? '').trim().split(/\s+/)[0] || 'Gast'
   const safeText = opts.text
@@ -192,6 +193,7 @@ export async function sendAutoMessageEmail(opts: {
   listingTitle?: string | null
   text: string
   mappeUrl?: string | null
+  reviewUrl?: string | null
   lang?: string | null
 }) {
   const lang: UiLang = isUiLang(opts.lang ?? '') ? (opts.lang as UiLang) : 'de'
@@ -213,11 +215,15 @@ export async function sendAutoMessageEmail(opts: {
   const button = opts.mappeUrl
     ? `<span style="display:block;margin:16px 0 6px;"><a href="${opts.mappeUrl}" style="display:inline-block;background:linear-gradient(135deg,#AE8D2D,#8A7020);background-color:#AE8D2D;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:999px;">📖 ${T('Zur Gästemappe')}</a></span>`
     : ''
+  const reviewButton = opts.reviewUrl
+    ? `<span style="display:block;margin:16px 0 6px;"><a href="${opts.reviewUrl}" style="display:inline-block;background:linear-gradient(135deg,#AE8D2D,#8A7020);background-color:#AE8D2D;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:999px;">⭐ ${T('Auf Google bewerten')}</a></span>`
+    : ''
   const bodyHtml = linked
     .split('[[MAPPE_BUTTON]]').join(button)
+    .split('[[REVIEW_BUTTON]]').join(reviewButton)
     .replace(/\n/g, '<br/>')
   const html = renderEmail({
-    preheader: opts.text.replace('[[MAPPE_BUTTON]]', '').slice(0, 90),
+    preheader: opts.text.replace('[[MAPPE_BUTTON]]', '').replace('[[REVIEW_BUTTON]]', '').slice(0, 90),
     heading: T('Infos zu deinem Aufenthalt'),
     paragraphs: [bodyHtml],
     details: opts.listingTitle ? [{ label: T('Unterkunft'), value: opts.listingTitle }] : [],
