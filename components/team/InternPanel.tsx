@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
 
 /**
  * 💼 Interner Team-Messenger (Etappe B, §97): Gruppen-Chats fürs Team —
@@ -175,6 +176,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ⬇️ §209 Pull-to-Refresh der Gruppen-Liste
+  const internListRef = useRef<HTMLDivElement | null>(null)
+  const internPtr = usePullToRefresh(internListRef, loadChats)
+
   // Poll-Diffing (Ruckel-Fix 19.7.): setMsgs NUR bei echter Änderung — sonst
   // re-rendert das 5s-Polling den ganzen Thread und der Scroll-Effect feuert
   // mitten in Gesten (Long-Press „fror ein")
@@ -256,6 +261,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   async function sendText() {
     if (!active || !draft.trim() || busy) return
+    haptic()
     setBusy(true)
     try {
       const r = await fetch(`/api/team-chat/${active.id}`, {
@@ -324,6 +330,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   function toggleReaction(msgId: string, emoji: string) {
     if (!active) return
+    haptic()
     setReactFor(null)
     // Optimistisch spiegeln (gleiche Logik wie der Server)
     setMsgs((ms) => ms.map((m) => {
@@ -550,8 +557,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
 
   /* ── Chat-Liste ── */
   const List = (
-    <div style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined }}>
-      {loading && <div style={{ padding: 30, textAlign: 'center', color: '#999', fontSize: 13 }}>Lädt…</div>}
+    <div ref={internListRef} style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined }}>
+      <PullHint pull={internPtr.pull} busy={internPtr.busy} />
+      {loading && <SkeletonRows kind="chat" count={6} />}
       {error && !loading && (
         <div style={{ margin: 12, padding: '10px 12px', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', fontSize: 12.5 }}>
           ⚠️ {error} <button onClick={() => { setLoading(true); loadChats() }} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Erneut</button>
