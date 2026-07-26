@@ -8,7 +8,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getScoreHistory, globalScoreAt } from '@/lib/score-history'
-import { askClaude } from '@/lib/ai'
+import { askClaude, SMART_MODEL } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 import { sendViaResend } from '@/lib/email'
 
@@ -421,7 +421,9 @@ export async function runWeeklyDigest(opts: { onlyEmail?: string } = {}): Promis
   const system = await getPrompt('weekly_digest')
   // §45-/§84-Lektion: großzügiges Budget (Denkanteil + lange JSON-Antwort mit
   // übersetzten Zitaten — 20000 riss beim Erstlauf ab)
-  const raw = await askClaude(system, user, 32000)
+  // §211: höchste Qualitätsstufe — 1×/Woche, mit Historien-Abgleich über
+  // Aufgaben + vier Vorberichte (parseDigest rettet Abrisse).
+  const raw = await askClaude(system, user, 40000, SMART_MODEL)
   const content = parseDigest(raw)
 
   // §171: Score-Trend (global gewichtet; „—" solange die Historie jünger
