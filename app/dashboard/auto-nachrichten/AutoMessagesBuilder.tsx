@@ -321,6 +321,15 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   })}
                 </div>
 
+                {/* Mindestaufenthalt (§206): Engine filtert seit §148 danach — das Feld fehlte nur im UI */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
+                  <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>Nur ab</span>
+                  <input type="number" min={1} max={60} value={m.min_nights ?? ''} placeholder="–"
+                    onChange={(e) => patch(m.id, { min_nights: e.target.value ? Math.max(1, Math.min(60, Number(e.target.value))) : null })}
+                    style={{ ...INPUT, width: 64, textAlign: 'center' }} />
+                  <span style={{ fontSize: 12, color: '#888' }}>Nächten (leer = alle Aufenthalte)</span>
+                </div>
+
                 {/* 📬 Kanäle + Versandweg */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }} onClick={(e) => e.stopPropagation()}>
                   <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>Kanäle:</span>
@@ -513,11 +522,29 @@ const DEMO_MAPPE_URL = 'https://trimosa.de/mappe/a1b2c3'
  */
 function renderBody(text: string, mode: 'email' | 'chat'): React.ReactNode {
   if (!text) return <span style={{ opacity: 0.7 }}>Noch kein Text…</span>
-  const parts = text.split(/(\{mappe_button\}|\{mappe\})/g)
+  const parts = text.split(/(\{mappe_button\}|\{mappe\}|\{bewertung_button\})/g)
   const linkColor = mode === 'chat' ? '#EAF2FF' : '#8A7020'
   return parts.map((p, i) => {
     if (p === '{mappe}') {
       return <a key={i} href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{ color: linkColor, fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all' }}>{DEMO_MAPPE_URL.replace('https://', '')}</a>
+    }
+    if (p === '{bewertung_button}') {
+      const demoReview = 'https://search.google.com/local/writereview?placeid=…'
+      if (mode === 'email') {
+        return (
+          <span key={i} style={{ display: 'block', margin: '16px 0 6px' }}>
+            <a href={demoReview} target="_blank" rel="noreferrer" style={{
+              display: 'inline-block', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+              color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none', padding: '12px 26px', borderRadius: 999,
+            }}>⭐ Auf Google bewerten</a>
+          </span>
+        )
+      }
+      return (
+        <span key={i} style={{ display: 'block', marginTop: 8 }}>
+          ⭐ Google-Bewertung: <a href={demoReview} target="_blank" rel="noreferrer" style={{ color: linkColor, fontWeight: 600, textDecoration: 'underline', wordBreak: 'break-all' }}>search.google.com/local/writereview</a>
+        </span>
+      )
     }
     if (p === '{mappe_button}') {
       if (mode === 'email') {
