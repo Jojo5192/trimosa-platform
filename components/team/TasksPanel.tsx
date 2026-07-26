@@ -10,6 +10,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import QsBlock from '@/components/team/QsPanel'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
 
 export interface Task {
   id: string
@@ -179,6 +180,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     }
     setLoading(false)
   }, [userId])
+  // ⬇️ §209 Pull-to-Refresh: am Listenanfang ziehen lädt die Aufgaben neu
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const ptr = usePullToRefresh(scrollRef, load)
   useEffect(() => { load() }, [load])
   // App kommt aus dem Hintergrund zurück ODER Netz kehrt zurück → frisch laden
   useEffect(() => {
@@ -262,6 +266,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   }
 
   async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
+    haptic()
     setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status } : t))
     const res = await fetch(`/api/tasks/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -300,7 +305,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     <div style={{ height: '100%', position: 'relative' }}>
     {/* Hintergrund-Scroll sperren, solange das Sheet offen ist — sonst
         scrollt iOS beim Wischen im Sheet die Liste dahinter (Scroll-Chaining) */}
-    <div style={{ height: '100%', overflowY: (editing || completing) ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={scrollRef} style={{ height: '100%', overflowY: (editing || completing) ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+      <PullHint pull={ptr.pull} busy={ptr.busy} />
       {/* Header + Filter */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
@@ -435,7 +441,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
       {filter !== 'vorschlaege' && (
       <div style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
-          <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
+          <SkeletonRows kind="card" count={5} />
         ) : visible.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>✅</p>
