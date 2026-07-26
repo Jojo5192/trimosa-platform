@@ -44,6 +44,8 @@ export interface AutoMessage {
   lead_filter: LeadFilter
   /** Website-Gäste zusätzlich zur Chat-Nachricht per E-Mail (Default AN). */
   send_email: boolean
+  /** §208: E-Mail-Betreff (Platzhalter erlaubt); null = Standard. */
+  subject?: string | null
   body: string
   sort: number
 }
@@ -118,7 +120,7 @@ export function demoContext(wohnung: string, checkin: string, checkout: string):
     checkin: checkin || '16:00',
     checkout: checkout || '10:00',
     tuercode: '4 7 2 9 1 5',
-    google_bewertung: 'https://search.google.com/local/writereview?placeid=…',
+    google_bewertung: 'https://search.google.com/local/writereview?placeid=ChIJk0rIYv1hlUcRQtsXHL5QEWo',
     mappe: 'trimosa.de/mappe/…',
     adresse: 'Beispielstraße 1, 54634 Bitburg',
   }
@@ -145,26 +147,31 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
   return [
     {
       name: 'Buchungsbestätigung', enabled: true, trigger_type: 'nach_buchung',
+      subject: 'Deine Buchung ist bestätigt 🎉 — {wohnung}',
       offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 0,
       body: 'Hallo {vorname}, schön, dass du kommst! 🎉\n\nDeine Buchung ist bestätigt:\n🏡 {wohnung}\n🗓 {anreise} – {abreise} · {naechte} Nächte · {gaeste} Gäste\n\nDein wichtigster Begleiter ist deine persönliche digitale Gästemappe 📲 — Anreise, Self-Check-in, Parken, WLAN und die besten Tipps für die Region, immer aktuell und ganz ohne Papierkram:\n\n{mappe_button}\n\n🔑 Deinen persönlichen Türcode findest du dort automatisch wenige Tage vor der Anreise — kein Schlüssel, keine Übergabe, du kommst an, wann es dir passt.\n🕓 Check-in ab {checkin} Uhr am Anreisetag.\n\nFragen? Antworte einfach auf diese Nachricht — wir sind schnell für dich da. 😊\n\nWir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Kurzfristige Buchung — alles Wichtige', enabled: true, trigger_type: 'nach_buchung',
+      subject: 'Buchung bestätigt — alles für deine Anreise 🔑',
       offset_days: 0, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'kurzfristig', send_email: true, sort: 1,
       body: 'Hallo {vorname}, deine Buchung ist bestätigt — und es geht ja schon bald los! 🎉\n\n🏡 {wohnung}\n🗓 {anreise} – {abreise} · Check-in ab {checkin} Uhr\n🔑 Dein Türcode: {tuercode} — einfach am Keypad eingeben, kein Schlüssel nötig.\n\nAlles Weitere (Anreise, Parken, WLAN und die besten Tipps für die Region 📲) findest du in deiner persönlichen digitalen Gästemappe:\n\n{mappe_button}\n\nFragen? Antworte einfach auf diese Nachricht — wir sind schnell für dich da. 😊\n\nBis gleich — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
+      subject: 'Bald geht's los — deine Anreise am {anreise} 🏡',
       offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 2,
       body: 'Hallo {vorname}, nur noch wenige Tage! 🎉\n\nDein Aufenthalt startet am {anreise}:\n🏡 {wohnung}\n🕓 Check-in ab {checkin} Uhr — Self-Check-in, ganz ohne Schlüsselübergabe\n🔑 Dein persönlicher Türcode erscheint automatisch in deiner Gästemappe\n\nDort findest du auch Anreise, Parken, WLAN und die besten Tipps für die Region 📲:\n\n{mappe_button}\n\nFragen vor der Anreise? Antworte einfach auf diese Nachricht. 😊\n\nBis ganz bald — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Am Anreisetag', enabled: true, trigger_type: 'vor_anreise',
+      subject: 'Willkommen! Dein Türcode für {wohnung} 🔑',
       offset_days: 0, send_hour: 12, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 3,
       body: 'Hallo {vorname}, heute ist es soweit — herzlich willkommen! 🎉\n\n🔑 Dein Türcode für {wohnung}: {tuercode} — einfach am Keypad eingeben, kein Schlüssel nötig.\n🕓 Ab {checkin} Uhr ist alles für dich bereit.\n\nDie Check-in-Anleitung mit Fotos, Parken und alle weiteren Infos findest du in deiner Gästemappe 📲:\n\n{mappe_button}\n\nWenn unterwegs etwas ist: Antworte einfach auf diese Nachricht — wir sind schnell für dich da. 😊\n\nGute Anreise!\nDein TRIMOSA-Team 💛',
     },
     {
       name: 'Nach der Abreise / Danke', enabled: true, trigger_type: 'nach_abreise',
+      subject: 'Danke für deinen Aufenthalt 💛',
       offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 4,
       body: 'Hallo {vorname}, danke, dass du bei uns warst! 💛\n\nWir hoffen, du hattest eine wundervolle Zeit bei uns — und vielleicht sehen wir uns ja bald wieder.\n\n⭐ Wenn dir dein Aufenthalt gefallen hat, würdest du uns mit einer kurzen Google-Bewertung riesig helfen:\n\n{google_bewertung}\n\nDein Feedback macht uns besser — und hilft anderen Gästen bei der Entscheidung.\n\nGute Heimreise und bis zum nächsten Mal!\nDein TRIMOSA-Team 💛',
     },
