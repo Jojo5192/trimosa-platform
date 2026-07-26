@@ -652,6 +652,17 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
         </div>
       )}
 
+      {block.type === 'link' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input style={INPUT} placeholder={'Button-Text, z. B. Ladepunkt öffnen'} value={block.title} onChange={(e) => onChange({ title: e.target.value })} />
+          <input style={INPUT} placeholder={'https://…'} value={block.url} onChange={(e) => onChange({ url: e.target.value })} />
+          <input style={INPUT} placeholder={'Hinweis darunter (optional)'} value={block.note} onChange={(e) => onChange({ note: e.target.value })} />
+          <span style={{ fontSize: 11, color: '#A8A292' }}>
+            Öffnet in einem neuen Tab. Button-Text und Hinweis werden für fremdsprachige Gäste automatisch übersetzt, die Adresse bleibt unverändert.
+          </span>
+        </div>
+      )}
+
       {block.type === 'inventar' && (
         <InventarEditor block={block} onChange={onChange} pool={inventarPool} />
       )}
