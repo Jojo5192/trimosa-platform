@@ -6,7 +6,7 @@
  * Prompt-Studio editierbar ('task_suggest'). Läuft täglich per Cron + manuell.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { askClaude } from '@/lib/ai'
+import { askClaude, SMART_MODEL } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 import { sendPushToUser } from '@/lib/push'
 
@@ -185,9 +185,11 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
   ].join('\n')
 
   const system = await getPrompt('task_suggest')
-  // Großzügiges Budget: Sonnet nutzt einen Teil als Denkbudget (§45-Lektion),
+  // Großzügiges Budget: ein Teil geht als Denkbudget weg (§45-Lektion),
   // und lange Antworten dürfen nicht mitten im JSON abreißen.
-  const raw = await askClaude(system, user, 20000)
+  // §211: höchste Qualitätsstufe — läuft 1×/Tag und muss echte Mängel von
+  // Gast-Geplauder unterscheiden (parseSuggestions rettet Abrisse).
+  const raw = await askClaude(system, user, 24000, SMART_MODEL)
   const suggestions = parseSuggestions(raw)
 
   // ── Vorschläge anlegen (mit DB-seitigem Titel-Dedupe) ──
