@@ -10,6 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
+import { usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null; totalPrice?: number | null }
@@ -122,6 +123,9 @@ export default function CalendarPanel() {
     }
     setLoading(false)
   }, [])
+  // ⬇️ §209 Pull-to-Refresh: am Listenanfang ziehen lädt den Kalender neu
+  const calScrollRef = useRef<HTMLDivElement | null>(null)
+  const calPtr = usePullToRefresh(calScrollRef, load)
   useEffect(() => { load() }, [load])
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') load() }
@@ -309,7 +313,8 @@ export default function CalendarPanel() {
   )
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={calScrollRef} style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+      <PullHint pull={calPtr.pull} busy={calPtr.busy} />
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
@@ -367,7 +372,7 @@ export default function CalendarPanel() {
       )}
 
       {loading ? (
-        <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
+        <div style={{ padding: '12px 16px' }}><SkeletonRows kind="card" count={4} /></div>
       ) : error ? (
         <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>{error}</p>
       ) : view === 'reinigung' ? (
