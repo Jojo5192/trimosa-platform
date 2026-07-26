@@ -182,7 +182,76 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="12. Cookies">
+      <LegalSection heading="12. KI-gestützte Verarbeitung von Nachrichten und Texten">
+        <LegalP>
+          Um Gäste aus verschiedenen Ländern zuverlässig zu betreuen, setzen wir eine
+          KI-Unterstützung ein. Damit übersetzen wir eingehende und ausgehende Nachrichten
+          automatisch (damit Sie in Ihrer Sprache schreiben können und wir in Ihrer Sprache
+          antworten), erstellen für unser Team Antwortvorschläge, fassen veröffentlichte
+          Gästebewertungen zusammen, leiten daraus Verbesserungsmaßnahmen für unsere
+          Unterkünfte ab und lesen aus zugesandten Buchungs- oder Rechnungs-E-Mails die
+          benötigten Angaben aus. Verarbeitet werden dabei der Inhalt Ihrer Nachrichten und
+          E-Mails an uns, Ihr Name bzw. Anzeigename sowie Angaben zu Ihrer Buchung
+          (Unterkunft, Zeitraum, Personenzahl).
+        </LegalP>
+        <LegalP>
+          Dienstleister ist Anthropic PBC (San Francisco, USA), die die Inhalte als
+          Auftragsverarbeiter nach unseren Weisungen verarbeitet; nach Angaben des Anbieters
+          werden über die genutzte Programmierschnittstelle übermittelte Inhalte nicht zum
+          Training der KI-Modelle verwendet. Zur Datenübermittlung in Drittstaaten siehe
+          Abschnitt 18. Rechtsgrundlage ist die Durchführung des Beherbergungsvertrags
+          einschließlich der Kommunikation mit Ihnen (Art. 6 Abs. 1 lit. b DSGVO) sowie
+          unser berechtigtes Interesse an verständlicher, schneller Betreuung und an der
+          Qualitätssicherung unserer Unterkünfte (Art. 6 Abs. 1 lit. f DSGVO).
+        </LegalP>
+        <LegalP>
+          Eine automatisierte Entscheidungsfindung findet nicht statt: Antwortvorschläge
+          werden stets von einem Menschen geprüft, bevor sie an Sie gesendet werden, und
+          automatisch versandte Service-Nachrichten beruhen auf von uns selbst verfassten
+          Vorlagen. Sie können der Verarbeitung nach Art. 21 DSGVO widersprechen; eine
+          formlose Nachricht an{' '}
+          <a href="mailto:mail@trimosa.de" style={{ color: 'var(--gold)' }}>mail@trimosa.de</a>{' '}
+          genügt – wir betreuen Sie dann ohne KI-Unterstützung.
+        </LegalP>
+      </LegalSection>
+
+      <LegalSection heading="13. Telefonische KI-Assistentin">
+        <LegalP>
+          Rufen Sie unsere Servicenummer an, wird das Gespräch von einer KI-gestützten
+          Assistentin angenommen. Diese weist zu Gesprächsbeginn ausdrücklich darauf hin,
+          dass es sich um eine digitale Assistentin handelt. Verarbeitet werden dabei Ihre
+          Rufnummer (soweit übermittelt – wir nutzen sie ausschließlich, um Ihr Anliegen
+          Ihrer Buchung zuzuordnen), der Inhalt des Gesprächs sowie eine daraus erstellte
+          Textfassung (Transkript) und Zusammenfassung. Bitten Sie darum, dem Team eine
+          Nachricht zu hinterlassen, speichern wir diese Nachricht zusammen mit Ihrem
+          Namen und Ihrem Anliegen.
+        </LegalP>
+        <LegalP>
+          Für Telefonie und Sprachverarbeitung setzen wir Twilio Inc. (USA) sowie
+          ElevenLabs Inc. (USA) ein; die Auswertung des Gesprächs im Anschluss (Zusammenfassung,
+          Zuordnung zur Buchung) erfolgt über Anthropic PBC (USA). Diese Anbieter verarbeiten
+          die Daten ausschließlich als Auftragsverarbeiter nach unseren Weisungen; zur
+          Datenübermittlung in Drittstaaten siehe Abschnitt 18. Rechtsgrundlage ist bei
+          bestehenden Buchungen die Durchführung des Beherbergungsvertrags (Art. 6 Abs. 1
+          lit. b DSGVO), im Übrigen unser berechtigtes Interesse an telefonischer
+          Erreichbarkeit rund um die Uhr (Art. 6 Abs. 1 lit. f DSGVO).
+        </LegalP>
+        <LegalP>
+          Gesprächsprotokolle nutzen wir, um Ihr Anliegen zu bearbeiten und die
+          Antwortqualität unserer Assistentin zu verbessern; dabei werden aus den
+          Protokollen fachliche Hinweise abgeleitet (z. B. wie häufige Fragen zu
+          beantworten sind) – Zugangscodes und personenbezogene Angaben werden in diese
+          Auswertung nicht übernommen. Eine automatisierte Entscheidungsfindung mit
+          rechtlicher Wirkung oder eine Profilbildung findet nicht statt. Möchten Sie nicht
+          mit einer KI sprechen, erreichen Sie uns jederzeit per E-Mail an{' '}
+          <a href="mailto:mail@trimosa.de" style={{ color: 'var(--gold)' }}>mail@trimosa.de</a>{' '}
+          oder können im Gespräch um einen Rückruf durch ein Teammitglied bitten. Sie können
+          der Verarbeitung nach Art. 21 DSGVO widersprechen und die Löschung des
+          Gesprächsprotokolls verlangen.
+        </LegalP>
+      </LegalSection>
+
+      <LegalSection heading="14. Cookies">
         <LegalP>
           Wir verwenden ausschließlich technisch notwendige Cookies, die für die Anmeldung und die
           Aufrechterhaltung Ihrer Sitzung erforderlich sind. Diese Cookies benötigen keine
@@ -191,7 +260,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="13. Schutz vor Missbrauch (Rate-Limiting)">
+      <LegalSection heading="15. Schutz vor Missbrauch (Rate-Limiting)">
         <LegalP>
           Zum Schutz vor automatisiertem Missbrauch (z. B. massenhaften Registrierungs- oder
           Buchungsversuchen) speichern wir bei bestimmten Anfragen kurzfristig einen Zählwert in
@@ -201,7 +270,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="14. Speicherdauer">
+      <LegalSection heading="16. Speicherdauer">
         <LegalP>
           Wir speichern personenbezogene Daten nur so lange, wie es für die genannten Zwecke
           erforderlich ist oder gesetzliche Aufbewahrungsfristen (insbesondere handels- und
@@ -210,7 +279,7 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="15. Ihre Rechte">
+      <LegalSection heading="17. Ihre Rechte">
         <LegalP>
           Sie haben im Rahmen der gesetzlichen Bestimmungen jederzeit das Recht auf unentgeltliche
           Auskunft über Ihre gespeicherten personenbezogenen Daten (Art. 15 DSGVO), auf Berichtigung
@@ -227,9 +296,10 @@ export default function DatenschutzPage() {
         </LegalP>
       </LegalSection>
 
-      <LegalSection heading="16. Datenübermittlung in Drittstaaten">
+      <LegalSection heading="18. Datenübermittlung in Drittstaaten">
         <LegalP>
-          Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google) können
+          Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google, Anthropic,
+          Twilio, ElevenLabs) können
           personenbezogene Daten in Länder außerhalb der EU/des EWR – insbesondere in die USA –
           übermitteln. In diesen Ländern besteht möglicherweise kein mit der EU vergleichbares
           Datenschutzniveau. Soweit eine solche Übermittlung erfolgt, wird sie auf geeignete
