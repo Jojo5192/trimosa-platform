@@ -17,7 +17,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
-  resolvePlaceholders, MAPPE_BTN_SENTINEL,
+  resolvePlaceholders, MAPPE_BTN_SENTINEL, REVIEW_BTN_SENTINEL,
   type AutoMessage, type MessageContext,
 } from '@/lib/auto-messages'
 import { translateOutgoing } from '@/lib/translate'
@@ -313,7 +313,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           ? `https://search.google.com/local/writereview?placeid=${listing.google_place_id}`
           : '',
       }
-      let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL), ctx)
+      let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
       // Nicht auflösbare Rest-Tokens säubern (nie kaputte {platzhalter} an Gäste)
       german = german.replace(/\{\w+\}/g, '').replace(/\n{3,}/g, '\n\n').trim()
       if (!german) { report.postponed++; continue }
@@ -323,7 +323,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       if (dryRun) {
         report.due.push({
           vorlage: t.name, gast, wohnung: listing?.title ?? '—', zeitraum, kanal,
-          vorschau: german.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).slice(0, 400),
+          vorschau: german.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).split(REVIEW_BTN_SENTINEL).join(ctx.google_bewertung).slice(0, 400),
         })
         continue
       }
@@ -337,8 +337,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
       const lang = await guestLangFor(b, conv?.id, conv?.guest_id)
       const tr = await translateProtected(german, lang)
-      const chatText = tr.text.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).replace(/\n{3,}/g, '\n\n').trim()
-      const germanChat = german.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).replace(/\n{3,}/g, '\n\n').trim()
+      const chatText = tr.text.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).split(REVIEW_BTN_SENTINEL).join(ctx.google_bewertung).replace(/\n{3,}/g, '\n\n').trim()
+      const germanChat = german.split(MAPPE_BTN_SENTINEL).join(ctx.mappe).split(REVIEW_BTN_SENTINEL).join(ctx.google_bewertung).replace(/\n{3,}/g, '\n\n').trim()
       const msgLang = tr.translated ? lang : null
       const msgDe = tr.translated ? germanChat : null
 
@@ -357,7 +357,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-            mappeUrl: ctx.mappe || null, lang,
+            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
           }).catch(e => console.error('[auto-messages] email:', e))
           outcome = 'chat+email'
         } else outcome = 'chat'
@@ -374,7 +374,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           if (to) {
             await sendAutoMessageEmail({
               to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-              mappeUrl: ctx.mappe || null, lang,
+              mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
             })
             await supabaseAdmin.from('messages').insert({
               booking_id: b.id, sender_type: 'host', content: chatText,
@@ -391,7 +391,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-            mappeUrl: ctx.mappe || null, lang,
+            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, lang,
           })
           await supabaseAdmin.from('messages').insert({
             booking_id: b.id, sender_type: 'host', content: chatText,
