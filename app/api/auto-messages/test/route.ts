@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { resolvePlaceholders, demoContext, MAPPE_BTN_SENTINEL } from '@/lib/auto-messages'
+import { resolvePlaceholders, demoContext, MAPPE_BTN_SENTINEL, REVIEW_BTN_SENTINEL } from '@/lib/auto-messages'
 import { sendAutoMessageEmail } from '@/lib/email'
 
 /**
@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
   const demoMappe = `${siteUrl}/mappe/beispiel`
   const ctx = { ...demoContext(String(b.wohnung ?? '') || 'City Home', '16:00', '10:00'), mappe: demoMappe }
-  const text = resolvePlaceholders(body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL), ctx)
+  const text = resolvePlaceholders(body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
     .replace(/\{\w+\}/g, '').replace(/\n{3,}/g, '\n\n').trim()
 
   const res = await sendAutoMessageEmail({
     to, guestName: ctx.name, listingTitle: `TEST · ${ctx.wohnung}`,
-    text, mappeUrl: demoMappe, lang: 'de',
+    text, mappeUrl: demoMappe, reviewUrl: ctx.google_bewertung || null, lang: 'de',
   })
   if (!res.ok) return NextResponse.json({ error: res.error ?? 'Versand fehlgeschlagen.' }, { status: 500 })
   return NextResponse.json({ ok: true, an: to })
