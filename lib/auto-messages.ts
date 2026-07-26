@@ -159,7 +159,7 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
     },
     {
       name: 'Erinnerung vor Anreise', enabled: true, trigger_type: 'vor_anreise',
-      subject: 'Bald geht's los — deine Anreise am {anreise} 🏡',
+      subject: 'Bald geht\'s los — deine Anreise am {anreise} 🏡',
       offset_days: 3, send_hour: 10, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'normal', send_email: true, sort: 2,
       body: 'Hallo {vorname}, nur noch wenige Tage! 🎉\n\nDein Aufenthalt startet am {anreise}:\n🏡 {wohnung}\n🕓 Check-in ab {checkin} Uhr — Self-Check-in, ganz ohne Schlüsselübergabe\n🔑 Dein persönlicher Türcode erscheint automatisch in deiner Gästemappe\n\nDort findest du auch Anreise, Parken, WLAN und die besten Tipps für die Region 📲:\n\n{mappe_button}\n\nFragen vor der Anreise? Antworte einfach auf diese Nachricht. 😊\n\nBis ganz bald — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
