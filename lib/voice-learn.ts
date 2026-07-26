@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { askClaude } from '@/lib/ai'
+import { askClaude, SMART_MODEL } from '@/lib/ai'
 
 /**
  * ☎️🧠 Transkript-Lernen (§183, Phase 2b): destilliert aus (a) den
@@ -88,7 +88,8 @@ export async function learnFromCalls(): Promise<{ calls: number; loesungen: numb
   ].join('\n')
 
   // Sonnet mit ausreichend Denkbudget (§45-Lektion)
-  const md = (await askClaude(system, user, 8000)).trim()
+  // §211: höchste Qualitätsstufe — dasselbe Muster wie die Chat-Destillate
+  const md = (await askClaude(system, user, 12000, SMART_MODEL)).trim()
   if (md.length < 50) return { calls: calls.length, loesungen: loesungen.length, status: 'KI-Antwort zu kurz — nichts gespeichert' }
 
   await setSetting(KNOWLEDGE_KEY, { md, updated: new Date().toISOString() })
