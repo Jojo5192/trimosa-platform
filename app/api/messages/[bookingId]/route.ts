@@ -220,10 +220,13 @@ export async function POST(
   let smoobuDelivered = false
   if (isHost && booking.smoobu_reservation_id) {
     try {
-      const smoobuMsgId = await sendMessageToGuest(Number(booking.smoobu_reservation_id), content.trim())
-      if (smoobuMsgId != null) smoobuDelivered = true
-      if (smoobuMsgId != null && msg?.id) {
-        await supabaseAdmin.from('messages').update({ smoobu_message_id: String(smoobuMsgId) }).eq('id', msg.id)
+      // §210: Zustellung gilt als erfolgt, sobald Smoobu den Call quittiert —
+      // eine fehlende Message-ID ist KEIN Fehlschlag (sonst ging zusätzlich
+      // die §140-Mail raus und der Gast bekam alles doppelt).
+      const push = await sendMessageToGuest(Number(booking.smoobu_reservation_id), content.trim())
+      if (push.sent) smoobuDelivered = true
+      if (push.id != null && msg?.id) {
+        await supabaseAdmin.from('messages').update({ smoobu_message_id: String(push.id) }).eq('id', msg.id)
       }
     } catch (err) {
       console.error('[Messages] Smoobu push failed:', err)
