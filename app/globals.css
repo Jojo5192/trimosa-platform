@@ -662,3 +662,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .team-shell input, .team-shell textarea, .team-shell select {
   font-size: 16px !important;
 }
+
+/* §209 Team-App iOS-Feeling: Skeleton-Shimmer + Pull-to-Refresh-Spinner */
+.team-skel {
+  background: linear-gradient(90deg, #EFEDE7 25%, #F8F6F1 50%, #EFEDE7 75%);
+  background-size: 200% 100%;
+  animation: teamSkel 1.2s ease-in-out infinite;
+}
+@keyframes teamSkel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.team-ptr-spin {
+  animation: teamPtrSpin 0.9s linear infinite;
+}
+@keyframes teamPtrSpin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-skel, .team-ptr-spin { animation: none; }
+}
