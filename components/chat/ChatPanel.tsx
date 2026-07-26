@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type TouchEvent as ReactTouchEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
 
 interface Conversation {
   id: string; guest_id: string; host_id: string
@@ -26,6 +27,9 @@ interface Conversation {
   bookingId?: string | null
   listingId?: string | null
 }
+
+/** §209: Breite der Swipe-Aktionsleiste (📞 + ✓) in der Thread-Liste */
+const SWIPE_W = 132
 
 /** §158: Erläuterung für Rechnungsanfragen VOR dem Anreisetag (wird beim
  *  Senden automatisch in die Gastsprache übersetzt). */
@@ -272,33 +276,43 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [busy, setBusy]         = useState(false)
   const [aiBusy, setAiBusy]     = useState(false)
 
+  // 📱 §209 iOS-Feeling: Suche + Swipe-Aktionen + Pull-to-Refresh der Liste
+  const [searchQ, setSearchQ] = useState('')
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null)
+  const swipeInfo = useRef<{ x: number; y: number; id: string; el: HTMLElement | null; locked: '' | 'h' | 'v' } | null>(null)
+  const listScrollRef = useRef<HTMLDivElement | null>(null)
+
   // "✨" reply suggestion (hosts only) — lands in the composer as an editable
   // draft, never auto-sent. History is loaded server-side by the API.
   // Thread-Markierungen auf der jeweils LETZTEN Nachricht — eine spätere
   // Gast-Nachricht macht den Thread automatisch wieder unbeantwortet.
   //  ✓  "Keine Antwort erforderlich"
   //  📞 "Per Telefonat geklärt" (zählt im Wochenbericht als telefonisch beantwortet)
-  async function toggleMark(field: 'no_reply' | 'phone') {
-    if (!active) return
+  async function markConv(c: Conversation, field: 'no_reply' | 'phone') {
     const key = field === 'phone' ? 'phoneResolved' as const : 'noReplyNeeded' as const
-    const value = !active[key]
-    setConvs(cs => cs.map(c => c.id === active.id ? { ...c, [key]: value } : c))
-    setActive(a => (a ? { ...a, [key]: value } : a))
+    const value = !c[key]
+    setConvs(cs => cs.map(x => x.id === c.id ? { ...x, [key]: value } : x))
+    setActive(a => (a && a.id === c.id ? { ...a, [key]: value } : a))
     // Booking.com wertet die Antwortquote separat — dort muss der Haken
     // weiterhin in der Booking-App gesetzt werden (Smoobu reicht ihn nicht
     // durch). shortPlatform statt Substring: „Direct booking" ist KEIN Booking.com!
-    if (value && shortPlatform(active.platform ?? '') === 'Booking.com') {
-      setBookingHintFor(active.id)
-      setTimeout(() => setBookingHintFor((cur) => (cur === active.id ? null : cur)), 8000)
-    } else {
+    if (value && shortPlatform(c.platform ?? '') === 'Booking.com') {
+      setBookingHintFor(c.id)
+      setTimeout(() => setBookingHintFor((cur) => (cur === c.id ? null : cur)), 8000)
+    } else if (active?.id === c.id) {
       setBookingHintFor(null)
     }
     try {
       await fetch('/api/chat/inbox', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: active.kind ?? 'direct', id: active.id, value, field }),
+        body: JSON.stringify({ kind: c.kind ?? 'direct', id: c.id, value, field }),
       })
     } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
+  }
+  async function toggleMark(field: 'no_reply' | 'phone') {
+    if (!active) return
+    haptic()
+    await markConv(active, field)
   }
 
   // 📋 §183: Aufgabe direkt aus dem Chat — vorbefüllt mit der letzten
@@ -500,6 +514,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setConvs(data)
     return data
   }, [team, userId])
+
+  // ⬇️ §209 Pull-to-Refresh der Thread-Liste (Ziehen am Listenanfang lädt neu)
+  const listPtr = usePullToRefresh(listScrollRef, getConvs)
 
   // Ältere Chats einmalig nachladen (§129) — dedupe gegen die Live-Liste
   // passiert beim Rendern, damit der 20s-Poll die Archiv-Daten nie anfasst
@@ -794,6 +811,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   /* ── send (with translation preview when the guest speaks another language) ── */
   async function reallySend(content: string, contentDe?: string, lang?: string) {
     if (!active) return
+    haptic()
     setBusy(true)
     setSendError(null)
     try {
@@ -869,22 +887,71 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const unread = convs.reduce((s, c) => s + c.unread, 0)
   const dateRange = active ? fmtDateRange(active.check_in, active.check_out) : null
 
+  /* 📱 §209 Swipe-Aktionen der Thread-Liste: horizontales Ziehen bewegt die
+     Zeile direkt im DOM (kein Re-Render pro Frame); erst beim Loslassen
+     entscheidet der State, ob die Aktionsleiste offen bleibt. */
+  function beginRowSwipe(e: ReactTouchEvent<HTMLDivElement>, id: string) {
+    if (openSwipeId && openSwipeId !== id) setOpenSwipeId(null)
+    const t0 = e.touches[0]
+    swipeInfo.current = {
+      x: t0.clientX, y: t0.clientY, id,
+      el: e.currentTarget.querySelector('[data-swipe-front]') as HTMLElement | null,
+      locked: '',
+    }
+  }
+  function moveRowSwipe(e: ReactTouchEvent<HTMLDivElement>, id: string) {
+    const s = swipeInfo.current
+    if (!s || s.id !== id || !s.el) return
+    const t0 = e.touches[0]
+    const dx = t0.clientX - s.x
+    const dy = t0.clientY - s.y
+    if (!s.locked) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
+    }
+    if (s.locked !== 'h') return
+    const base = openSwipeId === id ? -SWIPE_W : 0
+    const x = Math.max(-SWIPE_W, Math.min(0, base + dx))
+    s.el.style.transition = 'none'
+    s.el.style.transform = `translateX(${x}px)`
+  }
+  function endRowSwipe(id: string) {
+    const s = swipeInfo.current
+    swipeInfo.current = null
+    if (!s || s.id !== id || !s.el || s.locked !== 'h') return
+    const m = /translateX\((-?[\d.]+)px\)/.exec(s.el.style.transform || '')
+    const x = m ? parseFloat(m[1]) : 0
+    s.el.style.transition = ''
+    s.el.style.transform = ''
+    const willOpen = x < -SWIPE_W / 2
+    if (willOpen && openSwipeId !== id) haptic()
+    setOpenSwipeId(willOpen ? id : (openSwipeId === id ? null : openSwipeId))
+  }
+
   /* ═══════════════════════════════════════════════════════════
      CONVERSATION LIST (shared between mobile list view + desktop sidebar)
   ═══════════════════════════════════════════════════════════ */
   function ConvList({ fullWidth = false }: { fullWidth?: boolean }) {
-    const filtered = team ? convs.filter(c => matchesFilter(c, inboxFilter)) : convs
-    // Nachgeladene ältere Chats (§129) — nur im „Alle"-Filter, unterhalb der
-    // Live-Liste, dedupliziert gegen deren Threads
-    const archivExtra = team && inboxFilter === 'alle' && archivThreads
-      ? archivThreads.filter(a => !convs.some(cc => cc.id === a.id))
-      : []
+    // 🔍 §209: Die Suche (nur Team) filtert über Gast, Wohnung, Vorschau und
+    // Plattform — und ignoriert dabei den aktiven Filter-Chip.
+    const q = searchQ.trim().toLowerCase()
+    const matchesQ = (c: Conversation) =>
+      [partner(c), c.listing_title, c.lastPreview, c.platform]
+        .some(v => String(v ?? '').toLowerCase().includes(q))
+    const searching = team && q.length > 0
+    const filtered = team
+      ? (searching ? convs.filter(matchesQ) : convs.filter(c => matchesFilter(c, inboxFilter)))
+      : convs
+    // Nachgeladene ältere Chats (§129) — im „Alle"-Filter unterhalb der
+    // Live-Liste; bei aktiver Suche werden sie mitdurchsucht
+    const archivBase = team && archivThreads ? archivThreads.filter(a => !convs.some(cc => cc.id === a.id)) : []
+    const archivExtra = searching ? archivBase.filter(matchesQ) : (inboxFilter === 'alle' ? archivBase : [])
     type ListRow = Conversation | { divider: string }
     const rows: ListRow[] = archivExtra.length
       ? [...filtered, { divider: `📁 Ältere Chats (${archivExtra.length})` }, ...archivExtra]
       : filtered
     return (
-      <div style={{
+      <div ref={listScrollRef} style={{
         width: fullWidth ? '100%' : 270,
         flexShrink: fullWidth ? undefined : 0,
         background: '#fff',
@@ -894,7 +961,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         flex: fullWidth ? 1 : undefined,
       }}>
         {team && (
-          <div style={{ display: 'flex', gap: 6, padding: '10px 12px 8px', overflowX: 'auto', flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)', position: 'sticky', top: 0, zIndex: 2 }}>
+          <div style={{ flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)', position: 'sticky', top: 0, zIndex: 2 }}>
+          <div style={{ display: 'flex', gap: 6, padding: '10px 12px 4px', overflowX: 'auto' }}>
             {INBOX_FILTERS.map(f => {
               const count = f.id === 'alle' ? convs.length : convs.filter(c => matchesFilter(c, f.id)).length
               const activeF = inboxFilter === f.id
@@ -912,7 +980,26 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               )
             })}
           </div>
+          {/* 🔍 §209 Suche über alle Threads (Gast · Wohnung · Nachricht · Plattform) */}
+          <div style={{ padding: '7px 12px 9px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#EFEDE7', borderRadius: 10, padding: '0 10px' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth={2.4} strokeLinecap="round" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
+              </svg>
+              <input
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                placeholder="Suchen…"
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, padding: '7px 0', color: '#1A1814' }}
+              />
+              {searchQ && (
+                <button onClick={() => setSearchQ('')} style={{ border: 'none', background: '#C9C5BB', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: 11, cursor: 'pointer', padding: 0, lineHeight: '18px', flexShrink: 0 }}>✕</button>
+              )}
+            </div>
+          </div>
+          </div>
         )}
+        <PullHint pull={listPtr.pull} busy={listPtr.busy} />
         {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
             das Team weiß, dass ✓/📞 die Antwortzeit im Wochenbericht sauber hält */}
         {team && inboxFilter === 'unbeantwortet' && !loading && filtered.length > 0 && (
@@ -925,10 +1012,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             Bereits geklärt? Im Thread oben markieren: <strong>📞 telefonisch geklärt</strong> · <strong>✓ keine Antwort nötig</strong> — dann stimmt eure Antwortzeit-Statistik.
           </div>
         )}
-        {loading && (
-          <div style={{ padding: 32, textAlign: 'center', color: '#999', fontSize: 13 }}>Lädt…</div>
+        {loading && <SkeletonRows kind="chat" count={7} />}
+        {!loading && filtered.length === 0 && searching && archivExtra.length === 0 && (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: '#A9A499', fontSize: 13.5, lineHeight: 1.5 }}>
+            Keine Treffer für <strong>„{searchQ.trim()}"</strong>
+          </div>
         )}
-        {!loading && filtered.length === 0 && (
+        {!loading && filtered.length === 0 && !searching && (
           <div style={{ padding: '64px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>{t(uiLang, 'Keine Nachrichten')}</div>
@@ -946,19 +1036,49 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             }}>{c.divider}</div>
           )
           const isSel = !isMobile && active?.id === c.id
+          const swipeOpen = openSwipeId === c.id
+          // Swipe-Aktionen nur für Team-Threads, deren letzte Nachricht vom
+          // Gast kommt (dort machen ✓/📞 überhaupt Sinn — wie im Thread-Kopf)
+          const canSwipe = team && c.lastSender === 'guest'
           return (
-            <button key={c.id} onClick={() => selectConv(c)} style={{
+            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y' }}
+              onTouchStart={canSwipe ? (e) => beginRowSwipe(e, c.id) : undefined}
+              onTouchMove={canSwipe ? (e) => moveRowSwipe(e, c.id) : undefined}
+              onTouchEnd={canSwipe ? () => endRowSwipe(c.id) : undefined}
+              onTouchCancel={canSwipe ? () => endRowSwipe(c.id) : undefined}
+            >
+              {canSwipe && (
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex' }}>
+                  <button onClick={() => { haptic(); markConv(c, 'phone'); setOpenSwipeId(null) }} style={{
+                    width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
+                    background: c.phoneResolved ? '#8E8E93' : '#3478F6',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
+                  }}>
+                    📞<span style={{ fontSize: 9, fontWeight: 700 }}>{c.phoneResolved ? 'Zurück' : 'Telefonat'}</span>
+                  </button>
+                  <button onClick={() => { haptic(); markConv(c, 'no_reply'); setOpenSwipeId(null) }} style={{
+                    width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
+                    background: c.noReplyNeeded ? '#8E8E93' : '#34C759',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
+                  }}>
+                    ✓<span style={{ fontSize: 9, fontWeight: 700 }}>{c.noReplyNeeded ? 'Zurück' : 'Erledigt'}</span>
+                  </button>
+                </div>
+              )}
+            <button data-swipe-front onClick={() => { if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
               width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
               padding: fullWidth ? '13px 16px' : '12px 14px',
               borderBottom: 'none',
               boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
               borderLeft: isSel ? '3px solid var(--gold)' : '3px solid transparent',
-              background: isSel ? 'rgba(174,141,45,0.08)' : 'transparent',
+              background: isSel ? '#F7F3E9' : '#fff',
               display: 'flex', alignItems: 'center', gap: 12,
-              transition: 'background .12s',
+              position: 'relative',
+              transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
+              transition: 'transform .22s ease, background .12s',
             }}
               onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = '#F3F0EA' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = '#fff' }}
             >
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <Av name={partner(c)} src={partnerAvatar(c)} size={fullWidth ? 48 : 42} />
@@ -1014,10 +1134,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 </svg>
               )}
             </button>
+            </div>
           )
         })}
         {/* „Ältere Chats laden" — einmalige Nachladung der Archiv-Threads (§129) */}
-        {team && inboxFilter === 'alle' && !loading && archivThreads === null && convs.length > 0 && (
+        {team && (inboxFilter === 'alle' || searching) && !loading && archivThreads === null && convs.length > 0 && (
           <button
             onClick={loadArchiv}
             disabled={archivLoading}
@@ -1027,7 +1148,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               fontSize: 13, fontWeight: 700, color: '#6B6455', flexShrink: 0,
             }}
           >
-            {archivLoading ? 'Lädt ältere Chats…' : '📁 Ältere Chats laden'}
+            {archivLoading ? 'Lädt ältere Chats…' : (searching ? '📁 Auch in älteren Chats suchen' : '📁 Ältere Chats laden')}
           </button>
         )}
         {team && inboxFilter === 'alle' && archivThreads !== null && archivThreads.length === 0 && (
