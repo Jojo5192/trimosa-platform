@@ -9,7 +9,14 @@ import { sendNewBookingPush } from '@/lib/push'
  * Anreise am selben Tag. Läuft 2×/Stunde im Poll-Cron: idempotent,
  * NEUE Buchungen lösen (verspätet, aber sicher) den Buchungs-Push aus.
  */
-export async function importMissingReservations(futureDays = 120): Promise<{ imported: number; skipped: number; failed: number; cancelled: number; updated: number }> {
+export async function importMissingReservations(
+  futureDays = 120,
+  /** §221: Rückblick-Fenster. Der Standard-Lauf schaut nur 7 Tage zurück —
+   *  für den Cent-Abgleich ALTER Buchungen (deren Rechnungen längst raus
+   *  sind) braucht es mehr. `syncOnly` gleicht dabei nur bestehende
+   *  Buchungen ab und legt KEINE alten Reservierungen neu an. */
+  opts: { pastDays?: number; syncOnly?: boolean } = {},
+): Promise<{ imported: number; skipped: number; failed: number; cancelled: number; updated: number }> {
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
   const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
@@ -23,19 +30,19 @@ export async function importMissingReservations(futureDays = 120): Promise<{ imp
     if (!rows || rows.length < 1000) break
   }
 
-  const from = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
+  const from = new Date(Date.now() - (opts.pastDays ?? 7) * 86400_000).toISOString().slice(0, 10)
   const to = new Date(Date.now() + futureDays * 86400_000).toISOString().slice(0, 10)
   let imported = 0, skipped = 0, failed = 0
   // Für Storno- und Feld-Abgleich: alles merken, was Smoobu im Fenster kennt
   type Res = Awaited<ReturnType<typeof listReservations>>['reservations'][number]
   const seen = new Map<number, Res>()
   let windowComplete = true
-  const maxPages = futureDays > 200 ? 12 : 5
+  const maxPages = (futureDays + (opts.pastDays ?? 7)) > 200 ? 20 : 5
   for (let p = 1; p <= maxPages; p++) {
     const { reservations, hasMore } = await listReservations(from, to, p, 100)
     for (const r of reservations) {
       seen.set(r.id, r)
-      if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id)) { skipped++; continue }
+      if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id) || opts.syncOnly) { skipped++; continue }
       const { data: inserted, error } = await supabaseAdmin.from('bookings').insert({
         smoobu_reservation_id: r.id,
         listing_id: r.apartmentId != null ? bySmoobuId.get(r.apartmentId) ?? null : null,
