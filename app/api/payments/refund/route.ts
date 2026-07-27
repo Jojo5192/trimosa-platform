@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Keine Zahlungsinformationen gespeichert' }, { status: 400 })
     }
 
-    refund = refundAmount(booking.total_price, policy, booking.check_in)
+    refund = refundAmount(Number(booking.total_price), policy, booking.check_in)
 
     if (refund > 0) {
       try {
