@@ -380,14 +380,15 @@ interface LexVoucher {
 }
 
 async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Promise<{ vouchers: LexVoucher[]; error?: string }> {
-  // ⚠️ Verrechnete Gutschriften tragen den Status „paidoff" (in der UI
-  // „ausbezahlt") — ohne ihn kam die Gutschriften-Abfrage LEER zurück und
-  // das Audit hielt jedes Storno-Paar für eine Doppel-Fakturierung.
-  const STATUS_FILTER = 'draft,open,paid,paidoff,voided,overdue'
+  // ⚠️ KEIN voucherStatus-Filter: die erlaubten Werte unterscheiden sich je
+  // Belegart (Rechnungen kennen kein „paidoff", Gutschriften kein „overdue")
+  // — ein gemeinsamer Filter warf 400, der alte ließ verrechnete Gutschriften
+  // („paidoff" = in der UI „ausbezahlt") komplett verschwinden. Also alles
+  // holen und im Code sortieren.
   const vouchers: LexVoucher[] = []
   let withDateFilter = true
   for (let page = 0; page < 40; page++) {
-    const base = `/voucherlist?voucherType=${voucherType}&voucherStatus=${STATUS_FILTER}&size=250&page=${page}&sort=voucherDate,DESC`
+    const base = `/voucherlist?voucherType=${voucherType}&size=250&page=${page}&sort=voucherDate,DESC`
     const url = withDateFilter ? `${base}&voucherDateFrom=${fromDate}` : base
     let res = await lexFetch(url)
     if (!res.ok && withDateFilter && page === 0) {
@@ -493,6 +494,7 @@ export async function q2Check(from = '2026-04-01'): Promise<Q2CheckReport> {
     const checkInTag = ddmmyyyy(b.check_in)
     const candidates = vouchers.filter((v) =>
       !used.has(v.id)
+      && v.voucherStatus !== 'voided' // §222: ohne Statusfilter kommen jetzt auch stornierte Belege mit
       && contactBase(v.contactName) === norm(gast)
       && (Math.abs(v.totalAmount - amount) < 1.5 || v.contactName.includes(checkInTag)))
     candidates.sort((a, c) =>
