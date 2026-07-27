@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     .lte('check_in', to)
 
   const bks = bookings ?? []
-  const totalRevenue   = bks.reduce((s, b) => s + (b.total_price ?? 0), 0)
+  const totalRevenue   = bks.reduce((s, b) => s + Number(b.total_price ?? 0), 0)
   const commission     = totalRevenue * 0.1
   const vat            = commission * 0.07
   const commissionGross = commission + vat
@@ -135,8 +135,8 @@ export async function GET(req: NextRequest) {
         <td>${lt?.title ?? '—'}</td>
         <td>${b.check_in} – ${b.check_out}</td>
         <td>${b.guests}</td>
-        <td style="text-align:right">${fmt(b.total_price ?? 0)}</td>
-        <td style="text-align:right">${fmt((b.total_price ?? 0) * 0.1)}</td>
+        <td style="text-align:right">${fmt(Number(b.total_price ?? 0))}</td>
+        <td style="text-align:right">${fmt(Number(b.total_price ?? 0) * 0.1)}</td>
       </tr>`
     }).join('')}
   </tbody>
