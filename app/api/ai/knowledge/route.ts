@@ -223,6 +223,35 @@ export async function POST(request: Request) {
       beispiele: rows.slice(0, 8).map((r) => ({ sender: r.sender_type, content: (r.content ?? '').slice(0, 70) })),
     })
   }
+  if (action === 'voice-note-fix') {
+    // §220: Alt-Zeilen der Anrufbot-Tests kennzeichnen. Die Voice-Routen
+    // legten Türcode-/Mappen-Nachrichten früher NUR in die DB (kein Versand)
+    // — im Team-Chat sahen sie wie gesendet aus. Solche Zeilen tragen das
+    // 🔐/📖-Präfix UND keine smoobu_message_id → als interne Test-Notiz
+    // umschreiben (☎️-Präfix, wird beim Gast gefiltert). dryRun = Default.
+    const rows: { id: string; content: string | null; created_at: string }[] = []
+    for (const pre of ['🔐%', '📖%']) {
+      const { data } = await supabaseAdmin
+        .from('messages').select('id, content, created_at')
+        .eq('sender_type', 'host').is('smoobu_message_id', null)
+        .not('booking_id', 'is', null).like('content', pre).limit(200)
+      for (const r of data ?? []) rows.push(r)
+    }
+    const doFix = content === 'FIX'
+    if (doFix) {
+      for (const r of rows) {
+        await supabaseAdmin.from('messages')
+          .update({ content: `☎️ TEST-Anruf (NICHT an den Gast gesendet):\n${r.content ?? ''}` })
+          .eq('id', r.id)
+      }
+    }
+    return NextResponse.json({
+      gefunden: rows.length,
+      geaendert: doFix ? rows.length : 0,
+      modus: doFix ? 'UMGESCHRIEBEN' : 'nur gezählt (dry-run) — { content: "FIX" } führt aus',
+      beispiele: rows.slice(0, 8).map((r) => ({ zeit: r.created_at?.slice(0, 16), content: (r.content ?? '').slice(0, 80) })),
+    })
+  }
   if (action === 'echo-dedupe') {
     // §219: Smoobus Portal-Echos aufräumen — Host-Zeilen, deren Content mit
     // dem Versand-Betreff beginnt und deren Kern als eigene Zeile (±30 Min,
