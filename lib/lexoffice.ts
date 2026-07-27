@@ -685,7 +685,7 @@ export async function runInvoiceRun(opts: { dryRun?: boolean } = {}): Promise<In
     if (b.source === 'trimosa' && b.payment_status !== 'paid') { report.uebersprungen.push({ gast, grund: 'unbezahlt (Website)' }); continue }
     const lt = (Array.isArray(b.listings) ? b.listings[0] : b.listings)?.title ?? '—'
     if (dryRun) {
-      report.due.push({ gast, wohnung: lt, betrag: b.total_price, kanal: channelLabel(b) })
+      report.due.push({ gast, wohnung: lt, betrag: b.total_price == null ? null : Number(b.total_price), kanal: channelLabel(b) })
       continue
     }
     const r = await createInvoiceForBooking(b.id)
