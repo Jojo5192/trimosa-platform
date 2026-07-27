@@ -84,7 +84,7 @@ export default async function BookingsPage({
             {booking.check_in as string} → {booking.check_out as string} · {nights} Nacht{nights !== 1 ? 'e' : ''}
           </p>
           <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>
-            {booking.guests as number} Gäste · € {(booking.total_price as number)?.toFixed(2)}
+            {booking.guests as number} Gäste · € {Number(booking.total_price ?? 0).toFixed(2)}
           </p>
         </div>
         <div style={{ flexShrink: 0 }}>
