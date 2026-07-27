@@ -391,6 +391,11 @@ async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Prom
       withDateFilter = false
       res = await lexFetch(base)
     }
+    if (res.status === 429) {
+      // Rate-Limit (2 req/s) — kurz warten und dieselbe Seite erneut holen
+      await new Promise((ok) => setTimeout(ok, 1500))
+      res = await lexFetch(url)
+    }
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       return { vouchers, error: `voucherlist HTTP ${res.status}: ${body.slice(0, 200)}` }
@@ -407,6 +412,7 @@ async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Prom
         totalAmount: Number(v.totalAmount ?? NaN),
       })
     }
+    await new Promise((ok) => setTimeout(ok, 550)) // Rate-Limit schonen
     // Ohne Datums-Filter: abbrechen, sobald die Seite älter als der Stichtag ist
     if (!withDateFilter && items.length && vouchers[vouchers.length - 1].voucherDate < fromDate) break
     const totalPages = Number(data?.totalPages ?? 1)
@@ -719,10 +725,11 @@ export async function invoiceAudit(from = '2026-04-01'): Promise<InvoiceAuditRep
   }
   if (!lexofficeConfigured()) { report.hinweis = 'LEXOFFICE_API_KEY fehlt'; return report }
 
-  const [inv, cred] = await Promise.all([
-    fetchVoucherlist(from, 'invoice'),
-    fetchVoucherlist(from, 'creditnote'),
-  ])
+  // ⚠️ NICHT parallel: lexoffice erlaubt 2 Requests/s — Promise.all warf 429
+  // und der Gutschriften-Teil kam leer zurück (Audit wäre wertlos gewesen).
+  const inv = await fetchVoucherlist(from, 'invoice')
+  await new Promise((ok) => setTimeout(ok, 700))
+  const cred = await fetchVoucherlist(from, 'creditnote')
   if (inv.error || cred.error) report.hinweis = [inv.error, cred.error].filter(Boolean).join(' · ')
 
   const key = (n: string) => n.toLowerCase().replace(/\s+/g, ' ').trim()
