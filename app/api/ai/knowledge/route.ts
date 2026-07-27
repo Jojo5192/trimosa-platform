@@ -223,6 +223,60 @@ export async function POST(request: Request) {
       beispiele: rows.slice(0, 8).map((r) => ({ sender: r.sender_type, content: (r.content ?? '').slice(0, 70) })),
     })
   }
+  if (action === 'echo-dedupe') {
+    // §219: Smoobus Portal-Echos aufräumen — Host-Zeilen, deren Content mit
+    // dem Versand-Betreff beginnt und deren Kern als eigene Zeile (±30 Min,
+    // gleiche Buchung) existiert; dazu IDENTISCHE Host-Doppel (beide mit
+    // Smoobu-ID, §49-Willkommens-Mails). dryRun (Default) LÖSCHT NICHTS.
+    const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString()
+    const { data: rows } = await supabaseAdmin
+      .from('messages')
+      .select('id, booking_id, content, created_at, smoobu_message_id')
+      .eq('sender_type', 'host').not('booking_id', 'is', null)
+      .gte('created_at', cutoff).order('created_at', { ascending: true }).limit(1000)
+    const byBooking = new Map<string, NonNullable<typeof rows>>()
+    for (const r of rows ?? []) {
+      if (!byBooking.has(r.booking_id)) byBooking.set(r.booking_id, [])
+      byBooking.get(r.booking_id)!.push(r)
+    }
+    const PREFIX = 'Nachricht von Trimosa'
+    const doomed: { id: string; grund: string; content: string }[] = []
+    for (const list of byBooking.values()) {
+      const dead = new Set<string>()
+      for (const r of list) {
+        if (dead.has(r.id)) continue
+        const c = (r.content ?? '').trim()
+        const t = new Date(r.created_at).getTime()
+        const near = (x: (typeof list)[number]) =>
+          x.id !== r.id && !dead.has(x.id) && Math.abs(new Date(x.created_at).getTime() - t) <= 30 * 60_000
+        if (c.startsWith(PREFIX)) {
+          const core = c.slice(PREFIX.length).replace(/^[\s]+/, '')
+          if (core && list.some((x) => near(x) && (x.content ?? '').trim() === core)) {
+            dead.add(r.id); doomed.push({ id: r.id, grund: 'betreff-echo', content: c.slice(0, 70) })
+            continue
+          }
+        }
+        // identisches Doppel: die JÜNGERE Zeile fliegt (r kommt aufsteigend — Original zuerst)
+        const dupe = list.find((x) => x.id !== r.id && !dead.has(x.id) && x.smoobu_message_id && r.smoobu_message_id
+          && near(x) && (x.content ?? '').trim() === c && new Date(x.created_at).getTime() >= t)
+        if (dupe) { dead.add(dupe.id); doomed.push({ id: dupe.id, grund: 'identisches Doppel', content: c.slice(0, 70) }) }
+      }
+    }
+    const doDelete = content === 'DELETE'
+    if (doDelete && doomed.length) {
+      const ids = doomed.map((d) => d.id)
+      for (let i = 0; i < ids.length; i += 100) {
+        await supabaseAdmin.from('messages').delete().in('id', ids.slice(i, i + 100))
+      }
+    }
+    return NextResponse.json({
+      geprueft: (rows ?? []).length,
+      gefunden: doomed.length,
+      geloescht: doDelete ? doomed.length : 0,
+      modus: doDelete ? 'GELÖSCHT' : 'nur gezählt (dry-run)',
+      beispiele: doomed.slice(0, 10),
+    })
+  }
   if (action === 'smoobu-test') {
     // X-ray one reservation's messages: rohe normalisierte Felder
     // (type/sender/subject) — optional { bookingId } oder { guestName }
