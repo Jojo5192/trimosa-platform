@@ -393,13 +393,19 @@ export async function listReservations(
  * Betreff wörtlich am Anfang des Bodys, wird er (samt Leerzeilen)
  * abgeschnitten. Guard: bleibt danach nichts übrig, Body unverändert lassen.
  */
+export const SMOOBU_SEND_SUBJECT = 'Nachricht von Trimosa'
+
 export function stripSubjectEcho(subject: string | undefined, body: string): string {
-  const sub = (subject ?? '').trim()
-  if (!sub) return body
-  const t = body.trimStart()
-  if (!t.startsWith(sub)) return body
-  const rest = t.slice(sub.length).replace(/^[\s]+/, '')
-  return rest.length ? rest : body
+  // ⚠️ Das Portal-Echo kommt mit LEEREM subject (§210) — der Prefix im Body
+  // ist unser VERSAND-Betreff. Darum beide Kandidaten prüfen.
+  for (const cand of [(subject ?? '').trim(), SMOOBU_SEND_SUBJECT]) {
+    if (!cand) continue
+    const t = body.trimStart()
+    if (!t.startsWith(cand)) continue
+    const rest = t.slice(cand.length).replace(/^[\s]+/, '')
+    if (rest.length) return rest
+  }
+  return body
 }
 
 export async function getReservationMessages(
@@ -504,7 +510,7 @@ export async function sendMessageToGuest(
     {
       method: 'POST',
       headers: smoobuHeaders(apiKey),
-      body: JSON.stringify({ subject: 'Nachricht von Trimosa', messageBody: message }),
+      body: JSON.stringify({ subject: SMOOBU_SEND_SUBJECT, messageBody: message }),
     },
   )
   if (!res.ok) {
