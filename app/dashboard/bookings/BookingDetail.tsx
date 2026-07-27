@@ -71,9 +71,9 @@ export default function BookingDetail({ bookingId }: { bookingId: string }) {
                 if (children) parts.push(`${children} Kind${children !== 1 ? 'er' : ''}`)
                 return parts.join(', ') || '–'
               })()],
-              ['Gesamtpreis', `€ ${(detail.total_price as number)?.toFixed(2)}`],
-              ['Provision (10%)', `€ ${((detail.total_price as number) * 0.1)?.toFixed(2)}`],
-              ['Auszahlung', `€ ${((detail.total_price as number) * 0.9)?.toFixed(2)}`],
+              ['Gesamtpreis', `€ ${Number(detail.total_price ?? 0).toFixed(2)}`],
+              ['Provision (10%)', `€ ${(Number(detail.total_price ?? 0) * 0.1).toFixed(2)}`],
+              ['Auszahlung', `€ ${(Number(detail.total_price ?? 0) * 0.9).toFixed(2)}`],
             ] as [string, string][]).map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F0EDE8' }}>
                 <span style={{ fontSize: '13px', color: '#888' }}>{k}</span>
