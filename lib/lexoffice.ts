@@ -380,15 +380,19 @@ interface LexVoucher {
 }
 
 async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Promise<{ vouchers: LexVoucher[]; error?: string }> {
-  // ⚠️ KEIN voucherStatus-Filter: die erlaubten Werte unterscheiden sich je
-  // Belegart (Rechnungen kennen kein „paidoff", Gutschriften kein „overdue")
-  // — ein gemeinsamer Filter warf 400, der alte ließ verrechnete Gutschriften
-  // („paidoff" = in der UI „ausbezahlt") komplett verschwinden. Also alles
-  // holen und im Code sortieren.
+  // ⚠️ voucherStatus ist PFLICHT und je Belegart unterschiedlich (lexoffice-
+  // Doku): Rechnungen kennen kein „paidoff", Gutschriften kein „overdue" —
+  // ein gemeinsamer Filter warf 400, der alte („draft,open,paid,voided")
+  // ließ VERRECHNETE Gutschriften („paidoff" = in der UI „ausbezahlt")
+  // komplett verschwinden, wodurch das Audit jedes Storno-Paar für eine
+  // Doppel-Fakturierung hielt.
+  const STATUS_FILTER = voucherType.includes('creditnote')
+    ? 'draft,open,paidoff,voided'
+    : 'draft,open,paid,voided'
   const vouchers: LexVoucher[] = []
   let withDateFilter = true
   for (let page = 0; page < 40; page++) {
-    const base = `/voucherlist?voucherType=${voucherType}&size=250&page=${page}&sort=voucherDate,DESC`
+    const base = `/voucherlist?voucherType=${voucherType}&voucherStatus=${STATUS_FILTER}&size=250&page=${page}&sort=voucherDate,DESC`
     const url = withDateFilter ? `${base}&voucherDateFrom=${fromDate}` : base
     let res = await lexFetch(url)
     if (!res.ok && withDateFilter && page === 0) {
