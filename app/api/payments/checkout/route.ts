@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       {
         price_data: {
           currency: 'eur',
-          unit_amount: toCents(booking.total_price),
+          unit_amount: toCents(Number(booking.total_price)), // §221 numeric -> number
           product_data: {
             name: listing?.title ?? 'Unterkunft',
             description: `${booking.check_in} – ${booking.check_out} · ${booking.adults ?? 1} Gäste`,
