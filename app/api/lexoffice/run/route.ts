@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix, findVoucherByNumber } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix, findVoucherByNumber, invoiceAudit } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -39,6 +39,10 @@ export async function POST(request: NextRequest) {
     // §221: Rechnungen mit falschem (gerundetem) Betrag finden — und die
     // noch OFFENEN neu ausstellen. dryRun ist Default.
     // §221: Beleg-ID zu einer Rechnungsnummer (Vorstufe zu lex-link)
+    // §222: Bilanz-Prüfung — wird jede Buchung nur EINMAL fakturiert?
+    if (b.action === 'invoice-audit') {
+      return NextResponse.json(await invoiceAudit(typeof b.from === 'string' ? b.from : undefined))
+    }
     if (b.action === 'lex-find' && typeof b.voucherNumber === 'string') {
       return NextResponse.json(await findVoucherByNumber(b.voucherNumber))
     }
