@@ -379,11 +379,11 @@ interface LexVoucher {
   voucherDate: string; contactName: string; totalAmount: number
 }
 
-async function fetchVoucherlist(fromDate: string): Promise<{ vouchers: LexVoucher[]; error?: string }> {
+async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Promise<{ vouchers: LexVoucher[]; error?: string }> {
   const vouchers: LexVoucher[] = []
   let withDateFilter = true
   for (let page = 0; page < 40; page++) {
-    const base = `/voucherlist?voucherType=invoice&voucherStatus=draft,open,paid,voided&size=250&page=${page}&sort=voucherDate,DESC`
+    const base = `/voucherlist?voucherType=${voucherType}&voucherStatus=draft,open,paid,voided&size=250&page=${page}&sort=voucherDate,DESC`
     const url = withDateFilter ? `${base}&voucherDateFrom=${fromDate}` : base
     let res = await lexFetch(url)
     if (!res.ok && withDateFilter && page === 0) {
@@ -688,6 +688,83 @@ export async function findVoucherByNumber(voucherNumber: string): Promise<
   const hit = vouchers.find((v) => (v.voucherNumber ?? '').toUpperCase() === voucherNumber.toUpperCase())
   if (!hit) return { ok: false, error: `Beleg ${voucherNumber} nicht gefunden` }
   return { ok: true, id: hit.id, number: hit.voucherNumber ?? undefined, status: hit.voucherStatus ?? undefined, total: hit.totalAmount ?? undefined }
+}
+
+export interface InvoiceAuditReport {
+  zeitraum: string
+  rechnungen: { anzahl: number; summe: number }
+  gutschriften: { anzahl: number; summe: number }
+  storniert: number
+  entwuerfe: number
+  nettoUmsatz: number
+  verdaechtig: { kontakt: string; netto: number; belege: string[] }[]
+  offeneGutschriften: { beleg: string; kontakt: string; betrag: number }[]
+  hinweis: string
+}
+
+/**
+ * §222: Bilanz-Prüfung nach den Storno-/Neuausstellungs-Runden — zählt jede
+ * Buchung wirklich nur EINMAL? Holt Rechnungen UND Gutschriften aus
+ * lexoffice, gruppiert nach Kontakt und rechnet netto (Rechnungen minus
+ * Gutschriften; stornierte Belege zählen nirgends mit). Verdächtig ist ein
+ * Kontakt, dessen Netto deutlich über seiner größten Einzelrechnung liegt —
+ * das wäre eine doppelt fakturierte Buchung.
+ */
+export async function invoiceAudit(from = '2026-04-01'): Promise<InvoiceAuditReport> {
+  const report: InvoiceAuditReport = {
+    zeitraum: `ab ${from}`,
+    rechnungen: { anzahl: 0, summe: 0 }, gutschriften: { anzahl: 0, summe: 0 },
+    storniert: 0, entwuerfe: 0, nettoUmsatz: 0, verdaechtig: [], offeneGutschriften: [],
+    hinweis: '',
+  }
+  if (!lexofficeConfigured()) { report.hinweis = 'LEXOFFICE_API_KEY fehlt'; return report }
+
+  const [inv, cred] = await Promise.all([
+    fetchVoucherlist(from, 'invoice'),
+    fetchVoucherlist(from, 'creditnote'),
+  ])
+  if (inv.error || cred.error) report.hinweis = [inv.error, cred.error].filter(Boolean).join(' · ')
+
+  const key = (n: string) => n.toLowerCase().replace(/\s+/g, ' ').trim()
+  type Item = { nr: string; typ: 'R' | 'G'; status: string; betrag: number }
+  const byContact = new Map<string, { name: string; items: Item[] }>()
+  const add = (v: LexVoucher, typ: 'R' | 'G') => {
+    if (v.voucherStatus === 'voided') { report.storniert++; return }
+    if (v.voucherStatus === 'draft') { report.entwuerfe++; return }
+    const betrag = Number.isFinite(v.totalAmount) ? v.totalAmount : 0
+    if (typ === 'R') { report.rechnungen.anzahl++; report.rechnungen.summe += betrag }
+    else {
+      report.gutschriften.anzahl++; report.gutschriften.summe += betrag
+      if (v.voucherStatus === 'open') report.offeneGutschriften.push({ beleg: v.voucherNumber, kontakt: v.contactName, betrag })
+    }
+    const k = key(v.contactName)
+    if (!byContact.has(k)) byContact.set(k, { name: v.contactName, items: [] })
+    byContact.get(k)!.items.push({ nr: v.voucherNumber, typ, status: v.voucherStatus, betrag })
+  }
+  for (const v of inv.vouchers) add(v, 'R')
+  for (const v of cred.vouchers) add(v, 'G')
+
+  report.rechnungen.summe = Math.round(report.rechnungen.summe * 100) / 100
+  report.gutschriften.summe = Math.round(report.gutschriften.summe * 100) / 100
+  report.nettoUmsatz = Math.round((report.rechnungen.summe - report.gutschriften.summe) * 100) / 100
+
+  for (const { name, items } of byContact.values()) {
+    const rechnungen = items.filter((i) => i.typ === 'R')
+    if (rechnungen.length < 2) continue // eine Rechnung = nie doppelt
+    const netto = items.reduce((sum, i) => sum + (i.typ === 'R' ? i.betrag : -i.betrag), 0)
+    const groesste = Math.max(...rechnungen.map((i) => i.betrag))
+    // Mehr Netto als die größte Einzelrechnung + 1 ct ⇒ mindestens eine
+    // Buchung wurde doppelt fakturiert (bei Gästen mit MEHREREN Aufenthalten
+    // ist das legitim — darum steht die Belegliste dabei).
+    if (netto > groesste + 0.01) {
+      report.verdaechtig.push({
+        kontakt: name, netto: Math.round(netto * 100) / 100,
+        belege: items.map((i) => `${i.typ === 'R' ? '' : '−'}${i.nr} ${i.betrag.toFixed(2)} (${i.status})`),
+      })
+    }
+  }
+  report.verdaechtig.sort((a, b) => b.netto - a.netto)
+  return report
 }
 
 export async function priceFix(opts: { dryRun?: boolean; limit?: number } = {}): Promise<PriceFixReport> {
