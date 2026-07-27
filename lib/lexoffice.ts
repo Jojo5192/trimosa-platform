@@ -272,6 +272,10 @@ async function upsertRow(bookingId: string, patch: Record<string, unknown>) {
  */
 export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean; creditNoteId?: string; standalone?: boolean; note?: string; error?: string }> {
   const orig = await lexFetch(`/invoices/${lexofficeId}`)
+  // 404: Der Beleg existiert nicht mehr (z. B. ein Entwurf, den jemand in der
+  // lexoffice-UI gelöscht hat) — dann gibt es nichts zu stornieren, und die
+  // Neu-Ausstellung darf trotzdem laufen.
+  if (orig.status === 404) return { ok: true, note: 'Originalbeleg existiert nicht mehr (gelöscht) — kein Storno nötig.' }
   if (!orig.ok) return { ok: false, error: `Original nicht ladbar (HTTP ${orig.status})` }
   const inv = await orig.json().catch(() => null) as {
     address?: Record<string, unknown>
