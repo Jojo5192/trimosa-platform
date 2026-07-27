@@ -678,6 +678,18 @@ export interface PriceFixReport {
  * (Storno + Neuausstellung mit Belegdatum = Anreisetag, Empfänger bleibt).
  * Bezahlte bleiben bewusst unangetastet (Inhaber-Entscheid).
  */
+/** §221: Beleg-ID zu einer Rechnungsnummer finden (für lex-link, wenn eine
+ *  Rechnung manuell in lexoffice erstellt wurde und die App sie nicht kennt). */
+export async function findVoucherByNumber(voucherNumber: string): Promise<
+  { ok: boolean; id?: string; number?: string; status?: string; total?: number; error?: string }
+> {
+  const { vouchers, error } = await fetchVoucherlist('2026-01-01')
+  if (error) return { ok: false, error }
+  const hit = vouchers.find((v) => (v.voucherNumber ?? '').toUpperCase() === voucherNumber.toUpperCase())
+  if (!hit) return { ok: false, error: `Beleg ${voucherNumber} nicht gefunden` }
+  return { ok: true, id: hit.id, number: hit.voucherNumber ?? undefined, status: hit.voucherStatus ?? undefined, total: hit.totalAmount ?? undefined }
+}
+
 export async function priceFix(opts: { dryRun?: boolean; limit?: number } = {}): Promise<PriceFixReport> {
   const dryRun = opts.dryRun !== false
   const limit = Math.min(Math.max(opts.limit ?? 25, 1), 60)
