@@ -270,7 +270,7 @@ async function upsertRow(bookingId: string, patch: Record<string, unknown>) {
  * Originalrechnung aus. Positionen/Adresse werden aus der Original-
  * rechnung gespiegelt.
  */
-export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean; creditNoteId?: string; error?: string }> {
+export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean; creditNoteId?: string; standalone?: boolean; note?: string; error?: string }> {
   const orig = await lexFetch(`/invoices/${lexofficeId}`)
   if (!orig.ok) return { ok: false, error: `Original nicht ladbar (HTTP ${orig.status})` }
   const inv = await orig.json().catch(() => null) as {
@@ -278,8 +278,11 @@ export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean;
     lineItems?: { type?: string; name?: string; description?: string; quantity?: number; unitName?: string; unitPrice?: Record<string, unknown> }[]
     taxConditions?: { taxType?: string }
     voucherNumber?: string
+    voucherStatus?: string
   } | null
   if (!inv) return { ok: false, error: 'Original nicht lesbar' }
+  // Idempotent: schon storniert -> nichts zu tun.
+  if (inv.voucherStatus === 'voided') return { ok: true, note: 'Original war bereits storniert.' }
 
   const a = inv.address ?? {}
   const address: Record<string, unknown> = a.contactId
@@ -291,16 +294,30 @@ export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean;
         ...(a.zip ? { zip: a.zip } : {}),
         ...(a.city ? { city: a.city } : {}),
       }
+  const taxType = inv.taxConditions?.taxType ?? 'gross'
   const lineItems = (inv.lineItems ?? [])
     .filter((li) => li.type !== 'text')
-    .map((li) => ({
-      type: 'custom',
-      name: li.name ?? 'Position',
-      ...(li.description ? { description: li.description } : {}),
-      quantity: li.quantity ?? 1,
-      unitName: li.unitName ?? 'Pauschale',
-      unitPrice: li.unitPrice,
-    }))
+    .map((li) => {
+      // unitPrice NICHT roh spiegeln: lexoffice liefert im GET net- UND
+      // grossAmount; beim erneuten POST validiert es beide gegeneinander
+      // und lehnt Cent-Rundungsdifferenzen mit 406 ab. Nur die zur taxType
+      // passende Seite + Steuersatz senden.
+      const up = (li.unitPrice ?? {}) as Record<string, unknown>
+      return {
+        type: 'custom',
+        name: li.name ?? 'Position',
+        ...(li.description ? { description: li.description } : {}),
+        quantity: li.quantity ?? 1,
+        unitName: li.unitName ?? 'Pauschale',
+        unitPrice: {
+          currency: up.currency ?? 'EUR',
+          taxRatePercentage: up.taxRatePercentage ?? 7,
+          ...(taxType === 'net'
+            ? { netAmount: up.netAmount }
+            : { grossAmount: up.grossAmount ?? up.netAmount }),
+        },
+      }
+    })
   if (!lineItems.length) return { ok: false, error: 'Original ohne Positionen' }
 
   const payload = {
@@ -308,19 +325,32 @@ export async function stornoInvoice(lexofficeId: string): Promise<{ ok: boolean;
     address,
     lineItems,
     totalPrice: { currency: 'EUR' },
-    taxConditions: { taxType: inv.taxConditions?.taxType ?? 'gross' },
+    taxConditions: { taxType },
     remark: `Storno zu Rechnung ${inv.voucherNumber ?? lexofficeId} (Rechnungskorrektur).`,
   }
-  const res = await lexFetch(`/credit-notes?precedingSalesVoucherId=${lexofficeId}&finalize=true`, {
+  const post = (query: string) => lexFetch(`/credit-notes?${query}`, {
     method: 'POST', body: JSON.stringify(payload),
   })
+  let res = await post(`precedingSalesVoucherId=${lexofficeId}&finalize=true`)
+  let standalone = false
+  if (!res.ok && (res.status === 406 || res.status === 400)) {
+    // Ist die Originalrechnung bereits bezahlt/verrechnet (Bankabgleich),
+    // kann lexoffice sie nicht erneut über precedingSalesVoucherId
+    // ausgleichen -> als EIGENSTAENDIGE Stornorechnung anlegen; der Bezug
+    // steht im remark, die Verrechnung ist 1 Klick in lexoffice.
+    const b1 = await res.text().catch(() => '')
+    console.warn('[lexoffice] Storno mit preceding scheiterte (HTTP', res.status,
+      '· Original-Status', inv.voucherStatus ?? '?', ') → Retry standalone:', b1.slice(0, 200))
+    res = await post('finalize=true')
+    standalone = true
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    return { ok: false, error: `Storno HTTP ${res.status}: ${body.slice(0, 300)}` }
+    return { ok: false, error: `Storno HTTP ${res.status} (Original-Status: ${inv.voucherStatus ?? '?'}): ${body.slice(0, 300)}` }
   }
   const created = await res.json().catch(() => null) as { id?: string } | null
-  console.log('[lexoffice] Storno erstellt für', inv.voucherNumber ?? lexofficeId, '→', created?.id)
-  return { ok: true, creditNoteId: created?.id }
+  console.log('[lexoffice] Storno erstellt für', inv.voucherNumber ?? lexofficeId, '→', created?.id, standalone ? '(standalone)' : '')
+  return { ok: true, creditNoteId: created?.id, standalone }
 }
 
 /** PDF einer Rechnung als Buffer (render document → file download). */
