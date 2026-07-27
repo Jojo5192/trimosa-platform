@@ -1384,6 +1384,30 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
               {items.map((msg, i) => {
                 const isMe     = isOurSide(msg, active)
+                // 📋 §220: INTERNE NOTIZ (Telefonnotizen der KI, Test-Anrufe,
+                // nicht zustellbare Nachrichten) — trägt das ☎️-Präfix, ist
+                // beim Gast ausgefiltert und darf im Team-Chat NICHT wie eine
+                // gesendete Nachricht aussehen.
+                if (team && String(msg.content ?? '').startsWith('☎️')) {
+                  const body = String(msg.content).replace(/^☎️\s*/, '')
+                  const istTest = /^TEST-Anruf|^NICHT ZUSTELLBAR/i.test(body)
+                  return (
+                    <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                      <div style={{
+                        maxWidth: '86%', padding: '9px 13px', borderRadius: 12,
+                        background: istTest ? '#FFF7E6' : '#F4F3EF',
+                        border: `1px solid ${istTest ? '#E8CE96' : '#E2DED4'}`,
+                        fontSize: 13, lineHeight: 1.45, color: '#5A5548', whiteSpace: 'pre-wrap',
+                      }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, color: istTest ? '#A8791C' : '#8E8875', marginBottom: 4 }}>
+                          {istTest ? '🧪 NUR INTERN — NICHT AN DEN GAST GESENDET' : '📋 INTERNE NOTIZ — der Gast sieht das nicht'}
+                        </div>
+                        {body}
+                        <div style={{ fontSize: 10, color: '#A8A292', marginTop: 5 }}>{fmtMsgT(msg.created_at, uiLang)}</div>
+                      </div>
+                    </div>
+                  )
+                }
                 const prevSame = i > 0 && items[i - 1].sender_id === msg.sender_id
                 const nextSame = i < items.length - 1 && items[i + 1].sender_id === msg.sender_id
                 const isLast   = !nextSame
