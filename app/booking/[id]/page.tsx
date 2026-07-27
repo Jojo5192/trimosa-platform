@@ -81,7 +81,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
               { label: t(lang, 'Nächte'), val: String(nights) },
               { label: t(lang, 'Erwachsene'), val: String(booking.adults ?? 1) },
               ...(booking.children ? [{ label: t(lang, 'Kinder'), val: String(booking.children) }] : []),
-              { label: t(lang, 'Gesamtpreis'), val: `€ ${booking.total_price}` },
+              { label: t(lang, 'Gesamtpreis'), val: `€ ${Number(booking.total_price ?? 0).toFixed(2)}` },
             ].map(({ label, val }) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F5F3EF', fontSize: '13px' }}>
                 <span style={{ color: '#888' }}>{label}</span>
