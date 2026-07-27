@@ -413,7 +413,7 @@ export async function POST(request: Request) {
           guest_name: r.guestName,
           check_in: r.arrival,
           check_out: r.departure,
-          total_price: Math.round(r.price ?? 0),
+          total_price: Math.round((r.price ?? 0) * 100) / 100, // §221 cent-genau
           status: 'confirmed',
           channel: r.channelName ?? 'Smoobu',
           source: 'smoobu_backfill',
