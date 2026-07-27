@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches, foldName } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches, foldName, isTeamCaller, deliverToGuest } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -26,6 +26,17 @@ type BRow = {
   door_code: string | null
   portal_token: string | null
   listings: { title: string | null; check_in_time?: string | null } | null
+}
+
+/**
+ * §220: Was der Bot dem Anrufer über die Zustellung sagen darf — und die
+ * Test-Warnung, damit ein Test nie wie ein echter Versand klingt.
+ */
+function deliveryHint(delivery: string, was: string): string {
+  if (delivery === 'smoobu') return ` — ${was} haben wir ihm zusätzlich in den Chat der Buchungsplattform geschickt.`
+  if (delivery === 'email') return ` — ${was} haben wir ihm zusätzlich per E-Mail geschickt.`
+  if (delivery === 'intern') return ` — 🧪 TESTMODUS: an den Gast wurde NICHTS gesendet (Anruf ohne Rufnummer oder von einer Team-Nummer). Sag das dem Anrufer offen, wenn er nachfragt.`
+  return ` — Achtung: ${was} konnten wir ihm NICHT zusätzlich zusenden (kein Chat-Kanal, keine E-Mail-Adresse). Also gut vorlesen.`
 }
 
 async function loadBooking(id: string): Promise<BRow | null> {
@@ -202,6 +213,9 @@ export async function POST(request: Request) {
 
   const firstName = (booking.guest_name ?? '').split(/\s+/)[0] ?? ''
   const title = booking.listings?.title ?? 'deiner Wohnung'
+  // §220: TEST-Erkennung — ohne Anrufer-Nummer (Browser-Konsole) oder von
+  // einer Team-Nummer geht NICHTS an den echten Gast raus.
+  const testMode = !caller || await isTeamCaller(caller)
 
   // ── Türcode-Anfrage (§180, Inhaber-Policy): Ab ANREISETAG bis Ende
   //    Abreisetag wird der Code ganz normal am Telefon genannt (Gast ist
@@ -219,22 +233,18 @@ export async function POST(request: Request) {
     }
 
     if (!staying) {
-      // Vor der Anreise: Mappe-Link in den Chat, Code kommt automatisch
-      let chatSent = false
-      try {
-        const content = [
-          `📖 Wie eben am Telefon besprochen: Hier nochmal der Link zu deiner Gästemappe${mappe ? ` — ${mappe}` : ' (der Link kam mit deiner Buchung)'}.`,
-          'Dein Türcode erscheint dort automatisch wenige Tage vor der Anreise.',
-        ].join('\n')
-        const { error } = await supabaseAdmin.from('messages').insert({
-          booking_id: booking.id, sender_type: 'host', content, lang: 'de',
-        })
-        chatSent = !error
-      } catch { /* best effort */ }
+      // Vor der Anreise: Mappe-Link an den Gast, Code kommt dort automatisch
+      const content = [
+        `📖 Wie eben am Telefon besprochen: Hier nochmal der Link zu deiner Gästemappe${mappe ? ` — ${mappe}` : ' (der Link kam mit deiner Buchung)'}.`,
+        'Dein Türcode erscheint dort automatisch wenige Tage vor der Anreise.',
+      ].join('\n')
+      const sent = await deliverToGuest(booking.id, content, { testMode })
       return Response.json({
         verified: true, guest_first_name: firstName, apartment: title,
-        mappe_link_sent: chatSent,
-        hint: 'Code jetzt noch NICHT nennen (Anreise liegt in der Zukunft). Dem Gast sagen: Der Code erscheint automatisch wenige Tage vor der Anreise in der Gästemappe' + (chatSent ? ' — den Mappen-Link haben wir ihm gerade nochmal in den Chat geschickt.' : ' (Link kam mit der Buchung).'),
+        mappe_link_sent: sent.delivery === 'smoobu' || sent.delivery === 'email',
+        delivery: sent.delivery,
+        hint: 'Code jetzt noch NICHT nennen (Anreise liegt in der Zukunft). Dem Gast sagen: Der Code erscheint automatisch wenige Tage vor der Anreise in der Gästemappe'
+          + deliveryHint(sent.delivery, 'den Mappen-Link'),
       })
     }
 
@@ -253,17 +263,12 @@ export async function POST(request: Request) {
       })
     }
 
-    let chatSent = false
-    try {
-      const content = [
-        `🔐 Wie eben am Telefon besprochen: Dein Türcode für ${title} ist ${code}.`,
-        mappe ? `Du findest ihn jederzeit auch in deiner Gästemappe: ${mappe}` : '',
-      ].filter(Boolean).join('\n')
-      const { error } = await supabaseAdmin.from('messages').insert({
-        booking_id: booking.id, sender_type: 'host', content, lang: 'de',
-      })
-      chatSent = !error
-    } catch { /* best effort */ }
+    const codeMsg = [
+      `🔐 Wie eben am Telefon besprochen: Dein Türcode für ${title} ist ${code}.`,
+      mappe ? `Du findest ihn jederzeit auch in deiner Gästemappe: ${mappe}` : '',
+    ].filter(Boolean).join('\n')
+    const sent = await deliverToGuest(booking.id, codeMsg, { testMode })
+    const chatSent = sent.delivery === 'smoobu' || sent.delivery === 'email'
 
     // §189/§190: Ausgesperrt = erst GEMEINSAM lösen, nicht sofort eskalieren —
     // Prüfschritte aber NUR bei Bedarf, nicht vorab herunterbeten
@@ -286,7 +291,8 @@ export async function POST(request: Request) {
       apartment: title,
       door_code: code,
       chat_sent: chatSent,
-      hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + (chatSent ? ' — er steht jetzt zusätzlich im Chat bzw. in der Gästemappe.' : '.')
+      delivery: sent.delivery,
+      hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + deliveryHint(sent.delivery, 'den Code')
         + earlyNote
         + (doorInfo ? ` ${doorInfo}` : '')
         + ' Danach nur fragen, ob es geklappt hat — KEINE Bedienungs-Anleitung vorab. NUR falls der Gast nach dem Versuch nicht reinkommt, gemeinsam eingrenzen (eine Frage nach der anderen): 1) Welchen Code hat er eingetippt? Mit diesem abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. 2) Wurde die Eingabe mit dem Häkchen (✓) bestätigt? 3) Was zeigt das Keypad — rotes Licht, gar kein Licht (kann leere Batterie heißen), ein Ton? Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.',
