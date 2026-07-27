@@ -380,10 +380,14 @@ interface LexVoucher {
 }
 
 async function fetchVoucherlist(fromDate: string, voucherType = 'invoice'): Promise<{ vouchers: LexVoucher[]; error?: string }> {
+  // ⚠️ Verrechnete Gutschriften tragen den Status „paidoff" (in der UI
+  // „ausbezahlt") — ohne ihn kam die Gutschriften-Abfrage LEER zurück und
+  // das Audit hielt jedes Storno-Paar für eine Doppel-Fakturierung.
+  const STATUS_FILTER = 'draft,open,paid,paidoff,voided,overdue'
   const vouchers: LexVoucher[] = []
   let withDateFilter = true
   for (let page = 0; page < 40; page++) {
-    const base = `/voucherlist?voucherType=${voucherType}&voucherStatus=draft,open,paid,voided&size=250&page=${page}&sort=voucherDate,DESC`
+    const base = `/voucherlist?voucherType=${voucherType}&voucherStatus=${STATUS_FILTER}&size=250&page=${page}&sort=voucherDate,DESC`
     const url = withDateFilter ? `${base}&voucherDateFrom=${fromDate}` : base
     let res = await lexFetch(url)
     if (!res.ok && withDateFilter && page === 0) {
@@ -729,11 +733,15 @@ export async function invoiceAudit(from = '2026-04-01'): Promise<InvoiceAuditRep
   // und der Gutschriften-Teil kam leer zurück (Audit wäre wertlos gewesen).
   const inv = await fetchVoucherlist(from, 'invoice')
   await new Promise((ok) => setTimeout(ok, 700))
-  const cred = await fetchVoucherlist(from, 'creditnote')
+  let cred = await fetchVoucherlist(from, 'creditnote')
+  if (!cred.error && !cred.vouchers.length) {
+    await new Promise((ok) => setTimeout(ok, 700))
+    cred = await fetchVoucherlist(from, 'salescreditnote')
+  }
   if (inv.error || cred.error) report.hinweis = [inv.error, cred.error].filter(Boolean).join(' · ')
 
   const key = (n: string) => n.toLowerCase().replace(/\s+/g, ' ').trim()
-  type Item = { nr: string; typ: 'R' | 'G'; status: string; betrag: number }
+  type Item = { nr: string; typ: 'R' | 'G'; status: string; betrag: number; datum: string }
   const byContact = new Map<string, { name: string; items: Item[] }>()
   const add = (v: LexVoucher, typ: 'R' | 'G') => {
     if (v.voucherStatus === 'voided') { report.storniert++; return }
@@ -746,7 +754,7 @@ export async function invoiceAudit(from = '2026-04-01'): Promise<InvoiceAuditRep
     }
     const k = key(v.contactName)
     if (!byContact.has(k)) byContact.set(k, { name: v.contactName, items: [] })
-    byContact.get(k)!.items.push({ nr: v.voucherNumber, typ, status: v.voucherStatus, betrag })
+    byContact.get(k)!.items.push({ nr: v.voucherNumber, typ, status: v.voucherStatus, betrag, datum: v.voucherDate })
   }
   for (const v of inv.vouchers) add(v, 'R')
   for (const v of cred.vouchers) add(v, 'G')
@@ -766,7 +774,7 @@ export async function invoiceAudit(from = '2026-04-01'): Promise<InvoiceAuditRep
     if (netto > groesste + 0.01) {
       report.verdaechtig.push({
         kontakt: name, netto: Math.round(netto * 100) / 100,
-        belege: items.map((i) => `${i.typ === 'R' ? '' : '−'}${i.nr} ${i.betrag.toFixed(2)} (${i.status})`),
+        belege: items.map((i) => `${i.typ === 'R' ? '' : '−'}${i.nr} ${i.datum} ${i.betrag.toFixed(2)} (${i.status})`),
       })
     }
   }
