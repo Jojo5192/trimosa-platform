@@ -335,7 +335,8 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
 
   // ── Unsere Buchung anreichern (nur LEERE Felder — nie überschreiben) ──
   const upd: Record<string, unknown> = {}
-  const preis = typeof parsed.buchungsbetrag === 'number' ? Math.round(parsed.buchungsbetrag) : null
+  // §221: cent-genau (total_price ist numeric(10,2))
+  const preis = typeof parsed.buchungsbetrag === 'number' ? Math.round(parsed.buchungsbetrag * 100) / 100 : null
   if (preis && (!booking.total_price || booking.total_price === 0)) upd.total_price = preis
   if (typeof parsed.erwachsene === 'number' && parsed.erwachsene > 0 && (booking.adults == null || booking.adults <= 1)) upd.adults = parsed.erwachsene
   if (typeof parsed.kinder === 'number' && (booking.children == null || booking.children === 0) && parsed.kinder > 0) upd.children = parsed.kinder
