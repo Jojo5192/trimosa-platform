@@ -60,7 +60,7 @@ function channelLabel(b: { channel?: string | null; source?: string | null }): s
 interface BookingRow {
   id: string; status: string; source: string | null; payment_status: string | null
   check_in: string; check_out: string; guest_name: string | null; guest_id: string | null
-  total_price: number | null; channel: string | null; listing_id: string | null
+  total_price: number | string | null; channel: string | null; listing_id: string | null
   adults: number | null; children: number | null
 }
 
