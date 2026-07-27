@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage } from '@/lib/smoobu'
+import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 
 /**
@@ -82,8 +82,10 @@ export async function GET(
         if (!sm.message?.trim()) continue
         // Smoobu-Automatik-/Schloss-Protokolle nicht in den Chat holen (§143)
         if (isSmoobuSystemMessage(sm.subject)) continue
-        const content = sm.message.trim()
         const fromHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
+        // §219: Booking-Echo — Betreff-Zeile aus dem Body strippen (nur Host-Seite)
+        const content = (fromHost ? stripSubjectEcho(sm.subject, sm.message) : sm.message).trim()
+        if (!content) continue
         if (known.has(String(sm.id))) {
           // already imported — if an unclaimed local twin exists, it IS the
           // duplicate the team sees: remove it (self-healing)
@@ -100,6 +102,16 @@ export async function GET(
             await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
             continue
           }
+          // §219: Echo-Dedupe — identische Host-Nachricht (mit eigener
+          // Smoobu-ID) im ±30-Min-Fenster = Smoobus Portal-Echo → skip.
+          const at = sm.date ? new Date(sm.date).getTime() : Date.now()
+          const { data: echoTwin } = await supabaseAdmin
+            .from('messages').select('id')
+            .eq('booking_id', bookingId).eq('sender_type', 'host').eq('content', content)
+            .gte('created_at', new Date(at - 30 * 60_000).toISOString())
+            .lte('created_at', new Date(at + 30 * 60_000).toISOString())
+            .limit(1).maybeSingle()
+          if (echoTwin) continue
         }
         // insert (not upsert): the partial unique index on smoobu_message_id
         // doesn't match ON CONFLICT without its predicate
