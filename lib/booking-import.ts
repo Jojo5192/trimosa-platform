@@ -42,7 +42,7 @@ export async function importMissingReservations(futureDays = 120): Promise<{ imp
         guest_name: r.guestName,
         check_in: r.arrival,
         check_out: r.departure,
-        total_price: Math.round(r.price ?? 0),
+        total_price: Math.round((r.price ?? 0) * 100) / 100, // §221 cent-genau
         adults: (r.adults ?? 0) > 0 ? r.adults : 1,
         children: r.children ?? 0,
         status: 'confirmed',
@@ -103,9 +103,14 @@ export async function importMissingReservations(futureDays = 120): Promise<{ imp
       upd.adults = smAdults
       upd.children = r.children ?? 0
     }
+    // §221: Preis-Abgleich jetzt CENT-genau (vorher Toleranz 1 EUR — dadurch
+    // blieben die alten, auf ganze Euro gerundeten Beträge stehen und gingen
+    // so auf die Rechnungen). Website-Buchungen bleiben unangetastet: dort
+    // ist der gezahlte Stripe-Betrag maßgeblich, nicht Smoobus Kopie.
     const dbPrice = Number(b.total_price ?? 0)
-    if (b.source !== 'trimosa' && (r.price ?? 0) > 0 && Math.abs((r.price ?? 0) - dbPrice) > 1) {
-      upd.total_price = Math.round(r.price ?? 0)
+    const smPrice = Math.round((r.price ?? 0) * 100) / 100
+    if (b.source !== 'trimosa' && smPrice > 0 && Math.abs(smPrice - dbPrice) >= 0.01) {
+      upd.total_price = smPrice
     }
     if (Object.keys(upd).length) {
       const { error } = await supabaseAdmin.from('bookings').update(upd).eq('id', b.id)
