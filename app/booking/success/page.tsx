@@ -257,7 +257,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
             <p style={{ fontWeight: 700, fontSize: '14px', color: '#111', margin: '0 0 4px' }}>{listing.title}</p>
             <p style={{ fontSize: '12px', color: '#888', margin: '0 0 8px' }}>📍 {listing.location}</p>
             <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>
-              {booking.check_in as string} – {booking.check_out as string} · €{booking.total_price as number}
+              {booking.check_in as string} – {booking.check_out as string} · €{Number(booking.total_price ?? 0).toFixed(2)}
             </p>
           </div>
         )}
