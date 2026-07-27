@@ -174,7 +174,7 @@ export default function BookingDetailClient({
           { label: t(uiLang, 'Gäste'), value: `${booking.adults} ${t(uiLang, 'Erwachsene')}${booking.children ? `, ${booking.children} ${t(uiLang, 'Kinder')}` : ''}` },
           { label: t(uiLang, 'Buchungsart'), value: booking.booking_type === 'instant' ? `⚡ ${t(uiLang, 'Sofortbuchung')}` : `✉ ${t(uiLang, 'Anfrage')}` },
           { label: t(uiLang, 'Zahlung'), value: booking.payment_status === 'paid' ? `✓ ${t(uiLang, 'Bezahlt')}` : booking.payment_status === 'pending' ? t(uiLang, 'Ausstehend') : booking.payment_status },
-          { label: t(uiLang, 'Gesamtpreis'), value: `€ ${booking.total_price}`, bold: true },
+          { label: t(uiLang, 'Gesamtpreis'), value: `€ ${Number(booking.total_price ?? 0).toFixed(2)}`, bold: true },
         ].map(row => (
           <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F5F5F7' }}>
             <span style={{ fontSize: '13px', color: '#888' }}>{row.label}</span>
