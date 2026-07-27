@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix, findVoucherByNumber } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -38,6 +38,10 @@ export async function POST(request: NextRequest) {
     // §160: Q2-Nachschau — reine Abgleich-LISTE, nichts wird erstellt
     // §221: Rechnungen mit falschem (gerundetem) Betrag finden — und die
     // noch OFFENEN neu ausstellen. dryRun ist Default.
+    // §221: Beleg-ID zu einer Rechnungsnummer (Vorstufe zu lex-link)
+    if (b.action === 'lex-find' && typeof b.voucherNumber === 'string') {
+      return NextResponse.json(await findVoucherByNumber(b.voucherNumber))
+    }
     if (b.action === 'price-fix') {
       const r = await priceFix({
         dryRun: b.dryRun !== false,
