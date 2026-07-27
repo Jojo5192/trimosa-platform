@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page, key, content, instruction, historic, bookingId, guestName } = await request.json()
+  const { action, page, key, content, instruction, historic, bookingId, guestName, pastDays, syncOnly } = await request.json()
 
   // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
   // { action: 'review-match', dryRun?: true }
@@ -360,8 +360,13 @@ export async function POST(request: Request) {
     // §139: kompletter Kalender-Abgleich mit Smoobu — fehlende Buchungen
     // importieren (MIT Push), stornierte/gelöschte austragen. Fenster bis
     // 540 Tage in die Zukunft.
+    // §221: optional { pastDays, syncOnly } — für den Cent-Abgleich alter
+    // Buchungen (deren Rechnungen längst ausgestellt sind).
     const { importMissingReservations } = await import('@/lib/booking-import')
-    const result = await importMissingReservations(540)
+    const result = await importMissingReservations(540, {
+      ...(typeof pastDays === 'number' ? { pastDays } : {}),
+      ...(syncOnly === true ? { syncOnly: true } : {}),
+    })
     return NextResponse.json(result)
   }
   if (action === 'bookings-backfill') {
