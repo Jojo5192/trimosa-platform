@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, isSmoobuSystemMessage } from '@/lib/smoobu'
+import { getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho } from '@/lib/smoobu'
 import { sendPushToTeam } from '@/lib/push'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 
@@ -36,6 +36,9 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
     // Smoobu-Automatik-/Schloss-Protokolle NICHT in den Chat holen (§143)
     if (isSmoobuSystemMessage(sm.subject)) continue
     const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
+    // §219: Booking-Echo — Betreff-Zeile aus dem Body strippen (nur Host-Seite)
+    const content = (isHost ? stripSubjectEcho(sm.subject, sm.message) : sm.message).trim()
+    if (!content) continue
     // Zwillings-Claim für BEIDE Richtungen: Host-Nachrichten aus der Web-App
     // (POST speichert lokal ohne smoobu_message_id) UND Gast-Nachrichten aus
     // der FeWo-Mail-Pipeline (§129 saveGuestMessage — dieselbe Nachricht kann
@@ -46,24 +49,37 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
       .eq('booking_id', b.id)
       .eq('sender_type', isHost ? 'host' : 'guest')
       .is('smoobu_message_id', null)
-      .eq('content', sm.message.trim())
+      .eq('content', content)
       .limit(1)
       .maybeSingle()
     if (twin) {
       await supabaseAdmin.from('messages').update({ smoobu_message_id: String(sm.id) }).eq('id', twin.id)
       continue
     }
+    // §219: Echo-Dedupe — existiert dieselbe Host-Nachricht (bereits mit
+    // eigener Smoobu-ID) im ±30-Min-Fenster, ist dies Smoobus Portal-Echo
+    // derselben Sendung → überspringen statt doppelt anzeigen.
+    if (isHost) {
+      const at = sm.date ? new Date(sm.date).getTime() : Date.now()
+      const { data: echoTwin } = await supabaseAdmin
+        .from('messages').select('id')
+        .eq('booking_id', b.id).eq('sender_type', 'host').eq('content', content)
+        .gte('created_at', new Date(at - 30 * 60_000).toISOString())
+        .lte('created_at', new Date(at + 30 * 60_000).toISOString())
+        .limit(1).maybeSingle()
+      if (echoTwin) continue
+    }
     const { data: inserted, error } = await supabaseAdmin.from('messages').insert({
       booking_id: b.id,
       smoobu_message_id: String(sm.id),
       sender_type: isHost ? 'host' : 'guest',
-      content: sm.message.trim(),
+      content,
       created_at: sm.date || undefined,
     }).select('id').single()
     if (error || !inserted) continue
     newMessages++
-    if (!isHost) newGuestMsgs.push({ id: inserted.id, text: sm.message.trim() })
-    else newHostMsgs.push({ id: inserted.id, text: sm.message.trim() })
+    if (!isHost) newGuestMsgs.push({ id: inserted.id, text: content })
+    else newHostMsgs.push({ id: inserted.id, text: content })
   }
 
   // Host-Nachrichten nur übersetzen (kein Push)
