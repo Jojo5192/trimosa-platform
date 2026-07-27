@@ -70,6 +70,126 @@ export function nameLooselyMatches(candidate: string, guestNames: string): boole
   })
 }
 
+/**
+ * 🧪 Gehört die Anrufer-Nummer einem TEAM-Mitglied (oder fehlt sie ganz,
+ * wie beim Browser-Test in der ElevenLabs-Konsole)? Dann ist der „Anruf"
+ * ein TEST — es darf NICHTS an den echten Gast rausgehen (§220: Pascal
+ * testete mit einer echten Airbnb-Buchung).
+ */
+export async function isTeamCaller(callerNumber: string): Promise<boolean> {
+  const key = phoneKey(callerNumber)
+  if (!key || key.length < 7) return false
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('phone, is_admin, is_host, is_staff, is_provider')
+    .not('phone', 'is', null)
+  return (data ?? []).some((p) => {
+    const team = p.is_admin || p.is_host || p.is_staff || p.is_provider
+    return team && phoneKey(String(p.phone ?? '')) === key
+  })
+}
+
+export type VoiceDelivery = 'smoobu' | 'email' | 'intern' | 'none'
+
+/**
+ * 📨 §220: DER EINE WEG, wie der Anrufbot Nachrichten an Gäste bringt.
+ * Vorher legten die Voice-Routen nur eine messages-Zeile an — die sah im
+ * Team-Chat wie eine gesendete Host-Nachricht aus, erreichte den Gast aber
+ * NIE (kein Smoobu-Push, keine Mail, keine Übersetzung).
+ *
+ * Jetzt: Testmodus → interne Notiz (☎️-Präfix, für Gäste gefiltert, im
+ * Team-Chat als graue Notiz erkennbar). Echter Anruf → Text in die
+ * Gastsprache übersetzen und über den normalen Kanal zustellen
+ * (Smoobu → Portal-Chat; sonst E-Mail-Brücke), Zeile wie bei jeder
+ * Team-Antwort (content = gesendete Fassung, content_de = Original).
+ */
+export async function deliverToGuest(
+  bookingId: string,
+  textDe: string,
+  opts: { testMode: boolean },
+): Promise<{ delivery: VoiceDelivery; detail?: string }> {
+  const note = async (content: string): Promise<void> => {
+    await supabaseAdmin.from('messages').insert({
+      booking_id: bookingId, sender_type: 'host', content, lang: 'de',
+    })
+  }
+
+  if (opts.testMode) {
+    await note(`☎️ TEST-Anruf (NICHT an den Gast gesendet):\n${textDe}`)
+    return { delivery: 'intern', detail: 'Testmodus — nur interne Notiz' }
+  }
+
+  const { data: b } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_id, guest_name, guest_email, guest_lang, smoobu_reservation_id, listings(title)')
+    .eq('id', bookingId)
+    .maybeSingle() as { data: {
+      id: string; guest_id: string | null; guest_name: string | null; guest_email: string | null
+      guest_lang: string | null; smoobu_reservation_id: number | string | null
+      listings: { title: string | null } | null
+    } | null }
+  if (!b) return { delivery: 'none', detail: 'Buchung nicht gefunden' }
+
+  // Gastsprache + Übersetzung — identisch zur Auto-Nachrichten-Engine
+  let lang = 'de'
+  let text = textDe
+  try {
+    const { guestLangFor } = await import('@/lib/auto-messages-engine')
+    lang = await guestLangFor({ id: b.id, guest_id: b.guest_id, guest_lang: b.guest_lang })
+    if (lang !== 'de') {
+      const { translateOutgoing } = await import('@/lib/translate')
+      text = (await translateOutgoing(textDe, lang)) ?? textDe
+    }
+  } catch (e) {
+    console.error('[voice-deliver] Übersetzung fehlgeschlagen:', e)
+    lang = 'de'; text = textDe
+  }
+
+  const row = {
+    booking_id: bookingId, sender_type: 'host', content: text,
+    content_de: lang !== 'de' ? textDe : null, lang,
+  }
+
+  // 1) Portal-Chat über Smoobu (Airbnb/Booking/FeWo)
+  if (b.smoobu_reservation_id) {
+    try {
+      const { sendMessageToGuest } = await import('@/lib/smoobu')
+      const push = await sendMessageToGuest(Number(b.smoobu_reservation_id), text)
+      if (push.sent) {
+        await supabaseAdmin.from('messages').insert({
+          ...row, ...(push.id != null ? { smoobu_message_id: String(push.id) } : {}),
+        })
+        return { delivery: 'smoobu' }
+      }
+    } catch (e) {
+      console.error('[voice-deliver] Smoobu-Push fehlgeschlagen:', e)
+    }
+  }
+
+  // 2) E-Mail-Brücke (§140) — FeWo-Relay bzw. Login-Mail des Gast-Kontos
+  let to = (b.guest_email ?? '').trim() || null
+  if (!to && b.guest_id) {
+    const { data: u } = await supabaseAdmin.auth.admin.getUserById(b.guest_id)
+    to = u?.user?.email ?? null
+  }
+  if (to) {
+    try {
+      const { sendGuestChatEmail } = await import('@/lib/email')
+      await sendGuestChatEmail({
+        to, guestName: b.guest_name, listingTitle: b.listings?.title ?? null, text, lang,
+      })
+      await supabaseAdmin.from('messages').insert(row)
+      return { delivery: 'email', detail: to }
+    } catch (e) {
+      console.error('[voice-deliver] Gast-Mail fehlgeschlagen:', e)
+    }
+  }
+
+  // 3) Kein Kanal — ehrlich als interne Notiz festhalten
+  await note(`☎️ NICHT ZUSTELLBAR (kein Portal-Chat, keine E-Mail-Adresse):\n${textDe}`)
+  return { delivery: 'none', detail: 'kein Kanal' }
+}
+
 export interface VoiceBooking {
   id: string
   guestName: string
