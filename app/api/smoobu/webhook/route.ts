@@ -207,9 +207,10 @@ export async function POST(request: Request) {
     || [resData.firstname ?? payload.firstName, resData.lastname ?? payload.lastName].filter(Boolean).join(' ')
     || 'Externer Gast'
   const guestEmail = (resData.email ?? payload.email ?? '') as string
-  // bookings.total_price ist INTEGER — Smoobu liefert Cent-Beträge („1086.31"),
-  // ungerundet warf der Update-Zweig 22P02 und verwarf das GANZE Update (§175)
-  const totalPrice = Math.round(Number(resData.price ?? payload.price ?? payload.totalPrice ?? 0))
+  // §221: total_price ist jetzt numeric(10,2) — Smoobu-Cent-Beträge
+  // („1086.31") CENT-GENAU übernehmen. Früher rundete diese Zeile auf ganze
+  // Euro (die Spalte war integer), und der Fehler landete auf den Rechnungen.
+  const totalPrice = Math.round(Number(resData.price ?? payload.price ?? payload.totalPrice ?? 0) * 100) / 100
   const adults = Math.round(Number(resData.adults ?? 0))
   const children = Math.round(Number(resData.children ?? 0))
 
