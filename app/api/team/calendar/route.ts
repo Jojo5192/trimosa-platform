@@ -21,6 +21,14 @@ function pickRates(r: CleaningRuleSet) {
 export const dynamic = 'force-dynamic'
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
+/** §221: total_price ist numeric(10,2) — PostgREST liefert das je nach
+ *  Treiber als Zahl ODER String; für die Anzeige sicher in number wandeln. */
+function numOrNull(v: unknown): number | null {
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 export async function GET() {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
@@ -94,7 +102,7 @@ export async function GET() {
       // ALLE Rollen (Betten/Handtücher vorbereiten), keine Personendaten
       persons: ((b.adults ?? 0) + (b.children ?? 0)) || null,
       // Buchungspreis NUR für Admins/Gastgeber (§139 — Finanz-Daten)
-      totalPrice: auth.role === 'admin' ? ((b as { total_price?: number | null }).total_price ?? null) : null,
+      totalPrice: auth.role === 'admin' ? numOrNull((b as { total_price?: number | string | null }).total_price) : null,
     }))
 
   // ALLE offenen Aufgaben (auch ohne Rotfrist) — Panel nutzt fällige für die
