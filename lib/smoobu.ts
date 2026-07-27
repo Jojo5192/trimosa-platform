@@ -385,6 +385,23 @@ export async function listReservations(
  * Fetches all messages for a Smoobu reservation.
  * Pass apiKey to use the host's own Smoobu account credentials.
  */
+/**
+ * §219: Beim Portal-Versand (v. a. Booking.com) rendert Smoobu unseren
+ * Betreff („Nachricht von Trimosa") als erste Zeile IN den Nachrichtentext
+ * und spiegelt die zugestellte Fassung als ZWEITE Nachricht mit eigener ID
+ * zurück. Für Anzeige + Dedupe zählt nur der eigentliche Text: steht der
+ * Betreff wörtlich am Anfang des Bodys, wird er (samt Leerzeilen)
+ * abgeschnitten. Guard: bleibt danach nichts übrig, Body unverändert lassen.
+ */
+export function stripSubjectEcho(subject: string | undefined, body: string): string {
+  const sub = (subject ?? '').trim()
+  if (!sub) return body
+  const t = body.trimStart()
+  if (!t.startsWith(sub)) return body
+  const rest = t.slice(sub.length).replace(/^[\s]+/, '')
+  return rest.length ? rest : body
+}
+
 export async function getReservationMessages(
   smoobuReservationId: number,
   apiKey?: string,
