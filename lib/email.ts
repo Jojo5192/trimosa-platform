@@ -255,7 +255,7 @@ async function loadBooking(bookingId: string) {
     { label: 'Anreise', value: formatDateLong(booking.check_in) },
     { label: 'Abreise', value: formatDateLong(booking.check_out) },
     { label: 'Gäste', value: String(guests) },
-    { label: 'Gesamtpreis', value: `€ ${booking.total_price}` },
+    { label: 'Gesamtpreis', value: `€ ${Number(booking.total_price ?? 0).toFixed(2)}` },
   ]
   return { booking, listing, details }
 }
