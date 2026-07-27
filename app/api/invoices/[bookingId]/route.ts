@@ -79,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
       // ausstellen. Scheitert der Storno, wird abgebrochen (sonst stünden
       // zwei offene Rechnungen für dieselbe Buchung in der Buchhaltung).
       const oldNr = state.voucherNumber ?? null
+      let stornoHint = ''
       const { data: row } = await supabaseAdmin
         .from('lexoffice_invoices').select('lexoffice_id').eq('booking_id', bookingId).maybeSingle()
       if (row?.lexoffice_id) {
@@ -86,6 +87,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
         if (!st.ok) {
           return NextResponse.json({ error: `Storno der alten Rechnung fehlgeschlagen: ${st.error}` }, { status: 500 })
         }
+        if (st.standalone) stornoHint = ' ⚠️ Die alte Rechnung war schon bezahlt/verrechnet — die Stornorechnung bitte einmal in lexoffice mit ihr verrechnen.'
+        else if (st.note) stornoHint = ` (${st.note})`
       }
       const r = await createInvoiceForBooking(bookingId, { recipient, force: true })
       if (!r.ok) {
@@ -96,9 +99,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
       const fresh = await loadState(bookingId)
       return NextResponse.json({
         ...fresh,
-        hinweis: oldNr
+        hinweis: (oldNr
           ? `Alte Rechnung ${oldNr} automatisch storniert · neu ausgestellt als ${r.voucherNumber ?? '—'}.`
-          : `Neu ausgestellt (${r.voucherNumber ?? '—'}).`,
+          : `Neu ausgestellt (${r.voucherNumber ?? '—'}).`) + stornoHint,
       }, NO_STORE)
     }
     await saveRecipient(bookingId, recipient)
