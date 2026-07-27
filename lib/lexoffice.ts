@@ -658,6 +658,86 @@ export interface InvoiceRunReport {
 }
 
 /** Tageslauf (Cron 15:00): Rechnungen für die HEUTIGEN Anreisen. */
+export interface PriceFixReport {
+  geprueft: number
+  offenAbweichend: { gast: string; beleg: string | null; alt: number; neu: number; bookingId: string }[]
+  bezahltAbweichend: { gast: string; beleg: string | null; alt: number; neu: number }[]
+  storniert: number
+  ohneAbweichung: number
+  neuAusgestellt?: { gast: string; alt: string | null; neu: string | null; hinweis?: string }[]
+  fehler?: { gast: string; error: string }[]
+}
+
+/**
+ * §221: Rechnungen finden, deren Betrag nicht mehr zum (jetzt cent-genauen)
+ * Buchungsbetrag passt — und auf Wunsch die NOCH OFFENEN neu ausstellen
+ * (Storno + Neuausstellung mit Belegdatum = Anreisetag, Empfänger bleibt).
+ * Bezahlte bleiben bewusst unangetastet (Inhaber-Entscheid).
+ */
+export async function priceFix(opts: { dryRun?: boolean; limit?: number } = {}): Promise<PriceFixReport> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(opts.limit ?? 25, 1), 60)
+  const report: PriceFixReport = { geprueft: 0, offenAbweichend: [], bezahltAbweichend: [], storniert: 0, ohneAbweichung: 0 }
+  if (!lexofficeConfigured()) return report
+
+  const { data: rows } = await supabaseAdmin
+    .from('lexoffice_invoices')
+    .select('booking_id, lexoffice_id, voucher_number, amount')
+    .not('lexoffice_id', 'is', null)
+  if (!rows?.length) return report
+
+  const ids = rows.map((r) => r.booking_id as string)
+  const prices = new Map<string, { price: number; gast: string; checkIn: string }>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data: bs } = await supabaseAdmin
+      .from('bookings').select('id, total_price, guest_name, check_in').in('id', ids.slice(i, i + 200))
+    for (const b of bs ?? []) {
+      prices.set(b.id as string, {
+        price: Number((b as { total_price?: unknown }).total_price ?? 0),
+        gast: ((b as { guest_name?: string | null }).guest_name) ?? 'Gast',
+        checkIn: String((b as { check_in?: string }).check_in ?? ''),
+      })
+    }
+  }
+
+  for (const r of rows) {
+    const b = prices.get(r.booking_id as string)
+    if (!b || !(b.price > 0)) continue
+    report.geprueft++
+    const alt = Number(r.amount ?? 0)
+    if (Math.abs(alt - b.price) < 0.005) { report.ohneAbweichung++; continue }
+    // Status der Rechnung in lexoffice holen (Rate-Limit 2/s)
+    const res = await lexFetch(`/invoices/${r.lexoffice_id}`)
+    await new Promise((ok) => setTimeout(ok, 550))
+    if (!res.ok) continue
+    const inv = await res.json().catch(() => null) as { voucherStatus?: string } | null
+    const st = inv?.voucherStatus ?? '?'
+    const eintrag = { gast: b.gast, beleg: (r.voucher_number as string | null) ?? null, alt, neu: b.price }
+    if (st === 'voided') { report.storniert++; continue }
+    if (st === 'paid') { report.bezahltAbweichend.push(eintrag); continue }
+    report.offenAbweichend.push({ ...eintrag, bookingId: r.booking_id as string })
+  }
+
+  if (dryRun) return report
+  report.neuAusgestellt = []
+  report.fehler = []
+  for (const k of report.offenAbweichend.slice(0, limit)) {
+    const st = await stornoInvoice(
+      (rows.find((r) => r.booking_id === k.bookingId)?.lexoffice_id as string),
+    )
+    if (!st.ok) { report.fehler.push({ gast: k.gast, error: `Storno: ${st.error ?? '?'}` }); continue }
+    const ci = prices.get(k.bookingId)?.checkIn
+    const neu = await createInvoiceForBooking(k.bookingId, { force: true, ...(ci ? { voucherDate: ci } : {}) })
+    if (!neu.ok) { report.fehler.push({ gast: k.gast, error: neu.error ?? neu.skipped ?? '?' }); continue }
+    report.neuAusgestellt.push({
+      gast: k.gast, alt: k.beleg, neu: neu.voucherNumber ?? null,
+      ...(st.standalone ? { hinweis: 'Storno eigenständig — in lexoffice verrechnen' } : {}),
+    })
+    await new Promise((ok) => setTimeout(ok, 900))
+  }
+  return report
+}
+
 export async function runInvoiceRun(opts: { dryRun?: boolean } = {}): Promise<InvoiceRunReport> {
   const dryRun = opts.dryRun === true
   const report: InvoiceRunReport = { dryRun, gefunden: 0, erstellt: 0, fehler: [], uebersprungen: [], due: [] }
