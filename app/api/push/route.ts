@@ -38,6 +38,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, geraete: count ?? 0, hinweis: 'Test-Push an alle registrierten Team-Geräte gesendet.' })
   }
 
+  // §223 Diagnose: /api/push?diag=1 — zeigt je registriertem Gerät, ob es
+  // einem Team-Profil zugeordnet ist. Buchungs-Pushes gehen NUR an Geräte mit
+  // user_id + Team-Rolle; Chat-Pushes an alle. Genau daran scheitert es, wenn
+  // Chat-Pushes ankommen, Buchungs-Pushes aber nicht.
+  if (url.searchParams.get('diag') === '1') {
+    const { data: subs } = await supabaseAdmin
+      .from('push_subscriptions').select('id, user_id, endpoint, created_at')
+    const ids = [...new Set((subs ?? []).map((s) => s.user_id).filter(Boolean))] as string[]
+    const { data: profs } = ids.length
+      ? await supabaseAdmin.from('profiles').select('*').in('id', ids)
+      : { data: [] }
+    const byId = new Map((profs ?? []).map((p) => [p.id as string, p as Record<string, unknown>]))
+    return NextResponse.json({
+      geraete: (subs ?? []).map((s) => {
+        const p = s.user_id ? byId.get(s.user_id) : null
+        const rolle = p ? [p.is_admin && 'Admin', p.is_host && 'Gastgeber', p.is_staff && 'Mitarbeiter', p.is_provider && 'Dienstleister'].filter(Boolean).join('+') : null
+        return {
+          name: (p?.display_name as string) ?? (s.user_id ? '(Profil fehlt)' : '(keine user_id)'),
+          rolle: rolle || '(keine Team-Rolle)',
+          bekommtBuchungsPush: !!p && !!(p.is_admin || p.is_host || p.is_staff) && p.push_bookings !== false,
+          pushBookings: p ? (p.push_bookings ?? true) : null,
+          dienst: (s.endpoint as string ?? '').includes('web.push.apple.com') ? 'Apple' : 'andere',
+          seit: (s.created_at as string ?? '').slice(0, 10),
+        }
+      }),
+    })
+  }
+
   return NextResponse.json({ publicKey: key })
 }
 
