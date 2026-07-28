@@ -95,6 +95,10 @@ export async function importMissingReservations(
       if (!error) {
         cancelled++
         console.log('[booking-import] Storno-Abgleich → cancelled:', b.guest_name, b.check_in, smoobuCancelled ? '(in Smoobu storniert)' : '(in Smoobu gelöscht)')
+        // §223: Storno-Push AUCH hier — bisher pushte nur der Smoobu-Webhook.
+        // Verschluckt Smoobu das Storno-Event (wie beim Webhook-Ausfall §137),
+        // stornierte dieser Abgleich still und das Team erfuhr NICHTS.
+        await sendNewBookingPush(b.id, 'cancelled').catch((e) => console.error('[booking-import] cancel push:', e))
       }
       continue
     }
