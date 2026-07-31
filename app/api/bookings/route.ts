@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { checkAvailability } from '@/lib/smoobu'
+import { getQuote } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getUiLang } from '@/lib/i18n-server'
@@ -53,12 +53,16 @@ export async function POST(request: Request) {
   console.log('[Bookings] markup multiplier:', markup)
 
   if (listing.smoobu_id) {
-    const avail = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
+    // §224: Preis PERSONEN-GENAU über das Booking-Tool-Quote (Aufschlag ab
+    // 3./4. Person) — die daily-rates kannten keine Gästezahl, wodurch
+    // Direktbuchungen für 3+ Gäste zu günstig berechnet wurden.
+    const persons = (Number(adults) || 1) + (Number(children) || 0)
+    const avail = await getQuote(listing.smoobu_id, checkIn, checkOut, persons)
     if (!avail.available)
       return NextResponse.json({ error: 'Diese Daten sind leider nicht verfügbar.' }, { status: 409 })
     // Apply platform markup to the raw Smoobu price
     totalPrice = Math.round(avail.totalPrice * markup)
-    console.log('[Bookings] raw Smoobu price:', avail.totalPrice, '→ with markup:', totalPrice)
+    console.log('[Bookings] Smoobu quote:', avail.totalPrice, `(guests: ${avail.guestsUsed ?? 'Basis'})`, '→ with markup:', totalPrice)
   } else {
     totalPrice = Math.round((listing.price_per_night ?? 0) * nights * markup)
   }
