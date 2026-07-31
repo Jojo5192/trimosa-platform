@@ -5,7 +5,17 @@ import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
-import CallsPanel from '@/components/team/CallsPanel'
+import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
+
+/** ☎️ §227d: Anruf-Eintrag für die Inline-Anzeige im Verlauf */
+interface InlineCall {
+  id: string
+  createdAt: string
+  summary: string | null
+  transcript: string | null
+  guestInquiry: boolean
+  hasAudio: boolean
+}
 
 interface Conversation {
   id: string; guest_id: string; host_id: string
@@ -272,17 +282,28 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [authExpired, setAuthExpired] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
-  // ☎️ §227c: Telefonate zu dieser Buchung (team-only) — Chip im Header
+  // ☎️ §227c/d: Telefonate zu dieser Buchung (team-only) — als Chip im
+  // Header UND chronologisch eingewoben in den Nachrichten-Verlauf
   const [callsOpen, setCallsOpen] = useState(false)
-  const [callsCount, setCallsCount] = useState(0)
+  const [calls, setCalls] = useState<InlineCall[]>([])
+  const [openCallId, setOpenCallId] = useState<string | null>(null)
   useEffect(() => {
     setCallsOpen(false)
-    setCallsCount(0)
+    setOpenCallId(null)
+    setCalls([])
     const bid = active?.bookingId
     if (!team || !bid) return
     fetch(`/api/voice/calls?bookingId=${bid}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j?.calls) setCallsCount(j.calls.length) })
+      .then((j) => {
+        if (!Array.isArray(j?.calls)) return
+        setCalls(j.calls.map((c: Record<string, unknown>) => ({
+          id: String(c.id), createdAt: String(c.createdAt ?? ''),
+          summary: (c.summary as string | null) ?? null,
+          transcript: (c.transcript as string | null) ?? null,
+          guestInquiry: c.guestInquiry === true, hasAudio: c.hasAudio === true,
+        })))
+      })
       .catch(() => {})
   }, [team, active?.bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [msgs, setMsgs]         = useState<Message[]>([])
@@ -890,9 +911,18 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   if (!open) return null
 
-  /* ── group messages by day ── */
-  const grouped: { day: string; items: Message[] }[] = []
-  for (const m of msgs) {
+  /* ── group messages by day — ☎️ §227d: Telefonate chronologisch einweben ── */
+  type FeedMsg = Message & { __call?: InlineCall }
+  const feedMsgs: FeedMsg[] = (team && calls.length)
+    ? ([...msgs] as FeedMsg[])
+        .concat(calls.map((c) => ({
+          id: `call-${c.id}`, created_at: c.createdAt, content: '',
+          sender_id: '', __call: c,
+        } as unknown as FeedMsg)))
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    : (msgs as FeedMsg[])
+  const grouped: { day: string; items: FeedMsg[] }[] = []
+  for (const m of feedMsgs) {
     const d = fmtDay(m.created_at, uiLang)
     if (!grouped.length || grouped[grouped.length - 1].day !== d) grouped.push({ day: d, items: [m] })
     else grouped[grouped.length - 1].items.push(m)
@@ -1252,7 +1282,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     }}
                   >📋</button>
                 )}
-                {team && callsCount > 0 && (
+                {team && calls.length > 0 && (
                   <button
                     onClick={() => setCallsOpen(true)}
                     title="Telefonate zu dieser Buchung lesen & abhören"
@@ -1262,7 +1292,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       fontSize: 12, fontWeight: 700, gap: 3,
                     }}
-                  >☎️{callsCount > 1 ? ` ${callsCount}` : ''}</button>
+                  >☎️{calls.length > 1 ? ` ${calls.length}` : ''}</button>
                 )}
                 {team && active.lastSender === 'guest' && (
                   <>
@@ -1399,7 +1429,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
         {/* Message feed */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: '#fff' }}>
-          {msgs.length === 0 && (
+          {msgs.length === 0 && calls.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
               <div style={{ fontSize: 13, color: '#AAA' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
@@ -1417,6 +1447,67 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               </div>
 
               {items.map((msg, i) => {
+                // ☎️ §227d: Telefonat an der richtigen Stelle im Verlauf —
+                // antippen = Transkript lesen + Audio direkt hier abhören
+                if (msg.__call) {
+                  const c = msg.__call
+                  const openC = openCallId === c.id
+                  return (
+                    <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                      <div style={{
+                        width: openC ? '94%' : undefined, maxWidth: '94%',
+                        borderRadius: 14, background: '#EEF4FC', border: '1px solid #C9D9EF', overflow: 'hidden',
+                      }}>
+                        <button onClick={() => setOpenCallId(openC ? null : c.id)} style={{
+                          width: '100%', textAlign: 'left', border: 'none', background: 'none',
+                          padding: '9px 13px', cursor: 'pointer',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 15 }}>☎️</span>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: '#2C5282' }}>
+                              Telefonat · {fmtMsgT(msg.created_at, uiLang)}
+                            </span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#7A8CA5' }}>NUR INTERN</span>
+                            <span style={{ marginLeft: 'auto', color: '#9DB2CC', fontSize: 12 }}>{openC ? '▾' : '▸ Anhören / Lesen'}</span>
+                          </div>
+                          {c.summary && !openC && (
+                            <div style={{
+                              fontSize: 12, color: '#4A5A70', lineHeight: 1.4, marginTop: 4,
+                              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                            }}>{c.summary}</div>
+                          )}
+                        </button>
+                        {openC && (
+                          <div style={{ padding: '0 13px 12px' }}>
+                            {c.summary && (
+                              <div style={{ fontSize: 12.5, color: '#4A5A70', lineHeight: 1.5, marginBottom: 8 }}>{c.summary}</div>
+                            )}
+                            {c.hasAudio ? (
+                              <audio controls preload="none" src={`/api/voice/calls/${c.id}/audio`} style={{ width: '100%', marginBottom: 8 }} />
+                            ) : (
+                              <div style={{ fontSize: 11.5, color: '#7A8CA5', marginBottom: 8 }}>🎧 Kein Audio verfügbar.</div>
+                            )}
+                            {c.transcript ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                {parseTranscript(c.transcript).map((tr, ti) => (
+                                  <div key={ti} style={{
+                                    alignSelf: tr.who === 'bot' ? 'flex-end' : 'flex-start',
+                                    maxWidth: '88%',
+                                    background: tr.who === 'bot' ? '#3E6FA8' : '#fff',
+                                    color: tr.who === 'bot' ? '#fff' : '#1A1814',
+                                    borderRadius: 12, padding: '6px 10px', fontSize: 12.5, lineHeight: 1.45,
+                                  }}>{tr.text}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11.5, color: '#7A8CA5' }}>Kein Transkript vorhanden.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
                 const isMe     = isOurSide(msg, active)
                 // 📋 §220: INTERNE NOTIZ (Telefonnotizen der KI, Test-Anrufe,
                 // nicht zustellbare Nachrichten) — trägt das ☎️-Präfix, ist
