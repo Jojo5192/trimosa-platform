@@ -659,6 +659,16 @@ export default async function Home({
             <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
             <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
           </div>
+          {/* §226: interne Verlinkung der kommerziellen Standort-Landingpages */}
+          <div style={{ width: '100%', display: 'flex', gap: '18px', flexWrap: 'wrap', justifyContent: 'center', paddingBottom: '12px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>
+            {[
+              { label: 'Ferienwohnung Bitburg', href: '/ferienwohnung/bitburg' },
+              { label: 'Ferienwohnung Trier', href: '/ferienwohnung/trier' },
+              { label: 'Ferienwohnung Südeifel', href: '/ferienwohnung/suedeifel' },
+            ].map((item) => (
+              <Link key={item.href} href={item.href} style={{ fontSize: '11.5px', color: '#8A8680', textDecoration: 'none', fontWeight: 600 }}>{item.label}</Link>
+            ))}
+          </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
             {[
