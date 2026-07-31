@@ -226,6 +226,40 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
     for (const l of logs ?? []) logSet.add(`${l.auto_message_id}|${l.booking_id}`)
   }
 
+  // §231: Wohnungen, deren AKTUELLER Reinigungs-Slot (jüngste Abreise bis
+  // heute) vor Ort BESTÄTIGT gemeldet ist — Basis für den Anreisetag-Morgen-
+  // Versand der „Früher Check-in"-Vorlage. Eine zwischenzeitliche Lücken-
+  // Buchung verschiebt die jüngste Abreise → Wohnung fällt automatisch raus,
+  // bis DEREN Reinigung bestätigt ist. Fail-soft ohne Migration.
+  const cleanReady = new Set<string>()
+  if (templates.some((t) => t.trigger_type === 'reinigung_fertig')) {
+    try {
+      const lids = [...new Set(bookings
+        .filter((b) => b.check_in === today && b.listing_id)
+        .map((b) => b.listing_id as string))]
+      if (lids.length) {
+        const since = addDays(today, -14)
+        const [{ data: deps }, { data: confs }] = await Promise.all([
+          supabaseAdmin.from('bookings').select('listing_id, check_out')
+            .in('listing_id', lids).eq('status', 'confirmed')
+            .lte('check_out', today).gte('check_out', since),
+          supabaseAdmin.from('cleaning_confirmations').select('listing_id, slot_date, verify_status')
+            .in('listing_id', lids).gte('slot_date', since),
+        ])
+        const latest = new Map<string, string>()
+        for (const d of deps ?? []) {
+          const k = String(d.listing_id); const v = String(d.check_out)
+          if ((latest.get(k) ?? '') < v) latest.set(k, v)
+        }
+        for (const c of confs ?? []) {
+          if (c.verify_status === 'bestaetigt' && latest.get(String(c.listing_id)) === String(c.slot_date)) {
+            cleanReady.add(String(c.listing_id))
+          }
+        }
+      }
+    } catch (e) { console.error('[auto-messages] cleanReady-Prüfung fehlgeschlagen:', e) }
+  }
+
   // Fällige Paare berechnen
   const due: { t: AutoMessage; b: BookingRow }[] = []
   for (const t of templates) {
@@ -235,9 +269,13 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       if (Array.isArray(tl) && tl.length) {
         if (!b.listing_id || !tl.includes(b.listing_id)) continue
       } else if (t.listing_id && t.listing_id !== b.listing_id) continue
+      // §231: beim ereignisnahen Reinigungs-Trigger gelten Kanal-/Lead-/
+      // Nächte-Filter bewusst nicht (identische Semantik zum Sofort-Pfad
+      // in lib/cleaning-done.ts — nur Wohnungs-Auswahl + Bezahlt-Guard)
+      const isReinigung = t.trigger_type === 'reinigung_fertig'
       const nights = dayDiff(b.check_in, b.check_out)
-      if (t.min_nights && nights < t.min_nights) continue
-      if (t.channel_filter?.length) {
+      if (!isReinigung && t.min_nights && nights < t.min_nights) continue
+      if (!isReinigung && t.channel_filter?.length) {
         const ch = normChannel(b.channel ?? b.source)
         if (!t.channel_filter.map(normChannel).includes(ch)) continue
       }
@@ -246,10 +284,18 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
       const createdDate = berlinDateOf(b.created_at)
       const isShort = dayDiff(createdDate, b.check_in) <= 3
-      if (t.lead_filter === 'kurzfristig' && !isShort) continue
-      if (t.lead_filter === 'normal' && isShort) continue
+      if (!isReinigung && t.lead_filter === 'kurzfristig' && !isShort) continue
+      if (!isReinigung && t.lead_filter === 'normal' && isShort) continue
 
-      if (t.trigger_type === 'nach_buchung') {
+      if (isReinigung) {
+        // §231 Anreisetag-Morgen-Pfad: Reinigung wurde an einem FRÜHEREN Tag
+        // bestätigt → Nachricht ab send_hour am Anreisetag (nie vorher — so
+        // kann keine Lücken-Buchung das Versprechen mehr kippen). Same-Day-
+        // Bestätigungen versendet die Fertigmeldung selbst; das Log unten
+        // dedupliziert beide Pfade.
+        if (b.check_in !== today || hour < t.send_hour) continue
+        if (!b.listing_id || !cleanReady.has(b.listing_id)) continue
+      } else if (t.trigger_type === 'nach_buchung') {
         if (Date.now() - new Date(b.created_at).getTime() > NEW_BOOKING_WINDOW_MS) continue
       } else {
         const base = t.trigger_type.includes('anreise') ? b.check_in : b.check_out
