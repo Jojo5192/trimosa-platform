@@ -249,10 +249,14 @@ export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput, opt
 
   if (opts.book === true && Number(inv.status) < 1000) {
     const clearingId = await ensureClearingAccount(inp.clearingLabel)
+    // Gebucht wird EXAKT der Rechnungsbetrag laut sevdesk (sumGross) — bei
+    // 1–2 ct Netto-Rundungsdrift gegenüber Smoobu wirft bookAmount sonst
+    // 422 „Payment difference amount must be 0.0" (§234, 4 Live-Fälle).
+    const exactGross = Number(inv.sumGross)
     await sevJson(`/Invoice/${sevdeskId}/bookAmount`, {
       method: 'PUT',
       body: JSON.stringify({
-        amount: inp.amountGross,
+        amount: Number.isFinite(exactGross) && exactGross > 0 ? exactGross : inp.amountGross,
         date: Math.floor(Date.parse(inp.invoiceDate + 'T12:00:00Z') / 1000),
         type: 'FULL_PAYMENT',
         checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
