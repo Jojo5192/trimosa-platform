@@ -38,6 +38,8 @@ export type CleaningInfo = {
   responsible: Record<string, { id: string; name: string }>
   minutes: Record<string, number>
   mine: string[]
+  /** 🧹 §231: vor-Ort-Fertigmeldungen (NFC), Key `${listingId}|${slotDate}` */
+  confirmations?: Record<string, { at: string; person: string | null; verify: string }>
 }
 type Invoice = {
   id: string; month: string; person_id: string | null
@@ -713,6 +715,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                   && x.group === s.group && x.personId === s.personId && x.listingId !== s.listingId)
                 const partnerTitle = partner ? listings[partner.listingId]?.title ?? null : null
                 const fromLabel = s.stay.checkOut === today ? 'heute' : `${wdShort(s.stay.checkOut)} ${fmtShort(s.stay.checkOut)}`
+                // 🧹 §231: vor-Ort-Fertigmeldung (NFC-Tag) zu diesem Slot?
+                const conf = cleaning.confirmations?.[`${s.listingId}|${s.stay.checkOut}`]
                 return (
                   <div key={s.stay.id} style={{
                     background: '#fff', borderRadius: 14, padding: '11px 13px',
@@ -724,7 +728,17 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🧹 {info?.title ?? 'Wohnung'}</span>
                       {showName && chip(isMine ? '#FAF5E4' : '#F3F4F6', isMine ? '#8A7020' : '#374151', `👤 ${isMine ? 'Du' : resp!.name}`)}
                     </div>
-                    {s.sameDayArrival ? (
+                    {conf ? (
+                      <p style={{
+                        fontSize: 12.5, fontWeight: 800, margin: '7px 0 0',
+                        color: conf.verify === 'unbestaetigt' ? '#B45309' : '#16A34A',
+                      }}>
+                        {conf.verify === 'unbestaetigt' ? '⚠️ Gereinigt gemeldet — ohne Schloss-Bestätigung' : '✅ Gereinigt gemeldet'}
+                        {' · '}
+                        {new Date(conf.at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}
+                        {conf.person ? ` · ${conf.person}` : ''}
+                      </p>
+                    ) : s.sameDayArrival ? (
                       <p style={{ fontSize: 12.5, fontWeight: 800, color: '#C2410C', margin: '7px 0 0' }}>
                         ⏰ WECHSELTAG — bis zur Anreise fertig
                       </p>
