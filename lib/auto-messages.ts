@@ -5,7 +5,7 @@
  * echten Buchungsdaten und schickt sie über den passenden Kanal.
  */
 
-export type TriggerType = 'nach_buchung' | 'vor_anreise' | 'nach_anreise' | 'vor_abreise' | 'nach_abreise'
+export type TriggerType = 'nach_buchung' | 'vor_anreise' | 'nach_anreise' | 'vor_abreise' | 'nach_abreise' | 'reinigung_fertig'
 
 /** Kurzfristig-Weiche (§148): Für welche Buchungen gilt die Vorlage?
  *  'kurzfristig' = Anreise ≤ 3 Tage nach Buchungseingang (kompakte
@@ -56,6 +56,9 @@ export const TRIGGER_META: { id: TriggerType; label: string; bezug: string }[] =
   { id: 'nach_anreise', label: 'Nach der Anreise',  bezug: 'X Tage nach dem Anreisetag' },
   { id: 'vor_abreise',  label: 'Vor der Abreise',   bezug: 'X Tage vor dem Abreisetag' },
   { id: 'nach_abreise', label: 'Nach der Abreise',  bezug: 'X Tage nach dem Abreisetag' },
+  // §231: ereignisgesteuert — kein Cron; die Fertigmeldung (NFC + Schloss-
+  // Bestätigung) löst den Versand direkt aus, wenn heute ein Gast anreist
+  { id: 'reinigung_fertig', label: 'Reinigung gemeldet (Früh-Check-in)', bezug: 'sofort bei bestätigter Reinigungs-Meldung, wenn der Gast am selben Tag anreist' },
 ]
 
 /** Verfügbare Platzhalter — Klick fügt sie in den Text ein. */
@@ -136,6 +139,7 @@ export function triggerSummary(m: Pick<AutoMessage, 'trigger_type' | 'offset_day
     case 'nach_anreise': return d <= 0 ? `Am Anreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} nach Anreise um ${h}`
     case 'vor_abreise':  return d <= 0 ? `Am Abreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} vor Abreise um ${h}`
     case 'nach_abreise': return d <= 0 ? `Am Abreisetag um ${h}` : `${d} ${d === 1 ? 'Tag' : 'Tage'} nach Abreise um ${h}`
+    case 'reinigung_fertig': return `Am Anreisetag ab ${h} (wenn die Reinigung schon vorher bestätigt war) bzw. sofort bei Bestätigung am Anreisetag selbst`
   }
 }
 
@@ -174,6 +178,13 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
       subject: 'Danke für deinen Aufenthalt 💛',
       offset_days: 1, send_hour: 11, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 4,
       body: 'Hallo {vorname}, danke, dass du bei uns warst! 💛\n\nWir hoffen, du hattest eine wundervolle Zeit bei uns — und vielleicht sehen wir uns ja bald wieder.\n\n⭐ Wenn dir dein Aufenthalt gefallen hat, würdest du uns mit einer kurzen Google-Bewertung riesig helfen:\n\n{google_bewertung}\n\nDein Feedback macht uns besser — und hilft anderen Gästen bei der Entscheidung.\n\nGute Heimreise und bis zum nächsten Mal!\nDein TRIMOSA-Team 💛',
+    },
+    {
+      // §231: ereignisgesteuert — versendet die Fertigmeldung (NFC), nicht der Cron
+      name: 'Früher Check-in möglich', enabled: true, trigger_type: 'reinigung_fertig',
+      subject: 'Gute Nachricht — du kannst früher einchecken 🎉',
+      offset_days: 0, send_hour: 8, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 5,
+      body: 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab 10:00 Uhr einchecken (statt {checkin} Uhr).\n\n🔑 Dein Türcode aus der Gästemappe funktioniert bereits.\n\nBis später — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
   ]
 }
