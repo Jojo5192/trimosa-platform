@@ -114,6 +114,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // §231-Nachtrag: rohe tedee-Activity-Antwort (Kalibrierung des
+  // Reinigungs-Zeugen am River-Schloss) — Default-lockId = „Fewo - Edingen"
+  if (body.action === 'tedee-activity-test') {
+    const { tedeeActivityProbe } = await import('@/lib/locks')
+    try {
+      return NextResponse.json({ probes: await tedeeActivityProbe(Number(body.lockId) || 200799) })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action === 'team-code-test' && body.smartlockId && body.personId) {
     const { debugTeamCodePut, getStaffCodes } = await import('@/lib/locks')
     try {
