@@ -996,7 +996,12 @@ function CallCard({ task, onDone, onError }: {
   const [doneOpen, setDoneOpen] = useState(false)
   const [doneText, setDoneText] = useState('')
   const [doneBusy, setDoneBusy] = useState(false)
-  const [recording, setRecording] = useState<'none' | 'instruction' | 'solution'>('none')
+  // §224: KI-Rückruf — Anweisung erfassen, Bot ruft den Anrufer zurück
+  const [callOpen, setCallOpen] = useState(false)
+  const [callText, setCallText] = useState('')
+  const [callBusy, setCallBusy] = useState(false)
+  const [callResult, setCallResult] = useState<string | null>(null)
+  const [recording, setRecording] = useState<'none' | 'instruction' | 'solution' | 'callback'>('none')
   const [speechOk, setSpeechOk] = useState(false)
   const recRef = useRef<{ stop: () => void } | null>(null)
   useEffect(() => {
@@ -1036,7 +1041,7 @@ function CallCard({ task, onDone, onError }: {
   }
 
   // 🎤 Diktat (§105-Muster): sammelt intern; Stopp → Ziel-Aktion
-  function startDictation(target: 'instruction' | 'solution') {
+  function startDictation(target: 'instruction' | 'solution' | 'callback') {
     const w = window as unknown as Record<string, unknown>
     const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => {
       lang: string; continuous: boolean; interimResults: boolean
@@ -1065,6 +1070,7 @@ function CallCard({ task, onDone, onError }: {
       const text = spoken.trim()
       if (!text) return
       if (target === 'instruction') { setInstruction(text); fetchOptions(text) }
+      else if (target === 'callback') setCallText(text)
       else formulateSolution(text)
     }
     sr.onend = finish
@@ -1089,6 +1095,32 @@ function CallCard({ task, onDone, onError }: {
       onError('Netzwerkfehler beim Formulieren.')
     }
     setDoneBusy(false)
+  }
+
+  function openCall() {
+    // Gewählte ✨-Lösung als Ansage vorbefüllen
+    if (!callText && selected !== null && options?.[selected]) setCallText(options[selected].text)
+    setCallResult(null)
+    setCallOpen(true)
+    setDoneOpen(false)
+  }
+
+  async function startBotCall() {
+    if (callBusy || !callText.trim() || !phone) return
+    setCallBusy(true)
+    setCallResult(null)
+    try {
+      const res = await fetch('/api/voice/callback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toNumber: phone, instruction: callText.trim(), taskId: task.id }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok) setCallResult(j.hinweis ?? 'Rückruf gestartet.')
+      else onError(j.error ?? 'Rückruf fehlgeschlagen.')
+    } catch {
+      onError('Netzwerkfehler beim Rückruf.')
+    }
+    setCallBusy(false)
   }
 
   function openDone() {
@@ -1141,6 +1173,13 @@ function CallCard({ task, onDone, onError }: {
           background: open ? 'var(--gold, #AE8D2D)' : 'rgba(174,141,45,0.14)',
           color: open ? '#fff' : 'var(--gold-dark, #8A7020)',
         }}>✨ Lösungen</button>
+        {phone && (
+          <button onClick={openCall} style={{
+            ...goldBtn,
+            background: callOpen ? '#1D4ED8' : 'rgba(29,78,216,0.1)',
+            color: callOpen ? '#fff' : '#1D4ED8',
+          }}>🤖 KI ruft zurück</button>
+        )}
         <button onClick={openDone} style={{ ...goldBtn, background: 'rgba(120,120,128,0.12)', color: '#3C3C43' }}>✓ Erledigt</button>
       </div>
 
@@ -1206,6 +1245,48 @@ function CallCard({ task, onDone, onError }: {
               }}>✨</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 🤖 KI-Rückruf-Panel (§224): Anweisung → Bot ruft den Anrufer an.
+          Leitplanke §175: startet NUR über diesen Klick, nie automatisch. */}
+      {callOpen && (
+        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(29,78,216,0.3)' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', margin: '0 0 7px' }}>
+            🤖 Was soll die KI dem Anrufer ausrichten? <span style={{ fontWeight: 400, color: '#6B7280' }}>(sie ruft {phone} an)</span>
+          </p>
+          {callResult ? (
+            <p style={{ fontSize: 13, color: '#166534', margin: 0, fontWeight: 600 }}>✅ {callResult}</p>
+          ) : recording === 'callback' ? (
+            <button onClick={() => recRef.current?.stop()} style={{
+              width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
+              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>🔴 Ich höre zu… — Ansage sprechen, dann antippen</button>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              {speechOk && (
+                <button onClick={() => startDictation('callback')} title="Ansage diktieren" style={{
+                  width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
+                  background: 'rgba(29,78,216,0.1)', cursor: 'pointer', fontSize: 15,
+                }}>🎤</button>
+              )}
+              <textarea
+                value={callText}
+                onChange={(e) => setCallText(e.target.value)}
+                rows={2}
+                placeholder={'z. B. Später Check-in geht klar, Code kommt in die Gästemappe'}
+                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
+            {!callResult && (
+              <button onClick={startBotCall} disabled={callBusy || !callText.trim()} style={{
+                ...goldBtn, background: '#1D4ED8', color: '#fff', opacity: callBusy || !callText.trim() ? 0.5 : 1,
+              }}>{callBusy ? '⏳ Startet…' : '📞 Anruf starten'}</button>
+            )}
+            <button onClick={() => setCallOpen(false)} style={{ ...goldBtn, background: 'none', color: '#8E8E93' }}>✕</button>
+          </div>
         </div>
       )}
 
