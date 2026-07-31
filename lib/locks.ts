@@ -462,26 +462,93 @@ export async function auditNukiAuths(): Promise<{
  */
 export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | null> {
   const nukiIds = (locks ?? []).filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
-  if (!nukiIds.length || !nukiConfigured()) return null
-  // „Heute" großzügig als Berlin-Datum; das Log liefert UTC-Zeitstempel —
+  const tedeeIds = (locks ?? []).filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
+  // „Heute" großzügig als Berlin-Datum; die Logs liefern UTC-Zeitstempel —
   // Reinigungen laufen tagsüber, der Datums-Slice reicht als Fenster.
   const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
   let checkedAny = false
-  try {
-    for (const id of nukiIds) {
-      const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
-      if (!res.ok) continue
-      checkedAny = true
-      const entries = await res.json() as { name?: string; date?: string }[]
-      const hit = (entries ?? []).some((e) =>
-        String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin)
-      if (hit) return true
+
+  if (nukiIds.length && nukiConfigured()) {
+    try {
+      for (const id of nukiIds) {
+        const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
+        if (!res.ok) continue
+        checkedAny = true
+        const entries = await res.json() as { name?: string; date?: string }[]
+        const hit = (entries ?? []).some((e) =>
+          String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin)
+        if (hit) return true
+      }
+    } catch (e) {
+      console.error('[cleaning-done] Nuki-Log-Prüfung fehlgeschlagen:', e)
     }
-  } catch (e) {
-    console.error('[cleaning-done] Nuki-Log-Prüfung fehlgeschlagen:', e)
-    return checkedAny ? false : null
   }
+
+  // tedee (River, §231-Nachtrag): Activity-Log defensiv prüfen
+  if (tedeeIds.length && tedeeConfigured()) {
+    for (const id of tedeeIds) {
+      const r = await tedeeStaffEventToday(id, todayBerlin)
+      if (r === true) return true
+      if (r === false) checkedAny = true
+    }
+  }
+
   return checkedAny ? false : null
+}
+
+/**
+ * tedee-Activity-Prüfung (§231-Nachtrag): Die exakte Endpoint-/Feld-Form ist
+ * nicht sicher dokumentiert — deshalb werden beide Pfad-Kandidaten probiert
+ * und die Ereignisse als GANZES auf heutiges Datum + Team-Alias geprüft
+ * (feldnamen-unabhängig). Ein LEERES Ereignis-Array zählt bewusst als
+ * „nicht prüfbar" — es kann auch heißen, dass die Antwortform nicht erkannt
+ * wurde (ein echtes Schloss-Log ist nie leer). Kalibrierung am lebenden
+ * River-Schloss via Admin-Action 'tedee-activity-test'.
+ */
+const TEDEE_ACTIVITY_PATHS = (lockId: number) => [
+  `/api/v37/my/lock/${lockId}/activity?elements=50`,
+  `/api/v37/my/deviceactivity?deviceId=${lockId}&elements=50`,
+]
+
+function tedeeEventsOf(r: unknown): unknown[] {
+  if (Array.isArray(r)) return r
+  const o = r as { activities?: unknown[]; items?: unknown[]; events?: unknown[] } | null
+  return o?.activities ?? o?.items ?? o?.events ?? []
+}
+
+async function tedeeStaffEventToday(lockId: number, todayBerlin: string): Promise<boolean | null> {
+  for (const path of TEDEE_ACTIVITY_PATHS(lockId)) {
+    try {
+      const res = await tedeeFetch(path)
+      if (!res.ok) continue
+      const events = tedeeEventsOf(tedeeResult<unknown>(await res.json()))
+      if (!events.length) continue
+      return events.some((e) => {
+        const s = JSON.stringify(e)
+        return s.includes(todayBerlin) && s.includes('TRIMOSA-Team')
+      })
+    } catch (e) {
+      console.error('[cleaning-done] tedee-Activity-Prüfung fehlgeschlagen:', e)
+    }
+  }
+  return null
+}
+
+/** Diagnose (§231): rohe tedee-Activity-Antworten beider Pfad-Kandidaten. */
+export async function tedeeActivityProbe(lockId: number): Promise<{ path: string; status: number; sample: string }[]> {
+  const out: { path: string; status: number; sample: string }[] = []
+  for (const path of TEDEE_ACTIVITY_PATHS(lockId)) {
+    try {
+      const res = await tedeeFetch(path)
+      const text = await res.text()
+      let sample = text.slice(0, 2000)
+      try { sample = JSON.stringify(JSON.parse(text)).slice(0, 2000) } catch { /* Rohtext behalten */ }
+      out.push({ path, status: res.status, sample })
+    } catch (e) {
+      out.push({ path, status: -1, sample: String(e).slice(0, 300) })
+    }
+  }
+  return out
 }
 
 export interface LockSettings {
