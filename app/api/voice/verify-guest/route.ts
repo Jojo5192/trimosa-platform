@@ -276,6 +276,12 @@ export async function POST(request: Request) {
     const doorInfo = sirzenich
       ? 'Diese Wohnung ist in Sirzenich: HAUSTÜR und WOHNUNGSTÜR haben je ein Keypad — DIESER Code gilt für beide Türen.'
       : ''
+    // §227: River hat tedee (MIT ✓-Taste); alle anderen Nuki-Keypads haben
+    // KEIN Häkchen — die Tür entriegelt automatisch nach der 6. Ziffer.
+    const tedee = /river/i.test(title)
+    const keypadStep = tedee
+      ? '2) Beim tedee-Keypad muss die Eingabe mit der ✓-Taste bestätigt werden — wurde das gemacht?'
+      : '2) WICHTIG: Unser Nuki-Keypad hat KEIN Häkchen und keine Bestätigen-Taste — nach der 6. Ziffer entriegelt die Tür AUTOMATISCH. Bei Vertippen kurz warten und die 6 Ziffern neu eingeben. Erzähle dem Gast NIE etwas von einem Häkchen.'
     // §190: Anruf am Anreisetag VOR der Check-in-Zeit → Code ja, aber mit
     // klarem Hinweis (außer im Chat wurde ein früherer Check-in vereinbart)
     const nowHM = new Intl.DateTimeFormat('de-DE', {
@@ -295,7 +301,7 @@ export async function POST(request: Request) {
       hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + deliveryHint(sent.delivery, 'den Code')
         + earlyNote
         + (doorInfo ? ` ${doorInfo}` : '')
-        + ' Danach nur fragen, ob es geklappt hat — KEINE Bedienungs-Anleitung vorab. NUR falls der Gast nach dem Versuch nicht reinkommt, gemeinsam eingrenzen (eine Frage nach der anderen): 1) Welchen Code hat er eingetippt? Mit diesem abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. 2) Wurde die Eingabe mit dem Häkchen (✓) bestätigt? 3) Was zeigt das Keypad — rotes Licht, gar kein Licht (kann leere Batterie heißen), ein Ton? Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.',
+        + ` Sag dem Anrufer EXAKT die Ziffern aus dem Feld door_code dieser Antwort — NIEMALS einen Code aus dem Gedächtnis oder eine eigene Zahl. Danach nur fragen, ob es geklappt hat — KEINE Bedienungs-Anleitung vorab. NUR falls der Gast nach dem Versuch nicht reinkommt, gemeinsam eingrenzen (eine Frage nach der anderen): 1) Welchen Code hat er eingetippt? Mit diesem abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. ${keypadStep} 3) Was zeigt das Keypad — rotes Licht, gar kein Licht (kann leere Batterie heißen), ein Ton? Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.`,
     })
   }
 
