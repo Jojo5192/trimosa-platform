@@ -1,6 +1,6 @@
 import { requireVoiceAuth } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { checkAvailability } from '@/lib/smoobu'
+import { getQuote } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 
 export const dynamic = 'force-dynamic'
@@ -16,11 +16,14 @@ export async function POST(request: Request) {
   const denied = requireVoiceAuth(request)
   if (denied) return denied
 
-  let body: { apartment_name?: string; check_in?: string; check_out?: string }
+  let body: { apartment_name?: string; check_in?: string; check_out?: string; guests?: number | string }
   try { body = await request.json() } catch { body = {} }
   const name = String(body.apartment_name ?? '').trim().toLowerCase()
   const checkIn = String(body.check_in ?? '').trim()
   const checkOut = String(body.check_out ?? '').trim()
+  // §224: Personenzahl bestimmt den Preis (Smoobu-Aufschlag ab 3./4. Person)
+  const guestsGiven = Number(body.guests) >= 1
+  const guests = guestsGiven ? Math.min(Math.round(Number(body.guests)), 20) : 2
 
   const { data: listings } = await supabaseAdmin
     .from('listings')
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
   }
 
   const [result, markup] = await Promise.all([
-    checkAvailability(listing.smoobu_id, checkIn, checkOut),
+    getQuote(listing.smoobu_id, checkIn, checkOut, guests),
     getMarkupMultiplier(listing.host_id),
   ])
   const total = Math.round(result.totalPrice * markup)
@@ -70,9 +73,12 @@ export async function POST(request: Request) {
     total_price_eur: result.available ? total : null,
     avg_per_night_eur: result.available && nights > 0 ? Math.round(total / nights) : null,
     max_guests: listing.max_guests ?? null,
+    price_is_for_guests: result.guestsUsed ?? guests,
     booking_url: `https://trimosa.de/listing/${listing.slug ?? listing.id}`,
     hint: result.available
-      ? 'Preis nennen (Stand jetzt) und auf die Buchung über trimosa.de verweisen — dort gilt der Bestpreis.'
+      ? (guestsGiven
+        ? `Preis gilt für ${guests} ${guests === 1 ? 'Person' : 'Personen'} (Stand jetzt) — auf die Buchung über trimosa.de verweisen, dort gilt der Bestpreis.`
+        : 'ACHTUNG: Personenzahl wurde nicht übergeben — der Preis gilt für 2 Personen. Frag den Anrufer nach der Personenzahl und rufe das Tool damit ERNEUT auf, bevor du einen Preis nennst (ab der 3. Person wird es teurer).')
       : 'Zeitraum ist leider belegt. Alternativ-Zeitraum oder andere Wohnung anbieten.',
   })
 }
