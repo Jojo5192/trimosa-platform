@@ -22,12 +22,23 @@ async function requireAdmin() {
 
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
-  const [{ data: listings, error: lErr }, { data: people }, settings] = await Promise.all([
-    supabaseAdmin
+  // cleaning_token (§231, NFC-Fertigmeldung) mit Deploy-Retry — die
+  // Migration 20260801_cleaning_done kann noch offen sein
+  const listingsQ = async () => {
+    const withToken = await supabaseAdmin
+      .from('listings')
+      .select('id, title, cleaning_responsible, cleaning_minutes, cleaning_token')
+      .eq('is_active', true)
+      .order('title')
+    if (!withToken.error) return withToken
+    return supabaseAdmin
       .from('listings')
       .select('id, title, cleaning_responsible, cleaning_minutes')
       .eq('is_active', true)
-      .order('title'),
+      .order('title')
+  }
+  const [{ data: listings, error: lErr }, { data: people }, settings] = await Promise.all([
+    listingsQ(),
     supabaseAdmin
       .from('profiles')
       .select('id, display_name, is_staff, is_provider')
