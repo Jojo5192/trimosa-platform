@@ -22,7 +22,7 @@ import {
 } from '@/lib/auto-messages'
 import { translateOutgoing } from '@/lib/translate'
 import { sendMessageToGuest } from '@/lib/smoobu'
-import { ensureDoorCode } from '@/lib/locks'
+import { ensureDoorCode, getLockSettings } from '@/lib/locks'
 import { sendAutoMessageEmail } from '@/lib/email'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
@@ -200,6 +200,13 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
   const { date: today, hour } = berlinNow()
 
+  // §231: frühester Check-in HEUTE für den {fruehester_checkin}-Platzhalter —
+  // max(Code-Gültigkeits-Beginn, 10-Uhr-Doktrin des Inhabers); liegt die
+  // aktuelle Uhrzeit schon darüber, wird daraus „sofort"
+  let earliestHour = 10
+  try { earliestHour = Math.max((await getLockSettings()).validFromHour, 10) } catch { /* Default 10 */ }
+  const fruehesterCheckin = hour >= earliestHour ? 'sofort' : `${String(earliestHour).padStart(2, '0')}:00 Uhr`
+
   // Buchungs-Fenster (deckt Offsets bis 60 Tage)
   const { data: bRows } = await supabaseAdmin
     .from('bookings')
@@ -358,6 +365,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         google_bewertung: listing?.google_place_id
           ? `https://search.google.com/local/writereview?placeid=${listing.google_place_id}`
           : '',
+        fruehester_checkin: fruehesterCheckin,
       }
       let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
       // Nicht auflösbare Rest-Tokens säubern (nie kaputte {platzhalter} an Gäste)
