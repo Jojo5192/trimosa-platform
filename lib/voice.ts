@@ -7,6 +7,24 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
  * (Bearer) — der Wert steht auch in der Tool-Konfiguration des Agenten.
  */
 
+/** Push an die Bereitschaft (§175/§183, geteilt seit §227) — explizite Liste
+    = NUR diese Personen (übersteuert bewusst stummgeschaltete Gäste-Chat-
+    Präferenzen: Wer Dienst hat, bekommt den Anruf). Leere Liste = Fallback
+    Admins/Gastgeber/Mitarbeiter — NIE Dienstleister (§183). */
+export async function pushOncall(title: string, body: string, url: string): Promise<void> {
+  const { sendPushToUser } = await import('@/lib/push')
+  const { getOncallIds } = await import('@/lib/oncall')
+  let ids = await getOncallIds()
+  if (!ids.length) {
+    const { data } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
+    ids = (data ?? []).map((p) => String(p.id))
+  }
+  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url).catch(() => {})))
+}
+
 export function requireVoiceAuth(request: Request): Response | null {
   const secret = process.env.VOICE_TOOL_SECRET
   if (!secret) {
