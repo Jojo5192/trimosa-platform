@@ -451,6 +451,39 @@ export async function auditNukiAuths(): Promise<{
   return { locks }
 }
 
+/**
+ * 🧹 §231 Reinigungs-Abschluss: Wurde HEUTE (Berlin) an einem der Schlösser
+ * der Wohnung ein TEAM-Code benutzt? Dient als „Zeuge" für die vor-Ort-
+ * Fertigmeldung — Gäste haben keinen Team-Code, können die Meldung also
+ * nicht glaubhaft auslösen. Rückgabe: true/false = geprüft, null = nicht
+ * prüfbar (kein Nuki-Schloss, Token fehlt oder API-Fehler).
+ * Nuki kürzt Auth-Namen auf 20 Zeichen (§142) — Match auf den stabilen
+ * Präfix „TRIMOSA-Team".
+ */
+export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | null> {
+  const nukiIds = (locks ?? []).filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
+  if (!nukiIds.length || !nukiConfigured()) return null
+  // „Heute" großzügig als Berlin-Datum; das Log liefert UTC-Zeitstempel —
+  // Reinigungen laufen tagsüber, der Datums-Slice reicht als Fenster.
+  const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
+  let checkedAny = false
+  try {
+    for (const id of nukiIds) {
+      const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
+      if (!res.ok) continue
+      checkedAny = true
+      const entries = await res.json() as { name?: string; date?: string }[]
+      const hit = (entries ?? []).some((e) =>
+        String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin)
+      if (hit) return true
+    }
+  } catch (e) {
+    console.error('[cleaning-done] Nuki-Log-Prüfung fehlgeschlagen:', e)
+    return checkedAny ? false : null
+  }
+  return checkedAny ? false : null
+}
+
 export interface LockSettings {
   /** Tage vor Anreise, ab denen der Code in der Gästemappe erscheint */
   revealDays: number
