@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 
-type Row = { id: string; title: string; cleaning_responsible: string | null; cleaning_minutes: number | null }
+type Row = { id: string; title: string; cleaning_responsible: string | null; cleaning_minutes: number | null; cleaning_token?: string | null }
 type Person = { id: string; name: string; role: string }
 type RuleSet = {
   avoidSundays: boolean; avoidHolidays: boolean
@@ -23,6 +23,8 @@ export default function CleaningCard() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [nfcOpen, setNfcOpen] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/cleaning', { cache: 'no-store' })
@@ -105,6 +107,49 @@ export default function CleaningCard() {
               </div>
             ))}
           </div>
+
+          {/* 🏷 §231: NFC-Links für die vor-Ort-Fertigmeldung */}
+          {rows.some((r) => r.cleaning_token) && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #F0EDE6' }}>
+              <button
+                onClick={() => setNfcOpen((o) => !o)}
+                style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: '#111' }}
+              >
+                🏷 NFC-Tags „Reinigung fertig" {nfcOpen ? '▾' : '▸'}
+              </button>
+              {nfcOpen && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 12, color: '#8A8578', margin: '0 0 10px', lineHeight: 1.55 }}>
+                    Diese URL je Wohnung auf einen NFC-Tag schreiben (NTAG213/215, App z. B. „NFC Tools")
+                    und den Tag VERSTECKT anbringen — Innenseite Putzschrank o. Ä. Die Reinigungskraft
+                    scannt beim Verlassen und tippt „Fertig"; der Server prüft das Reinigungsfenster
+                    und ob heute ein Team-Code am Schloss benutzt wurde.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {rows.filter((r) => r.cleaning_token).map((r) => {
+                      const url = `https://trimosa.de/reinigung/${r.cleaning_token}`
+                      return (
+                        <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ flex: '1 1 120px', fontSize: 12.5, fontWeight: 700, color: '#111' }}>{r.title}</span>
+                          <code style={{ flex: '3 1 240px', minWidth: 0, fontSize: 11, color: '#6B675E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard?.writeText(url)
+                              setCopied(r.id)
+                              setTimeout(() => setCopied(null), 1600)
+                            }}
+                            style={{ border: '1.5px solid #E0DDD6', borderRadius: 8, background: '#fff', padding: '4px 10px', fontSize: 12, fontWeight: 700, color: copied === r.id ? '#16A34A' : '#111', cursor: 'pointer', flexShrink: 0 }}
+                          >
+                            {copied === r.id ? '✓ Kopiert' : 'Kopieren'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {settings && (
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #F0EDE6', display: 'flex', flexDirection: 'column', gap: 8 }}>
