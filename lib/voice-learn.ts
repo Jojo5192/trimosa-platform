@@ -113,7 +113,9 @@ export async function learnFromCalls(): Promise<{ calls: number; loesungen: numb
  * 4:40-Cron (/api/voice/learn) mit — eigener Cursor, unabhängig vom Lernen.
  */
 const QA_CURSOR_KEY = 'voice_qa_cursor'
-const CHEFSACHE_CHAT_ID = '3107babc-e255-4d71-8f6e-8b2ddbd05ad8'
+// Inhaber-Wunsch 31.7.: QA-Befunde NUR an Johannes — private Gruppe
+// „🔍 Anruf-QA" (nur er + Claude), NICHT die Chefsache.
+const QA_CHAT_ID = '3ac62631-02af-49c8-b7ad-3fdcb6b38162'
 
 export async function auditCalls(): Promise<{ calls: number; befunde: number; status: string }> {
   const cursor = String((await getSetting(QA_CURSOR_KEY) as { at?: string } | null)?.at
@@ -170,7 +172,7 @@ export async function auditCalls(): Promise<{ calls: number; befunde: number; st
         const wann = c ? String(c.created_at).slice(5, 16).replace('T', ' ') : '?'
         return `${b.schwere === 'hoch' ? '🔴' : '🟡'} Anruf ${wann}: ${b.problem}\n   → ${b.empfehlung}`
       })
-      await postAsClaude(CHEFSACHE_CHAT_ID,
+      await postAsClaude(QA_CHAT_ID,
         `🔍 Anruf-QA (automatische Analyse, ${calls.length} Anruf${calls.length > 1 ? 'e' : ''} geprüft):\n\n` +
         zeilen.join('\n\n') +
         (fazit ? `\n\nFazit: ${fazit}` : '') +
