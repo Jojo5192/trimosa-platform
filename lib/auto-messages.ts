@@ -68,6 +68,7 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{wohnung}',      label: 'Name der Wohnung' },
   { key: '{anreise}',      label: 'Anreisedatum' },
   { key: '{abreise}',      label: 'Abreisedatum' },
+  { key: '{fruehester_checkin}', label: 'Frühester Check-in heute („sofort“ bzw. „10:00 Uhr“)' },
   { key: '{naechte}',      label: 'Anzahl Nächte' },
   { key: '{gaeste}',       label: 'Anzahl Gäste' },
   { key: '{checkin}',      label: 'Check-in-Uhrzeit' },
@@ -76,7 +77,7 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{mappe}',        label: 'Link zur Gästemappe' },
   { key: '{mappe_button}', label: 'Gästemappe als Button' },
   { key: '{adresse}',      label: 'Adresse der Wohnung' },
-  { key: '{bewertung_button}', label: 'Google-Bewertungs-Link der Wohnung' },
+  { key: '{google_bewertung}', label: 'Google-Bewertungs-Link (nackte URL)' },
   { key: '{bewertung_button}', label: 'Google-Bewertung als Button' },
 ]
 
@@ -100,6 +101,8 @@ export interface MessageContext {
   mappe: string
   adresse: string
   google_bewertung: string
+  /** §231: „sofort" bzw. „10:00 Uhr" — frühester Check-in HEUTE (max aus Code-Gültigkeit und 10-Uhr-Doktrin) */
+  fruehester_checkin: string
 }
 
 /** Ersetzt alle {platzhalter} im Text mit den Werten aus dem Kontext. */
@@ -126,6 +129,7 @@ export function demoContext(wohnung: string, checkin: string, checkout: string):
     google_bewertung: 'https://search.google.com/local/writereview?placeid=ChIJk0rIYv1hlUcRQtsXHL5QEWo',
     mappe: 'trimosa.de/mappe/…',
     adresse: 'Beispielstraße 1, 54634 Bitburg',
+    fruehester_checkin: '10:00 Uhr',
   }
 }
 
@@ -183,8 +187,8 @@ export function defaultAutoMessages(): Omit<AutoMessage, 'id'>[] {
       // §231: ereignisgesteuert — versendet die Fertigmeldung (NFC), nicht der Cron
       name: 'Früher Check-in möglich', enabled: true, trigger_type: 'reinigung_fertig',
       subject: 'Gute Nachricht — du kannst früher einchecken 🎉',
-      offset_days: 0, send_hour: 8, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 5,
-      body: 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab 10:00 Uhr einchecken (statt {checkin} Uhr).\n\n🔑 Dein Türcode aus der Gästemappe funktioniert bereits.\n\nBis später — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
+      offset_days: 0, send_hour: 7, listing_id: null, channel_filter: null, min_nights: null, lead_filter: 'alle', send_email: true, sort: 5,
+      body: 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab {fruehester_checkin} einchecken (statt regulär {checkin} Uhr).\n\n🔑 Dein Türcode aus der Gästemappe funktioniert bereits.\n\nBis später — wir freuen uns auf dich!\nDein TRIMOSA-Team 💛',
     },
   ]
 }
