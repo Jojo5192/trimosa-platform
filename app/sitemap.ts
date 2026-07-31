@@ -68,6 +68,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.3,
   }))
 
+  // §226: kommerzielle Standort-Landingpages (nur deutsch)
+  const landingEntries: MetadataRoute.Sitemap = ['bitburg', 'trier', 'suedeifel'].map((ort) => ({
+    url: `${siteUrl}/ferienwohnung/${ort}`,
+    changeFrequency: 'weekly',
+    priority: 0.8,
+  }))
+
   // §173 Etappe 3: FAQ + Startseite ebenfalls mit Sprachpfad-Varianten
   const faqEntries: MetadataRoute.Sitemap = multiLang('/faq', 0.5)
   const homeLanguages = {
@@ -85,6 +92,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     ...homeEntries,
     ...faqEntries,
+    ...landingEntries,
     ...listingEntries,
     ...contentEntries,
     ...poiEntries,
