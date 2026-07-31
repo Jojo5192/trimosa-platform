@@ -241,13 +241,16 @@ export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput): Pr
   return { sevdeskId, number: inp.invoiceNumber }
 }
 
-/** Kanal → Verrechnungskonto-Label (direct VOR booking prüfen — §140-Falle). */
+/** Kanal → Verrechnungskonto-Label. Reihenfolge ist Substring-kritisch
+ *  (§140-Falle in BEIDE Richtungen): „FeWo-direkt" enthält „direkt" →
+ *  FeWo MUSS vor dem Direkt-Check stehen; „Direct booking" enthält
+ *  „booking" → Direkt MUSS vor dem Booking-Check stehen. */
 export function clearingLabelFor(channelName: string | null | undefined): string {
   const s = (channelName ?? '').toLowerCase()
+  if (/fewo|homeaway|vrbo|abritel/.test(s)) return 'Verrechnung FeWo-direkt'
   if (/direct|direkt|website/.test(s)) return 'Verrechnung Direkt/Website'
   if (s.includes('airbnb')) return 'Verrechnung Airbnb'
   if (s.includes('booking')) return 'Verrechnung Booking.com'
-  if (/fewo|homeaway|vrbo|abritel/.test(s)) return 'Verrechnung FeWo-direkt'
   if (s.includes('hometogo')) return 'Verrechnung HomeToGo'
   return 'Verrechnung Direkt/Website'
 }
