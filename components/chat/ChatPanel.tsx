@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import CallsPanel from '@/components/team/CallsPanel'
 
 interface Conversation {
   id: string; guest_id: string; host_id: string
@@ -271,6 +272,19 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [authExpired, setAuthExpired] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
+  // ☎️ §227c: Telefonate zu dieser Buchung (team-only) — Chip im Header
+  const [callsOpen, setCallsOpen] = useState(false)
+  const [callsCount, setCallsCount] = useState(0)
+  useEffect(() => {
+    setCallsOpen(false)
+    setCallsCount(0)
+    const bid = active?.bookingId
+    if (!team || !bid) return
+    fetch(`/api/voice/calls?bookingId=${bid}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.calls) setCallsCount(j.calls.length) })
+      .catch(() => {})
+  }, [team, active?.bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [msgs, setMsgs]         = useState<Message[]>([])
   const [draft, setDraft]       = useState('')
   const [busy, setBusy]         = useState(false)
@@ -1238,6 +1252,18 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     }}
                   >📋</button>
                 )}
+                {team && callsCount > 0 && (
+                  <button
+                    onClick={() => setCallsOpen(true)}
+                    title="Telefonate zu dieser Buchung lesen & abhören"
+                    style={{
+                      height: 30, minWidth: 30, padding: '0 9px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                      background: 'rgba(118,118,128,0.12)', color: '#4A463E',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      fontSize: 12, fontWeight: 700, gap: 3,
+                    }}
+                  >☎️{callsCount > 1 ? ` ${callsCount}` : ''}</button>
+                )}
                 {team && active.lastSender === 'guest' && (
                   <>
                     <button
@@ -1267,6 +1293,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               </div>
             )}
           </div>
+        )}
+        {/* ☎️ §227c: Telefonate zu dieser Buchung — Vollbild-Overlay */}
+        {team && callsOpen && active?.bookingId && (
+          <CallsPanel
+            bookingId={active.bookingId}
+            title="Telefonate zu dieser Buchung"
+            onClose={() => setCallsOpen(false)}
+          />
         )}
         {/* 📋 §183: Aufgabe aus dem Chat — Inline-Panel */}
         {team && taskOpen && active && (
