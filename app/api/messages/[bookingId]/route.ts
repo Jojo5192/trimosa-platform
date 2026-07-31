@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho } from '@/lib/smoobu'
+import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho, stripEmailQuote } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 
 /**
@@ -84,7 +84,8 @@ export async function GET(
         if (isSmoobuSystemMessage(sm.subject)) continue
         const fromHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
         // §219: Booking-Echo — Betreff-Zeile aus dem Body strippen (nur Host-Seite)
-        const content = (fromHost ? stripSubjectEcho(sm.subject, sm.message) : sm.message).trim()
+        // §227b: Gast-E-Mail-Antworten — Signatur + zitierte Mail-Historie strippen
+        const content = (fromHost ? stripSubjectEcho(sm.subject, sm.message) : stripEmailQuote(sm.message)).trim()
         if (!content) continue
         if (known.has(String(sm.id))) {
           // already imported — if an unclaimed local twin exists, it IS the
@@ -151,6 +152,26 @@ export async function GET(
   // Eindeutschung zeigte die App sie unübersetzt. Eigene deutsche
   // Nachrichten bekommen dabei nur lang='de' (content_de bleibt null).
   let out = messages ?? []
+
+  // §227b Retro-Heilung: bereits importierte Gast-E-Mail-Antworten mit
+  // Zitat-Blob (Signatur + „From:/Sent:"-Historie) einmalig kürzen —
+  // content_de/lang zurücksetzen, damit die Übersetzung unten neu läuft.
+  if (!fast) {
+    for (let i = 0; i < out.length; i++) {
+      const m = out[i]
+      if (m.sender_type !== 'guest' || !m.smoobu_message_id) continue
+      const cur = String(m.content ?? '')
+      const stripped = stripEmailQuote(cur).trim()
+      if (stripped && stripped.length < cur.length - 40) {
+        const { error } = await supabaseAdmin
+          .from('messages')
+          .update({ content: stripped, content_de: null, lang: null })
+          .eq('id', m.id)
+        if (!error) out[i] = { ...m, content: stripped, content_de: null, lang: null }
+      }
+    }
+  }
+
   const untranslated = fast ? [] : out.filter((m) =>
     !m.lang && (m.content ?? '').trim().length > 0
     && (m.sender_type === 'guest' || (m.sender_type === 'host' && m.smoobu_message_id)))
