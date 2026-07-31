@@ -190,7 +190,8 @@ export default function BookingBox({
     fetch('/api/smoobu/availability', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listingId, checkIn, checkOut }),
+      // §224: Personenzahl mitschicken — Smoobu-Aufschlag ab 3./4. Person
+      body: JSON.stringify({ listingId, checkIn, checkOut, guests: adults + children }),
     })
       .then(r => r.json())
       .then(d => {
@@ -198,7 +199,7 @@ export default function BookingBox({
         setAvailability({ available: d.available, minStayViolation: d.minStayViolation })
       })
       .catch(() => {})
-  }, [listingId, checkIn, checkOut])
+  }, [listingId, checkIn, checkOut, adults, children])
 
   const handleSelectDate = useCallback((iso: string) => {
     if (selecting === 'in') {
