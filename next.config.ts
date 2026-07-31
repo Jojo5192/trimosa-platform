@@ -17,6 +17,34 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    // §226: Alte WEBFLOW-URLs ranken noch bei Google und bekamen Klicks auf
+    // unsere 404 (Search-Console-Befund 30.07.: ~9 Klicks + ~190 Impressionen
+    // in 28 Tagen). 301 fängt die Besucher auf und überträgt die Rankings.
+    return [
+      // Wohnungs-Detailseiten (Webflow: /activities-and-places/<slug>)
+      { source: '/activities-and-places/panorama-home', destination: '/listing/panorama-home', permanent: true },
+      { source: '/activities-and-places/magnolia-flat', destination: '/listing/magnolia-flat', permanent: true },
+      { source: '/activities-and-places/cozy-flat', destination: '/listing/cozy-flat', permanent: true },
+      { source: '/activities-and-places/city-home', destination: '/listing/city-home', permanent: true },
+      { source: '/activities-and-places/sunrisesuite', destination: '/listing/sunrise-suite', permanent: true },
+      { source: '/activities-and-places/sweet-spot', destination: '/listing/sweet-spot', permanent: true },
+      { source: '/activities-and-places/river-retreat', destination: '/listing/river-retreat', permanent: true },
+      { source: '/activities-and-places/:path*', destination: '/', permanent: true },
+      // Info-Seiten
+      { source: '/gut-zu-wissen/wer-wir-sind', destination: '/ueber-uns', permanent: true },
+      { source: '/gut-zu-wissen/gasteinfos', destination: '/faq', permanent: true },
+      { source: '/gut-zu-wissen/:path*', destination: '/ueber-uns', permanent: true },
+      // Übersichts-/Kategorie-Seiten
+      { source: '/apartments', destination: '/', permanent: true },
+      { source: '/category/:path*', destination: '/', permanent: true },
+      // Rechtstexte (Webflow: /template-info/…)
+      { source: '/template-info/impressum', destination: '/impressum', permanent: true },
+      { source: '/template-info/datenschutzerklarung', destination: '/datenschutz', permanent: true },
+      { source: '/template-info/agb', destination: '/agb', permanent: true },
+      { source: '/template-info/:path*', destination: '/impressum', permanent: true },
+    ]
+  },
   async headers() {
     // Content-Security-Policy — seit 20.07. SCHARF (lief ab 15.07. im
     // Report-Only ohne Verletzungen; Konsole auf /, Listing, Region und /team
