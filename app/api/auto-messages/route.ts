@@ -20,7 +20,7 @@ async function requireHost() {
   return (me?.is_admin || me?.is_host) ? user : null
 }
 
-const TRIGGERS: TriggerType[] = ['nach_buchung', 'vor_anreise', 'nach_anreise', 'vor_abreise', 'nach_abreise']
+const TRIGGERS: TriggerType[] = ['nach_buchung', 'vor_anreise', 'nach_anreise', 'vor_abreise', 'nach_abreise', 'reinigung_fertig']
 const LEADS: LeadFilter[] = ['alle', 'kurzfristig', 'normal']
 
 export async function GET() {
