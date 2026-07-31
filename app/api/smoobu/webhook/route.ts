@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getReservationMessages } from '@/lib/smoobu'
-import { sendNewBookingPush } from '@/lib/push'
+import { sendNewBookingPush, sendPushToTeam } from '@/lib/push'
 
 /**
  * POST /api/smoobu/webhook
@@ -242,9 +242,40 @@ export async function POST(request: Request) {
   }
 
   // Kalender-SPERREN (blocked bookings) sind keine Gäste-Buchungen —
-  // ohne den Guard würde jede Sperre als Buchung upserten UND pushen
+  // ohne den Guard würde jede Sperre als Buchung upserten UND pushen.
+  // 🚨 §227 (Fall Fred Kerklingh): Smoobu flaggt auch ÜBERBUCHUNGEN als
+  // blocked — die wurden hier STILL verschluckt, die Buchung war in der
+  // App unsichtbar und niemand wurde gewarnt. Blocked MIT Gastname +
+  // Überlappung mit einer bestätigten Buchung ⇒ Überbuchungs-Alarm
+  // (weiterhin KEIN Insert — aber das Team erfährt es sofort).
   if (resData['is-blocked-booking'] === true) {
-    console.log(`[Smoobu Webhook] Blocked-Booking (Kalendersperre) ignoriert: ${reservationId}`)
+    if (guestName && guestName !== 'Externer Gast' && checkIn && checkOut) {
+      try {
+        const { data: clash } = await supabaseAdmin
+          .from('bookings')
+          .select('id, guest_name, check_in, check_out')
+          .eq('listing_id', listing.id)
+          .eq('status', 'confirmed')
+          .lt('check_in', checkOut)
+          .gt('check_out', checkIn)
+          .limit(1)
+        if (clash?.length) {
+          const c = clash[0]
+          console.error('[Smoobu Webhook] 🚨 ÜBERBUCHUNG (blocked+Gastname):', reservationId, guestName, checkIn, '↔', c.guest_name, c.check_in)
+          const { data: lst } = await supabaseAdmin
+            .from('listings').select('title').eq('id', listing.id).maybeSingle()
+          await sendPushToTeam(
+            `🚨 ÜBERBUCHUNG · ${lst?.title ?? 'Wohnung'}`,
+            `${guestName} (${checkIn}–${checkOut}) kollidiert mit ${c.guest_name} (${c.check_in}–${c.check_out}) — sofort klären!`,
+            '/team?tab=kalender',
+          ).catch((e) => console.error('[Smoobu Webhook] overbooking push:', e))
+        } else {
+          console.warn('[Smoobu Webhook] Blocked-Booking MIT Gastname (Überbuchung?) ohne DB-Kollision:', reservationId, guestName)
+        }
+      } catch (e) { console.error('[Smoobu Webhook] overbooking check:', e) }
+    } else {
+      console.log(`[Smoobu Webhook] Blocked-Booking (Kalendersperre) ignoriert: ${reservationId}`)
+    }
     return new Response('OK', { status: 200 })
   }
   if (!checkIn || !checkOut) {
@@ -307,6 +338,17 @@ export async function POST(request: Request) {
 
     if (error || !inserted) {
       console.error('[Smoobu Webhook] Insert error:', error)
+      // 🚨 §227: Scheitert der Insert am Doppelbuchungs-Schutz (EXCLUDE-
+      // Constraint), ist das eine ÜBERBUCHUNG — bisher verschwand sie still.
+      if (/exclusion|overlap|conflict/i.test(error?.message ?? '')) {
+        const { data: lst } = await supabaseAdmin
+          .from('listings').select('title').eq('id', listing.id).maybeSingle()
+        await sendPushToTeam(
+          `🚨 ÜBERBUCHUNG · ${lst?.title ?? 'Wohnung'}`,
+          `Neue Reservierung ${guestName ?? reservationId} (${checkIn}–${checkOut}) kollidiert mit einer bestehenden Buchung — sofort klären!`,
+          '/team?tab=kalender',
+        ).catch((e) => console.error('[Smoobu Webhook] overbooking push:', e))
+      }
       // Still return 200 to prevent Smoobu from retrying indefinitely
     } else {
       console.log(`[Smoobu Webhook] Inserted reservation ${reservationId} for listing ${listing.id}`)
