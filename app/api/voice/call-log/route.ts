@@ -142,6 +142,39 @@ export async function POST(request: Request) {
     }
   }
 
+  // 🔢 §227 CODE-WÄCHTER: Der Bot hat am 31.7. einen ERFUNDENEN Türcode
+  // („842915") angesagt. Verhindern kann das nur das LLM — aber ERKENNEN
+  // können wir es: Jede von der ASSISTENTIN gesprochene 6er-Ziffernfolge
+  // wird gegen den echten door_code der zugeordneten Buchung geprüft.
+  // Abweichung → sofortiger Bereitschafts-Push mit dem RICHTIGEN Code.
+  try {
+    const spoken = new Set<string>()
+    for (const t of turns) {
+      if (t.role === 'user') continue
+      for (const m of String(t.message ?? '').matchAll(/\d(?:[\s.,\-–…]{0,4}\d){5,}/g)) {
+        const digits = m[0].replace(/\D/g, '')
+        if (digits.length === 6) spoken.add(digits)
+      }
+    }
+    if (spoken.size) {
+      let realCode: string | null = null
+      if (booking) {
+        const { data: b } = await supabaseAdmin
+          .from('bookings').select('door_code').eq('id', booking.id).maybeSingle()
+        realCode = (b?.door_code as string | null) ?? null
+      }
+      const falsche = [...spoken].filter((c) => c !== realCode)
+      if (falsche.length) {
+        console.error('[call-log] 🚨 Bot nannte Code(s) ohne Deckung:', falsche.join(', '), 'echt:', realCode ?? '—', convId)
+        await pushOncall(
+          '🚨 Bot nannte FALSCHEN Türcode!',
+          `Am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig wäre ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!${caller ? ` Rückruf: ${caller}` : ''}`,
+          booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
+        ).catch((e) => console.error('[call-log] code push:', e))
+      }
+    }
+  } catch (e) { console.error('[call-log] code check:', e) }
+
   // 🚨 §227 NOTFALL-SICHERHEITSNETZ (Fall Kerklingh 31.7.): Der Bot
   // BEHAUPTETE „Team ist mit höchster Priorität informiert", rief
   // nachricht_aufnehmen aber NIE auf — niemand wurde alarmiert. Erkennt
