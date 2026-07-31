@@ -1,5 +1,63 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { staffCodeUsedToday, type LockRef } from '@/lib/locks'
+import { resolvePlaceholders } from '@/lib/auto-messages'
+
+/**
+ * Text der Früh-Check-in-Nachricht (§231): kommt aus der Auto-Nachrichten-
+ * Vorlage mit Trigger 'reinigung_fertig' (Editor: Name „Früher Check-in
+ * möglich" — dort editierbar, per Schalter deaktivierbar, Wohnungs-Chips
+ * gelten). Semantik: Vorlage vorhanden & AUS → keine Nachricht (bewusst);
+ * KEINE Vorlage vorhanden → eingebauter Standardtext (funktioniert ab Werk).
+ */
+interface EarlyBooking {
+  id: string; door_code: string | null; guest_name: string | null
+  check_in: string; check_out: string
+  adults: number | null; children: number | null; portal_token: string | null
+}
+
+async function renderEarlyCheckinText(
+  listingId: string, listingTitle: string, arr: EarlyBooking, checkInTime: string,
+): Promise<{ text: string; templateId: string | null } | null> {
+  let body: string | null = null
+  let templateId: string | null = null
+  try {
+    const { data: rows } = await supabaseAdmin
+      .from('auto_messages').select('*').eq('trigger_type', 'reinigung_fertig').order('sort')
+    const list = (rows ?? []) as { id: string; enabled: boolean; body: string; listing_id: string | null; listing_ids: string[] | null }[]
+    const match = list.find((t) => {
+      const ids = Array.isArray(t.listing_ids) && t.listing_ids.length
+        ? t.listing_ids : t.listing_id ? [t.listing_id] : null
+      return !ids || ids.includes(listingId)
+    })
+    if (match) {
+      if (!match.enabled) return null
+      body = match.body
+      templateId = match.id
+    }
+  } catch { /* Vorlagen nicht ladbar → Standardtext */ }
+
+  // Frühester Check-in laut Inhaber-Doktrin: 10:00 am Anreisetag (die Codes
+  // gelten ohnehin ab Mitternacht — validFromHour 0, §133)
+  const fallback = 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab 10:00 Uhr einchecken (statt {checkin} Uhr).'
+    + (arr.door_code ? ' Dein Türcode aus der Gästemappe funktioniert bereits.' : '')
+
+  const fmtDate = (iso: string) => { const [y, m, d] = iso.split('-'); return `${Number(d)}.${Number(m)}.${y}` }
+  const nights = Math.max(1, Math.round((Date.parse(arr.check_out) - Date.parse(arr.check_in)) / 86400_000))
+  const vorname = (arr.guest_name ?? '').trim().split(/\s+/)[0] || 'lieber Gast'
+  const ctx: Record<string, string> = {
+    vorname, name: (arr.guest_name ?? '').trim() || 'Gast', wohnung: listingTitle,
+    anreise: fmtDate(arr.check_in), abreise: fmtDate(arr.check_out),
+    naechte: String(nights), gaeste: String((arr.adults ?? 1) + (arr.children ?? 0)),
+    checkin: checkInTime, tuercode: arr.door_code ?? '',
+    mappe: arr.portal_token ? `https://trimosa.de/mappe/${arr.portal_token}` : '',
+  }
+  ctx.mappe_button = ctx.mappe
+  let text = resolvePlaceholders(body ?? fallback, ctx)
+  // Unaufgelöste Platzhalter nie an Gäste (Engine-Doktrin §148)
+  text = text.replace(/\[\[MAPPE_BUTTON\]\]/g, ctx.mappe).replace(/\{\w+\}/g, '')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  return text ? { text, templateId } : null
+}
 
 /**
  * 🧹 §231 Reinigungs-Abschluss vor Ort: Die Reinigungskraft scannt den
@@ -145,22 +203,38 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
   let earlyCheckinSent = false
 
   // 🎉 Früh-Check-in: nur bei BESTÄTIGTER Meldung, Anreise heute, vor der
-  // Check-in-Zeit — Zustellung über den bewährten Gast-Kanal (§220).
+  // Check-in-Zeit — Text kommt aus der Auto-Nachrichten-Vorlage (Trigger
+  // „Reinigung gemeldet", im Editor an/aus & editierbar), Zustellung über
+  // den bewährten Gast-Kanal (§220). Respektiert den 🚦-Master-Schalter.
   if (verify === 'bestaetigt') {
     try {
       const { data: arr } = await supabaseAdmin
         .from('bookings')
-        .select('id, source, payment_status, door_code')
+        .select('id, source, payment_status, door_code, guest_name, check_in, check_out, adults, children, portal_token')
         .eq('listing_id', l.id).eq('status', 'confirmed').eq('check_in', now.date)
         .maybeSingle()
       const paidOk = arr && (arr.source !== 'trimosa' || arr.payment_status === 'paid')
       const checkInTime = (l.check_in_time ?? '16:00').slice(0, 5)
       if (arr && paidOk && now.hm < checkInTime) {
-        const { deliverToGuest } = await import('@/lib/voice')
-        const text = `Gute Nachricht 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern auch früher als ${checkInTime} Uhr einchecken.`
-          + (arr.door_code ? ' Dein Türcode aus der Gästemappe funktioniert bereits.' : '')
-        const res = await deliverToGuest(arr.id, text, { testMode: false })
-        earlyCheckinSent = res.delivery === 'smoobu' || res.delivery === 'email'
+        const { getAutoSendEnabled } = await import('@/lib/auto-messages-engine')
+        const rendered = (await getAutoSendEnabled())
+          ? await renderEarlyCheckinText(l.id, l.title ?? 'Wohnung', arr, checkInTime)
+          : null
+        // Dedupe gegen den Anreisetag-Morgen-Pfad der Engine (§231): Claim-
+        // Insert ins auto_message_log — existiert der Eintrag schon, hat die
+        // Engine heute Morgen bereits versendet.
+        let claimed = true
+        if (rendered?.templateId) {
+          const { error: logErr } = await supabaseAdmin.from('auto_message_log').insert({
+            auto_message_id: rendered.templateId, booking_id: arr.id, channel: 'reinigung-event',
+          })
+          if (logErr && /duplicate|unique/i.test(logErr.message)) claimed = false
+        }
+        if (rendered && claimed) {
+          const { deliverToGuest } = await import('@/lib/voice')
+          const res = await deliverToGuest(arr.id, rendered.text, { testMode: false })
+          earlyCheckinSent = res.delivery === 'smoobu' || res.delivery === 'email'
+        }
       }
     } catch (e) {
       console.error('[cleaning-done] Früh-Check-in-Nachricht fehlgeschlagen:', e)
