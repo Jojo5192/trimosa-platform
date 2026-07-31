@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { staffCodeUsedToday, type LockRef } from '@/lib/locks'
+import { staffCodeUsedToday, getLockSettings, type LockRef } from '@/lib/locks'
 import { resolvePlaceholders } from '@/lib/auto-messages'
 
 /**
@@ -16,7 +16,7 @@ interface EarlyBooking {
 }
 
 async function renderEarlyCheckinText(
-  listingId: string, listingTitle: string, arr: EarlyBooking, checkInTime: string,
+  listingId: string, listingTitle: string, arr: EarlyBooking, checkInTime: string, nowHour: number,
 ): Promise<{ text: string; templateId: string | null } | null> {
   let body: string | null = null
   let templateId: string | null = null
@@ -36,9 +36,14 @@ async function renderEarlyCheckinText(
     }
   } catch { /* Vorlagen nicht ladbar → Standardtext */ }
 
-  // Frühester Check-in laut Inhaber-Doktrin: 10:00 am Anreisetag (die Codes
-  // gelten ohnehin ab Mitternacht — validFromHour 0, §133)
-  const fallback = 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab 10:00 Uhr einchecken (statt {checkin} Uhr).'
+  // §231: frühester Check-in HEUTE — max(Code-Gültigkeits-Beginn, 10-Uhr-
+  // Doktrin); ist es schon später (Reinigung z. B. um 13 Uhr fertig), wird
+  // daraus „sofort". Gleiche Logik wie im Engine-Morgen-Pfad.
+  let earliestHour = 10
+  try { earliestHour = Math.max((await getLockSettings()).validFromHour, 10) } catch { /* Default 10 */ }
+  const fruehesterCheckin = nowHour >= earliestHour ? 'sofort' : `${String(earliestHour).padStart(2, '0')}:00 Uhr`
+
+  const fallback = 'Gute Nachricht, {vorname} 🎉 Deine Wohnung ist schon fertig vorbereitet — du kannst heute gern schon ab {fruehester_checkin} einchecken (statt regulär {checkin} Uhr).'
     + (arr.door_code ? ' Dein Türcode aus der Gästemappe funktioniert bereits.' : '')
 
   const fmtDate = (iso: string) => { const [y, m, d] = iso.split('-'); return `${Number(d)}.${Number(m)}.${y}` }
@@ -50,6 +55,7 @@ async function renderEarlyCheckinText(
     naechte: String(nights), gaeste: String((arr.adults ?? 1) + (arr.children ?? 0)),
     checkin: checkInTime, tuercode: arr.door_code ?? '',
     mappe: arr.portal_token ? `https://trimosa.de/mappe/${arr.portal_token}` : '',
+    fruehester_checkin: fruehesterCheckin,
   }
   ctx.mappe_button = ctx.mappe
   let text = resolvePlaceholders(body ?? fallback, ctx)
@@ -218,7 +224,7 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
       if (arr && paidOk && now.hm < checkInTime) {
         const { getAutoSendEnabled } = await import('@/lib/auto-messages-engine')
         const rendered = (await getAutoSendEnabled())
-          ? await renderEarlyCheckinText(l.id, l.title ?? 'Wohnung', arr, checkInTime)
+          ? await renderEarlyCheckinText(l.id, l.title ?? 'Wohnung', arr, checkInTime, now.hour)
           : null
         // Dedupe gegen den Anreisetag-Morgen-Pfad der Engine (§231): Claim-
         // Insert ins auto_message_log — existiert der Eintrag schon, hat die
