@@ -102,3 +102,81 @@ export async function learnFromCalls(): Promise<{ calls: number; loesungen: numb
   }
   return { calls: calls.length, loesungen: loesungen.length, status: 'aktualisiert' }
 }
+
+/**
+ * 🔍 §228: Anruf-QA (Inhaber-Auftrag 31.7. nach dem Kerklingh-Vorfall) —
+ * analysiert JEDEN neuen Anruf automatisch auf Fehler und Verbesserungen:
+ * erfundene Fakten/Codes, behauptete-aber-nicht-ausgeführte Aktionen,
+ * riskante Auskünfte, Gesprächsführungs-Probleme. Befunde mit Schwere
+ * hoch/mittel gehen als Claude-Post in den Chefsache-Chat; der letzte
+ * Bericht liegt in app_settings 'voice_qa_last'. Läuft im täglichen
+ * 4:40-Cron (/api/voice/learn) mit — eigener Cursor, unabhängig vom Lernen.
+ */
+const QA_CURSOR_KEY = 'voice_qa_cursor'
+const CHEFSACHE_CHAT_ID = '3107babc-e255-4d71-8f6e-8b2ddbd05ad8'
+
+export async function auditCalls(): Promise<{ calls: number; befunde: number; status: string }> {
+  const cursor = String((await getSetting(QA_CURSOR_KEY) as { at?: string } | null)?.at
+    ?? new Date(Date.now() - 2 * 86400_000).toISOString())
+  const { data: rows } = await supabaseAdmin
+    .from('voice_calls')
+    .select('id, summary, transcript, caller_number, created_at')
+    .gt('created_at', cursor)
+    .order('created_at', { ascending: true })
+    .limit(12)
+  const calls = (rows ?? []).filter((c) => String(c.transcript ?? '').length > 400)
+  if (!calls.length) {
+    if (rows?.length) await setSetting(QA_CURSOR_KEY, { at: rows[rows.length - 1].created_at })
+    return { calls: 0, befunde: 0, status: 'nichts Neues' }
+  }
+
+  const material = calls.map((c, i) =>
+    `--- ANRUF ${i + 1} · ${String(c.created_at).slice(0, 16).replace('T', ' ')} ---\n${String(c.transcript).slice(0, 6000)}`
+  ).join('\n\n')
+
+  const system = [
+    'Du bist der QUALITÄTS-AUDITOR der TRIMOSA-Telefon-Assistentin (KI-Bot für Ferienwohnungs-Gäste). Du prüfst Anruf-Transkripte auf Fehler.',
+    'Prüfe JEDEN Anruf auf: (1) ERFUNDENES — Zahlen, Codes, Ausstattungs-Details, Zusagen oder „Buchung gefunden"-Behauptungen, die nicht aus einer Werkzeug-Antwort stammen können; (2) BEHAUPTETE, ABER NICHT AUSGEFÜHRTE AKTIONEN („Team ist informiert", „ich habe gesendet"); (3) RISKANTE AUSKÜNFTE (Preise ohne Personenzahl, Codes an unklare Anrufer, falsche Bedienungs-Anweisungen — Nuki-Keypads haben KEIN Häkchen); (4) GESPRÄCHSFÜHRUNG (Anrufer nicht verstanden, Schleifen, unnötige Datenabfragen, Missverständnisse ignoriert, falsche Sprache); (5) VERBESSERUNGS-CHANCEN.',
+    'Antworte NUR mit JSON: {"befunde":[{"anruf":1,"schwere":"hoch"|"mittel"|"niedrig","problem":"1 Satz, konkret mit Zitat","empfehlung":"1 Satz, was der Bot hätte tun sollen"}],"fazit":"1-2 Sätze Gesamteindruck"}. Ist ein Anruf sauber, KEIN Befund dafür — melde nur echte Probleme, keine Geschmacksfragen.',
+  ].join('\n')
+
+  let befunde: { anruf?: number; schwere?: string; problem?: string; empfehlung?: string }[] = []
+  let fazit = ''
+  try {
+    const raw = await askClaude(system, material.slice(0, 60000), 8000, SMART_MODEL)
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (m) {
+      const parsed = JSON.parse(m[0]) as { befunde?: typeof befunde; fazit?: string }
+      befunde = Array.isArray(parsed.befunde) ? parsed.befunde : []
+      fazit = String(parsed.fazit ?? '')
+    }
+  } catch (e) {
+    console.error('[voice-qa] Analyse fehlgeschlagen:', e)
+    return { calls: calls.length, befunde: 0, status: 'KI-Analyse fehlgeschlagen (Cursor bleibt — nächster Lauf versucht es erneut)' }
+  }
+
+  await setSetting('voice_qa_last', {
+    at: new Date().toISOString(), gepruefte: calls.length, befunde, fazit,
+  })
+  await setSetting(QA_CURSOR_KEY, { at: calls[calls.length - 1].created_at })
+
+  // Chefsache-Post nur bei relevanten Befunden (hoch/mittel) — kein Spam
+  const relevant = befunde.filter((b) => b.schwere === 'hoch' || b.schwere === 'mittel')
+  if (relevant.length) {
+    try {
+      const { postAsClaude } = await import('@/lib/claude-bot')
+      const zeilen = relevant.slice(0, 6).map((b) => {
+        const c = calls[(b.anruf ?? 1) - 1]
+        const wann = c ? String(c.created_at).slice(5, 16).replace('T', ' ') : '?'
+        return `${b.schwere === 'hoch' ? '🔴' : '🟡'} Anruf ${wann}: ${b.problem}\n   → ${b.empfehlung}`
+      })
+      await postAsClaude(CHEFSACHE_CHAT_ID,
+        `🔍 Anruf-QA (automatische Analyse, ${calls.length} Anruf${calls.length > 1 ? 'e' : ''} geprüft):\n\n` +
+        zeilen.join('\n\n') +
+        (fazit ? `\n\nFazit: ${fazit}` : '') +
+        '\n\nAnhören/Nachlesen: Team-App → Mehr → ☎️ Telefonate.')
+    } catch (e) { console.error('[voice-qa] Chefsache-Post fehlgeschlagen:', e) }
+  }
+
+  return { calls: calls.length, befunde: befunde.length, status: relevant.length ? `${relevant.length} relevante Befunde → Chefsache` : 'geprüft, nichts Gravierendes' }
+}
