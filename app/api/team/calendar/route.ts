@@ -216,6 +216,23 @@ export async function GET() {
         .filter((l) => l.cleaning_minutes && (!visibleIds || visibleIds.has(l.id)))
         .map((l) => [l.id, l.cleaning_minutes])),
       mine: listings.filter((l) => l.cleaning_responsible === auth.userId).map((l) => l.id),
+      // 🧹 §231: vor-Ort-Fertigmeldungen der letzten 14 Tage (NFC-Tag) —
+      // fail-soft, solange die Migration 20260801_cleaning_done noch fehlt
+      confirmations: await (async () => {
+        try {
+          const since = new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10)
+          const { data, error } = await supabaseAdmin
+            .from('cleaning_confirmations')
+            .select('listing_id, slot_date, confirmed_at, person_name, verify_status')
+            .gte('slot_date', since)
+          if (error || !data) return {}
+          return Object.fromEntries(data
+            .filter((c) => !visibleIds || visibleIds.has(String(c.listing_id)))
+            .map((c) => [`${c.listing_id}|${c.slot_date}`, {
+              at: c.confirmed_at, person: c.person_name, verify: c.verify_status,
+            }]))
+        } catch { return {} }
+      })(),
     },
   }, NO_STORE)
 }
