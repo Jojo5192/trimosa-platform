@@ -1,23 +1,5 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, pushOncall } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sendPushToUser } from '@/lib/push'
-import { getOncallIds } from '@/lib/oncall'
-
-/** Push an die Bereitschaft (§175/§183) — explizite Liste = NUR diese Personen
-    (übersteuert bewusst auch stummgeschaltete Gäste-Chat-Präferenzen: Wer
-    Dienst hat, bekommt den Anruf). Leere Liste = Fallback Admins/Gastgeber/
-    Mitarbeiter — NIE Dienstleister (Julia bekam sonst Anruf-Pushes, §183). */
-async function pushOncall(title: string, body: string, url: string): Promise<void> {
-  let ids = await getOncallIds()
-  if (!ids.length) {
-    const { data } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
-    ids = (data ?? []).map((p) => String(p.id))
-  }
-  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url).catch(() => {})))
-}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
