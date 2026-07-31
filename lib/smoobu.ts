@@ -137,6 +137,73 @@ export async function getApartmentRates(
  * Checks whether a specific date range is fully available.
  * Returns { available: boolean, totalPrice: number, nights: number }
  */
+/** §224: Smoobu-User-ID (customerId des Booking-Tool-Endpoints) — einmal
+ *  holen, in der Instanz cachen; Fehler werden NICHT gecacht. */
+async function getSmoobuCustomerId(apiKey?: string): Promise<number | null> {
+  const g = globalThis as typeof globalThis & { __smoobuCustomerId?: number }
+  if (g.__smoobuCustomerId) return g.__smoobuCustomerId
+  try {
+    const res = await fetch(`${SMOOBU_BASE}/me`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
+    if (!res.ok) { console.error('[Smoobu] /me failed', res.status); return null }
+    const data = await res.json().catch(() => null) as { id?: number } | null
+    if (typeof data?.id === 'number') { g.__smoobuCustomerId = data.id; return data.id }
+  } catch (e) { console.error('[Smoobu] /me error', e) }
+  return null
+}
+
+/**
+ * §224: PERSONEN-GENAUER Preis über Smoobus Booking-Tool-Endpoint
+ * (POST login.smoobu.com/booking/checkApartmentAvailability — nimmt `guests`
+ * und rechnet die in Smoobu konfigurierten Aufschläge ab der 3./4. Person
+ * mit ein). Die daily-rates (checkAvailability) kennen KEINE Gästezahl —
+ * dadurch nannten Anrufbot UND Website-Buchung zu niedrige Preise.
+ * Fallback bei jedem Fehler: checkAvailability (guestsUsed: null zeigt
+ * dem Aufrufer, dass der Preis OHNE Personen-Aufschlag ist).
+ */
+export async function getQuote(
+  smoobuApartmentId: string | number,
+  checkIn: string,
+  checkOut: string,
+  guests: number,
+  apiKey?: string,
+): Promise<{ available: boolean; totalPrice: number; nights: number; minStayViolation: boolean; guestsUsed: number | null }> {
+  const id = Number(smoobuApartmentId)
+  const nights = eachDayBetween(checkIn, checkOut).length
+  const fallback = async () => ({ ...(await checkAvailability(smoobuApartmentId, checkIn, checkOut)), guestsUsed: null })
+  try {
+    const customerId = await getSmoobuCustomerId(apiKey)
+    if (!customerId) return fallback()
+    const g = Math.min(Math.max(Math.round(guests) || 1, 1), 20)
+    const res = await fetch('https://login.smoobu.com/booking/checkApartmentAvailability', {
+      method: 'POST',
+      headers: smoobuHeaders(apiKey),
+      body: JSON.stringify({ arrivalDate: checkIn, departureDate: checkOut, apartments: [id], customerId, guests: g }),
+    })
+    if (!res.ok) {
+      console.error('[Smoobu] booking-quote failed', res.status, (await res.text().catch(() => '')).slice(0, 150))
+      return fallback()
+    }
+    const data = await res.json().catch(() => null) as {
+      availableApartments?: unknown[]
+      prices?: Record<string, { price?: number }>
+      errorMessages?: Record<string, { errorCode?: number }>
+    } | null
+    if (!data) return fallback()
+    const available = Array.isArray(data.availableApartments) && data.availableApartments.map(Number).includes(id)
+    const minStayViolation = Number(data.errorMessages?.[String(id)]?.errorCode) === 401
+    const price = data.prices?.[String(id)]?.price
+    if (available && typeof price === 'number' && price > 0) {
+      return { available: true, totalPrice: price, nights, minStayViolation: false, guestsUsed: g }
+    }
+    if (!available) return { available: false, totalPrice: 0, nights, minStayViolation, guestsUsed: g }
+    // verfügbar, aber kein Preis geliefert → lieber der bewährte Weg
+    return fallback()
+  } catch (e) {
+    console.error('[Smoobu] booking-quote error', e)
+    return fallback()
+  }
+}
+
 export async function checkAvailability(
   smoobuApartmentId: string | number,
   checkIn: string,   // YYYY-MM-DD
