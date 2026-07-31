@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, sendMessageToHost, isSmoobuSystemMessage } from '@/lib/smoobu'
+import { getReservationMessages, sendMessageToHost, isSmoobuSystemMessage, stripEmailQuote } from '@/lib/smoobu'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
 import { makeTr } from '@/lib/static-translate'
@@ -101,12 +101,15 @@ async function syncSmoobuMessages(
       // echte Gast-E-Mail-Antworten (Smoobu-Relay) werden korrekt importiert.
       const senderId = isHost ? hostId : (guestId ?? hostId)  // fallback to hostId if guestId is null
 
+      // §227b: Gast-E-Mail-Antworten kommen mit Signatur + zitierter
+      // Mail-Historie („From:/Sent:"-Blob) — vor dem Insert kürzen
+      const insertContent = isHost ? content : stripEmailQuote(content).trim() || content
       const { error } = await supabaseAdmin
         .from('messages')
         .insert({
           conversation_id: conversationId,
           sender_id: senderId,
-          content,
+          content: insertContent,
           smoobu_message_id: msgId,
           created_at: sm.date || new Date().toISOString(),
         })
