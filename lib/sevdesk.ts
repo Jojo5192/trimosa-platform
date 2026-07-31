@@ -135,6 +135,14 @@ export async function ensureContact(name: string): Promise<string> {
   return String(created.id)
 }
 
+/** Ist eine Rechnungsnummer in sevdesk schon vergeben? (Duplikat-Schutz —
+ *  sevdesk lehnt Duplikate NICHT ab, sondern vergibt beim Fertigstellen
+ *  still eine Auto-Nummer; live erwischt beim Rik-Bos-Fall, §234.) */
+export async function invoiceNumberExists(num: string): Promise<boolean> {
+  const list = await sevJson<{ id: string }[]>(`/Invoice?invoiceNumber=${encodeURIComponent(num)}&limit=1`)
+  return (list ?? []).length > 0
+}
+
 /* ── Rechnung anlegen + fertigstellen + bezahlt buchen ─────────────── */
 
 export interface SevInvoiceInput {
@@ -225,7 +233,17 @@ export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput, opt
     })
     inv = (await sevJson<typeof inv[]>(`/Invoice/${sevdeskId}`))[0]
     if ((inv.invoiceNumber ?? '') !== inp.invoiceNumber) {
-      throw new Error(`Nummern-Drift: gesetzt ${inp.invoiceNumber}, sevdesk ${inv.invoiceNumber}`)
+      // sevdesk hat still eine Auto-Nummer vergeben (Duplikat, §234) —
+      // die Waise sofort selbst aufräumen (frisch, offen, nicht
+      // festgeschrieben → Entwurf → löschen), dann sauber scheitern;
+      // der nächste Lauf vergibt dank invoiceNumberExists eine freie Nummer.
+      let aufgeraeumt = false
+      try {
+        await sevFetch(`/Invoice/${sevdeskId}/resetToDraft`, { method: 'PUT' })
+        const del = await sevFetch(`/Invoice/${sevdeskId}`, { method: 'DELETE' })
+        aufgeraeumt = del.ok
+      } catch { /* best effort */ }
+      throw new Error(`Nummern-Drift: gesetzt ${inp.invoiceNumber}, sevdesk ${inv.invoiceNumber} — Waise ${aufgeraeumt ? 'gelöscht' : 'NICHT gelöscht (manuell prüfen)'}`)
     }
   }
 
