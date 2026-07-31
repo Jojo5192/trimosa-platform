@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page, key, content, instruction, historic, bookingId, guestName, pastDays, syncOnly } = await request.json()
+  const { action, page, key, content, instruction, historic, bookingId, guestName, pastDays, syncOnly, q: scanQ } = await request.json()
 
   // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
   // { action: 'review-match', dryRun?: true }
@@ -355,6 +355,27 @@ export async function POST(request: Request) {
       }
     }
     return NextResponse.json({ resolved: out })
+  }
+  if (action === 'reservation-scan') {
+    // §227-Diagnose: Liefert Smoobus GET /reservations eine bestimmte
+    // Reservierung überhaupt (Überbuchungen/blocked)? { q: Name-Teil
+    // oder Smoobu-ID als String }.
+    const q = String(scanQ ?? '').toLowerCase()
+    if (!q) return NextResponse.json({ error: 'q fehlt' }, { status: 400 })
+    const { listReservations } = await import('@/lib/smoobu')
+    const from = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10)
+    const to = new Date(Date.now() + 180 * 86400_000).toISOString().slice(0, 10)
+    const hits: unknown[] = []
+    let total = 0
+    for (let p = 1; p <= 10; p++) {
+      const { reservations, hasMore } = await listReservations(from, to, p, 100)
+      total += reservations.length
+      for (const r of reservations) {
+        if (String(r.id) === q || (r.guestName ?? '').toLowerCase().includes(q)) hits.push(r)
+      }
+      if (!hasMore) break
+    }
+    return NextResponse.json({ fenster: `${from}…${to}`, geprueft: total, treffer: hits })
   }
   if (action === 'booking-sync') {
     // §139: kompletter Kalender-Abgleich mit Smoobu — fehlende Buchungen
