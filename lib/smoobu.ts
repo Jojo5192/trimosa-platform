@@ -475,6 +475,33 @@ export function stripSubjectEcho(subject: string | undefined, body: string): str
   return body
 }
 
+/**
+ * §227b: Antwortet ein Gast per E-MAIL auf eine über Smoobu zugestellte
+ * Nachricht, enthält der zurückgesyncte Text die komplette Mail-Historie
+ * (Signatur „Verzonden vanaf Outlook…", Trennlinie, „From:/Sent:/To:"-Block
+ * mit dem ZITAT unserer eigenen Nachricht) — der Chat zeigte den ganzen
+ * Blob (Scheijen-Fall 31.7.). Schneidet am ERSTEN Zitat-Marker ab; bleibt
+ * nichts Sinnvolles übrig, Original behalten.
+ */
+const EMAIL_QUOTE_MARKERS: RegExp[] = [
+  /^_{8,}\s*$/m,                                   // Outlook-Trennlinie
+  /^-{3,}\s*(Original Message|Ursprüngliche Nachricht|Oorspronkelijk bericht)/im,
+  /^From:\s.+$/m, /^Von:\s.+$/m, /^Van:\s.+$/m, /^De :?\s.+$/m,
+  /^(Verzonden vanaf|Sent from|Von meinem|Verstuurd vanaf|Envoyé depuis|Envoyé de mon)\s/im,
+  /^On .{5,120} wrote:\s*$/m, /^Am .{5,120} schrieb .{0,80}:\s*$/m, /^Op .{5,120} schreef .{0,80}:\s*$/m, /^Le .{5,120} a écrit\s?:\s*$/m,
+]
+
+export function stripEmailQuote(body: string): string {
+  let cut = -1
+  for (const re of EMAIL_QUOTE_MARKERS) {
+    const m = re.exec(body)
+    if (m && m.index > 0 && (cut === -1 || m.index < cut)) cut = m.index
+  }
+  if (cut === -1) return body
+  const rest = body.slice(0, cut).replace(/[\s_\-–]+$/, '').trim()
+  return rest.length >= 2 ? rest : body
+}
+
 export async function getReservationMessages(
   smoobuReservationId: number,
   apiKey?: string,
