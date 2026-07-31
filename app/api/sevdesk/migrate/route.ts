@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { listReservations } from '@/lib/smoobu'
-import { sevdeskConfigured, createPaidInvoice, finishAndBook, clearingLabelFor, type SevInvoiceInput } from '@/lib/sevdesk'
+import { sevdeskConfigured, createPaidInvoice, finishAndBook, clearingLabelFor, invoiceNumberExists, type SevInvoiceInput } from '@/lib/sevdesk'
 
 /**
  * 🧾 §234 JAHRES-NEUAUFBAU: Alle Smoobu-Reservierungen mit Anreise in 2026
@@ -133,8 +133,22 @@ export async function POST(req: NextRequest) {
       const nights = Math.max(1, Math.round((Date.parse(r.departure ?? r.arrival!) - Date.parse(r.arrival!)) / 86400_000))
       const persons = (r.adults ?? 0) + (r.children ?? 0)
       const prior = byId.get(r.id)
+      // Nummern-Vergabe mit DUPLIKAT-SCHUTZ (§234 Rik-Bos-Fall): sevdesk
+      // vergibt bei belegter Nummer still eine Auto-Nummer — deshalb wird
+      // jede Kandidaten-Nummer vor der Vergabe live geprüft. Die Nummer
+      // gilt ab Zuweisung als VERBRAUCHT (nextSeq++ sofort, nicht erst
+      // bei Erfolg — sonst Doppelvergabe nach Zwischenfehlern).
+      let num = prior?.invoice_number ?? null
+      if (!book && !prior?.sevdesk_id) {
+        if (num && await invoiceNumberExists(num)) num = null
+        if (!num) {
+          while (await invoiceNumberExists(`RE0${nextSeq}`)) nextSeq++
+          num = `RE0${nextSeq}`
+          nextSeq++
+        }
+      }
       const inp: SevInvoiceInput = {
-        invoiceNumber: prior?.invoice_number ?? `RE0${nextSeq}`,
+        invoiceNumber: num ?? `RE0${nextSeq}`,
         invoiceDate: r.arrival!,
         contactName: (r.guestName ?? '').trim() || 'Gast',
         apartmentTitle: apt.title,
@@ -165,7 +179,6 @@ export async function POST(req: NextRequest) {
           }, { onConflict: 'smoobu_reservation_id' })
           result = await createPaidInvoice(inp)
           report.erstellt++
-          if (!prior) nextSeq++
         }
         await supabaseAdmin.from('sevdesk_invoices').update({
           sevdesk_id: result.sevdeskId, invoice_number: result.number,
