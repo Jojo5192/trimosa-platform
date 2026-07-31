@@ -295,7 +295,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   <select value={m.trigger_type} onChange={(e) => patch(m.id, { trigger_type: e.target.value as TriggerType })} style={{ ...INPUT, width: 'auto', flex: '1 1 180px' }}>
                     {TRIGGER_META.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
-                  {m.trigger_type !== 'nach_buchung' && (
+                  {m.trigger_type !== 'nach_buchung' && m.trigger_type !== 'reinigung_fertig' && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#666' }}>
                       <input type="number" min={0} max={60} value={m.offset_days} onChange={(e) => patch(m.id, { offset_days: Number(e.target.value) })} style={{ ...INPUT, width: 58, textAlign: 'center' }} />
                       Tage · um
@@ -304,6 +304,22 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                     </span>
                   )}
                 </div>
+                {m.trigger_type === 'reinigung_fertig' && (
+                  <>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: '#666', margin: '-2px 0 8px' }} onClick={(e) => e.stopPropagation()}>
+                      Versand am Anreisetag ab
+                      <input type="number" min={0} max={23} value={m.send_hour} onChange={(e) => patch(m.id, { send_hour: Number(e.target.value) })} style={{ ...INPUT, width: 54, textAlign: 'center' }} />
+                      Uhr (falls die Reinigung schon an einem Vortag bestätigt war)
+                    </div>
+                    <p style={{ fontSize: 12, color: '#8A8578', margin: '0 0 10px', lineHeight: 1.5 }}>
+                      ⚡ Ereignisgesteuert: Wird die Reinigung erst AM Anreisetag bestätigt gemeldet
+                      (NFC-Siegel + Schloss-Nachweis), geht die Nachricht sofort raus. War sie schon
+                      an einem Vortag bestätigt, kommt sie am Anreisetag-Morgen zur eingestellten
+                      Uhrzeit — nie früher, damit eine Lücken-Buchung das Versprechen nicht kippen
+                      kann. Wohnungs-Auswahl gilt; Kanal-/Buchungstyp-Filter greifen hier nicht.
+                    </p>
+                  </>
+                )}
 
                 {/* Geltung (§204: Mehrfach-Auswahl per Chips; leer = alle) */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
