@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { findBookingByPhone, findBookingByDetails } from '@/lib/voice'
+import { findBookingByPhone, findBookingByDetails, pushOncall } from '@/lib/voice'
 import { askClaude, FAST_MODEL } from '@/lib/ai'
 
 export const dynamic = 'force-dynamic'
@@ -80,12 +80,12 @@ export async function POST(request: Request) {
 
   // Haiku: Zusammenfassung + Klassifikation + Zuordnungs-Daten in EINEM Call
   let info: {
-    zusammenfassung?: string; gast_anfrage?: boolean
+    zusammenfassung?: string; gast_anfrage?: boolean; notfall?: boolean
     wohnung?: string | null; anreise?: string | null; abreise?: string | null; vorname?: string | null
   } = {}
   try {
     const rawOut = await askClaude(
-      'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte.',
+      'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "notfall": true|false (true = Gast steht vor der Tür und kommt nicht in die Wohnung, Code funktioniert nicht, Wasserschaden/Strom/Verletzung, ODER die Assistentin hat versprochen, das Team sofort zu informieren, ODER das Problem war am Gesprächsende ersichtlich NICHT gelöst), "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte.',
       transcript,
       1000,
       FAST_MODEL,
@@ -142,6 +142,40 @@ export async function POST(request: Request) {
     }
   }
 
-  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded)
-  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded })
+  // 🚨 §227 NOTFALL-SICHERHEITSNETZ (Fall Kerklingh 31.7.): Der Bot
+  // BEHAUPTETE „Team ist mit höchster Priorität informiert", rief
+  // nachricht_aufnehmen aber NIE auf — niemand wurde alarmiert. Erkennt
+  // die Nachbereitung einen Notfall und gab es im Anruf-Zeitraum KEINE
+  // take-message-Spur (Thread-Nachricht oder ☎️-Task), alarmiert der
+  // SERVER die Bereitschaft — unabhängig davon, was das LLM getan hat.
+  let safetyNet = false
+  if (info.notfall === true) {
+    const since = new Date(Date.now() - 45 * 60000).toISOString()
+    let escalated = false
+    if (booking) {
+      const { data: m } = await supabaseAdmin
+        .from('messages').select('id')
+        .eq('booking_id', booking.id).gte('created_at', since)
+        .ilike('content', '%Telefonnachricht%').limit(1)
+      escalated = !!m?.length
+    }
+    if (!escalated) {
+      const { data: t } = await supabaseAdmin
+        .from('tasks').select('id')
+        .eq('source', 'anruf').gte('created_at', since).limit(1)
+      escalated = !!t?.length
+    }
+    if (!escalated) {
+      safetyNet = true
+      console.warn('[call-log] 🚨 Notfall OHNE take-message — Sicherheitsnetz-Push:', convId)
+      await pushOncall(
+        '🚨 NOTFALL-Anruf — Bot hat NICHT eskaliert!',
+        `${summary.slice(0, 150)}${caller ? ` — Rückruf: ${caller}` : ''}`,
+        booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
+      ).catch((e) => console.error('[call-log] notfall push:', e))
+    }
+  }
+
+  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded, 'sicherheitsnetz:', safetyNet)
+  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded, safetyNet })
 }
