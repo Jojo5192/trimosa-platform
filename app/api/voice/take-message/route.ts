@@ -36,17 +36,22 @@ export async function POST(request: Request) {
   let body: {
     caller_name?: string; caller_number?: string; message?: string; urgent?: boolean
     apartment_name?: string; arrival_date?: string; departure_date?: string
+    callback_number?: string
   }
   try { body = await request.json() } catch { body = {} }
   const name = String(body.caller_name ?? '').trim() || 'Unbekannt'
-  const number = String(body.caller_number ?? '').trim() || 'unterdrückt'
+  // §224: Bei unterdrückter/fehlender Anrufer-ID fragt der Bot nach einer
+  // Rückrufnummer (callback_number) — die gewinnt für den Rückruf.
+  const callerId = String(body.caller_number ?? '').trim()
+  const spoken = String(body.callback_number ?? '').replace(/[^+\d\s()/-]/g, '').trim()
+  const number = spoken || callerId || 'unterdrückt'
   const message = String(body.message ?? '').trim()
   const urgent = body.urgent === true
   if (!message) return Response.json({ error: 'message fehlt' }, { status: 400 })
 
   // Buchung zuordnen: erst Anrufer-Nummer, dann Gesprächsdaten (§182 —
   // „Frank, Magnolia Flat, 18.–20.7." reicht, auch ohne bekannte Nummer)
-  let booking = number !== 'unterdrückt' ? await findBookingByPhone(number) : null
+  let booking = callerId ? await findBookingByPhone(callerId) : (spoken ? await findBookingByPhone(spoken) : null)
   if (!booking) {
     booking = await findBookingByDetails({
       name: name !== 'Unbekannt' ? name : '',
