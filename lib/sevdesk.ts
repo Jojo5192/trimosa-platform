@@ -152,7 +152,7 @@ export interface SevInvoiceInput {
   positionText: string
 }
 
-export async function createPaidInvoice(inp: SevInvoiceInput): Promise<{ sevdeskId: string; number: string }> {
+export async function createPaidInvoice(inp: SevInvoiceInput, opts: { book?: boolean } = {}): Promise<{ sevdeskId: string; number: string }> {
   const [userId, contactId, costCentreId] = await Promise.all([
     getSevUserId(), ensureContact(inp.contactName), ensureCostCentre(inp.apartmentTitle),
   ])
@@ -199,12 +199,16 @@ export async function createPaidInvoice(inp: SevInvoiceInput): Promise<{ sevdesk
   })
   const sevdeskId = String(saved.invoice.id)
 
-  return finishAndBook(sevdeskId, inp)
+  return finishAndBook(sevdeskId, inp, opts)
 }
 
-/** Fertigstellen + bezahlt buchen — auch als RESUME für hängengebliebene
- *  Rechnungen nutzbar (Status wird vorher gelesen, nichts läuft doppelt). */
-export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput): Promise<{ sevdeskId: string; number: string }> {
+/** Fertigstellen (+ optional bezahlt buchen) — auch als RESUME für
+ *  hängengebliebene Rechnungen nutzbar (Status wird vorher gelesen, nichts
+ *  läuft doppelt). ⚠️ Das Bezahlt-Buchen schreibt in sevdesk 2.0
+ *  AUTOMATISCH FEST (PoC §233) — Inhaber-Vorgabe 1.8.: „nicht direkt
+ *  festschreiben" → book default false; das Buchen ist ein separater
+ *  zweiter Migrations-Durchgang nach der Sichtprüfung. */
+export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput, opts: { book?: boolean } = {}): Promise<{ sevdeskId: string; number: string }> {
   let inv = (await sevJson<{ id: string; status: string; invoiceNumber: string | null; sumGross: string | number }[]>(
     `/Invoice/${sevdeskId}`))[0]
 
@@ -225,7 +229,7 @@ export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput): Pr
     }
   }
 
-  if (Number(inv.status) < 1000) {
+  if (opts.book === true && Number(inv.status) < 1000) {
     const clearingId = await ensureClearingAccount(inp.clearingLabel)
     await sevJson(`/Invoice/${sevdeskId}/bookAmount`, {
       method: 'PUT',
