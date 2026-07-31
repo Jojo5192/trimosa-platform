@@ -68,10 +68,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.3,
   }))
 
-  // §226: kommerzielle Standort-Landingpages (nur deutsch)
-  const landingEntries: MetadataRoute.Sitemap = ['bitburg', 'trier', 'suedeifel'].map((ort) => ({
-    url: `${siteUrl}/ferienwohnung/${ort}`,
-    changeFrequency: 'weekly',
+  // §226: kommerzielle Standort-Landingpages (deutsch) + native NL-Seite
+  const landingEntries: MetadataRoute.Sitemap = [
+    ...['bitburg', 'trier', 'suedeifel'].map((ort) => `/ferienwohnung/${ort}`),
+    '/nl/vakantiehuis-eifel',
+  ].map((path) => ({
+    url: `${siteUrl}${path}`,
+    changeFrequency: 'weekly' as const,
     priority: 0.8,
   }))
 
