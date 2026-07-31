@@ -665,6 +665,7 @@ export default async function Home({
               { label: 'Ferienwohnung Bitburg', href: '/ferienwohnung/bitburg' },
               { label: 'Ferienwohnung Trier', href: '/ferienwohnung/trier' },
               { label: 'Ferienwohnung Südeifel', href: '/ferienwohnung/suedeifel' },
+              { label: '🇳🇱 Vakantiehuis Eifel', href: '/nl/vakantiehuis-eifel' },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11.5px', color: '#8A8680', textDecoration: 'none', fontWeight: 600 }}>{item.label}</Link>
             ))}
