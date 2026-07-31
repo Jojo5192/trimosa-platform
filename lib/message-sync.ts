@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho } from '@/lib/smoobu'
+import { getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho, stripEmailQuote } from '@/lib/smoobu'
 import { sendPushToTeam } from '@/lib/push'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 
@@ -37,7 +37,8 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
     if (isSmoobuSystemMessage(sm.subject)) continue
     const isHost = ['2', 'owner', 'outgoing', 'host'].includes(String(sm.type ?? '').toLowerCase())
     // §219: Booking-Echo — Betreff-Zeile aus dem Body strippen (nur Host-Seite)
-    const content = (isHost ? stripSubjectEcho(sm.subject, sm.message) : sm.message).trim()
+    // §227b: Gast-E-Mail-Antworten — Signatur + zitierte Mail-Historie strippen
+    const content = (isHost ? stripSubjectEcho(sm.subject, sm.message) : stripEmailQuote(sm.message)).trim()
     if (!content) continue
     // Zwillings-Claim für BEIDE Richtungen: Host-Nachrichten aus der Web-App
     // (POST speichert lokal ohne smoobu_message_id) UND Gast-Nachrichten aus
