@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { learnFromCalls } from '@/lib/voice-learn'
+import { learnFromCalls, auditCalls } from '@/lib/voice-learn'
 import { getTaskAuth } from '@/lib/tasks'
 
 export const dynamic = 'force-dynamic'
@@ -20,8 +20,14 @@ export async function GET(request: Request) {
   }
   try {
     const result = await learnFromCalls()
-    console.log('[voice-learn] Cron:', JSON.stringify(result))
-    return NextResponse.json(result)
+    // 🔍 §228: Anruf-QA im selben Cron — Fehler-/Verbesserungs-Analyse
+    // jedes neuen Anrufs, Befunde gehen automatisch in die Chefsache
+    const qa = await auditCalls().catch((e) => {
+      console.error('[voice-qa] fehlgeschlagen:', e)
+      return { calls: 0, befunde: 0, status: `Fehler: ${String(e).slice(0, 120)}` }
+    })
+    console.log('[voice-learn] Cron:', JSON.stringify(result), '| QA:', JSON.stringify(qa))
+    return NextResponse.json({ ...result, qa })
   } catch (e) {
     console.error('[voice-learn] Cron fehlgeschlagen:', e)
     return NextResponse.json({ error: String(e) }, { status: 500 })
@@ -35,7 +41,8 @@ export async function POST() {
   }
   try {
     const result = await learnFromCalls()
-    return NextResponse.json(result)
+    const qa = await auditCalls().catch((e) => ({ calls: 0, befunde: 0, status: `Fehler: ${String(e).slice(0, 120)}` }))
+    return NextResponse.json({ ...result, qa })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
