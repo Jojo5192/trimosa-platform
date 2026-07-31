@@ -34,7 +34,7 @@ function fmtWhen(iso: string): string {
 }
 
 /** Transkript „ANRUFER: …\nASSISTENTIN: …" → Sprecher-Blöcke */
-function parseTranscript(t: string): { who: 'anrufer' | 'bot'; text: string }[] {
+export function parseTranscript(t: string): { who: 'anrufer' | 'bot'; text: string }[] {
   const out: { who: 'anrufer' | 'bot'; text: string }[] = []
   for (const line of t.split('\n')) {
     const s = line.trim()
