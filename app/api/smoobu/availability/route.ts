@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getApartmentRates, checkAvailability } from '@/lib/smoobu'
+import { getApartmentRates, getQuote } from '@/lib/smoobu'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getMarkupMultiplier } from '@/lib/pricing'
 
@@ -48,7 +48,10 @@ export async function GET(request: Request) {
  * Checks availability + calculates total price for a specific stay.
  */
 export async function POST(request: Request) {
-  const { listingId, checkIn, checkOut } = await request.json()
+  const { listingId, checkIn, checkOut, guests } = await request.json()
+  // §224: Personenzahl fließt in den Preis ein (Smoobu-Aufschlag ab 3./4.
+  // Person) — ohne Angabe wie bisher Basis für 2 Personen.
+  const g = Math.min(Math.max(Math.round(Number(guests)) || 2, 1), 20)
 
   if (!listingId || !checkIn || !checkOut) {
     return NextResponse.json({ error: 'listingId, checkIn und checkOut erforderlich' }, { status: 400 })
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
   }
 
   const markup = await getMarkupMultiplier(listing.host_id)
-  const result = await checkAvailability(listing.smoobu_id, checkIn, checkOut)
+  const result = await getQuote(listing.smoobu_id, checkIn, checkOut, g)
   const totalPrice = Math.round(result.totalPrice * markup)
   return NextResponse.json({ ...result, totalPrice, source: 'smoobu', markupPct: (markup - 1) * 100 })
 }
