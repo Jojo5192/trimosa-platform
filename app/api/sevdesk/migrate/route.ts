@@ -45,6 +45,9 @@ export async function POST(req: NextRequest) {
   }
   const b = await req.json().catch(() => ({}))
   const dryRun = b.dryRun !== false
+  // Phase 2 (Inhaber-Vorgabe „nicht direkt festschreiben"): book=true bucht
+  // bereits ERSTELLTE (offene) Rechnungen als bezahlt — DAS schreibt fest!
+  const book = b.book === true
   const limit = Math.min(Math.max(Number(b.limit) || 20, 1), 60)
   const from = typeof b.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.from) ? b.from : '2026-01-01'
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
@@ -82,10 +85,20 @@ export async function POST(req: NextRequest) {
       rows.push(...(data ?? []) as typeof rows)
       if (!data || data.length < 1000) break
     }
-    const done = new Set(rows.filter((r) => r.status === 'erstellt').map((r) => Number(r.smoobu_reservation_id)))
     const byId = new Map(rows.map((r) => [Number(r.smoobu_reservation_id), r]))
+    // Anlege-Phase überspringt alles, was schon erstellt/gebucht ist;
+    // Buch-Phase nimmt genau die ERSTELLTEN (offenen) mit sevdesk_id
+    const done = new Set(rows
+      .filter((r) => r.status === 'erstellt' || r.status === 'gebucht')
+      .map((r) => Number(r.smoobu_reservation_id)))
+    const gebucht = rows.filter((r) => r.status === 'gebucht').length
 
-    const queue = relevant.filter((r) => !done.has(r.id))
+    const queue = book
+      ? relevant.filter((r) => {
+          const row = byId.get(r.id)
+          return !!row?.sevdesk_id && (row.status === 'erstellt' || row.status === 'fehler')
+        })
+      : relevant.filter((r) => !done.has(r.id))
     const kanaele: Record<string, number> = {}
     let summe = 0
     for (const r of relevant) {
@@ -96,7 +109,8 @@ export async function POST(req: NextRequest) {
 
     if (dryRun) {
       return NextResponse.json({
-        dryRun: true, from, gesamt: relevant.length, schonErstellt: done.size,
+        dryRun: true, phase: book ? 'buchen' : 'anlegen', from,
+        gesamt: relevant.length, schonErstellt: done.size - gebucht, schonGebucht: gebucht,
         offen: queue.length, summeBrutto: Math.round(summe * 100) / 100, kanaele,
         naechsteNummer: `RE0${START_NUMBER + done.size}`,
         vorschau: queue.slice(0, 5).map((r) => ({
@@ -134,7 +148,11 @@ export async function POST(req: NextRequest) {
         .from('bookings').select('id').eq('smoobu_reservation_id', r.id).maybeSingle()
       try {
         let result: { sevdeskId: string; number: string }
-        if (prior?.sevdesk_id) {
+        if (book) {
+          // Phase 2: bestehende OFFENE Rechnung als bezahlt buchen (schreibt fest)
+          result = await finishAndBook(prior!.sevdesk_id!, inp, { book: true })
+          report.wiederaufgenommen++
+        } else if (prior?.sevdesk_id) {
           // Hängengeblieben (angelegt/fehler MIT sevdesk_id) → nur fortsetzen,
           // NIE eine zweite Rechnung anlegen
           result = await finishAndBook(prior.sevdesk_id, inp)
@@ -151,7 +169,7 @@ export async function POST(req: NextRequest) {
         }
         await supabaseAdmin.from('sevdesk_invoices').update({
           sevdesk_id: result.sevdeskId, invoice_number: result.number,
-          status: 'erstellt', error: null, updated_at: new Date().toISOString(),
+          status: book ? 'gebucht' : 'erstellt', error: null, updated_at: new Date().toISOString(),
         }).eq('smoobu_reservation_id', r.id)
       } catch (e) {
         const msg = String(e instanceof Error ? e.message : e).slice(0, 400)
