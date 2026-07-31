@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { listReservations } from '@/lib/smoobu'
-import { sendNewBookingPush } from '@/lib/push'
+import { sendNewBookingPush, sendPushToTeam } from '@/lib/push'
 
 /**
  * 🛟 Buchungs-Sicherheitsnetz (§137): importiert Smoobu-Reservierungen,
@@ -16,7 +16,7 @@ export async function importMissingReservations(
    *  sind) braucht es mehr. `syncOnly` gleicht dabei nur bestehende
    *  Buchungen ab und legt KEINE alten Reservierungen neu an. */
   opts: { pastDays?: number; syncOnly?: boolean } = {},
-): Promise<{ imported: number; skipped: number; failed: number; cancelled: number; updated: number }> {
+): Promise<{ imported: number; skipped: number; failed: number; cancelled: number; updated: number; overbookings: number }> {
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, smoobu_id').not('smoobu_id', 'is', null)
   const bySmoobuId = new Map((listings ?? []).map((l) => [Number(l.smoobu_id), l.id as string]))
@@ -70,6 +70,69 @@ export async function importMissingReservations(
   if (imported > 0) {
     console.warn(`[booking-import] ⚠️ ${imported} Buchung(en) kamen NICHT per Webhook — Smoobu-Webhook-Konfiguration prüfen!`)
   }
+
+  // 🚨 ÜBERBUCHUNGS-WÄCHTER (§227, Fall Fred Kerklingh 31.7.): Smoobu
+  // markiert Überbuchungen als blocked → unser Import übersprang sie STILL,
+  // die Buchung war in der App unsichtbar und niemand wurde gewarnt.
+  // Jetzt: überlappende AKTIVE Reservierungen derselben Wohnung (Smoobu-
+  // Sicht) lösen einen Team-Push aus. Reine Kalendersperren (blocked OHNE
+  // Gastname) zählen nicht; Wechseltage (departure == arrival) sind ok.
+  // Dedupe je Paar über app_settings, sonst käme der Push alle 30 Min.
+  let overbookings = 0
+  try {
+    const active = [...seen.values()].filter((r) =>
+      !r.cancelled && r.arrival && r.departure && r.apartmentId != null &&
+      (!r.blocked || String(r.guestName ?? '').trim().length > 0)
+    )
+    const byApt = new Map<number, typeof active>()
+    for (const r of active) {
+      const list = byApt.get(r.apartmentId as number) ?? []
+      list.push(r)
+      byApt.set(r.apartmentId as number, list)
+    }
+    const conflicts: { key: string; text: string }[] = []
+    for (const [, list] of byApt) {
+      list.sort((a, b) => String(a.arrival).localeCompare(String(b.arrival)))
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i], b = list[j]
+          if (String(b.arrival) >= String(a.departure)) break // sortiert — keine Überlappung mehr möglich
+          const key = `${a.apartmentId}:${Math.min(a.id, b.id)}:${Math.max(a.id, b.id)}`
+          conflicts.push({
+            key,
+            text: `${a.guestName || a.id} (${a.arrival}–${a.departure}) ↔ ${b.guestName || b.id} (${b.arrival}–${b.departure})`,
+          })
+        }
+      }
+    }
+    if (conflicts.length) {
+      const { data: row } = await supabaseAdmin
+        .from('app_settings').select('value').eq('key', 'overbooking_alerts').maybeSingle()
+      const alerted = new Set<string>(Array.isArray(row?.value) ? (row!.value as string[]) : [])
+      const fresh = conflicts.filter((c) => !alerted.has(c.key))
+      for (const c of fresh) {
+        const aptId = Number(c.key.split(':')[0])
+        const listingId = bySmoobuId.get(aptId)
+        const { data: lst } = listingId
+          ? await supabaseAdmin.from('listings').select('title').eq('id', listingId).maybeSingle()
+          : { data: null }
+        const title = (lst?.title as string | undefined) ?? `Apartment ${aptId}`
+        console.error('[booking-import] 🚨 ÜBERBUCHUNG erkannt:', title, c.text)
+        await sendPushToTeam(
+          `🚨 ÜBERBUCHUNG · ${title}`,
+          `${c.text} — sofort klären (Smoobu/Portal)!`,
+          '/team?tab=kalender',
+        ).catch((e) => console.error('[booking-import] overbooking push:', e))
+        alerted.add(c.key)
+        overbookings++
+      }
+      if (fresh.length) {
+        await supabaseAdmin.from('app_settings').upsert({
+          key: 'overbooking_alerts', value: [...alerted].slice(-100),
+        }, { onConflict: 'key' })
+      }
+    }
+  } catch (e) { console.error('[booking-import] overbooking watch:', e) }
 
   // 🧹 STORNO-Abgleich (§138 — der Webhook-Storno-Zweig war seit jeher tot,
   // Altlasten wie „Hanna Kütt" blieben als confirmed liegen): Buchungen,
@@ -132,5 +195,5 @@ export async function importMissingReservations(
     }
   }
 
-  return { imported, skipped, failed, cancelled, updated }
+  return { imported, skipped, failed, cancelled, updated, overbookings }
 }
