@@ -178,7 +178,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
         const relayEmail = relayMatch && !/^(sender|no-?reply)@/i.test(relayMatch[0]) ? relayMatch[0] : ''
         const attachments = m.hasAttachments ? await listAttachments(mailbox, m.id) : []
         try {
-          const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail })
+          const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id })
           report.verarbeitet.push({
             mailbox, from: from.slice(0, 60), subject: subject.slice(0, 90),
             ergebnis: String(result.skipped ?? (result.ok ? Object.keys(result).filter((k) => k !== 'ok').join('+') || 'ok' : result.error ?? 'fehler')).slice(0, 120),
