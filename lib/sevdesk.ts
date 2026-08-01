@@ -633,6 +633,8 @@ export async function bookSevVoucher(voucherId: string, opts: {
           // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen;
           // Sonderkonten (§13b EU/Drittland) brauchen ihre eigene Regel
           taxRule: { id: taxRuleId, objectName: 'TaxRule' },
+          // §243q: Gutschriften/Erstattungen — Beleg als EINNAHME (D) drehen
+          ...(opts.einnahme ? { creditDebit: 'D' } : {}),
           ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
           // costCentreName '' = Kostenstelle EXPLIZIT entfernen (§243c —
           // Gaestemanagement-Umbuchung: KSt weg, Zuordnung = alle Wohnungen)
