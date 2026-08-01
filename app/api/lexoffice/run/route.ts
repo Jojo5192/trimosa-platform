@@ -95,8 +95,14 @@ export async function POST(request: NextRequest) {
       const fehler: string[] = []
       // Fehlgeschlagene (kaputte Dateien) blockieren NICHT den Lauf — die
       // Schleife geht weiter durch die Liste, bis limit ERFOLGE erreicht sind
+      const t0 = Date.now()
       for (const v of neu) {
         if (importiert >= limit) break
+        // Zeitbudget: vor der 300s-maxDuration sauber mit Teilergebnis raus
+        if (Date.now() - t0 > 235_000) break
+        // Pacing VOR jedem Versuch — continue-Pfade uebersprangen das alte
+        // sleep am Erfolgs-Ende → 429-Kaskade (lexoffice 2 req/s)
+        await new Promise((ok) => setTimeout(ok, 650))
         try {
           const pdf = await getExpenseVoucherPdf(v.id)
           if (!pdf.ok || !pdf.pdf) { fehler.push(`${v.voucherNumber}: ${pdf.error}`); continue }
@@ -110,7 +116,6 @@ export async function POST(request: NextRequest) {
           })
           if (!d.ok) { fehler.push(`${v.voucherNumber}: ${d.error}`); continue }
           importiert++
-          await new Promise((ok) => setTimeout(ok, 600))
         } catch (e) { fehler.push(`${v.voucherNumber}: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`) }
       }
       return NextResponse.json({ importiert, verbleibend: Math.max(0, neu.length - importiert - fehler.length), uebersprungen: fehler.length, fehler: fehler.slice(0, 15) })
