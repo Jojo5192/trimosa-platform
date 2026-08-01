@@ -107,8 +107,11 @@ export async function listInboxMessages(mailbox: string, sinceIso: string, top =
 
 async function listAttachments(mailbox: string, messageId: string): Promise<Record<string, unknown>[]> {
   try {
+    // KEIN $select: contentBytes liegt auf dem abgeleiteten fileAttachment-
+    // Typ — ein $select auf dem Basistyp kann von Graph abgelehnt werden
+    // (Kalibrierung 1.8.: Hetzner-PDF kam sonst nie an)
     const data = await graphJson<{ value?: Record<string, unknown>[] }>(
-      `/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments?$select=name,contentType,contentBytes,size`)
+      `/users/${encodeURIComponent(mailbox)}/messages/${messageId}/attachments`)
     return data.value ?? []
   } catch (e) {
     console.error('[graph-mail] Anhänge:', e)
@@ -156,7 +159,9 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
       const msgs = await listInboxMessages(mailbox, since)
       report.geprueft += msgs.length
       for (const m of msgs) {
-        if (state.processed.includes(m.id)) { report.uebersprungen++; continue }
+        // force = Kalibrier-Rescan: bereits verarbeitete Mails erneut durch
+        // die Pipeline (alle Pfade sind idempotent — Content-Dedupe etc.)
+        if (!opts.force && state.processed.includes(m.id)) { report.uebersprungen++; continue }
         const from = fromString(m)
         const subject = String(m.subject ?? '')
         // Eigene System-/Team-Mails überspringen
@@ -181,7 +186,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
         } catch (e) {
           report.fehler.push({ mailbox, error: `${subject.slice(0, 60)}: ${String(e).slice(0, 150)}` })
         }
-        state.processed.push(m.id)
+        if (!state.processed.includes(m.id)) state.processed.push(m.id)
         if (m.receivedDateTime && (!state.cursor[mailbox] || m.receivedDateTime > state.cursor[mailbox])) {
           state.cursor[mailbox] = m.receivedDateTime
         }
@@ -193,6 +198,13 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
     }
   }
   await saveGraphMailState(state)
+  // Zusammenfassung ins Function-Log — der lange Scan überlebt kein
+  // Client-Timeout, das Log ist dann die einzige Report-Quelle
+  console.log('[mail-scan] Report:', JSON.stringify({
+    geprueft: report.geprueft, verarbeitet: report.verarbeitet.length,
+    uebersprungen: report.uebersprungen, fehler: report.fehler,
+    ergebnisse: report.verarbeitet.map((v) => `${v.subject.slice(0, 50)} → ${v.ergebnis.slice(0, 60)}`),
+  }).slice(0, 4000))
   return report
 }
 
