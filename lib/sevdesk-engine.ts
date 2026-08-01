@@ -216,9 +216,14 @@ export async function createSevInvoiceForBooking(bookingId: string, opts: {
   }
 
   const { data: l } = b.listing_id
-    ? await supabaseAdmin.from('listings').select('title').eq('id', b.listing_id).maybeSingle()
+    ? await supabaseAdmin.from('listings').select('title, location_group').eq('id', b.listing_id).maybeSingle()
     : { data: null }
-  const listingTitle = (l as { title?: string } | null)?.title ?? 'Ferienwohnung'
+  const lRow = l as { title?: string; location_group?: string | null } | null
+  const listingTitle = lRow?.title ?? 'Ferienwohnung'
+  // §240-Doktrin: Kostenstelle in sevdesk = STANDORT (location_group); nur
+  // Einzelstandort-Wohnungen ohne Gruppe (River) nutzen den Wohnungsnamen.
+  // Wohnungsgenaue Aufteilung macht die App in der Auswertung.
+  const kstName = lRow?.location_group || listingTitle
   const kanal = channelLabel(b)
   const n = nights(b.check_in, b.check_out)
   const persons = (b.adults ?? 1) + (b.children ?? 0)
@@ -244,7 +249,7 @@ export async function createSevInvoiceForBooking(bookingId: string, opts: {
     // Anreise entsteht heute
     invoiceDate: opts.aufRechnung && String(b.check_in) > today ? today : String(b.check_in),
     contactName: rec.name,
-    apartmentTitle: listingTitle,
+    apartmentTitle: kstName,
     clearingLabel: clearingLabelFor(`${b.channel ?? ''} ${b.source ?? ''}`),
     amountGross: amount,
     positionName: `Übernachtung ${listingTitle}`.slice(0, 255),
