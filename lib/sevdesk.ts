@@ -578,6 +578,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
    *  wenn gesetzt, gewinnen sie über die Einzel-Felder; bookAmount läuft
    *  über die Brutto-SUMME */
   positions?: { accountDatevId: number; taxRate: number; amountGross: number; isAsset?: boolean }[]
+  /** §243h: echtes RECHNUNGSDATUM setzen (Mail-Scan-Belege trugen sonst
+   *  das Scan-Datum — UStVA-Periode!) */
+  voucherDate?: string
   /** §243b: USt-Regel des Belegs — Default 9 (vorsteuerabziehbare
    *  Aufwendungen); 5 = Reverse Charge §13b (Portal-Provisionen, Konto
    *  5923) — steuert die UStVA-Kennziffern! */
@@ -625,6 +628,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
           // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen;
           // Sonderkonten (§13b EU/Drittland) brauchen ihre eigene Regel
           taxRule: { id: taxRuleId, objectName: 'TaxRule' },
+          ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
           // costCentreName '' = Kostenstelle EXPLIZIT entfernen (§243c —
           // Gaestemanagement-Umbuchung: KSt weg, Zuordnung = alle Wohnungen)
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : opts.costCentreName === '' ? { costCentre: null } : {}),
