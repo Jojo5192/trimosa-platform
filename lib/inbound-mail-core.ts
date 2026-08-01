@@ -41,7 +41,7 @@ export const stripHtml = (html: string) =>
 /** Gast-Nachricht aus einer Portal-Mail in den Chat-Thread der Buchung
  *  einsortieren (Dedupe über identischen Inhalt — dieselbe Nachricht kann
  *  auch über den Smoobu-Sync ankommen) + Team-Push. §129 */
-async function saveGuestMessage(bookingId: string, guestName: string | null, text: string): Promise<boolean> {
+async function saveGuestMessage(bookingId: string, guestName: string | null, text: string, label = 'FeWo-Mail'): Promise<boolean> {
   // Dedupe WHITESPACE-NORMALISIERT (§240): dieselbe Nachricht kommt über den
   // Smoobu-Sync oft mit anderen Zeilenumbrüchen als aus der Mail-Fassung
   const norm = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase()
@@ -67,7 +67,7 @@ async function saveGuestMessage(bookingId: string, guestName: string | null, tex
   try {
     const { sendPushToTeam } = await import('@/lib/push')
     await sendPushToTeam(
-      `💬 ${flag}${guestName ?? 'Gast'} · FeWo-Mail`,
+      `💬 ${flag}${guestName ?? 'Gast'} · ${label}`,
       pushText.replace(/\s+/g, ' ').slice(0, 120),
       '/team?conv=' + bookingId,
       { guestChat: true },
@@ -119,7 +119,17 @@ async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText
   const cands = ([...(byId.data ?? []), ...(byEmail.data ?? [])] as BRow[]).filter((b) => !seen.has(b.id) && seen.add(b.id))
   const today = new Date().toISOString().slice(0, 10)
   const pick = (list: BRow[]) => list.find((b) => b.check_out >= today) ?? list[list.length - 1] ?? null
-  const booking = pick(cands.filter((b) => b.status !== 'cancelled')) ?? pick(cands)
+  // §240: Buchung MIT Konversation bevorzugen — hat ein Gast mehrere
+  // Buchungen (z. B. Doppel-Versuch), muss die Nachricht in den SICHTBAREN
+  // Thread (Konversation), nicht in eine booking-Welt ohne Smoobu-ID
+  const hasConv = (b: BRow) => {
+    const c = (Array.isArray(b.conversations) ? b.conversations[0] : b.conversations) as { id?: string } | null
+    return Boolean(c?.id)
+  }
+  const booking = pick(cands.filter((b) => b.status !== 'cancelled' && hasConv(b)))
+    ?? pick(cands.filter((b) => b.status !== 'cancelled'))
+    ?? pick(cands.filter(hasConv))
+    ?? pick(cands)
   if (!booking) {
     // §236 C3: kein Gast — mit PDF-Anhang vermutlich ein Lieferanten-Beleg
     if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText, mailOpts)
@@ -145,13 +155,14 @@ async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText
 
   const convRaw = booking.conversations
   const conv = (Array.isArray(convRaw) ? convRaw[0] : convRaw) as { id: string; guest_id: string | null } | null
-  if (conv?.id && (conv.guest_id ?? guestId)) {
+  const senderId = conv?.guest_id ?? guestId ?? booking.guest_id
+  if (conv?.id && senderId) {
     // Direkt-Chat-Welt (Website-Gast mit Konversation)
     const { data: dupe } = await supabaseAdmin
       .from('messages').select('id').eq('conversation_id', conv.id).eq('content', text).limit(1)
     if (dupe?.length) return { ok: true, skipped: 'Duplikat' }
     const { data: inserted, error } = await supabaseAdmin.from('messages')
-      .insert({ conversation_id: conv.id, sender_id: conv.guest_id ?? guestId, content: text })
+      .insert({ conversation_id: conv.id, sender_id: senderId, content: text })
       .select('id').single()
     if (error) return { ok: false, error: error.message }
     await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
@@ -168,7 +179,7 @@ async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText
   }
 
   // Ohne Konversation: booking-Welt — der Thread erscheint in der Team-Inbox
-  const saved = await saveGuestMessage(booking.id, booking.guest_name, text)
+  const saved = await saveGuestMessage(booking.id, booking.guest_name, text, 'E-Mail')
   console.log('[inbound-mail] Website-Gast-Mail → Buchungs-Thread:', { booking: booking.id, email, neu: saved })
   return { ok: true, bookingId: booking.id, nachricht: saved }
 }
