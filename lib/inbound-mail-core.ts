@@ -227,6 +227,13 @@ async function ensureBelegeBucket(): Promise<void> {
  * Inhaber Gesellschaft + Kostenstelle entscheidet.
  */
 async function handleReceiptMail(attachments: unknown[], from: string, subject: string, rawText: string, opts: { mailbox?: string; mailKey?: string } = {}): Promise<Record<string, unknown>> {
+  // §241: mailKey-Dedupe VOR allem — deckt Inbox- UND sevdesk-Pfad ab
+  // (beleg_inbox protokolliert seit §241 jede verarbeitete Beleg-Mail)
+  if (opts.mailKey) {
+    const { data: dupe } = await supabaseAdmin
+      .from('beleg_inbox').select('id').eq('mail_key', opts.mailKey).limit(1)
+    if (dupe?.length) return { ok: true, skipped: 'Beleg bereits erfasst (mailKey)' }
+  }
   const pdfs: { name: string; buf: Buffer }[] = []
   for (const a of attachments) {
     if (!a || typeof a !== 'object') continue
@@ -257,6 +264,20 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
     ? Math.round(meta.betrag_brutto * 100) / 100 : null
   const datum = typeof meta.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(meta.datum) ? meta.datum : null
   const begruendung = typeof meta.begruendung === 'string' ? meta.begruendung.slice(0, 160) : ''
+
+  // §241 Content-Dedupe: dieselbe Beleg-Mail kann über ZWEI Zubringer
+  // kommen (Resend-Umleitung + Graph-Scan = verschiedene mailKeys) —
+  // gleicher Lieferant + Betrag (+ Datum, wenn vorhanden) = Duplikat
+  if (betrag) {
+    let dq = supabaseAdmin.from('beleg_inbox').select('id')
+      .eq('lieferant', lieferant).eq('betrag', betrag).limit(1)
+    // Ohne Beleg-Datum nur ein 21-Tage-Fenster — sonst würde eine
+    // wiederkehrende Monatsrechnung (gleicher Betrag) fälschlich geschluckt
+    dq = datum ? dq.eq('beleg_datum', datum)
+      : dq.gte('created_at', new Date(Date.now() - 21 * 86400_000).toISOString())
+    const { data: cDupe } = await dq
+    if (cDupe?.length) return { ok: true, skipped: 'Beleg bereits erfasst (Lieferant+Betrag)' }
+  }
 
   // Bank-Abgleich: passt eine OFFENE Abbuchung auf dem A&H-Finom zum
   // Betrag? (±90 Tage, alle Online-Konten) → stärkstes Zuordnungs-Signal
@@ -311,17 +332,22 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
       } catch { /* best effort */ }
     }
     if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
+    if (erstellt) {
+      // Protokollzeile → mailKey-/Content-Dedupe greifen auch für diesen Pfad
+      const { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert({
+        source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
+        from_addr: from.slice(0, 160), subject: subject.slice(0, 200),
+        lieferant, betrag, beleg_datum: datum,
+        ki_hinweis: kiHinweis.slice(0, 300), files: [], status: 'sevdesk',
+      })
+      if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
+    }
     console.log('[inbound-mail] Beleg-Fischer → sevdesk:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
     return { ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, fehler }
   }
 
   // ── UNSICHER → Beleg-Inbox (Inhaber entscheidet Gesellschaft + Kostenstelle) ──
   try {
-    if (opts.mailKey) {
-      const { data: dupe } = await supabaseAdmin
-        .from('beleg_inbox').select('id').eq('mail_key', opts.mailKey).limit(1)
-      if (dupe?.length) return { ok: true, skipped: 'Beleg-Inbox: bereits erfasst' }
-    }
     await ensureBelegeBucket()
     const rowId = crypto.randomUUID()
     const files: { path: string; name: string }[] = []
@@ -359,7 +385,12 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
  * Verbuchung (Reverse-Charge §13b, Zahlung gegen das Verrechnungskonto)
  * macht der Inhaber in der sevdesk-UI bzw. später die KI-Verbuchung.
  */
-async function handleCommissionInvoice(attachments: unknown[], from: string, subject: string): Promise<Record<string, unknown>> {
+async function handleCommissionInvoice(attachments: unknown[], from: string, subject: string, opts: { mailbox?: string; mailKey?: string } = {}): Promise<Record<string, unknown>> {
+  if (opts.mailKey) {
+    const { data: dupe } = await supabaseAdmin
+      .from('beleg_inbox').select('id').eq('mail_key', opts.mailKey).limit(1)
+    if (dupe?.length) return { ok: true, skipped: 'Provisionsrechnung bereits erfasst (mailKey)' }
+  }
   console.log('[inbound-mail] Provisionsrechnung erkannt:', {
     from: from.slice(0, 60), subject: subject.slice(0, 90), anhaenge: attachments.length,
     keys: attachments[0] && typeof attachments[0] === 'object' ? Object.keys(attachments[0] as object) : [],
@@ -392,12 +423,21 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
     } catch { /* best effort */ }
   }
   if (fehler.length) console.error('[inbound-mail] Provisionsrechnung-Fehler:', fehler)
+  if (erstellt) {
+    const { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert({
+      source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
+      from_addr: from.slice(0, 160), subject: subject.slice(0, 200),
+      lieferant: 'Provisionsrechnung', ki_hinweis: 'automatisch → sevdesk-Entwurf',
+      files: [], status: 'sevdesk',
+    })
+    if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
+  }
   console.log('[inbound-mail] Provisionsrechnung:', { erstellt, fehler: fehler.length })
   return { ok: true, provisionsBelege: erstellt, fehler }
 }
 
 /** Der komplette Klassifikations-Flow für EINE Mail (beide Zubringer). */
-export async function processInboundMail(input: InboundMailInput): Promise<Record<string, unknown>> {
+export async function processInboundMail(input: InboundMailInput, opts: { belegeOnly?: boolean } = {}): Promise<Record<string, unknown>> {
   const { from, subject, rawText, attachments } = input
   const mailOpts = { mailbox: input.mailbox, mailKey: input.mailKey }
   const relayEmail = input.relayEmail ?? ''
@@ -407,7 +447,15 @@ export async function processInboundMail(input: InboundMailInput): Promise<Recor
   const isCommission = /(booking\.com|airbnb|expedia|vrbo|fewo)/i.test(from)
     && /invoice|rechnung|provision|commission|gutschrift/i.test(subject)
     && attachments.length > 0
-  if (isCommission) return handleCommissionInvoice(attachments, from, subject)
+  if (isCommission) return handleCommissionInvoice(attachments, from, subject, mailOpts)
+
+  // §241 Historien-Modus („nur Belege"): NUR der Beleg-Fischer läuft —
+  // Gast-/Portal-Klassifikation alter Mails würde rückwirkend Chat-Einträge
+  // mit heutigem Datum erzeugen
+  if (opts.belegeOnly) {
+    if (attachments.length) return handleReceiptMail(attachments, from, subject, rawText, mailOpts)
+    return { ok: true, skipped: 'belege-only: kein Anhang' }
+  }
 
   if (rawText.trim().length < 80) {
     // Kurzer Body, aber PDF dran → trotzdem durch den Beleg-Fischer
