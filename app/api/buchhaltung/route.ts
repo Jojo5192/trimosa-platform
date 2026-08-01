@@ -6,7 +6,7 @@ import {
 } from '@/lib/sevdesk'
 import { findBankAccounts, listBankTransactions, bookMoneyTransit, payoutClearingFor } from '@/lib/sevdesk-payouts'
 import { askClaudeWithFile } from '@/lib/ai'
-import { bucheEigenbeleg, resolveTilgungKonto } from '@/lib/eigenbeleg'
+import { bucheEigenbeleg, resolveTilgungKonto, saveEigenRegel } from '@/lib/eigenbeleg'
 import { analysiereBeleg, pdfForVoucher, parseJsonLoose, saveGelernt, saveZuordnung } from '@/lib/beleg-ki'
 
 /**
@@ -278,6 +278,29 @@ export async function POST(req: NextRequest) {
       }, NO_STORE)
     }
 
+    // §243j: Merkregel DIREKT anlegen (fuer Bestands-Faelle, deren
+    // Buchungen vor dem Regel-Feature liefen — z. B. die 21 Entnahmen)
+    if (b.action === 'eigen-regel') {
+      const typ = String(b.typ ?? '')
+      const betrag = Math.round(Number(b.betrag) * 100) / 100
+      if (!['miete', 'privat', 'sonstiges'].includes(typ) || !Number.isFinite(betrag) || betrag <= 0) {
+        return NextResponse.json({ error: 'typ (miete|privat|sonstiges) + betrag noetig.' }, { status: 400 })
+      }
+      const accountDatevId = Number(b.accountDatevId)
+      const gdx = await getReceiptGuidance()
+      const hit = gdx.find((x) => x.accountDatevId === accountDatevId)
+      if (!hit) return NextResponse.json({ error: 'accountDatevId aus dem Katalog noetig.' }, { status: 400 })
+      await saveEigenRegel({
+        typ: typ as 'miete' | 'privat' | 'sonstiges',
+        empfaenger: String(b.empfaenger ?? '').trim().slice(0, 120),
+        betrag,
+        zweck: String(b.zweck ?? '').trim().slice(0, 160),
+        position: { accountDatevId, taxRate: [19, 7, 0].includes(Number(b.taxRate)) ? Number(b.taxRate) : 0, amountGross: betrag, name: String(b.posName ?? b.zweck ?? '').slice(0, 120) },
+        grundlage: String(b.grundlage ?? 'Wiederkehrende Zahlung (Merkregel).').slice(0, 300),
+      })
+      return NextResponse.json({ ok: true }, NO_STORE)
+    }
+
     // §243: Zahlung OHNE Fremdbeleg buchen — App generiert einen Eigenbeleg
     // (PDF), legt ihn als sevdesk-Beleg an, bucht die Positionen und
     // verknuepft die Bank-Transaktion. Typen: miete | kredit | privat | sonstiges
@@ -332,6 +355,16 @@ export async function POST(req: NextRequest) {
         zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
         txId: String(b.txId), txAccountId: String(b.txAccountId), txDate: datum,
       })
+      // §243j MERKREGEL: dieselbe wiederkehrende Zahlung (Empfaenger +
+      // exakter Betrag) bucht der taegliche Lauf kuenftig automatisch —
+      // Privatentnahmen/Mieten/Abos fasst der Inhaber nie wieder an
+      if (r.ok && positionen.length === 1 && typ !== 'kredit') {
+        await saveEigenRegel({
+          typ: typ as 'miete' | 'privat' | 'sonstiges',
+          empfaenger, betrag, zweck, position: positionen[0], grundlage,
+          kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+        })
+      }
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
     }
 
