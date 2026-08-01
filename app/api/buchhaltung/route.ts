@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
   const user = await requireFinance()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   if (req.nextUrl.searchParams.get('probe') === '1') return NextResponse.json({ ok: true }, NO_STORE)
+  // §241: Zeitraum wählbar (Zahlungen-Reiter 45/90/180/365 Tage)
+  const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days')) || 45, 7), 400)
 
   try {
     const [vouchers, guidance, ignored, banks] = await Promise.all([
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
       betrag: number; von: string; zweck: string; vorschlag: string | null
     }[] = []
     for (const bank of banks) {
-      const txs = await listBankTransactions(bank.id, 45)
+      const txs = await listBankTransactions(bank.id, days)
       for (const tx of txs) {
         if (Number(tx.status) !== 100) continue
         if (ignored.includes(String(tx.id))) continue
@@ -90,6 +92,7 @@ export async function GET(req: NextRequest) {
       kostenstellen: ['Allgemein', ...groups, ...titles],
       clearingLabels: ['Verrechnung Booking.com', 'Verrechnung Airbnb', 'Verrechnung FeWo-direkt', 'Verrechnung Direkt/Website', 'Verrechnung HomeToGo'],
       inboxCount: inboxCount ?? 0,
+      zeitraumTage: days,
     }, NO_STORE)
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, { status: 500 })
