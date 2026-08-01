@@ -66,7 +66,9 @@ export async function GET(req: NextRequest) {
   const groups = [...new Set((listings ?? []).map((l) => l.location_group).filter(Boolean).map(String))]
   return NextResponse.json({
     belege,
-    kostenstellen: ['Allgemein', ...groups, ...titles],
+    // §243p: Kanzem = angemietetes UG-Objekt MIT Mietvertrag (noch ohne
+    // Listings) — eigene Kostenstelle, bis die Kanzem-Wohnungen live sind
+    kostenstellen: ['Allgemein', ...groups, 'Kanzem', ...titles],
   }, NO_STORE)
 }
 
