@@ -144,6 +144,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(shape, NO_STORE)
     }
 
+    // §243h: BELEGDATUM-Reparatur — Mail-Scan-Belege tragen das SCAN-Datum
+    // statt des Rechnungsdatums (UStVA-Periode!). Vision liest das echte
+    // Datum, Partial-PUT korrigiert. dryRun = Report ohne Aenderung.
+    if (b.action === 'datum-fix') {
+      const dryRun = b.dryRun !== false
+      const scanTag = typeof b.scanDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.scanDatum) ? b.scanDatum : '2026-08-01'
+      const limit = Math.min(Math.max(Number(b.limit) || 15, 1), 25)
+      const { sevJson } = await import('@/lib/sevdesk')
+      const verdacht: { id: string; status: number; lieferant: string; datum: string }[] = []
+      for (const st of [50, 100, 1000]) {
+        for (let offset = 0; offset < 500; offset += 100) {
+          const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=100&offset=${offset}`)
+          for (const v of list ?? []) {
+            const d = v.voucherDate ? String(v.voucherDate).slice(0, 10) : ''
+            if (d === scanTag) verdacht.push({ id: String(v.id), status: Number(v.status), lieferant: String(v.supplierName ?? '?'), datum: d })
+          }
+          if (!list || list.length < 100) break
+        }
+      }
+      const report: string[] = []
+      let fixed = 0
+      const t0 = Date.now()
+      for (const v of verdacht.slice(0, limit)) {
+        if (Date.now() - t0 > 90_000) { report.push('Zeitbudget — Rest im naechsten Lauf'); break }
+        const pdf = await pdfForVoucher(v.id)
+        if (!pdf) { report.push(`${v.lieferant} ${v.id}: kein Dokument`); continue }
+        try {
+          const raw = await askClaudeWithFile(
+            'Lies NUR das RECHNUNGS-/BELEGDATUM dieses Dokuments. Antworte NUR mit JSON: {"datum": "<JJJJ-MM-TT oder null>"}',
+            'Belegdatum lesen.', { mediaType: pdf.mediaType, base64: pdf.base64 }, 800)
+          const oj = parseJsonLoose(raw)
+          const echt = typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum) ? oj.datum : null
+          if (!echt) { report.push(`${v.lieferant} ${v.id}: Datum nicht lesbar`); continue }
+          if (echt === v.datum) { report.push(`${v.lieferant} ${v.id}: Datum stimmt (${echt})`); continue }
+          if (dryRun) { report.push(`${v.lieferant} ${v.id}: ${v.datum} → ${echt} (dryRun)`); continue }
+          await sevJson(`/Voucher/${v.id}`, { method: 'PUT', body: JSON.stringify({ voucherDate: echt }) })
+          fixed++
+          report.push(`${v.lieferant} ${v.id}: ${v.datum} → ${echt} ✓ (St ${v.status})`)
+        } catch (e) {
+          report.push(`${v.lieferant} ${v.id}: FEHLER ${String(e instanceof Error ? e.message : e).slice(0, 120)}`)
+        }
+      }
+      return NextResponse.json({ verdacht: verdacht.length, geprueft: Math.min(limit, verdacht.length), korrigiert: fixed, report }, NO_STORE)
+    }
+
     // §243c: Alle Belege EINES Lieferanten (offen 100 + bezahlt 1000) —
     // Grundlage fuer den Leistungsart-Audit (VP Glanzteam)
     if (b.action === 'lieferant-belege') {
@@ -266,6 +311,8 @@ export async function POST(req: NextRequest) {
         costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle
           ? (b.kostenstelle === 'Allgemein' ? '' : b.kostenstelle) : null,
         isAsset: b.anlagegut === true,
+        // §243h: echtes Rechnungsdatum aus der KI-Analyse durchreichen
+        ...(typeof b.belegDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.belegDatum) ? { voucherDate: b.belegDatum } : {}),
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
       })
       // interne Wohnungs-Zuordnung mitschreiben (fail-soft)
