@@ -474,6 +474,137 @@ export async function createSevVoucherDraft(opts: {
   }
 }
 
+/* ── §239 BUCHHALTUNGSMODUL: Belege sichten + verbuchen ohne sevdesk-UI ── */
+
+export interface SevVoucherLite {
+  id: string
+  status: number
+  creditDebit: string | null
+  supplierName: string | null
+  description: string | null
+  voucherDate: string | null
+  sumGross: number | null
+  costCentreName: string | null
+}
+
+/** Belege (Entwürfe status 50 + offene status 100) fürs Buchhaltungsmodul. */
+export async function listSevVouchers(statuses: number[] = [50, 100]): Promise<SevVoucherLite[]> {
+  const out: SevVoucherLite[] = []
+  for (const st of statuses) {
+    const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=50&embed=costCentre`)
+    for (const v of list ?? []) {
+      const cc = v.costCentre as { name?: string } | null
+      out.push({
+        id: String(v.id), status: Number(v.status),
+        creditDebit: (v.creditDebit as string | null) ?? null,
+        supplierName: (v.supplierName as string | null) ?? null,
+        description: (v.description as string | null) ?? null,
+        voucherDate: v.voucherDate ? String(v.voucherDate).slice(0, 10) : null,
+        sumGross: v.sumGross != null ? Number(v.sumGross) : null,
+        costCentreName: cc?.name ?? null,
+      })
+    }
+  }
+  return out
+}
+
+export interface ReceiptGuide {
+  accountDatevId: number
+  accountNumber: string
+  accountName: string
+  description: string | null
+}
+
+/** sevdesks Buchungskategorien-Katalog (ReceiptGuidance) — 1h-Cache. */
+export async function getReceiptGuidance(): Promise<ReceiptGuide[]> {
+  const gg = globalThis as typeof globalThis & { __sevGuidance?: { at: number; list: ReceiptGuide[] } }
+  if (gg.__sevGuidance && Date.now() - gg.__sevGuidance.at < 3600_000) return gg.__sevGuidance.list
+  const raw = await sevJson<Record<string, unknown>[]>('/ReceiptGuidance/forAllAccounts')
+  const list = (raw ?? []).map((r) => ({
+    accountDatevId: Number(r.accountDatevId),
+    accountNumber: String(r.accountNumber ?? ''),
+    accountName: String(r.accountName ?? ''),
+    description: (r.description as string | null) ?? null,
+  })).filter((r) => Number.isFinite(r.accountDatevId) && r.accountName)
+  gg.__sevGuidance = { at: Date.now(), list }
+  return list
+}
+
+/** Kostenstelle auf einem bestehenden Beleg setzen (Partial-PUT, §234-Muster). */
+export async function updateSevVoucherCostCentre(voucherId: string, costCentreName: string | null): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const body = costCentreName
+      ? { costCentre: { id: Number(await ensureCostCentre(costCentreName)), objectName: 'CostCentre' } }
+      : { costCentre: null }
+    await sevJson(`/Voucher/${voucherId}`, { method: 'PUT', body: JSON.stringify(body) })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
+/**
+ * Beleg VERBUCHEN ohne sevdesk-UI (§239): Position (Buchungskategorie via
+ * accountDatev + Steuersatz + Brutto) setzen, Beleg finalisieren (status
+ * 100) und optional direkt mit einer offenen Bank-Transaktion verknüpfen
+ * (Voucher-bookAmount mit checkAccountTransaction → Zahlung zugeordnet).
+ * ⚠️ Payload-Form der VoucherPos am ersten echten Fall kalibrieren (§127).
+ */
+export async function bookSevVoucher(voucherId: string, opts: {
+  accountDatevId: number
+  taxRate: number
+  amountGross: number
+  costCentreName?: string | null
+  /** offene Bank-Transaktion, die die Zahlung darstellt */
+  txId?: string
+  txAccountId?: string
+  txDate?: string
+}): Promise<{ ok: boolean; verknuepft?: boolean; error?: string }> {
+  try {
+    const gross = Math.round(opts.amountGross * 100) / 100
+    const net = Math.round((gross / (1 + opts.taxRate / 100)) * 100) / 100
+    const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
+    await sevJson('/Voucher/Factory/saveVoucher', {
+      method: 'POST',
+      body: JSON.stringify({
+        voucher: {
+          id: Number(voucherId),
+          objectName: 'Voucher',
+          mapAll: true,
+          status: 100,
+          ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
+        },
+        voucherPosSave: [{
+          objectName: 'VoucherPos',
+          mapAll: true,
+          accountDatev: { id: opts.accountDatevId, objectName: 'AccountDatev' },
+          taxRate: opts.taxRate,
+          net: false,
+          sumNet: net,
+          sumGross: gross,
+        }],
+        voucherPosDelete: null,
+      }),
+    })
+    if (opts.txId && opts.txAccountId) {
+      await sevJson(`/Voucher/${voucherId}/bookAmount`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: gross,
+          date: Math.floor(Date.parse((opts.txDate ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00Z') / 1000),
+          type: 'FULL_PAYMENT',
+          checkAccount: { id: Number(opts.txAccountId), objectName: 'CheckAccount' },
+          checkAccountTransaction: { id: Number(opts.txId), objectName: 'CheckAccountTransaction' },
+        }),
+      })
+      return { ok: true, verknuepft: true }
+    }
+    return { ok: true, verknuepft: false }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
 /** Kanal → Verrechnungskonto-Label. Reihenfolge ist Substring-kritisch
  *  (§140-Falle in BEIDE Richtungen): „FeWo-direkt" enthält „direkt" →
  *  FeWo MUSS vor dem Direkt-Check stehen; „Direct booking" enthält
