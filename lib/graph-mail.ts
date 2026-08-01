@@ -49,7 +49,7 @@ async function getGraphToken(): Promise<string> {
 
 async function graphJson<T>(path: string): Promise<T> {
   const token = await getGraphToken()
-  const res = await fetch(`${GRAPH}${path}`, {
+  const res = await fetch(path.startsWith('https://') ? path : `${GRAPH}${path}`, {
     headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
   })
   const text = await res.text()
@@ -97,12 +97,19 @@ interface GraphMsg {
   body?: { contentType?: string; content?: string }
 }
 
-export async function listInboxMessages(mailbox: string, sinceIso: string, top = 25): Promise<GraphMsg[]> {
-  const filter = encodeURIComponent(`receivedDateTime ge ${sinceIso}`)
+export async function listInboxMessages(mailbox: string, sinceIso: string, top = 25, untilIso?: string, maxTotal = 0): Promise<GraphMsg[]> {
+  const filter = encodeURIComponent(`receivedDateTime ge ${sinceIso}` + (untilIso ? ` and receivedDateTime lt ${untilIso}` : ''))
   const select = 'id,subject,receivedDateTime,hasAttachments,from,replyTo,body'
-  const data = await graphJson<{ value?: GraphMsg[] }>(
-    `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime%20asc&$top=${top}&$select=${select}`)
-  return data.value ?? []
+  const out: GraphMsg[] = []
+  let url: string | null =
+    `/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime%20asc&$top=${top}&$select=${select}`
+  // Historien-Scans folgen dem nextLink bis maxTotal (0 = nur erste Seite)
+  while (url) {
+    const data: { value?: GraphMsg[]; '@odata.nextLink'?: string } = await graphJson(url)
+    out.push(...(data.value ?? []))
+    url = maxTotal > 0 && out.length < maxTotal ? data['@odata.nextLink'] ?? null : null
+  }
+  return maxTotal > 0 ? out.slice(0, maxTotal) : out
 }
 
 async function listAttachments(mailbox: string, messageId: string): Promise<Record<string, unknown>[]> {
@@ -141,7 +148,7 @@ export interface MailScanReport {
  * eigene Absender (@trimosa.de) werden übersprungen — sonst würde der
  * Poller unsere eigenen System-Mails klassifizieren.
  */
-export async function runMailScan(opts: { hours?: number; force?: boolean } = {}): Promise<MailScanReport> {
+export async function runMailScan(opts: { hours?: number; force?: boolean; belegeOnly?: boolean; sinceIso?: string; untilIso?: string } = {}): Promise<MailScanReport> {
   const state = await getGraphMailState()
   const report: MailScanReport = {
     enabled: state.enabled, mailboxes: state.mailboxes,
@@ -153,20 +160,25 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
   const fallbackHours = Math.min(Math.max(Number(opts.hours) || 24, 1), 24 * 45)
   for (const mailbox of state.mailboxes) {
     try {
-      const since = opts.hours || !state.cursor[mailbox]
-        ? new Date(Date.now() - fallbackHours * 3600_000).toISOString().replace(/\.\d+Z$/, 'Z')
-        : state.cursor[mailbox]
-      const msgs = await listInboxMessages(mailbox, since)
+      const since = opts.sinceIso
+        ?? (opts.hours || !state.cursor[mailbox]
+          ? new Date(Date.now() - fallbackHours * 3600_000).toISOString().replace(/\.\d+Z$/, 'Z')
+          : state.cursor[mailbox])
+      // §241 Historien-Scan („nur Belege"): eigenes Zeitfenster, paginiert
+      // bis 400 Mails/Postfach, fasst Cursor + processed NIE an
+      const msgs = opts.belegeOnly
+        ? await listInboxMessages(mailbox, since, 100, opts.untilIso, 400)
+        : await listInboxMessages(mailbox, since)
       report.geprueft += msgs.length
       for (const m of msgs) {
         // force = Kalibrier-Rescan: bereits verarbeitete Mails erneut durch
         // die Pipeline (alle Pfade sind idempotent — Content-Dedupe etc.)
-        if (!opts.force && state.processed.includes(m.id)) { report.uebersprungen++; continue }
+        if (!opts.belegeOnly && !opts.force && state.processed.includes(m.id)) { report.uebersprungen++; continue }
         const from = fromString(m)
         const subject = String(m.subject ?? '')
         // Eigene System-/Team-Mails überspringen
         if (/@trimosa\.de|@olkiifalon\.resend\.app/i.test(from)) {
-          state.processed.push(m.id)
+          if (!opts.belegeOnly) state.processed.push(m.id)
           report.uebersprungen++
           continue
         }
@@ -178,7 +190,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
         const relayEmail = relayMatch && !/^(sender|no-?reply)@/i.test(relayMatch[0]) ? relayMatch[0] : ''
         const attachments = m.hasAttachments ? await listAttachments(mailbox, m.id) : []
         try {
-          const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id })
+          const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id }, { belegeOnly: opts.belegeOnly === true })
           report.verarbeitet.push({
             mailbox, from: from.slice(0, 60), subject: subject.slice(0, 90),
             ergebnis: String(result.skipped ?? (result.ok ? Object.keys(result).filter((k) => k !== 'ok').join('+') || 'ok' : result.error ?? 'fehler')).slice(0, 120),
@@ -186,9 +198,11 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
         } catch (e) {
           report.fehler.push({ mailbox, error: `${subject.slice(0, 60)}: ${String(e).slice(0, 150)}` })
         }
-        if (!state.processed.includes(m.id)) state.processed.push(m.id)
-        if (m.receivedDateTime && (!state.cursor[mailbox] || m.receivedDateTime > state.cursor[mailbox])) {
-          state.cursor[mailbox] = m.receivedDateTime
+        if (!opts.belegeOnly) {
+          if (!state.processed.includes(m.id)) state.processed.push(m.id)
+          if (m.receivedDateTime && (!state.cursor[mailbox] || m.receivedDateTime > state.cursor[mailbox])) {
+            state.cursor[mailbox] = m.receivedDateTime
+          }
         }
       }
       // Cursor auch ohne neue Mails vorziehen? Nein — er zeigt auf die
@@ -197,7 +211,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean } = {}
       report.fehler.push({ mailbox, error: String(e instanceof Error ? e.message : e).slice(0, 250) })
     }
   }
-  await saveGraphMailState(state)
+  if (!opts.belegeOnly) await saveGraphMailState(state)
   // Zusammenfassung ins Function-Log — der lange Scan überlebt kein
   // Client-Timeout, das Log ist dann die einzige Report-Quelle
   console.log('[mail-scan] Report:', JSON.stringify({
