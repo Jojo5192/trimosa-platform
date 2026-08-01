@@ -28,6 +28,8 @@ interface Kategorie { id: number; nr: string; name: string }
 interface Wohnung { id: string; title: string; group: string | null }
 interface ViewerInfo { links: { name: string; url: string }[]; zuordnung: Zuordnung | null; rowId: string }
 interface Zuordnung { modus: 'allgemein' | 'standort' | 'wohnung' | 'split'; standort?: string; listingIds?: string[]; anteile?: number[] }
+// §243: Formular-Zustand „Ohne Beleg buchen" je Abbuchung
+interface EigenForm { typ: '' | 'miete' | 'kredit' | 'privat' | 'sonstiges'; empfaenger: string; zweck: string; taxRate: string; zins: string; kat: string; kst: string; zuordnung: Zuordnung | null }
 interface KiVorschlag {
   accountDatevId: number; kategorie: string; nr: string; taxRate: number
   betrag: number | null; begruendung: string; steuerHinweis: string
@@ -267,6 +269,8 @@ export default function BuchhaltungClient() {
   const [inboxKst, setInboxKst] = useState<Record<string, string>>({})
   const [inboxZuo, setInboxZuo] = useState<Record<string, Zuordnung | null>>({})
   const [transit, setTransit] = useState<Record<string, string>>({})
+  // §243: „Ohne Beleg buchen" (Eigenbeleg) je Abbuchung
+  const [eigen, setEigen] = useState<Record<string, EigenForm>>({})
 
   // Hydration-sicher: erst nach Mount messen (SSR kennt kein window)
   const [isMobile, setIsMobile] = useState(false)
@@ -414,6 +418,33 @@ export default function BuchhaltungClient() {
       haptic()
       setOpenTx((p) => p.filter((x) => x.id !== t.id))
       setSelId(null)
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
+  }
+
+  const eigenOf = (t: Tx): EigenForm => eigen[t.id] ?? { typ: '', empfaenger: t.von || '', zweck: '', taxRate: '0', zins: '', kat: '', kst: 'Allgemein', zuordnung: null }
+  const setEigenF = (id: string, t: Tx, patch: Partial<EigenForm>) =>
+    setEigen((p) => ({ ...p, [id]: { ...eigenOf(t), ...p[id], ...patch } }))
+
+  const eigenbelegBuchen = async (t: Tx) => {
+    const f = eigenOf(t)
+    setBusy(t.id); setErr('')
+    try {
+      const j = await post({
+        action: 'eigenbeleg', typ: f.typ,
+        betrag: Math.abs(t.betrag),
+        empfaenger: f.empfaenger.trim(), zweck: f.zweck.trim(),
+        txId: t.id, txAccountId: t.bankAccountId, txDate: t.datum,
+        ...(f.typ === 'miete' ? { taxRate: Number(f.taxRate) } : {}),
+        ...(f.typ === 'kredit' ? { zinsAnteil: Number(String(f.zins).replace(',', '.')) } : {}),
+        ...(f.typ === 'sonstiges' ? { accountDatevId: Number(f.kat), taxRate: Number(f.taxRate) } : {}),
+        ...(f.kst && f.kst !== 'Allgemein' ? { kostenstelle: f.kst } : {}),
+        ...(f.zuordnung ? { zuordnung: f.zuordnung } : {}),
+      }) as { hinweis?: string }
+      haptic()
+      setOpenTx((p) => p.filter((x) => x.id !== t.id))
+      setSelId(null)
+      if (j?.hinweis) setErr(j.hinweis)
+      await load()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
@@ -614,11 +645,94 @@ export default function BuchhaltungClient() {
             <div style={{ fontSize: 13, color: SUB, marginTop: 2 }}>{fmtD(t.datum)} · {t.bankkonto}</div>
             {t.zweck && <div style={{ fontSize: 13.5, color: INK, marginTop: 8, lineHeight: 1.4 }}>{t.zweck}</div>}
           </div>
-          {t.betrag < 0 && (
-            <div style={{ fontSize: 13, color: SUB, background: GROUP_BG, borderRadius: 12, padding: '10px 13px', lineHeight: 1.45 }}>
-              Abbuchung ohne Beleg? Der Beleg kommt per Mail-Scan oder Foto — die Verknüpfung passiert beim Verbuchen im Belege-Bereich.
-            </div>
-          )}
+          {t.betrag < 0 && (() => {
+            const f = eigenOf(t)
+            const zinsNum = Number(String(f.zins).replace(',', '.'))
+            const tilgung = Number.isFinite(zinsNum) ? Math.round((Math.abs(t.betrag) - zinsNum) * 100) / 100 : null
+            const bereit = f.empfaenger.trim() && f.zweck.trim()
+              && (f.typ !== 'kredit' || (Number.isFinite(zinsNum) && zinsNum >= 0 && zinsNum <= Math.abs(t.betrag)))
+              && (f.typ !== 'sonstiges' || f.kat)
+            return (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div>
+                  <div style={LABEL}>📘 Ohne Beleg buchen — Eigenbeleg wird automatisch erstellt</div>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                    {([['miete', '🏠 Miete/Pacht'], ['kredit', '🏦 Kreditrate'], ['privat', '👤 Privat'], ['sonstiges', '📦 Sonstiges']] as const).map(([k, lbl]) => (
+                      <button key={k} onClick={() => { haptic(); setEigenF(t.id, t, { typ: f.typ === k ? '' : k }) }} style={{
+                        fontSize: 13.5, fontWeight: 600, padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+                        border: f.typ === k ? `1.5px solid ${GOLD}` : `0.5px solid ${HAIRLINE}`,
+                        background: f.typ === k ? 'rgba(176,145,43,0.12)' : '#fff', color: f.typ === k ? GOLD : INK,
+                        WebkitTapHighlightColor: 'transparent',
+                      }}>{lbl}</button>
+                    ))}
+                  </div>
+                </div>
+                {f.typ && (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div>
+                      <div style={LABEL}>Zahlungsempfänger</div>
+                      <input value={f.empfaenger} onChange={(e) => setEigenF(t.id, t, { empfaenger: e.target.value })} placeholder="z. B. Vermieter / Bank" style={SELECT} />
+                    </div>
+                    <div>
+                      <div style={LABEL}>Zweck</div>
+                      <input value={f.zweck} onChange={(e) => setEigenF(t.id, t, { zweck: e.target.value })} placeholder={f.typ === 'miete' ? 'z. B. Miete August 2026, Objekt …' : f.typ === 'kredit' ? 'z. B. Darlehensrate August, Volksbank …' : 'Wofür war die Zahlung?'} style={SELECT} />
+                    </div>
+                    {f.typ === 'miete' && (
+                      <div>
+                        <div style={LABEL}>Umsatzsteuer im Mietvertrag</div>
+                        <select value={f.taxRate} onChange={(e) => setEigenF(t.id, t, { taxRate: e.target.value })} style={SELECT}>
+                          <option value="0">ohne USt-Ausweis (üblich bei privaten Vermietern)</option>
+                          <option value="19">19 % ausgewiesen (Option nach §9 UStG)</option>
+                        </select>
+                      </div>
+                    )}
+                    {f.typ === 'kredit' && (
+                      <div>
+                        <div style={LABEL}>Zinsanteil der Rate (aus dem Tilgungsplan)</div>
+                        <input value={f.zins} onChange={(e) => setEigenF(t.id, t, { zins: e.target.value })} placeholder="z. B. 210,50" inputMode="decimal" style={SELECT} />
+                        {Number.isFinite(zinsNum) && f.zins !== '' && tilgung != null && tilgung >= 0 && (
+                          <div style={{ fontSize: 12.5, color: SUB, margin: '6px 4px 0', lineHeight: 1.4 }}>
+                            Zins {eur(zinsNum)} (absetzbar) · Tilgung {eur(tilgung)} (neutral — nie Betriebsausgabe)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {f.typ === 'sonstiges' && (
+                      <>
+                        <div>
+                          <div style={LABEL}>Kategorie</div>
+                          <select value={f.kat} onChange={(e) => setEigenF(t.id, t, { kat: e.target.value })} style={SELECT}>
+                            <option value="">— wählen —</option>
+                            {kategorien.map((kat) => <option key={kat.id} value={String(kat.id)}>{kat.nr} · {kat.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <div style={LABEL}>Steuersatz</div>
+                          <select value={f.taxRate} onChange={(e) => setEigenF(t.id, t, { taxRate: e.target.value })} style={SELECT}>
+                            <option value="0">0 %</option><option value="7">7 %</option><option value="19">19 %</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    {f.typ !== 'privat' && (
+                      <div>
+                        <div style={LABEL}>sevdesk-Kostenstelle</div>
+                        <select value={f.kst} onChange={(e) => setEigenF(t.id, t, { kst: e.target.value })} style={SELECT}>
+                          {kostenstellen.map((kk) => <option key={kk} value={kk}>{kk}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {f.typ !== 'privat' && (
+                      <ZuordnungPicker value={f.zuordnung} onChange={(z) => setEigenF(t.id, t, { zuordnung: z })} wohnungen={wohnungen} />
+                    )}
+                    <button onClick={() => eigenbelegBuchen(t)} disabled={busy === t.id || !bereit} style={{ ...BTN, background: bereit ? GOLD : 'rgba(118,118,128,0.16)', color: bereit ? '#fff' : SUB }}>
+                      {busy === t.id ? '⏳ Erstelle Eigenbeleg…' : '📘 Eigenbeleg erstellen & buchen'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           {t.betrag > 0 && (
             <div>
               <div style={LABEL}>Geldtransit · Portal-Auszahlung → Verrechnungskonto</div>
