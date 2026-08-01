@@ -563,10 +563,16 @@ export async function bookSevVoucher(voucherId: string, opts: {
   txId?: string
   txAccountId?: string
   txDate?: string
+  /** §243: MEHRERE Positionen (Eigenbeleg Kreditrate: Zins + Tilgung) —
+   *  wenn gesetzt, gewinnen sie über die Einzel-Felder; bookAmount läuft
+   *  über die Brutto-SUMME */
+  positions?: { accountDatevId: number; taxRate: number; amountGross: number; isAsset?: boolean }[]
 }): Promise<{ ok: boolean; verknuepft?: boolean; hinweis?: string; error?: string }> {
   try {
-    const gross = Math.round(opts.amountGross * 100) / 100
-    const net = Math.round((gross / (1 + opts.taxRate / 100)) * 100) / 100
+    const posList = opts.positions?.length
+      ? opts.positions
+      : [{ accountDatevId: opts.accountDatevId, taxRate: opts.taxRate, amountGross: opts.amountGross, isAsset: opts.isAsset }]
+    const gross = Math.round(posList.reduce((a, p) => a + p.amountGross, 0) * 100) / 100
 
     // §242-Härtung: saveVoucher kann nur ENTWÜRFE ändern — ein Beleg, der
     // schon Status 100 hat (z. B. weil ein früherer bookAmount scheiterte),
@@ -597,16 +603,19 @@ export async function bookSevVoucher(voucherId: string, opts: {
           taxRule: { id: 9, objectName: 'TaxRule' },
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
         },
-        voucherPosSave: [{
-          objectName: 'VoucherPos',
-          mapAll: true,
-          accountDatev: { id: opts.accountDatevId, objectName: 'AccountDatev' },
-          taxRate: opts.taxRate,
-          net: false,
-          isAsset: opts.isAsset === true,
-          sumNet: net,
-          sumGross: gross,
-        }],
+        voucherPosSave: posList.map((p) => {
+          const pg = Math.round(p.amountGross * 100) / 100
+          return {
+            objectName: 'VoucherPos',
+            mapAll: true,
+            accountDatev: { id: p.accountDatevId, objectName: 'AccountDatev' },
+            taxRate: p.taxRate,
+            net: false,
+            isAsset: p.isAsset === true,
+            sumNet: Math.round((pg / (1 + p.taxRate / 100)) * 100) / 100,
+            sumGross: pg,
+          }
+        }),
         voucherPosDelete: posDelete,
       }),
     })
