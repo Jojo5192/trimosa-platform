@@ -168,6 +168,8 @@ export interface KiErgebnis {
   nr?: string
   taxRate?: number
   betrag?: number | null
+  /** echtes RECHNUNGSDATUM aus dem Beleg (Mail-Scan-Belege trugen sonst das Scan-Datum — UStVA-Periode!) */
+  datum?: string | null
   begruendung?: string
   steuerHinweis?: string
   anlagegut?: boolean
@@ -201,20 +203,22 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
     const k5923 = guidance.find((x) => x.accountNumber === '5923')
     if (k5923) {
       let provBetrag: number | null = null
+      let provDatum: string | null = null
       if (pdf) {
         try {
           const raw = await askClaudeWithFile(
-            'Lies den GESAMTBETRAG dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). Antworte NUR mit JSON: {"betrag": <Zahl>}',
+            'Lies GESAMTBETRAG und RECHNUNGSDATUM dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). Antworte NUR mit JSON: {"betrag": <Zahl>, "datum": "<JJJJ-MM-TT oder null>"}',
             `Lieferant: ${v.supplierName ?? '?'}`,
             { mediaType: pdf.mediaType, base64: pdf.base64 }, 1200)
           const oj = parseJsonLoose(raw)
           if (typeof oj.betrag === 'number' && oj.betrag > 0) provBetrag = Math.round(oj.betrag * 100) / 100
+          if (typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum)) provDatum = oj.datum
         } catch { /* best effort */ }
       }
       return {
         ok: true, weg: 'provision',
         accountDatevId: k5923.accountDatevId, kategorie: k5923.accountName, nr: k5923.accountNumber,
-        taxRate: 0, betrag: provBetrag,
+        taxRate: 0, betrag: provBetrag, datum: provDatum,
         begruendung: 'Portal-Provisionsrechnung (EU-Anbieter) — feste Regel, keine KI-Wahl.',
         steuerHinweis: 'Reverse-Charge §13b UStG: TRIMOSA schuldet die USt und zieht sie ZUGLEICH als Vorsteuer (Konto 5923 — Nullsumme). Betrag = NETTOBETRAG der Rechnung.',
         anlagegut: false, nutzungsdauer: null,
@@ -231,15 +235,17 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
     let ort: { kst: string; zuordnung: Record<string, unknown> } | null = null
     let ortText = ''
     let gBetrag: number | null = null
+    let gDatum: string | null = null
     let kategoriePasst = true
     if (pdf) {
       try {
         const raw = await askClaudeWithFile(
-          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG: Lies den Rechnungs-GESAMTBETRAG (brutto). 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
+          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG + DATUM: Lies Rechnungs-GESAMTBETRAG (brutto) und RECHNUNGSDATUM. 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "datum": "<JJJJ-MM-TT oder null>", "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
           `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
           { mediaType: pdf.mediaType, base64: pdf.base64 }, 1800)
         const oj = parseJsonLoose(raw)
         if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
+        if (typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum)) gDatum = oj.datum
         if (oj.kategorie_passt === false) kategoriePasst = false
         ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
         if (ort && typeof oj.indiz === 'string') ortText = ` · Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
@@ -249,7 +255,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
       ok: true, weg: 'gelernt', gelernt: true,
       accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
       taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
-      betrag: gBetrag,
+      betrag: gBetrag, datum: gDatum,
       begruendung: '\u{1F9E0} Kategorie aus deiner letzten Buchung für diesen Lieferanten' + ortText,
       steuerHinweis: '',
       anlagegut: g.anlagegut === true, nutzungsdauer: null,
@@ -259,7 +265,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
 
   const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
   const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
-{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
+{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "belegdatum": "<Rechnungsdatum JJJJ-MM-TT oder null>", "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
 Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/Umsatzkonten (4xxx) wählen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ansässigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erwähnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur ermäßigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erwähnen). Bei anlagegut=true wähle als Kategorie IMMER 6220 Abschreibungen auf Sachanlagen (sevdesk-Konvention: die Position wird als Anlagegut markiert, sevdesk aktiviert das Gut im Anlagenmodul) — nie ein Betriebsbedarf-Konto für Anlagegüter. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
   const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
   const raw = pdf
@@ -274,6 +280,7 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/
     accountDatevId: hit.accountDatevId, kategorie: hit.accountName, nr: hit.accountNumber,
     taxRate: [19, 7, 0].includes(Number(j.taxRate)) ? Number(j.taxRate) : 19,
     betrag: typeof j.betrag_brutto === 'number' && j.betrag_brutto > 0 ? Math.round(j.betrag_brutto * 100) / 100 : null,
+    datum: typeof j.belegdatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.belegdatum) ? j.belegdatum : null,
     begruendung: String(j.begruendung ?? '').slice(0, 200),
     steuerHinweis: String(j.steuer_hinweis ?? '').slice(0, 400),
     anlagegut: j.anlagegut === true,
@@ -322,6 +329,7 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
       taxRate: [19, 7, 0].includes(Number(ki.taxRate)) ? Number(ki.taxRate) : 19,
       amountGross: betrag,
       costCentreName: ki.kst ?? null,
+      ...(ki.datum ? { voucherDate: ki.datum } : {}),
       ...(ki.nr === '5923' ? { taxRuleId: 14 } : {}),
       ...(tx ? { txId: tx.id, txAccountId: tx.accountId, txDate: tx.datum } : {}),
     })
