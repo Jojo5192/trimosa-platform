@@ -618,3 +618,53 @@ export function clearingLabelFor(channelName: string | null | undefined): string
   if (s.includes('hometogo')) return 'Verrechnung HomeToGo'
   return 'Verrechnung Direkt/Website'
 }
+
+/** §240: Kostenstellen-Doktrin — bestehende Rechnungen von Wohnungs- auf
+ *  STANDORT-Kostenstellen umziehen (mapping: WohnungsTitel → StandortName).
+ *  Idempotent (bereits umgezogene werden übersprungen), festgeschriebene
+ *  Belege werden nie angefasst. */
+export async function migrateInvoiceCostCentres(
+  mapping: Record<string, string>,
+  opts: { dryRun?: boolean; limit?: number } = {},
+): Promise<{ geprueft: number; geaendert: number; uebersprungen: number; fehler: string[]; dryRun: boolean }> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(opts.limit ?? 400, 1), 500)
+  const fehler: string[] = []
+  let geprueft = 0, geaendert = 0, uebersprungen = 0
+
+  // Ziel-Kostenstellen einmal auflösen/anlegen
+  const targetIds = new Map<string, string>()
+  for (const ziel of [...new Set(Object.values(mapping))]) {
+    targetIds.set(ziel, await ensureCostCentre(ziel))
+  }
+
+  for (let offset = 0; offset < 2000; offset += 100) {
+    const page = await sevJson<Record<string, unknown>[]>(
+      `/Invoice?limit=100&offset=${offset}&embed=costCentre`)
+    if (!page.length) break
+    for (const inv of page) {
+      geprueft++
+      const cc = inv.costCentre as { id?: unknown; name?: string } | null
+      const ziel = cc?.name ? mapping[cc.name] : undefined
+      if (!ziel) { uebersprungen++; continue }
+      if (inv.enshrined) { uebersprungen++; fehler.push(`${inv.invoiceNumber}: festgeschrieben — nicht angefasst`); continue }
+      if (geaendert >= limit) continue
+      if (!dryRun) {
+        try {
+          const r = await sevFetch(`/Invoice/${inv.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ costCentre: { id: Number(targetIds.get(ziel)), objectName: 'CostCentre' } }),
+          })
+          if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 140)}`)
+          await new Promise((res) => setTimeout(res, 250))
+        } catch (e) {
+          fehler.push(`${inv.invoiceNumber}: ${String(e instanceof Error ? e.message : e)}`)
+          continue
+        }
+      }
+      geaendert++
+    }
+    if (page.length < 100) break
+  }
+  return { geprueft, geaendert, uebersprungen, fehler: fehler.slice(0, 20), dryRun }
+}
