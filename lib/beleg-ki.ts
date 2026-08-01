@@ -58,7 +58,17 @@ export async function saveGelernt(lieferant: string, g: Gelernt): Promise<void> 
 
 /** §242c: PDF eines sevdesk-Belegs — Storage-Kopie, sonst Original aus
  *  sevdesk (/Document/{id}/download, §243b — undokumentiert, defensiv). */
-export async function pdfForVoucher(voucherId: string): Promise<{ base64: string } | null> {
+/** MIME per Magic-Bytes — lexoffice-Importe sind teils JPG/PNG-Scans;
+ *  die KI braucht Bilder als image-Block, PDFs als document-Block (§116). */
+function sniffMediaType(buf: Buffer): 'application/pdf' | 'image/jpeg' | 'image/png' | null {
+  if (buf.length < 8) return null
+  if (buf.subarray(0, 4).toString('latin1') === '%PDF') return 'application/pdf'
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return 'image/jpeg'
+  if (buf[0] === 0x89 && buf.subarray(1, 4).toString('latin1') === 'PNG') return 'image/png'
+  return null
+}
+
+export async function pdfForVoucher(voucherId: string): Promise<{ base64: string; mediaType: 'application/pdf' | 'image/jpeg' | 'image/png' } | null> {
   try {
     const { data: row } = await supabaseAdmin
       .from('beleg_inbox').select('files').eq('sevdesk_voucher_id', voucherId).maybeSingle()
@@ -67,7 +77,8 @@ export async function pdfForVoucher(voucherId: string): Promise<{ base64: string
       const { data: file } = await supabaseAdmin.storage.from('belege').download(files[0].path)
       if (file) {
         const buf = Buffer.from(await file.arrayBuffer())
-        if (buf.length <= 8_000_000) return { base64: buf.toString('base64') }
+        const mt = sniffMediaType(buf)
+        if (mt && buf.length <= 8_000_000) return { base64: buf.toString('base64'), mediaType: mt }
       }
     }
   } catch { /* weiter zum sevdesk-Fallback */ }
@@ -86,12 +97,14 @@ export async function pdfForVoucher(voucherId: string): Promise<{ base64: string
       const content = obj?.content
       if (typeof content === 'string' && content.length > 100) {
         const buf = Buffer.from(content, 'base64')
-        if (buf.length > 200 && buf.length <= 8_000_000) return { base64: content }
+        const mt = sniffMediaType(buf)
+        if (mt && buf.length > 200 && buf.length <= 8_000_000) return { base64: content, mediaType: mt }
       }
       return null
     }
     const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.length > 200 && buf.length <= 8_000_000) return { base64: buf.toString('base64') }
+    const mt = sniffMediaType(buf)
+    if (mt && buf.length > 200 && buf.length <= 8_000_000) return { base64: buf.toString('base64'), mediaType: mt }
     return null
   } catch { return null }
 }
@@ -193,7 +206,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
           const raw = await askClaudeWithFile(
             'Lies den GESAMTBETRAG dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). Antworte NUR mit JSON: {"betrag": <Zahl>}',
             `Lieferant: ${v.supplierName ?? '?'}`,
-            { mediaType: 'application/pdf', base64: pdf.base64 }, 1200)
+            { mediaType: pdf.mediaType, base64: pdf.base64 }, 1200)
           const oj = parseJsonLoose(raw)
           if (typeof oj.betrag === 'number' && oj.betrag > 0) provBetrag = Math.round(oj.betrag * 100) / 100
         } catch { /* best effort */ }
@@ -224,7 +237,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
         const raw = await askClaudeWithFile(
           `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG: Lies den Rechnungs-GESAMTBETRAG (brutto). 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
           `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
-          { mediaType: 'application/pdf', base64: pdf.base64 }, 1800)
+          { mediaType: pdf.mediaType, base64: pdf.base64 }, 1800)
         const oj = parseJsonLoose(raw)
         if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
         if (oj.kategorie_passt === false) kategoriePasst = false
@@ -250,7 +263,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
 Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/Umsatzkonten (4xxx) wählen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ansässigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erwähnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur ermäßigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erwähnen). Bei anlagegut=true wähle als Kategorie IMMER 6220 Abschreibungen auf Sachanlagen (sevdesk-Konvention: die Position wird als Anlagegut markiert, sevdesk aktiviert das Gut im Anlagenmodul) — nie ein Betriebsbedarf-Konto für Anlagegüter. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
   const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
   const raw = pdf
-    ? await askClaudeWithFile(system, userMsg, { mediaType: 'application/pdf', base64: pdf.base64 }, 4000)
+    ? await askClaudeWithFile(system, userMsg, { mediaType: pdf.mediaType, base64: pdf.base64 }, 4000)
     : await askClaude(system, userMsg, 900, FAST_MODEL)
   const j = parseJsonLoose(raw)
   const hit = guidance.find((gg) => gg.accountDatevId === Number(j.accountDatevId))
