@@ -93,7 +93,10 @@ export async function POST(request: NextRequest) {
       const limit = Math.min(Math.max(Number(b.limit) || 30, 1), 40)
       let importiert = 0
       const fehler: string[] = []
-      for (const v of neu.slice(0, limit)) {
+      // Fehlgeschlagene (kaputte Dateien) blockieren NICHT den Lauf — die
+      // Schleife geht weiter durch die Liste, bis limit ERFOLGE erreicht sind
+      for (const v of neu) {
+        if (importiert >= limit) break
         try {
           const pdf = await getExpenseVoucherPdf(v.id)
           if (!pdf.ok || !pdf.pdf) { fehler.push(`${v.voucherNumber}: ${pdf.error}`); continue }
@@ -110,7 +113,7 @@ export async function POST(request: NextRequest) {
           await new Promise((ok) => setTimeout(ok, 600))
         } catch (e) { fehler.push(`${v.voucherNumber}: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`) }
       }
-      return NextResponse.json({ importiert, verbleibend: Math.max(0, neu.length - limit), fehler: fehler.slice(0, 15) })
+      return NextResponse.json({ importiert, verbleibend: Math.max(0, neu.length - importiert - fehler.length), uebersprungen: fehler.length, fehler: fehler.slice(0, 15) })
     }
 
     if (b.action === 'invoice-audit') {
