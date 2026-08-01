@@ -324,14 +324,6 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
       if (v.ok) { erstellt++; if (v.voucherId) voucherIds.push(v.voucherId) }
       else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
     }
-    if (erstellt) {
-      try {
-        const { sendPushToTeam } = await import('@/lib/push')
-        await sendPushToTeam('🧾 Beleg → sevdesk (A&H)',
-          `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''}${bankMatch || ' — eindeutig zugeordnet'}`.slice(0, 140),
-          '/buchhaltung', { buchhaltung: true })
-      } catch { /* best effort */ }
-    }
     if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
     if (erstellt) {
       // Protokollzeile → mailKey-/Content-Dedupe greifen auch für diesen Pfad
@@ -362,8 +354,24 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
       }
       if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
     }
-    console.log('[inbound-mail] Beleg-Fischer → sevdesk:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
-    return { ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, fehler }
+    // §243f VOLL-AUTOMATIK: sichere Kategorien (Provisionen deterministisch,
+    // gelernte Lieferanten mit Leistungs-Check) werden DIREKT verbucht inkl.
+    // Zahlungs-Match + App-Zuordnung; der Push nennt das Endergebnis
+    let autoText = ''
+    if (erstellt && voucherIds[0]) {
+      try {
+        const { autoVerbucheBeleg } = await import('@/lib/beleg-ki')
+        const auto = await autoVerbucheBeleg(voucherIds[0])
+        autoText = auto.text
+        try {
+          const { sendPushToTeam } = await import('@/lib/push')
+          await sendPushToTeam(auto.auto ? '✅ Beleg automatisch verbucht' : '🧾 Beleg → sevdesk (A&H)',
+            `${lieferant} — ${auto.text}`.slice(0, 150), '/buchhaltung', { buchhaltung: true })
+        } catch { /* best effort */ }
+      } catch (e) { console.error('[inbound-mail] Auto-Verbuchung:', String(e).slice(0, 200)) }
+    }
+    console.log('[inbound-mail] Beleg-Fischer → sevdesk:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch, autoText })
+    return { ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, auto: autoText || null, fehler }
   }
 
   // ── UNSICHER → Beleg-Inbox (Inhaber entscheidet Gesellschaft + Kostenstelle) ──
@@ -437,13 +445,6 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
     if (v.ok) { erstellt++; if (v.voucherId) commVoucherIds.push(v.voucherId) }
     else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
   }
-  if (erstellt) {
-    try {
-      const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam('🧾 Provisionsrechnung eingegangen',
-        `${subject.slice(0, 90)} — liegt als Beleg-Entwurf in sevdesk`, '/buchhaltung', { buchhaltung: true })
-    } catch { /* best effort */ }
-  }
   if (fehler.length) console.error('[inbound-mail] Provisionsrechnung-Fehler:', fehler)
   if (erstellt) {
     const protRow: Record<string, unknown> = {
@@ -460,8 +461,23 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
     }
     if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
   }
-  console.log('[inbound-mail] Provisionsrechnung:', { erstellt, fehler: fehler.length })
-  return { ok: true, provisionsBelege: erstellt, fehler }
+  // §243f: Provisionsrechnungen sind deterministisch (5923/§13b) → die
+  // Voll-Automatik bucht sie direkt (Betrag liest die Vision aus dem PDF)
+  let autoText = ''
+  if (erstellt && commVoucherIds[0]) {
+    try {
+      const { autoVerbucheBeleg } = await import('@/lib/beleg-ki')
+      const auto = await autoVerbucheBeleg(commVoucherIds[0])
+      autoText = auto.text
+      try {
+        const { sendPushToTeam } = await import('@/lib/push')
+        await sendPushToTeam(auto.auto ? '✅ Provisionsrechnung automatisch verbucht' : '🧾 Provisionsrechnung eingegangen',
+          `${subject.slice(0, 80)} — ${auto.text}`.slice(0, 150), '/buchhaltung', { buchhaltung: true })
+      } catch { /* best effort */ }
+    } catch (e) { console.error('[inbound-mail] Auto-Verbuchung:', String(e).slice(0, 200)) }
+  }
+  console.log('[inbound-mail] Provisionsrechnung:', { erstellt, fehler: fehler.length, autoText })
+  return { ok: true, provisionsBelege: erstellt, auto: autoText || null, fehler }
 }
 
 /** Der komplette Klassifikations-Flow für EINE Mail (beide Zubringer). */
