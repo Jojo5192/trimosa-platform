@@ -457,6 +457,7 @@ export default function BuchhaltungClient() {
         betrag: Math.abs(t.betrag),
         empfaenger: f.empfaenger.trim(), zweck: f.zweck.trim(),
         txId: t.id, txAccountId: t.bankAccountId, txDate: t.datum,
+        ...(t.betrag > 0 ? { richtung: 'eingang' } : {}),
         ...(f.typ === 'miete' ? { taxRate: Number(f.taxRate) } : {}),
         ...(f.typ === 'kredit' ? { zinsAnteil: Number(String(f.zins).replace(',', '.')) } : {}),
         ...(f.typ === 'sonstiges' ? { accountDatevId: Number(f.kat), taxRate: Number(f.taxRate) } : {}),
@@ -686,19 +687,25 @@ export default function BuchhaltungClient() {
               <div style={{ fontSize: 13, color: SUB, background: GROUP_BG, borderRadius: 12, padding: '10px 13px', lineHeight: 1.45 }}>{hinweis}</div>
             ) : null
           })()}
-          {t.betrag < 0 && (() => {
+          {t.betrag !== 0 && (() => {
+            const istEingang = t.betrag > 0
             const f = eigenOf(t)
             const zinsNum = Number(String(f.zins).replace(',', '.'))
             const tilgung = Number.isFinite(zinsNum) ? Math.round((Math.abs(t.betrag) - zinsNum) * 100) / 100 : null
             const bereit = f.empfaenger.trim() && f.zweck.trim()
               && (f.typ !== 'kredit' || (Number.isFinite(zinsNum) && zinsNum >= 0 && zinsNum <= Math.abs(t.betrag)))
               && (f.typ !== 'sonstiges' || f.kat)
+              && (!istEingang || f.typ === 'privat' || f.typ === 'sonstiges')
+            // §243o: bei EINGAENGEN nur Privateinlage / Sonstiges (Erstattung)
+            const typen = istEingang
+              ? ([['privat', '👤 Privateinlage'], ['sonstiges', '📦 Erstattung / Sonstiges']] as const)
+              : ([['miete', '🏠 Miete/Pacht'], ['kredit', '🏦 Kreditrate'], ['privat', '👤 Privat'], ['sonstiges', '📦 Sonstiges']] as const)
             return (
               <div style={{ display: 'grid', gap: 12 }}>
                 <div>
-                  <div style={LABEL}>📘 Ohne Beleg buchen — Eigenbeleg wird automatisch erstellt</div>
+                  <div style={LABEL}>{istEingang ? '📘 Eingang ohne Beleg buchen — Eigenbeleg wird automatisch erstellt' : '📘 Ohne Beleg buchen — Eigenbeleg wird automatisch erstellt'}</div>
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                    {([['miete', '🏠 Miete/Pacht'], ['kredit', '🏦 Kreditrate'], ['privat', '👤 Privat'], ['sonstiges', '📦 Sonstiges']] as const).map(([k, lbl]) => (
+                    {typen.map(([k, lbl]) => (
                       <button key={k} onClick={() => { haptic(); setEigenF(t.id, t, { typ: f.typ === k ? '' : k }) }} style={{
                         fontSize: 13.5, fontWeight: 600, padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
                         border: f.typ === k ? `1.5px solid ${GOLD}` : `0.5px solid ${HAIRLINE}`,
@@ -711,8 +718,8 @@ export default function BuchhaltungClient() {
                 {f.typ && (
                   <div style={{ display: 'grid', gap: 12 }}>
                     <div>
-                      <div style={LABEL}>Zahlungsempfänger</div>
-                      <input value={f.empfaenger} onChange={(e) => setEigenF(t.id, t, { empfaenger: e.target.value })} placeholder="z. B. Vermieter / Bank" style={SELECT} />
+                      <div style={LABEL}>{istEingang ? 'Zahlender / Absender' : 'Zahlungsempfänger'}</div>
+                      <input value={f.empfaenger} onChange={(e) => setEigenF(t.id, t, { empfaenger: e.target.value })} placeholder={istEingang ? 'z. B. TRIMOSA Immobilien UG' : 'z. B. Vermieter / Bank'} style={SELECT} />
                     </div>
                     <div>
                       <div style={LABEL}>Zweck</div>
@@ -786,7 +793,7 @@ export default function BuchhaltungClient() {
               </button>
             </div>
           )}
-          <button onClick={() => ignorieren(t)} disabled={busy === t.id} style={{ ...BTN, background: 'rgba(118,118,128,0.12)', color: INK }}>Kein Beleg nötig · privat / intern</button>
+          <button onClick={() => ignorieren(t)} disabled={busy === t.id} style={{ ...BTN, background: 'rgba(118,118,128,0.12)', color: INK }}>Kein Beleg nötig · wird in sevdesk als privat markiert</button>
         </div>
       )
     }
