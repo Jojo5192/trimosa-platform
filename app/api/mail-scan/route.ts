@@ -69,6 +69,54 @@ export async function POST(request: NextRequest) {
       await saveGraphMailState({ ...state, mailboxes: list })
       return NextResponse.json({ mailboxes: list }, NO_STORE)
     }
+    // §240-Diagnose: Gast-Nachrichten der Mail-Pipeline auflisten (haben
+    // KEINE smoobu_message_id — echte Smoobu-Sync-Nachrichten schon)
+    if (b.action === 'msg-audit') {
+      const hours = typeof b.hours === 'number' ? Math.min(b.hours, 24 * 14) : 24
+      const cutoff = new Date(Date.now() - hours * 3600_000).toISOString()
+      const { data: msgs } = await supabaseAdmin
+        .from('messages')
+        .select('id, booking_id, content, content_de, lang, created_at')
+        .eq('sender_type', 'guest').is('smoobu_message_id', null)
+        .not('booking_id', 'is', null)
+        .gte('created_at', cutoff).order('created_at', { ascending: false }).limit(50)
+      const ids = [...new Set((msgs ?? []).map((m) => String(m.booking_id)))]
+      const { data: bks } = ids.length
+        ? await supabaseAdmin.from('bookings')
+            .select('id, guest_name, check_in, check_out, status, channel, smoobu_reservation_id, listings(title)')
+            .in('id', ids)
+        : { data: [] }
+      const bMap = new Map((bks ?? []).map((x) => [String(x.id), x]))
+      return NextResponse.json({
+        nachrichten: (msgs ?? []).map((m) => {
+          const bk = bMap.get(String(m.booking_id)) as Record<string, unknown> | undefined
+          const lst = bk?.listings as { title?: string } | { title?: string }[] | null | undefined
+          return {
+            messageId: m.id, erstellt: m.created_at, lang: m.lang,
+            text: String(m.content ?? '').slice(0, 160),
+            buchung: bk ? {
+              id: bk.id, gast: bk.guest_name, status: bk.status, kanal: bk.channel,
+              wohnung: (Array.isArray(lst) ? lst[0] : lst)?.title ?? null,
+              zeitraum: `${bk.check_in} – ${bk.check_out}`,
+              smoobuId: bk.smoobu_reservation_id,
+            } : null,
+          }
+        }),
+      }, NO_STORE)
+    }
+    if (b.action === 'msg-delete') {
+      if (b.confirm !== 'DELETE') return NextResponse.json({ error: "Sicherung: { confirm: 'DELETE' } nötig." }, { status: 400 })
+      // Sicherheit: NUR Mail-Pipeline-Zeilen (ohne smoobu_message_id) löschbar
+      const { data: row } = await supabaseAdmin
+        .from('messages').select('id, sender_type, smoobu_message_id')
+        .eq('id', String(b.messageId ?? '')).maybeSingle()
+      if (!row) return NextResponse.json({ error: 'Nachricht nicht gefunden.' }, { status: 404 })
+      if (row.sender_type !== 'guest' || row.smoobu_message_id != null) {
+        return NextResponse.json({ error: 'Nur Gast-Nachrichten der Mail-Pipeline (ohne Smoobu-ID) löschbar.' }, { status: 400 })
+      }
+      await supabaseAdmin.from('messages').delete().eq('id', row.id)
+      return NextResponse.json({ ok: true, geloescht: row.id }, NO_STORE)
+    }
     return NextResponse.json({ error: 'Unbekannte action.' }, { status: 400 })
   } catch (err) {
     console.error('[mail-scan] manual:', err)
