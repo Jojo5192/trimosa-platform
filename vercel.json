@@ -41,7 +41,7 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/lexoffice/run",
+      "path": "/api/sevdesk/run",
       "schedule": "0 13 * * *"
     },
     {
