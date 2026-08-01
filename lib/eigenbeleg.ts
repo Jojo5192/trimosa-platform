@@ -197,3 +197,138 @@ export async function bucheEigenbeleg(opts: {
 
   return { ok: true, voucherId: draft.voucherId, verknuepft: booked.verknuepft, hinweis: booked.hinweis }
 }
+
+/* ── §243j MERKREGEL: wiederkehrende Ohne-Beleg-Zahlungen automatisch ──
+ * Einmal als Eigenbeleg gebucht (privat/miete/sonstiges — NICHT kredit,
+ * dessen Zins-/Tilgungs-Split wandert mit dem Tilgungsplan) → dieselbe
+ * Zahlung (Empfaenger-Tokens + exakter Betrag) wird beim naechsten Mal
+ * vom taeglichen Lauf automatisch gebucht, mit fortgeschriebenem Monat
+ * im Zweck. Gespeichert in app_settings 'buchhaltung'.eigenRegeln. */
+
+export interface EigenRegel {
+  key: string
+  typ: EigenbelegTyp
+  empfaenger: string
+  zweckPrefix: string
+  accountDatevId: number
+  taxRate: number
+  posName: string
+  grundlage: string
+  kostenstelle?: string | null
+  at: string
+}
+
+const MONATE_DE = ['Januar', 'Februar', 'M\u00E4rz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+
+function nameTokens(name: string): string[] {
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z]+/).filter((w) => w.length > 2)
+}
+
+export function eigenRegelKey(empfaenger: string, betrag: number): string {
+  return nameTokens(empfaenger).sort().join(' ') + '|' + betrag.toFixed(2)
+}
+
+/** Monats-/Jahres-Suffix aus dem Zweck strippen (wird beim Auto-Buchen
+ *  durch den Monat der neuen Zahlung ersetzt). */
+export function zweckOhneMonat(zweck: string): string {
+  return zweck
+    .replace(new RegExp('\\s*[\u00B7\\-/,]?\\s*(' + MONATE_DE.join('|') + ')\\s*\\d{4}\\s*$', 'i'), '')
+    .replace(/\s*[\u00B7\-/,]?\s*\d{1,2}[./]\d{4}\s*$/, '')
+    .trim()
+}
+
+export async function saveEigenRegel(opts: {
+  typ: EigenbelegTyp
+  empfaenger: string
+  betrag: number
+  zweck: string
+  position: EigenbelegPosition
+  grundlage: string
+  kostenstelle?: string | null
+}): Promise<void> {
+  if (opts.typ === 'kredit') return
+  try {
+    const { data } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
+    const cur = (data?.value ?? {}) as Record<string, unknown>
+    const regeln = (cur.eigenRegeln ?? {}) as Record<string, EigenRegel>
+    const key = eigenRegelKey(opts.empfaenger, opts.betrag)
+    regeln[key] = {
+      key, typ: opts.typ, empfaenger: opts.empfaenger,
+      zweckPrefix: zweckOhneMonat(opts.zweck),
+      accountDatevId: opts.position.accountDatevId, taxRate: opts.position.taxRate,
+      posName: zweckOhneMonat(opts.position.name),
+      grundlage: opts.grundlage,
+      kostenstelle: opts.kostenstelle ?? null,
+      at: new Date().toISOString(),
+    }
+    const keys = Object.keys(regeln)
+    if (keys.length > 100) {
+      keys.sort((a, b) => String(regeln[a].at).localeCompare(String(regeln[b].at)))
+      for (const k of keys.slice(0, keys.length - 100)) delete regeln[k]
+    }
+    await supabaseAdmin.from('app_settings').upsert(
+      { key: 'buchhaltung', value: { ...cur, eigenRegeln: regeln } }, { onConflict: 'key' })
+  } catch { /* best effort */ }
+}
+
+/** Taeglicher Lauf (haengt am 3:50-payouts-Cron): offene Abbuchungen gegen
+ *  die Merkregeln matchen (alle Regel-Tokens im Zahlungs-Namen + exakter
+ *  Betrag) und automatisch als Eigenbeleg buchen. */
+export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details: string[] }> {
+  const details: string[] = []
+  try {
+    const { data } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
+    const regeln = Object.values((((data?.value ?? {}) as Record<string, unknown>).eigenRegeln ?? {}) as Record<string, EigenRegel>)
+    if (!regeln.length) return { gebucht: 0, details }
+    const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
+    const banks = await findBankAccounts()
+    let gebucht = 0
+    const used = new Set<string>()
+    for (const bank of banks) {
+      for (const t of await listBankTransactions(bank.id, 60)) {
+        if (Number(t.status) !== 100) continue
+        const amt = Number(t.amount)
+        if (amt >= 0) continue
+        const txName = nameTokens(String(t.payeePayerName ?? ''))
+        const regel = regeln.find((rg) => {
+          if (Math.abs(Math.abs(amt) - Number(rg.key.split('|')[1])) > 0.005) return false
+          const toks = nameTokens(rg.empfaenger)
+          return toks.length > 0 && toks.every((w) => txName.includes(w))
+        })
+        if (!regel) continue
+        const txId = String(t.id)
+        if (used.has(txId)) continue
+        const datum = String(t.valueDate ?? t.entryDate ?? '').slice(0, 10) || new Date().toISOString().slice(0, 10)
+        const d = new Date(datum + 'T12:00:00Z')
+        const monat = MONATE_DE[d.getUTCMonth()] + ' ' + d.getUTCFullYear()
+        const betrag = Math.round(Math.abs(amt) * 100) / 100
+        const r = await bucheEigenbeleg({
+          empfaenger: regel.empfaenger, datum,
+          zweck: `${regel.zweckPrefix} \u00B7 ${monat}`,
+          positionen: [{ accountDatevId: regel.accountDatevId, taxRate: regel.taxRate, amountGross: betrag, name: `${regel.posName} \u00B7 ${monat}` }],
+          grundlage: regel.grundlage,
+          kostenstelle: regel.kostenstelle ?? null,
+          txId, txAccountId: bank.id, txDate: datum,
+        })
+        if (r.ok) {
+          used.add(txId)
+          gebucht++
+          details.push(`${regel.zweckPrefix} \u00B7 ${monat} (${betrag.toFixed(2)} \u20AC)`)
+          try {
+            const { sendPushToTeam } = await import('@/lib/push')
+            await sendPushToTeam('\u{1F4D8} Automatisch gebucht', `${regel.zweckPrefix} \u00B7 ${monat} \u00B7 ${betrag.toFixed(2).replace('.', ',')} \u20AC`, '/buchhaltung', { buchhaltung: true })
+          } catch { /* best effort */ }
+        } else {
+          details.push(`FEHLER ${regel.zweckPrefix}: ${(r.error ?? '?').slice(0, 100)}`)
+        }
+      }
+    }
+    return { gebucht, details }
+  } catch (e) {
+    details.push(String(e instanceof Error ? e.message : e).slice(0, 150))
+    return { gebucht: 0, details }
+  }
+}
