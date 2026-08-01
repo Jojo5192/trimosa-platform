@@ -74,7 +74,9 @@ export async function GET(req: NextRequest) {
 
     const { data: listings } = await supabaseAdmin
       .from('listings').select('title, location_group').eq('is_active', true).order('title')
-    const titles = (listings ?? []).map((l) => String(l.title))
+    // §240-Doktrin: KSt = Standorte; Wohnungen nur ohne Gruppe (River) —
+    // wohnungsgenau wertet die App aus
+    const titles = (listings ?? []).filter((l) => !l.location_group).map((l) => String(l.title))
     const groups = [...new Set((listings ?? []).map((l) => l.location_group).filter(Boolean).map(String))]
 
     // Beleg-Inbox-Zähler (die Karten selbst liefert /api/belege)
