@@ -19,6 +19,7 @@ export async function GET() {
     guestChats: data?.push_guest_chats !== false,
     teamChats: data?.push_team_chats !== false,
     bookings: data?.push_bookings !== false,
+    buchhaltung: data?.push_buchhaltung !== false,
   }, NO_STORE)
 }
 
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.guestChats === 'boolean') upd.push_guest_chats = body.guestChats
   if (typeof body.teamChats === 'boolean') upd.push_team_chats = body.teamChats
   if (typeof body.bookings === 'boolean') upd.push_bookings = body.bookings
+  if (typeof body.buchhaltung === 'boolean') upd.push_buchhaltung = body.buchhaltung
   if (!Object.keys(upd).length) return NextResponse.json({ error: 'Nichts zu ändern.' }, { status: 400 })
   const { error } = await supabaseAdmin.from('profiles').update(upd).eq('id', auth.userId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
