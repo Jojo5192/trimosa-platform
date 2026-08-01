@@ -44,7 +44,7 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
 /** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — DIENSTLEISTER
  *  (is_provider, kein Gäste-Chat-Zugang) bekommen ihn NIE; Nutzer mit
  *  push_guest_chats=false (Pascal-Präferenz §97.5) werden übersprungen. */
-export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean } = {}): Promise<void> {
+export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean } = {}): Promise<void> {
   if (!ensureConfigured()) return
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
@@ -60,6 +60,18 @@ export async function sendPushToTeam(title: string, body: string, url = '/team',
       const exclIds = new Set((excl ?? []).map((p) => p.id))
       if (exclIds.size) filtered = filtered.filter((s) => !s.user_id || !exclIds.has(s.user_id))
     } catch { /* Spalte fehlt (Migration ausstehend) → ungefiltert senden */ }
+  }
+  if (opts.buchhaltung) {
+    try {
+      // §242: Buchhaltungs-Pushes gehen AUSSCHLIESSLICH an Admins — und nur
+      // an die, die die Kategorie nicht abgeschaltet haben
+      const { data: admins } = await supabaseAdmin
+        .from('profiles').select('*').eq('is_admin', true)
+      const okIds = new Set((admins ?? [])
+        .filter((p) => (p as Record<string, unknown>).push_buchhaltung !== false)
+        .map((p) => (p as { id: string }).id))
+      filtered = filtered.filter((s) => s.user_id && okIds.has(s.user_id))
+    } catch { return /* im Zweifel lieber KEIN Push an Nicht-Admins */ }
   }
   if (!filtered.length) return
   await sendToSubs(filtered, title, body, url)
