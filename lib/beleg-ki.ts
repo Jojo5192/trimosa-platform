@@ -204,15 +204,24 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
     if (k5923) {
       let provBetrag: number | null = null
       let provDatum: string | null = null
+      // §243q: Die Provisionsrechnung nennt die PROPERTY (Hotel-Name/
+      // Adresse) — daraus Standort-KSt + interne Zuordnung ableiten
+      let provOrt: { kst: string; zuordnung: Record<string, unknown> } | null = null
       if (pdf) {
         try {
           const raw = await askClaudeWithFile(
-            'Lies GESAMTBETRAG und RECHNUNGSDATUM dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). Antworte NUR mit JSON: {"betrag": <Zahl>, "datum": "<JJJJ-MM-TT oder null>"}',
-            `Lieferant: ${v.supplierName ?? '?'}`,
-            { mediaType: pdf.mediaType, base64: pdf.base64 }, 1200)
+            'Lies GESAMTBETRAG, RECHNUNGSDATUM und die UNTERKUNFT (Property-Name/Adresse des Hotels/Apartments, an das die Provisionsrechnung gerichtet ist) dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). '
+            + 'Zuordnungs-Hinweise: Trierweiler/Sirzenich/Feldstr./"Sweet Spot" => standort "Sirzenich"; Minden/Sauer/Bergstr. => standort "Minden"; Bitburg/Echternacher => wohnung "City Home"; Ralingen/Edingen/Breitenweg => wohnung "River Retreat"; Kanzem => standort "Kanzem". '
+            + 'Antworte NUR mit JSON: {"betrag": <Zahl>, "datum": "<JJJJ-MM-TT oder null>", "wohnung": "<exakter Wohnungsname oder null>", "standort": "<Standortname oder null>"}',
+            `Lieferant: ${v.supplierName ?? '?'} · Bekannte Wohnungen: ${wohnNamen} · Bekannte Standorte: ${standorte}`,
+            { mediaType: pdf.mediaType, base64: pdf.base64 }, 1500)
           const oj = parseJsonLoose(raw)
           if (typeof oj.betrag === 'number' && oj.betrag > 0) provBetrag = Math.round(oj.betrag * 100) / 100
           if (typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum)) provDatum = oj.datum
+          provOrt = standortZuKst(
+            typeof oj.wohnung === 'string' ? oj.wohnung : null,
+            typeof oj.standort === 'string' ? oj.standort : null,
+            wohnungenListe)
         } catch { /* best effort */ }
       }
       return {
@@ -222,6 +231,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
         begruendung: 'Portal-Provisionsrechnung (EU-Anbieter) — feste Regel, keine KI-Wahl.',
         steuerHinweis: 'Reverse-Charge §13b UStG: TRIMOSA schuldet die USt und zieht sie ZUGLEICH als Vorsteuer (Konto 5923 — Nullsumme). Betrag = NETTOBETRAG der Rechnung.',
         anlagegut: false, nutzungsdauer: null,
+        ...(provOrt ? { kst: provOrt.kst, zuordnung: provOrt.zuordnung } : {}),
       }
     }
   }
