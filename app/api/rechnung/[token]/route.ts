@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getInvoicePdf } from '@/lib/lexoffice'
+import { getSevInvoicePdf } from '@/lib/sevdesk'
+import { SEV_ENGINE_STICHTAG } from '@/lib/sevdesk-engine'
 
 /**
  * 🧾 Gast-Rechnungs-Download (§158): unguessbarer Link je Buchung über den
- * Mappe-Token (/api/rechnung/<portal_token>) — streamt das PDF live aus
- * lexoffice (kein Storage-Zwischenstand, immer der aktuelle Beleg — auch
- * nach manuellen Anpassungen in der lexoffice-UI).
+ * Mappe-Token (/api/rechnung/<portal_token>) — streamt das PDF live aus dem
+ * Rechnungssystem (kein Storage-Zwischenstand, immer der aktuelle Beleg).
+ *
+ * §235 STICHTAGS-WEICHE: Anreisen ab 02.08.2026 → sevdesk; ältere
+ * Buchungen → lexoffice (deren sevdesk-Neuaufbau-Kopien §234 sind interne
+ * Belege ohne Anschrift und gehen NIE an Gäste).
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -22,8 +27,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   }
 
   const { data: b } = await supabaseAdmin
-    .from('bookings').select('id, status').eq('portal_token', token).maybeSingle()
+    .from('bookings').select('id, status, check_in').eq('portal_token', token).maybeSingle()
   if (!b || b.status === 'cancelled') return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
+
+  if (String(b.check_in) >= SEV_ENGINE_STICHTAG) {
+    const { data: inv } = await supabaseAdmin
+      .from('sevdesk_invoices').select('sevdesk_id, invoice_number').eq('booking_id', b.id).maybeSingle()
+    if (!inv?.sevdesk_id) return NextResponse.json({ error: 'Noch keine Rechnung vorhanden.' }, { status: 404 })
+    const pdf = await getSevInvoicePdf(inv.sevdesk_id)
+    if (!pdf.ok || !pdf.pdf) {
+      console.error('[rechnung] sevdesk-PDF-Abruf:', pdf.error)
+      return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
+    }
+    const name = `Rechnung${inv.invoice_number ? `-${inv.invoice_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
+    return pdfResponse(pdf.pdf, name)
+  }
 
   const { data: inv } = await supabaseAdmin
     .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', b.id).maybeSingle()
@@ -35,7 +53,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
   }
   const name = `Rechnung${inv.voucher_number ? `-${inv.voucher_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
-  return new NextResponse(new Uint8Array(pdf.pdf), {
+  return pdfResponse(pdf.pdf, name)
+}
+
+function pdfResponse(pdf: Buffer, name: string): NextResponse {
+  return new NextResponse(new Uint8Array(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${name}"`,
