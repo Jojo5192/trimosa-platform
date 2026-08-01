@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   runPayoutSync, listAllCheckAccounts, findBankAccounts, bookMoneyTransit,
   listBankTransactions, getPayoutState, setPayoutAuto,
+  bankFeedDepth, importTransactions,
 } from '@/lib/sevdesk-payouts'
 
 /**
@@ -16,7 +17,7 @@ import {
  *         probe = { txId } EINE Transaktion als Geldtransit (Kalibrierung)
  *         auto  = { on: true|false } schaltet den Cron scharf/aus
  */
-export const maxDuration = 120
+export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
@@ -45,6 +46,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const b = await request.json().catch(() => ({}))
+    // §241: Feed-Tiefe messen (Basis für den Finom-CSV-Backfill)
+    if (b.action === 'depth') {
+      return NextResponse.json({ konten: await bankFeedDepth() }, NO_STORE)
+    }
+    // §241: Finom-CSV-Zeilen als Transaktionen importieren
+    // { rows: [{date:'YYYY-MM-DD', amount:-12.34, name, purpose}], accountName? }
+    if (b.action === 'tx-import') {
+      const rows = Array.isArray(b.rows) ? b.rows.slice(0, 400) : null
+      if (!rows?.length) return NextResponse.json({ error: 'rows fehlt (Array).' }, { status: 400 })
+      const accountName = typeof b.accountName === 'string' && b.accountName.trim()
+        ? b.accountName.trim().slice(0, 60) : 'Finom Import 2026'
+      return NextResponse.json(await importTransactions(accountName, rows), NO_STORE)
+    }
     if (b.action === 'accounts') {
       const all = await listAllCheckAccounts()
       const banks = await findBankAccounts()
