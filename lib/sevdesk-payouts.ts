@@ -16,7 +16,7 @@
  * erst, wenn der Auto-Schalter (app_settings) bewusst umgelegt wurde.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { sevJson, ensureClearingAccount } from '@/lib/sevdesk'
+import { sevJson, sevFetch, ensureClearingAccount } from '@/lib/sevdesk'
 
 export interface SevAccount { id: string; name: string; type: string; status?: string | number }
 
@@ -31,7 +31,10 @@ export async function listAllCheckAccounts(): Promise<SevAccount[]> {
  *  „Steuerrücklagen"); Payouts können auf jedem davon eintreffen. */
 export async function findBankAccounts(): Promise<SevAccount[]> {
   const all = await listAllCheckAccounts()
-  return all.filter((a) => a.type === 'online')
+  // §241: das CSV-Import-Konto (Finom-Backfill Jan–Feed-Start) zählt wie
+  // ein echtes Bankkonto — Zahlungs-Sicht, Beleg-Match und Payout-Umbuchung
+  // sollen die Alt-Monate genauso sehen
+  return all.filter((a) => a.type === 'online' || /^finom import/i.test(a.name))
 }
 
 /** Kompatibilitäts-Helper (ein Konto) — bevorzugt „Main". */
@@ -61,9 +64,79 @@ export interface SevTx {
 
 export async function listBankTransactions(accountId: string, days: number): Promise<SevTx[]> {
   const start = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
-  const list = await sevJson<SevTx[]>(
-    `/CheckAccountTransaction?checkAccount[id]=${accountId}&checkAccount[objectName]=CheckAccount&startDate=${start}&limit=200`)
-  return list ?? []
+  // §241: paginiert — vorher kappte limit=200 still bei ~6 Wochen Historie
+  const out: SevTx[] = []
+  for (let offset = 0; offset < 4000; offset += 200) {
+    const page = await sevJson<SevTx[]>(
+      `/CheckAccountTransaction?checkAccount[id]=${accountId}&checkAccount[objectName]=CheckAccount&startDate=${start}&limit=200&offset=${offset}`)
+    out.push(...(page ?? []))
+    if (!page || page.length < 200) break
+  }
+  return out
+}
+
+/** §241: Wie weit reicht der Bank-Feed je Konto zurück? (Basis für den
+ *  Finom-CSV-Backfill — alles VOR dem ältesten Feed-Datum kommt per CSV.) */
+export async function bankFeedDepth(): Promise<{ konto: string; id: string; transaktionen: number; aelteste: string | null; neueste: string | null }[]> {
+  const result: { konto: string; id: string; transaktionen: number; aelteste: string | null; neueste: string | null }[] = []
+  for (const bank of await findBankAccounts()) {
+    const txs = await listBankTransactions(bank.id, 400)
+    const dates = txs.map((t) => String(t.valueDate ?? t.entryDate ?? '').slice(0, 10)).filter(Boolean).sort()
+    result.push({
+      konto: bank.name, id: bank.id, transaktionen: txs.length,
+      aelteste: dates[0] ?? null, neueste: dates[dates.length - 1] ?? null,
+    })
+  }
+  return result
+}
+
+/** §241: Import-Konto für den Finom-CSV-Backfill (Factory, idempotent per Name). */
+export async function ensureImportAccount(name: string): Promise<string> {
+  const list = await sevJson<{ id: unknown; name?: string }[]>('/CheckAccount?limit=100')
+  const hit = (list ?? []).find((a) => a.name === name)
+  if (hit) return String(hit.id)
+  const created = await sevJson<{ id: unknown }>('/CheckAccount/Factory/fileImportAccount', {
+    method: 'POST', body: JSON.stringify({ name, importType: 'CSV' }),
+  })
+  return String(created.id)
+}
+
+/** §241: CSV-Zeilen als Bank-Transaktionen anlegen (Dedupe Datum+Betrag+Name). */
+export async function importTransactions(
+  accountName: string,
+  rows: { date: string; amount: number; name?: string; purpose?: string }[],
+): Promise<{ konto: string; importiert: number; duplikate: number; fehler: string[] }> {
+  const accountId = await ensureImportAccount(accountName)
+  const existing = await listBankTransactions(accountId, 800)
+  const key = (d: string, a: number, n: string) => `${d.slice(0, 10)}|${a.toFixed(2)}|${n.trim().toLowerCase().slice(0, 30)}`
+  const seen = new Set(existing.map((t) =>
+    key(String(t.valueDate ?? t.entryDate ?? ''), Number(t.amount), String(t.payeePayerName ?? ''))))
+  let importiert = 0, duplikate = 0
+  const fehler: string[] = []
+  for (const r of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}/.test(r.date) || !Number.isFinite(r.amount)) { fehler.push(`ungültig: ${JSON.stringify(r).slice(0, 80)}`); continue }
+    const k = key(r.date, r.amount, r.name ?? '')
+    if (seen.has(k)) { duplikate++; continue }
+    seen.add(k)
+    try {
+      const res = await sevFetch('/CheckAccountTransaction', {
+        method: 'POST',
+        body: JSON.stringify({
+          checkAccount: { id: Number(accountId), objectName: 'CheckAccount' },
+          valueDate: r.date, entryDate: r.date, status: 100,
+          amount: r.amount,
+          payeePayerName: (r.name ?? '').slice(0, 100),
+          paymtPurpose: (r.purpose ?? '').slice(0, 200),
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`)
+      importiert++
+      await new Promise((res2) => setTimeout(res2, 200))
+    } catch (e) {
+      fehler.push(`${r.date} ${r.amount}: ${String(e instanceof Error ? e.message : e).slice(0, 100)}`)
+    }
+  }
+  return { konto: accountName, importiert, duplikate, fehler: fehler.slice(0, 15) }
 }
 
 /** Geldtransit: Umbuchung der Bank-Auszahlung gegen das Verrechnungskonto.
@@ -137,7 +210,7 @@ export interface PayoutSyncReport {
  * unangetastet. Dedupe zusätzlich über die processed-Liste.
  */
 export async function runPayoutSync(opts: { days?: number; dryRun?: boolean } = {}): Promise<PayoutSyncReport> {
-  const days = Math.min(Math.max(Number(opts.days) || 14, 1), 120)
+  const days = Math.min(Math.max(Number(opts.days) || 14, 1), 800)
   const dryRun = opts.dryRun !== false
   const report: PayoutSyncReport = {
     dryRun, zeitraumTage: days, transaktionen: 0,
