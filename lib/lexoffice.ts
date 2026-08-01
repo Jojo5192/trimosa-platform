@@ -384,16 +384,25 @@ export async function listExpenseVouchers(from: string): Promise<{ vouchers: Lex
 
 /** §243e: PDF eines lexoffice-BELEGS (Vouchers-API: /vouchers/{id} →
  *  files[] → /files/{id}). files-Form defensiv (string[] oder [{id}]). */
-export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boolean; pdf?: Buffer; filename?: string; error?: string }> {
+export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boolean; pdf?: Buffer; filename?: string; mime?: string; error?: string }> {
   const det = await lexFetch(`/vouchers/${voucherId}`)
   if (!det.ok) return { ok: false, error: `voucher HTTP ${det.status}` }
   const j = await det.json().catch(() => ({})) as { files?: unknown[]; voucherNumber?: string }
   const raw = (j.files ?? [])[0]
   const fileId = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? String((raw as { id?: unknown }).id ?? '') : '')
   if (!fileId) return { ok: false, error: 'Beleg hat keine Datei.' }
-  const file = await lexFetch(`/files/${fileId}`, { headers: { Accept: 'application/pdf' } })
+  // KEIN Accept-Zwang: lexoffice-Belege sind teils JPG/PNG-Scans — das
+  // Original mit ECHTEM Content-Type holen (sevdesk-Upload braucht die
+  // passende Endung, sonst 500 "Error while trying to read the file")
+  const file = await lexFetch(`/files/${fileId}`)
   if (!file.ok) return { ok: false, error: `file HTTP ${file.status}` }
-  return { ok: true, pdf: Buffer.from(await file.arrayBuffer()), filename: `lexoffice-${(j.voucherNumber ?? voucherId).toString().replace(/[^\w.-]/g, '_')}.pdf` }
+  const ct = (file.headers.get('content-type') ?? 'application/pdf').split(';')[0].trim().toLowerCase()
+  const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg' : ct.includes('png') ? 'png' : ct.includes('pdf') ? 'pdf' : 'bin'
+  if (ext === 'bin') return { ok: false, error: `Dateityp ${ct} nicht unterstützt.` }
+  return {
+    ok: true, pdf: Buffer.from(await file.arrayBuffer()), mime: ct,
+    filename: `lexoffice-${(j.voucherNumber ?? voucherId).toString().replace(/[^\w.-]/g, '_')}.${ext}`,
+  }
 }
 
 /**
