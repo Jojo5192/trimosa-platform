@@ -101,15 +101,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ boo
 
     if (recipient) {
       if (state.status === 'bereit') {
-        // §159: Auto-Storno + Neu-Ausstellung — sevdesk verrechnet die
-        // Stornorechnung selbst, kein Handgriff nötig
+        // §235-Nachtrag: Empfänger wird DIREKT auf der Rechnung geändert
+        // (gleiche Nummer); nur festgeschriebene Belege laufen über
+        // Auto-Storno + Neu-Ausstellung
         const r = await reissueSevInvoice(bookingId, recipient)
-        if (!r.ok) return NextResponse.json({ error: r.error ?? 'Neu-Ausstellung fehlgeschlagen.' }, { status: 500 })
+        if (!r.ok) return NextResponse.json({ error: r.error ?? 'Empfänger-Änderung fehlgeschlagen.' }, { status: 500 })
         return NextResponse.json({
           ...(await loadState(bookingId)),
-          hinweis: r.oldNumber
-            ? `Alte Rechnung ${r.oldNumber} automatisch storniert${r.stornoNote ? ` (${r.stornoNote})` : ''} · neu ausgestellt als ${r.number ?? '—'}.`
-            : `Neu ausgestellt (${r.number ?? '—'}).`,
+          hinweis: r.updated
+            ? `Empfänger direkt auf Rechnung ${r.number ?? '—'} geändert — gleiche Rechnungsnummer, der Gast-Link zeigt sofort die neue Fassung.`
+            : r.oldNumber
+              ? `Rechnung ${r.oldNumber} war festgeschrieben → automatisch storniert${r.stornoNote ? ` (${r.stornoNote})` : ''} · neu ausgestellt als ${r.number ?? '—'}.`
+              : `Neu ausgestellt (${r.number ?? '—'}).`,
         }, NO_STORE)
       }
       await saveSevRecipient(bookingId, recipient)
