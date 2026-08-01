@@ -204,7 +204,7 @@ export default function BuchhaltungPanel({ onClose }: { onClose: () => void }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 17, color: '#B0912B', cursor: 'pointer', padding: '4px 6px 4px 0', fontWeight: 600 }}>‹ Zurück</button>
           <div style={{ flex: 1, fontSize: 17, fontWeight: 700, color: '#1A1814' }}>💶 Buchhaltung</div>
-          <button onClick={load} style={{ background: 'none', border: 'none', fontSize: 17, cursor: 'pointer', color: '#8A8578' }}>↻</button>
+          <button onClick={() => load()} style={{ background: 'none', border: 'none', fontSize: 17, cursor: 'pointer', color: '#8A8578' }}>↻</button>
         </div>
         <div style={{ display: 'flex', gap: 6, padding: '10px 0' }}>
           {TABS.map((t) => (
