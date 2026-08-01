@@ -34,6 +34,9 @@ interface KiVorschlag {
   accountDatevId: number; kategorie: string; nr: string; taxRate: number
   betrag: number | null; begruendung: string; steuerHinweis: string
   anlagegut: boolean; nutzungsdauer: number | null
+  /** §243h: echtes Rechnungsdatum aus dem Beleg (korrigiert Scan-Datum) */
+  datum?: string | null
+  kst?: string; zuordnung?: Zuordnung | null; gelernt?: boolean
 }
 
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -367,6 +370,9 @@ export default function BuchhaltungClient() {
         action: 'verbuchen', voucherId: v.id, accountDatevId: Number(f.kat),
         taxRate: Number(f.tax), amountGross: betrag, kostenstelle: f.kst,
         anlagegut: f.anlagegut, lieferant: v.supplierName,
+        // §243h: echtes Rechnungsdatum (aus der KI-Analyse) korrigiert das
+        // Scan-Datum der Mail-Belege — UStVA-Periode!
+        ...((() => { const k = ki[v.id]; return k && typeof k === 'object' && k.datum ? { belegDatum: k.datum } : {} })()),
         ...(f.zuordnung ? { zuordnung: f.zuordnung } : {}),
         ...(tx ? { txId: tx.id, txAccountId: tx.bankAccountId, txDate: tx.datum } : {}),
       })
