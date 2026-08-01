@@ -63,12 +63,41 @@ async function pdfForVoucher(voucherId: string): Promise<{ base64: string } | nu
     const { data: row } = await supabaseAdmin
       .from('beleg_inbox').select('files').eq('sevdesk_voucher_id', voucherId).maybeSingle()
     const files = (row?.files ?? []) as { path: string; name: string }[]
-    if (!files.length) return null
-    const { data: file } = await supabaseAdmin.storage.from('belege').download(files[0].path)
-    if (!file) return null
-    const buf = Buffer.from(await file.arrayBuffer())
-    if (buf.length > 8_000_000) return null
-    return { base64: buf.toString('base64') }
+    if (files.length) {
+      const { data: file } = await supabaseAdmin.storage.from('belege').download(files[0].path)
+      if (file) {
+        const buf = Buffer.from(await file.arrayBuffer())
+        if (buf.length <= 8_000_000) return { base64: buf.toString('base64') }
+      }
+    }
+  } catch { /* weiter zum sevdesk-Fallback */ }
+  // §243b: FALLBACK — das Original-PDF liegt bei ALLEN Belegen in sevdesk
+  // (Bestands-Belege ohne Storage-Kopie, Provisionsrechnungen). Der
+  // /Document/{id}/download-Endpoint ist nicht in der Public-Spec, existiert
+  // aber (§233-Muster undokumentierte /api/v1-Endpoints) — defensiv geparst.
+  try {
+    const { sevJson, sevFetch } = await import('@/lib/sevdesk')
+    const vRaw = await sevJson<{ document?: { id?: unknown } }[] | { document?: { id?: unknown } }>(`/Voucher/${voucherId}?embed=document`)
+    const vObj = Array.isArray(vRaw) ? vRaw[0] : vRaw
+    const docId = Number(vObj?.document?.id)
+    if (!Number.isFinite(docId) || docId <= 0) return null
+    const res = await sevFetch(`/Document/${docId}/download`)
+    if (!res.ok) { console.warn(`[buchhaltung] Document-Download HTTP ${res.status} (Voucher ${voucherId})`); return null }
+    const ct = res.headers.get('content-type') ?? ''
+    if (ct.includes('json')) {
+      // {objects: {content: <base64>, ...}} — Form defensiv
+      const j = await res.json() as { objects?: { content?: string } | { content?: string }[] }
+      const obj = Array.isArray(j.objects) ? j.objects[0] : j.objects
+      const content = obj?.content
+      if (typeof content === 'string' && content.length > 100) {
+        const buf = Buffer.from(content, 'base64')
+        if (buf.length > 200 && buf.length <= 8_000_000) return { base64: content }
+      }
+      return null
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > 200 && buf.length <= 8_000_000) return { base64: buf.toString('base64') }
+    return null
   } catch { return null }
 }
 
@@ -275,10 +304,22 @@ export async function POST(req: NextRequest) {
       if (provSupplier && provText) {
         const k5923 = guidance.find((x) => x.accountNumber === '5923')
         if (k5923) {
+          // Betrag (NETTO) aus dem Rechnungs-PDF — Kategorie bleibt fest
+          let provBetrag: number | null = null
+          if (pdf) {
+            try {
+              const raw = await askClaudeWithFile(
+                'Lies den GESAMTBETRAG dieser Provisionsrechnung (Reverse-Charge, ohne USt ausgewiesen = Nettobetrag). Antworte NUR mit JSON: {"betrag": <Zahl>}',
+                `Lieferant: ${v.supplierName ?? '?'}`,
+                { mediaType: 'application/pdf', base64: pdf.base64 }, 1200)
+              const oj = parseJsonLoose(raw)
+              if (typeof oj.betrag === 'number' && oj.betrag > 0) provBetrag = Math.round(oj.betrag * 100) / 100
+            } catch { /* best effort */ }
+          }
           return NextResponse.json({
             accountDatevId: k5923.accountDatevId, kategorie: k5923.accountName, nr: k5923.accountNumber,
             taxRate: 0,
-            betrag: null,
+            betrag: provBetrag,
             begruendung: 'Portal-Provisionsrechnung (EU-Anbieter) — feste Regel, keine KI-Wahl.',
             steuerHinweis: 'Reverse-Charge §13b UStG: TRIMOSA schuldet die USt und zieht sie ZUGLEICH als Vorsteuer (Konto 5923 — Nullsumme). Betrag = NETTOBETRAG der Rechnung.',
             anlagegut: false,
