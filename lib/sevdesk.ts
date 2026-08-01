@@ -445,6 +445,8 @@ export async function createSevVoucherDraft(opts: {
   voucherDate?: string
   /** §238: Kostenstelle (Wohnung/Standort) — aus der Beleg-Inbox gewählt */
   costCentreName?: string
+  /** §243o: 'D' = EINNAHME-Beleg (Erstattung/Auslagenausgleich) — Default 'C' (Ausgabe) */
+  creditDebit?: 'C' | 'D'
 }): Promise<{ ok: boolean; voucherId?: string; error?: string }> {
   try {
     const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
@@ -455,7 +457,7 @@ export async function createSevVoucherDraft(opts: {
           objectName: 'Voucher',
           mapAll: true,
           status: 50,
-          creditDebit: 'C',
+          creditDebit: opts.creditDebit ?? 'C',
           voucherType: 'VOU',
           supplierName: opts.supplierName,
           description: opts.description,
@@ -585,6 +587,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
    *  Aufwendungen); 5 = Reverse Charge §13b (Portal-Provisionen, Konto
    *  5923) — steuert die UStVA-Kennziffern! */
   taxRuleId?: number
+  /** §243o: EINNAHME-Beleg (creditDebit 'D') — bookAmount muss dann POSITIV
+   *  sein (wie der Bank-Eingang; Vorzeichen-Doktrin §242 gespiegelt) */
+  einnahme?: boolean
 }): Promise<{ ok: boolean; verknuepft?: boolean; hinweis?: string; error?: string }> {
   try {
     const posList = opts.positions?.length
@@ -669,7 +674,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
           // Zahlungen müssen NEGATIV übergeben werden (wie die Bank-
           // Abbuchung) — positiv ergab paidAmount −X und „offen" = 2×X
           // (Teilbezahlt-Chaos); Einnahme-Rechnungen (§234) bleiben positiv
-          amount: -gross,
+          amount: opts.einnahme ? gross : -gross,
           date: Math.floor(Date.parse((opts.txDate ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00Z') / 1000),
           type: 'FULL_PAYMENT',
           checkAccount: { id: Number(opts.txAccountId), objectName: 'CheckAccount' },
@@ -688,6 +693,43 @@ export async function bookSevVoucher(voucherId: string, opts: {
       return { ok: true, verknuepft: false, hinweis: 'Beleg verbucht — Zahlung war nicht verknüpfbar (vermutlich hat sevdesks Bank-Automatik sie schon vergeben).' }
     }
     return { ok: false, error: msg.slice(0, 300) }
+  }
+}
+
+/** §243o: Transaktion in sevdesk als PRIVAT markieren (Status 300) —
+ *  Spiegel der App-Funktion „Kein Beleg nötig". Das Update-Schema erlaubt
+ *  status 100/200/300/400 explizit (Spec Model_CheckAccountTransactionUpdate);
+ *  Rückweg = wieder auf 100 (offen). */
+export async function markTransactionPrivate(txId: string, on = true): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await sevJson(`/CheckAccountTransaction/${txId}`, {
+      method: 'PUT', body: JSON.stringify({ status: on ? 300 : 100 }),
+    })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 200) }
+  }
+}
+
+/** §243o: Beleg LÖSCHEN (Import-Duplikate). DELETE /Voucher steht NICHT in
+ *  der Spec (die ist notorisch unvollständig, vgl. CostCentre-CRUD) —
+ *  Kalibrier-Versuch: bezahlt → resetToOpen, finalisiert → resetToDraft,
+ *  dann DELETE. Scheitert der DELETE (404/405), bleibt der Beleg als
+ *  Entwurf und die UI-Löschung ist der Fallback. */
+export async function deleteSevVoucher(voucherId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cur = await sevJson<{ status?: string | number }[] | { status?: string | number }>(`/Voucher/${voucherId}`)
+    const st = Number(Array.isArray(cur) ? cur[0]?.status : (cur as { status?: string | number })?.status)
+    if (st === 1000) await sevFetch(`/Voucher/${voucherId}/resetToOpen`, { method: 'PUT', body: '{}' })
+    if (st >= 100) await sevFetch(`/Voucher/${voucherId}/resetToDraft`, { method: 'PUT', body: '{}' })
+    const res = await sevFetch(`/Voucher/${voucherId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const t = await res.text()
+      return { ok: false, error: `DELETE HTTP ${res.status}: ${t.slice(0, 150)}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 200) }
   }
 }
 
