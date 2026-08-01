@@ -555,6 +555,10 @@ export async function bookSevVoucher(voucherId: string, opts: {
   taxRate: number
   amountGross: number
   costCentreName?: string | null
+  /** §242: Position als ANLAGEGUT markieren — sevdesk führt sie dann im
+   *  Anlagenmodul (Nutzungsdauer/AfA-Start bestätigt der Inhaber dort;
+   *  die Public API kann keine AfA-Parameter setzen) */
+  isAsset?: boolean
   /** offene Bank-Transaktion, die die Zahlung darstellt */
   txId?: string
   txAccountId?: string
@@ -580,6 +584,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
           accountDatev: { id: opts.accountDatevId, objectName: 'AccountDatev' },
           taxRate: opts.taxRate,
           net: false,
+          isAsset: opts.isAsset === true,
           sumNet: net,
           sumGross: gross,
         }],
