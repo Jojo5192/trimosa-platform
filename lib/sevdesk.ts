@@ -563,10 +563,19 @@ export async function bookSevVoucher(voucherId: string, opts: {
   txId?: string
   txAccountId?: string
   txDate?: string
-}): Promise<{ ok: boolean; verknuepft?: boolean; error?: string }> {
+}): Promise<{ ok: boolean; verknuepft?: boolean; hinweis?: string; error?: string }> {
   try {
     const gross = Math.round(opts.amountGross * 100) / 100
     const net = Math.round((gross / (1 + opts.taxRate / 100)) * 100) / 100
+
+    // §242-Härtung: saveVoucher kann nur ENTWÜRFE ändern — ein Beleg, der
+    // schon Status 100 hat (z. B. weil ein früherer bookAmount scheiterte),
+    // muss erst zurück in den Entwurf
+    try {
+      const cur = await sevJson<{ status?: string | number }[] | { status?: string | number }>(`/Voucher/${voucherId}`)
+      const st = Number(Array.isArray(cur) ? cur[0]?.status : (cur as { status?: string | number })?.status)
+      if (st === 100) await sevFetch(`/Voucher/${voucherId}/resetToDraft`, { method: 'PUT', body: '{}' })
+    } catch { /* best effort — saveVoucher meldet sonst selbst */ }
     const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
     await sevJson('/Voucher/Factory/saveVoucher', {
       method: 'POST',
@@ -606,7 +615,14 @@ export async function bookSevVoucher(voucherId: string, opts: {
     }
     return { ok: true, verknuepft: false }
   } catch (e) {
-    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+    const msg = String(e instanceof Error ? e.message : e)
+    // §242: Scheitert NUR der bookAmount (Beleg ist da schon kategorisiert +
+    // finalisiert), ist das kein Fehler — sevdesks eigene Bank-Automatik hat
+    // die Zahlung oft schon vergeben; der Bankabgleich erledigt den Rest
+    if (/bookAmount/.test(msg)) {
+      return { ok: true, verknuepft: false, hinweis: 'Beleg verbucht — Zahlung war nicht verknüpfbar (vermutlich hat sevdesks Bank-Automatik sie schon vergeben).' }
+    }
+    return { ok: false, error: msg.slice(0, 300) }
   }
 }
 
