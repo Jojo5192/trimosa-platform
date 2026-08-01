@@ -411,12 +411,15 @@ export async function cancelSevInvoice(sevdeskId: string): Promise<{ ok: boolean
 
 /** §236 C2: Beleg-Datei (Provisionsrechnung-PDF) zu sevdesk hochladen —
  *  multipart, deshalb eigener fetch (sevFetch erzwingt JSON-Content-Type). */
-export async function uploadSevVoucherFile(pdf: Buffer, filename: string): Promise<{ ok: boolean; internalFilename?: string; error?: string }> {
+export async function uploadSevVoucherFile(pdf: Buffer, filename: string, mime = 'application/pdf'): Promise<{ ok: boolean; internalFilename?: string; error?: string }> {
   const token = process.env.SEVDESK_API_TOKEN
   if (!token) return { ok: false, error: 'SEVDESK_API_TOKEN fehlt' }
   try {
     const form = new FormData()
-    form.append('file', new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), filename)
+    // §243f: lexoffice-Belege sind teils BILDER (JPG-Scans) — falscher
+    // MIME/Endung liess sevdesk mit 500 "Error while trying to read the
+    // file" abbrechen
+    form.append('file', new Blob([new Uint8Array(pdf)], { type: mime }), filename)
     const res = await fetch(`${BASE}/Voucher/Factory/uploadTempFile`, {
       method: 'POST', headers: { Authorization: token }, body: form, cache: 'no-store',
     })
