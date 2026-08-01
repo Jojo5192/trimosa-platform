@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { t, MONTHS_SHORT, type UiLang } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
+import { SEV_ENGINE_STICHTAG } from '@/lib/sevdesk-engine'
 
 function formatDate(iso: string, lang: UiLang = 'de') {
   if (!iso) return ''
@@ -33,13 +34,22 @@ export default async function GuestPage() {
     .order('check_in', { ascending: false })
 
   // §160-Ergänzung: Buchungen mit existierender Rechnung — der Gast kann
-  // sie direkt aus der Reisen-Liste ansehen (Token-Link, PDF inline)
+  // sie direkt aus der Reisen-Liste ansehen (Token-Link, PDF inline).
+  // §235: Anreisen ab Stichtag liegen in sevdesk, ältere in lexoffice.
   const invoiceSet = new Set<string>()
   const bookingIds = (bookings ?? []).map(b => b.id as string)
   if (bookingIds.length) {
     const { data: invs } = await supabaseAdmin
       .from('lexoffice_invoices').select('booking_id, lexoffice_id').in('booking_id', bookingIds)
     for (const i of invs ?? []) if (i.lexoffice_id) invoiceSet.add(i.booking_id as string)
+    const newEra = (bookings ?? [])
+      .filter(b => String(b.check_in) >= SEV_ENGINE_STICHTAG)
+      .map(b => b.id as string)
+    if (newEra.length) {
+      const { data: sinvs } = await supabaseAdmin
+        .from('sevdesk_invoices').select('booking_id, sevdesk_id').in('booking_id', newEra)
+      for (const i of sinvs ?? []) if (i.sevdesk_id) invoiceSet.add(i.booking_id as string)
+    }
   }
 
   // Stornierte Buchungen sind keine Reisen mehr: sie zählen nicht in die
