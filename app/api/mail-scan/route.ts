@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ mails: await peekMail(typeof b.hours === 'number' ? b.hours : 24) }, NO_STORE)
     }
     if (b.action === 'scan') {
-      return NextResponse.json(await runMailScan({ ...(typeof b.hours === 'number' ? { hours: b.hours } : {}) }), NO_STORE)
+      return NextResponse.json(await runMailScan({
+        ...(typeof b.hours === 'number' ? { hours: b.hours } : {}),
+        ...(b.force === true ? { force: true } : {}),
+      }), NO_STORE)
     }
     if (b.action === 'enable') {
       const state = await getGraphMailState()
