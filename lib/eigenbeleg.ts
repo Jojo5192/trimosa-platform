@@ -47,6 +47,7 @@ async function eigenbelegPdf(opts: {
   zweck: string
   positionen: EigenbelegPosition[]
   grundlage: string
+  richtung?: 'ausgabe' | 'eingang'
 }): Promise<Buffer> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
@@ -57,7 +58,7 @@ async function eigenbelegPdf(opts: {
   // Navy-Kopfbalken
   page.drawRectangle({ x: 0, y: A4[1] - 96, width: w, height: 96, color: NAVY })
   page.drawText('EIGENBELEG', { x: M, y: A4[1] - 52, size: 24, font: bold, color: rgb(1, 1, 1) })
-  page.drawText('Ersatzbeleg gemäß GoBD', { x: M, y: A4[1] - 72, size: 11, font, color: GOLD })
+  page.drawText(opts.richtung === 'eingang' ? 'Ersatzbeleg (Einnahme) gemäß GoBD' : 'Ersatzbeleg gemäß GoBD', { x: M, y: A4[1] - 72, size: 11, font, color: GOLD })
   page.drawText('TRIMOSA Apartments & Homes eGbR', { x: w - M - bold.widthOfTextAtSize('TRIMOSA Apartments & Homes eGbR', 11), y: A4[1] - 52, size: 11, font: bold, color: rgb(1, 1, 1) })
 
   let y = A4[1] - 140
@@ -66,7 +67,7 @@ async function eigenbelegPdf(opts: {
     page.drawText(safe(value).slice(0, 90), { x: M + 150, y, size: 11.5, font, color: rgb(0.1, 0.09, 0.08) })
     y -= 26
   }
-  row('Zahlungsempfänger', opts.empfaenger)
+  row(opts.richtung === 'eingang' ? 'Zahlender / Absender' : 'Zahlungsempfänger', opts.empfaenger)
   row('Belegdatum', opts.datum.split('-').reverse().join('.'))
   row('Zweck', opts.zweck)
 
@@ -145,6 +146,9 @@ export async function bucheEigenbeleg(opts: {
   txId: string
   txAccountId: string
   txDate?: string
+  /** §243o: 'eingang' = Erstattung/Einlage — Einnahme-Beleg (creditDebit 'D'),
+   *  Zahlung wird POSITIV gegen den Bank-EINGANG gebucht */
+  richtung?: 'ausgabe' | 'eingang'
 }): Promise<{ ok: boolean; voucherId?: string; verknuepft?: boolean; hinweis?: string; error?: string }> {
   const gesamt = Math.round(opts.positionen.reduce((a, p) => a + p.amountGross, 0) * 100) / 100
   if (!opts.positionen.length || gesamt <= 0) return { ok: false, error: 'Keine gültigen Positionen.' }
@@ -161,6 +165,7 @@ export async function bucheEigenbeleg(opts: {
     description: `Eigenbeleg (ohne Fremdbeleg): ${opts.zweck}`.slice(0, 255),
     voucherDate: opts.datum,
     ...(opts.kostenstelle ? { costCentreName: opts.kostenstelle } : {}),
+    ...(opts.richtung === 'eingang' ? { creditDebit: 'D' as const } : {}),
   })
   if (!draft.ok || !draft.voucherId) return { ok: false, error: draft.error ?? 'Beleg-Anlage fehlgeschlagen' }
 
@@ -175,6 +180,7 @@ export async function bucheEigenbeleg(opts: {
     })),
     costCentreName: opts.kostenstelle ?? null,
     txId: opts.txId, txAccountId: opts.txAccountId, txDate: opts.txDate,
+    ...(opts.richtung === 'eingang' ? { einnahme: true } : {}),
   })
   if (!booked.ok) return { ok: false, voucherId: draft.voucherId, error: booked.error }
 
@@ -218,6 +224,11 @@ export interface EigenRegel {
   /** §243l: interne Wohnungs-Zuordnung fuer die Auswertung (Mieten je
    *  Standort!) — wird bei jeder Auto-Buchung mitgespeichert */
   zuordnung?: Record<string, unknown> | null
+  /** §243o: Regel greift NUR, wenn der Verwendungszweck diesen String
+   *  enthaelt (case-insensitiv) — noetig, wenn derselbe Empfaenger+Betrag
+   *  je nach Zweck verschieden zuzuordnen ist (MONTANA 73 EUR: „Bergstr"
+   *  = Minden vs. „Feldstr" = Sirzenich) */
+  zweckMuss?: string | null
   at: string
 }
 
@@ -228,8 +239,9 @@ function nameTokens(name: string): string[] {
     .split(/[^a-z]+/).filter((w) => w.length > 2)
 }
 
-export function eigenRegelKey(empfaenger: string, betrag: number): string {
+export function eigenRegelKey(empfaenger: string, betrag: number, zweckMuss?: string | null): string {
   return nameTokens(empfaenger).sort().join(' ') + '|' + betrag.toFixed(2)
+    + (zweckMuss ? '|' + zweckMuss.toLowerCase() : '')
 }
 
 /** Monats-/Jahres-Suffix aus dem Zweck strippen (wird beim Auto-Buchen
@@ -250,6 +262,7 @@ export async function saveEigenRegel(opts: {
   grundlage: string
   kostenstelle?: string | null
   zuordnung?: Record<string, unknown> | null
+  zweckMuss?: string | null
 }): Promise<void> {
   if (opts.typ === 'kredit') return
   try {
@@ -257,7 +270,7 @@ export async function saveEigenRegel(opts: {
       .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
     const cur = (data?.value ?? {}) as Record<string, unknown>
     const regeln = (cur.eigenRegeln ?? {}) as Record<string, EigenRegel>
-    const key = eigenRegelKey(opts.empfaenger, opts.betrag)
+    const key = eigenRegelKey(opts.empfaenger, opts.betrag, opts.zweckMuss)
     regeln[key] = {
       key, typ: opts.typ, empfaenger: opts.empfaenger,
       zweckPrefix: zweckOhneMonat(opts.zweck),
@@ -266,6 +279,7 @@ export async function saveEigenRegel(opts: {
       grundlage: opts.grundlage,
       kostenstelle: opts.kostenstelle ?? null,
       zuordnung: opts.zuordnung ?? null,
+      zweckMuss: opts.zweckMuss ?? null,
       at: new Date().toISOString(),
     }
     const keys = Object.keys(regeln)
@@ -287,6 +301,8 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
     const { data } = await supabaseAdmin
       .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
     const regeln = Object.values((((data?.value ?? {}) as Record<string, unknown>).eigenRegeln ?? {}) as Record<string, EigenRegel>)
+    // §243o: Regeln MIT Zweck-Bedingung sind spezifischer — zuerst pruefen
+    regeln.sort((a, b) => (b.zweckMuss ? 1 : 0) - (a.zweckMuss ? 1 : 0))
     if (!regeln.length) return { gebucht: 0, details }
     const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
     const banks = await findBankAccounts()
@@ -301,7 +317,10 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
         const regel = regeln.find((rg) => {
           if (Math.abs(Math.abs(amt) - Number(rg.key.split('|')[1])) > 0.005) return false
           const toks = nameTokens(rg.empfaenger)
-          return toks.length > 0 && toks.every((w) => txName.includes(w))
+          if (!(toks.length > 0 && toks.every((w) => txName.includes(w)))) return false
+          // §243o: Zweck-Bedingung (MONTANA-Adresse) — ohne Treffer greift die Regel nicht
+          if (rg.zweckMuss && !String(t.paymtPurpose ?? '').toLowerCase().includes(rg.zweckMuss.toLowerCase())) return false
+          return true
         })
         if (!regel) continue
         const txId = String(t.id)
