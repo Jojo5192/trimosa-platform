@@ -158,6 +158,17 @@ export interface SevInvoiceInput {
   amountGross: number
   positionName: string
   positionText: string
+  /* ── §235 Engine-Zusätze (alle optional — der Neuaufbau bleibt unberührt) ── */
+  /** Einmal-Adresse als kompletter Text mit Zeilenumbrüchen (Invoice.address);
+   *  ohne addressText druckt sevdesk die Standard-Anschrift des Kontakts */
+  addressText?: string
+  /** Fußtext unter den Positionen („Bereits bezahlt über …") */
+  footText?: string
+  /** §201 „auf Rechnung": Zahlungsziel in Tagen (Invoice.timeToPay) */
+  timeToPay?: number
+  /** Leistungszeitraum (= Aufenthalt), 'YYYY-MM-DD' */
+  deliveryDate?: string
+  deliveryDateUntil?: string
 }
 
 export async function createPaidInvoice(inp: SevInvoiceInput, opts: { book?: boolean } = {}): Promise<{ sevdeskId: string; number: string }> {
@@ -188,6 +199,11 @@ export async function createPaidInvoice(inp: SevInvoiceInput, opts: { book?: boo
         taxText: 'Umsatzsteuer 7%',
         taxRule: { id: 1, objectName: 'TaxRule' },
         costCentre: { id: Number(costCentreId), objectName: 'CostCentre' },
+        ...(inp.addressText ? { address: inp.addressText } : {}),
+        ...(inp.footText ? { footText: inp.footText } : {}),
+        ...(inp.timeToPay ? { timeToPay: inp.timeToPay } : {}),
+        ...(inp.deliveryDate ? { deliveryDate: inp.deliveryDate } : {}),
+        ...(inp.deliveryDateUntil ? { deliveryDateUntil: inp.deliveryDateUntil } : {}),
       },
       invoicePosSave: [{
         objectName: 'InvoicePos',
@@ -202,7 +218,8 @@ export async function createPaidInvoice(inp: SevInvoiceInput, opts: { book?: boo
       invoicePosDelete: null,
       discountSave: null,
       discountDelete: null,
-      takeDefaultAddress: true,
+      // Mit Einmal-Adresse darf die Kontakt-Standardanschrift nicht gewinnen
+      takeDefaultAddress: !inp.addressText,
     }),
   })
   const sevdeskId = String(saved.invoice.id)
@@ -265,6 +282,33 @@ export async function finishAndBook(sevdeskId: string, inp: SevInvoiceInput, opt
   }
 
   return { sevdeskId, number: inp.invoiceNumber }
+}
+
+/** §235: PDF einer Rechnung (Gast-Download). preventSendBy=true, damit der
+ *  Abruf den Versand-Status der Rechnung nicht verändert. Antwort laut
+ *  Spec: { filename, mimeType, base64encoded, content } in der objects-Hülle. */
+export async function getSevInvoicePdf(sevdeskId: string): Promise<{ ok: boolean; pdf?: Buffer; filename?: string; error?: string }> {
+  try {
+    const doc = await sevJson<{ filename?: string; content?: string; base64Encoded?: boolean; base64encoded?: boolean }>(
+      `/Invoice/${sevdeskId}/getPdf?preventSendBy=true`)
+    if (!doc?.content) return { ok: false, error: 'getPdf ohne content' }
+    return { ok: true, pdf: Buffer.from(doc.content, 'base64'), filename: doc.filename }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
+/** §235: Rechnung stornieren — sevdesk erzeugt die Stornorechnung, verrechnet
+ *  sie automatisch und setzt das Original auf „cancelled" (Spec: cancelInvoice).
+ *  ⚠️ Storniert = festgeschrieben (PoC §233) — GoBD-korrekt, nicht rückgängig. */
+export async function cancelSevInvoice(sevdeskId: string): Promise<{ ok: boolean; cancellationId?: string; cancellationNumber?: string | null; error?: string }> {
+  try {
+    const sr = await sevJson<{ id: string; invoiceNumber?: string | null }>(
+      `/Invoice/${sevdeskId}/cancelInvoice`, { method: 'POST' })
+    return { ok: true, cancellationId: String(sr?.id ?? ''), cancellationNumber: sr?.invoiceNumber ?? null }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
 }
 
 /** Kanal → Verrechnungskonto-Label. Reihenfolge ist Substring-kritisch
