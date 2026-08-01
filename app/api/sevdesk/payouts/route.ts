@@ -27,9 +27,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 401 })
   }
   try {
+    // §243j: Merkregeln fuer wiederkehrende Ohne-Beleg-Zahlungen
+    // (Privatentnahmen, Mieten, Abos) — laeuft UNABHAENGIG vom
+    // Payout-Auto-Schalter, bucht nur exakte Empfaenger+Betrag-Treffer
+    let eigenbelege: { gebucht: number; details: string[] } = { gebucht: 0, details: [] }
+    try {
+      const { runEigenbelegRegeln } = await import('@/lib/eigenbeleg')
+      eigenbelege = await runEigenbelegRegeln()
+    } catch (e) { eigenbelege.details.push(String(e).slice(0, 120)) }
     const state = await getPayoutState()
-    if (!state.auto) return NextResponse.json({ skipped: 'Auto-Buchung ist aus (erst probe/book kalibrieren, dann action auto).' })
-    return NextResponse.json(await runPayoutSync({ days: 14, dryRun: false }))
+    if (!state.auto) return NextResponse.json({ skipped: 'Auto-Buchung ist aus (erst probe/book kalibrieren, dann action auto).', eigenbelege })
+    return NextResponse.json({ ...(await runPayoutSync({ days: 14, dryRun: false })), eigenbelege })
   } catch (err) {
     console.error('[sevdesk-payouts] cron:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
