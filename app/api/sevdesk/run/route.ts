@@ -37,6 +37,19 @@ export async function POST(request: NextRequest) {
   if (!me?.is_admin && !me?.is_host) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
     const b = await request.json().catch(() => ({}))
+    // §242-Diagnose: einen Beleg samt Positionen roh ansehen
+    if (b.action === 'voucher-info') {
+      const { sevJson } = await import('@/lib/sevdesk')
+      const voucher = await sevJson(`/Voucher/${String(b.voucherId)}`)
+      const positionen = await sevJson(`/VoucherPos?voucher[id]=${String(b.voucherId)}&voucher[objectName]=Voucher&limit=20`)
+      return NextResponse.json({ voucher, positionen })
+    }
+    if (b.action === 'voucher-list') {
+      const { sevJson } = await import('@/lib/sevdesk')
+      const st = typeof b.status === 'number' ? b.status : 750
+      const list = await sevJson(`/Voucher?status=${st}&limit=50&embed=costCentre`)
+      return NextResponse.json({ status: st, list })
+    }
     // §240: Bestand von Wohnungs- auf Standort-Kostenstellen umziehen
     if (b.action === 'kst-migrate') {
       const { data: listings } = await supabaseAdmin
