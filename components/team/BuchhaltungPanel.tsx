@@ -144,6 +144,23 @@ export default function BuchhaltungPanel({ onClose }: { onClose: () => void }) {
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
+  // §241 Sammel-Aktion: alle offenen Belege EINES Lieferanten auf einmal
+  const inboxBulk = async (lieferant: string, ziel: 'sevdesk' | 'andere' | 'verworfen', kst: string) => {
+    if (!confirm(`Alle offenen Belege von „${lieferant}“ → ${ziel === 'sevdesk' ? `sevdesk (A&H, KSt ${kst})` : ziel}?`)) return
+    setBusy('bulk-' + lieferant); setErr('')
+    try {
+      const r = await fetch('/api/belege', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulkLieferant: lieferant, ziel, ...(ziel === 'sevdesk' ? { kostenstelle: kst } : {}) }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+      if ((j.fehler ?? []).length) setErr(`Teilweise fehlgeschlagen: ${j.fehler.join(' · ').slice(0, 200)}`)
+      setInbox((p) => p.filter((x) => x.lieferant !== lieferant))
+      if (ziel === 'sevdesk') await load()
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
+  }
+
   const inboxDecide = async (id: string, ziel: 'sevdesk' | 'andere' | 'verworfen') => {
     setBusy(id); setErr('')
     try {
@@ -258,6 +275,12 @@ export default function BuchhaltungPanel({ onClose }: { onClose: () => void }) {
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <button onClick={() => inboxDecide(b.id, 'andere')} disabled={busy === b.id} style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: '#3B5BDB', background: '#EEF2FF', border: 'none', borderRadius: 9, padding: '9px 10px', cursor: 'pointer' }}>Andere Gesellschaft</button>
                   <button onClick={() => inboxDecide(b.id, 'verworfen')} disabled={busy === b.id} style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: '#B91C1C', background: '#FEF2F2', border: 'none', borderRadius: 9, padding: '9px 10px', cursor: 'pointer' }}>Kein Beleg</button>
+                  {b.lieferant != null && inbox.filter((x) => x.lieferant === b.lieferant).length > 2 && (
+                    <button onClick={() => inboxBulk(b.lieferant!, 'sevdesk', inboxKst[b.id] ?? 'Allgemein')} disabled={busy === 'bulk-' + b.lieferant}
+                      style={{ flex: '1 1 100%', fontSize: 13.5, fontWeight: 700, color: '#166534', background: '#F0FDF4', border: '0.5px solid #BBF7D0', borderRadius: 9, padding: '9px 10px', cursor: 'pointer' }}>
+                      {busy === 'bulk-' + b.lieferant ? '⏳ Sammel-Übernahme läuft…' : `⚡ Alle ${inbox.filter((x) => x.lieferant === b.lieferant).length} von ${b.lieferant} → sevdesk (A&H)`}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
