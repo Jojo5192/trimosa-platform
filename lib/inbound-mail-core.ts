@@ -412,7 +412,7 @@ Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Markdown):
   "kinder": <Zahl|null>,
   "telefon": "<mit Ländervorwahl, null>",
   "email": "<null wenn nicht da>",
-  "nachricht": "<NUR wenn die Mail eine persönliche NACHRICHT oder Anfrage des GASTS enthält: deren reiner Text ohne Fußzeilen/Buttons/Systemtext, sonst null>",
+  "nachricht": "<NUR wenn die Mail eine persönliche NACHRICHT oder Anfrage des GASTS AN DEN GASTGEBER überbringt: deren reiner Text ohne Fußzeilen/Buttons/Systemtext. NICHT: Bewertungstexte, Buchungs-/Anreise-Erinnerungen, Status- oder Automatik-Mails des Portals — dann null>",
   "buchungsbetrag": <Zahl in Euro — der Betrag OHNE Gäste-Servicegebühr, den der Vermieter ansetzt ("Buchungsbetrag"), null>,
   "auszahlung": <geschätzte Auszahlung an den Vermieter, null>,
   "storniert": <true wenn die Mail eine STORNIERUNG bestätigt, sonst false>
