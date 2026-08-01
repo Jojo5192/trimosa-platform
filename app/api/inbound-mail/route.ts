@@ -88,6 +88,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail })
+  const result = await processInboundMail({
+    from, subject, rawText, attachments, relayEmail,
+    mailbox: 'resend-inbound', ...(emailId ? { mailKey: `resend-${emailId}` } : {}),
+  })
   return NextResponse.json(result)
 }
