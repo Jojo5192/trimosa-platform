@@ -577,6 +577,13 @@ export async function bookSevVoucher(voucherId: string, opts: {
       if (st === 100) await sevFetch(`/Voucher/${voucherId}/resetToDraft`, { method: 'PUT', body: '{}' })
     } catch { /* best effort — saveVoucher meldet sonst selbst */ }
     const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
+    // §242b: bestehende Positionen ERSETZEN — ein Re-Save (Reparatur,
+    // zweiter Anlauf) hängte sonst Positionen an (Juni-Hetzner: 2×8,26)
+    let posDelete: { id: number; objectName: 'VoucherPos' }[] | null = null
+    try {
+      const existing = await sevJson<{ id: unknown }[]>(`/VoucherPos?voucher[id]=${voucherId}&voucher[objectName]=Voucher&limit=20`)
+      if (existing?.length) posDelete = existing.map((x) => ({ id: Number(x.id), objectName: 'VoucherPos' as const }))
+    } catch { /* best effort */ }
     await sevJson('/Voucher/Factory/saveVoucher', {
       method: 'POST',
       body: JSON.stringify({
