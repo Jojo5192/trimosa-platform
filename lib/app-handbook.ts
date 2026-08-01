@@ -8,7 +8,7 @@
  * veraltete Auskünfte. Stand-Datum unten mitziehen.
  */
 
-export const APP_HANDBOOK = `FUNKTIONS-HANDBUCH (Stand: 1. August 2026) — das kann die TRIMOSA-Plattform:
+export const APP_HANDBOOK = `FUNKTIONS-HANDBUCH (Stand: 1. August 2026, abends) — das kann die TRIMOSA-Plattform:
 
 TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 6 Tabs:
 
@@ -44,7 +44,8 @@ TEAM-APP (/team, als PWA auf dem Home-Bildschirm installierbar) — 6 Tabs:
 - 🔑 Persönlicher Zugangs-Code: Jedes Team-Mitglied/jeder Dienstleister kann einen EIGENEN festen Keypad-Code bekommen, der an genau den freigegebenen Wohnungen gilt (inkl. Haustür) — vergeben im Admin-Bereich unter „Türcodes → Personen-Codes". Der Kalender-Tab zeigt jedem NUR den eigenen Code. Jede Öffnung erscheint im Nuki-Protokoll unter dem Namen (wer war wann wo); Zugriff entziehen geht zentral per Häkchen. Daneben gibt es noch die älteren Wohnungs-Service-PINs (reine Anzeige).
 
 ⚙️ MEHR:
-- Push-Einstellungen: „Push auf diesem Gerät" + Kategorien „Gäste-Chats", „Interne Gruppen" und „Neue Buchungen"; Admins zusätzlich „⚡ Ladevorgang gestartet" und „⚡ Ladevorgang beendet" (getrennt schaltbar).
+- Push-Einstellungen: „Push auf diesem Gerät" + Kategorien „Gäste-Chats", „Interne Gruppen" und „Neue Buchungen"; Admins zusätzlich „💶 Buchhaltung" (neue Belege aus dem Mail-Scan — gehen NUR an Admins) sowie „⚡ Ladevorgang gestartet/beendet" (getrennt schaltbar).
+- 💶 BUCHHALTUNG (NUR Admins, eigene Vollbild-Oberfläche unter trimosa.de/buchhaltung, seit 01.08.): sevdesk komplett aus der App. Drei Bereiche: 📥 Inbox (Belege aus dem Mail-Scan, die nicht eindeutig der Apartments & Homes zuzuordnen waren — Gesellschaft + Kostenstelle wählen, Sammel-Knopf für viele Belege desselben Lieferanten), 🧾 Belege (sevdesk-Entwürfe verbuchen: Beleg-PDF wird direkt ANGEZEIGT, ✨-KI schlägt automatisch Kategorie, Steuersatz UND eine steuerliche Einschätzung vor — inkl. Reverse-Charge §13b bei Portal-Provisionen, GWG-Sofortabzug bis 800 € netto und Anlagegut/Abschreibung darüber; die passende Bank-Abbuchung wird bei exaktem Betrag automatisch vorgeschlagen und beim Verbuchen verknüpft), 💳 Zahlungen (alle offenen Bank-Transaktionen bis 1 Jahr zurück: Geldtransit für Portal-Auszahlungen, „Kein Beleg nötig" für Privates). Anlagegüter werden per Häkchen als Asset gebucht — sevdesk führt sie im Anlagenmodul, die Nutzungsdauer bestätigt der Admin dort einmal. ZUSÄTZLICH je Beleg eine INTERNE Wohnungs-Zuordnung (Allgemein/Standort/Wohnung/Aufteilung auf mehrere) — die zählt NUR für die App-Auswertung; in sevdesk bleibt die Kostenstelle der STANDORT (sevdesk kann nur eine Kostenstelle pro Beleg).
 - 📈 Entwicklung: Bewertungs-Scores im Zeitverlauf (Gesamt + je Plattform, je Wohnung filterbar, Zeiträume 30 T/90 T/1 Jahr) als Grafik, mit Veränderung vs. Vorwoche/Vormonat auf 2 Nachkommastellen. Datenbasis: täglicher automatischer Score-Snapshot (Historie wächst ab 24.07.2026). Derselbe Trend steht als Tabelle im wöchentlichen Team-Bericht.
 - 🧾 Qualitätssicherung: Archiv aller QS-Protokolle je Wohnung, PDF auf Abruf.
 - ⚡ Wallbox (NUR Admins, seit 25.07.): Ladehistorie der click2charge/DaheimLaden-Wallbox (Monta-Anbindung) — je Ladevorgang kWh, Umsatz und Brutto-Gewinn (Umsatz − echte Stromkosten aus click2charge, dort ist der Einkaufspreis hinterlegt), Summen-Kacheln oben, ältere Vorgänge nachladbar.
