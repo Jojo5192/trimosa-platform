@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
 }
 
 /** Entscheidung auf EINE Inbox-Zeile anwenden (Einzel- und Bulk-Pfad). */
-async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null, userId: string): Promise<{ ok: boolean; error?: string }> {
+async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null, userId: string, zuordnung: Record<string, unknown> | null = null): Promise<{ ok: boolean; error?: string }> {
+  let voucherId: string | null = null
   if (ziel === 'sevdesk') {
     let erstellt = 0
     const fehler: string[] = []
@@ -90,14 +91,24 @@ async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null,
         ...(r.beleg_datum ? { voucherDate: r.beleg_datum } : {}),
         ...(kostenstelle ? { costCentreName: kostenstelle } : {}),
       })
-      if (v.ok) erstellt++
+      if (v.ok) { erstellt++; if (v.voucherId) voucherId = v.voucherId }
       else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
     }
     if (!erstellt) return { ok: false, error: `sevdesk-Upload fehlgeschlagen: ${fehler.join(' · ').slice(0, 200)}` }
   }
-  await supabaseAdmin.from('beleg_inbox').update({
+  const upd: Record<string, unknown> = {
     status: ziel, decided_by: userId, decided_at: new Date().toISOString(),
-  }).eq('id', r.id)
+    ...(voucherId ? { sevdesk_voucher_id: voucherId } : {}),
+    ...(zuordnung ? { zuordnung } : {}),
+  }
+  let { error: updErr } = await supabaseAdmin.from('beleg_inbox').update(upd).eq('id', r.id)
+  if (updErr && /sevdesk_voucher_id|zuordnung/.test(updErr.message)) {
+    // Migration 20260801_buchhaltung_v2 fehlt noch → ohne die neuen Felder
+    delete upd.sevdesk_voucher_id
+    delete upd.zuordnung
+    ;({ error: updErr } = await supabaseAdmin.from('beleg_inbox').update(upd).eq('id', r.id))
+  }
+  if (updErr) return { ok: false, error: updErr.message }
   return { ok: true }
 }
 
@@ -111,6 +122,7 @@ export async function POST(req: NextRequest) {
   }
   const kostenstelle = typeof b.kostenstelle === 'string' && b.kostenstelle.trim() && b.kostenstelle !== 'Allgemein'
     ? b.kostenstelle.trim().slice(0, 80) : null
+  const zuordnung = b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null
 
   // §241: Sammel-Aktion — alle OFFENEN Belege eines Lieferanten auf einmal
   // (z. B. 38× VP Glanzteam → sevdesk mit einer Kostenstelle)
@@ -122,7 +134,7 @@ export async function POST(req: NextRequest) {
     let ok = 0
     const fehler: string[] = []
     for (const row of rows as BelegRow[]) {
-      const res = await decideRow(row, ziel, kostenstelle, user.id)
+      const res = await decideRow(row, ziel, kostenstelle, user.id, zuordnung)
       if (res.ok) ok++
       else fehler.push(`${row.subject?.slice(0, 40) ?? row.id}: ${res.error}`)
     }
@@ -134,7 +146,7 @@ export async function POST(req: NextRequest) {
     .from('beleg_inbox').select('*').eq('id', b.id).maybeSingle()
   if (!row) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
   if (row.status !== 'offen') return NextResponse.json({ error: `Bereits entschieden (${row.status}).` }, { status: 409 })
-  const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id)
+  const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id, zuordnung)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 502 })
   return NextResponse.json({ ok: true, status: ziel }, NO_STORE)
 }
