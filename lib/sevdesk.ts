@@ -607,7 +607,11 @@ export async function bookSevVoucher(voucherId: string, opts: {
       await sevJson(`/Voucher/${voucherId}/bookAmount`, {
         method: 'PUT',
         body: JSON.stringify({
-          amount: gross,
+          // §242-VORZEICHEN-LEKTION (empirisch, Hetzner-Juni): AUSGABE-
+          // Zahlungen müssen NEGATIV übergeben werden (wie die Bank-
+          // Abbuchung) — positiv ergab paidAmount −X und „offen" = 2×X
+          // (Teilbezahlt-Chaos); Einnahme-Rechnungen (§234) bleiben positiv
+          amount: -gross,
           date: Math.floor(Date.parse((opts.txDate ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00Z') / 1000),
           type: 'FULL_PAYMENT',
           checkAccount: { id: Number(opts.txAccountId), objectName: 'CheckAccount' },
