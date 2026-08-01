@@ -385,7 +385,11 @@ export async function listExpenseVouchers(from: string): Promise<{ vouchers: Lex
 /** §243e: PDF eines lexoffice-BELEGS (Vouchers-API: /vouchers/{id} →
  *  files[] → /files/{id}). files-Form defensiv (string[] oder [{id}]). */
 export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boolean; pdf?: Buffer; filename?: string; mime?: string; error?: string }> {
-  const det = await lexFetch(`/vouchers/${voucherId}`)
+  let det = await lexFetch(`/vouchers/${voucherId}`)
+  if (det.status === 429) {
+    await new Promise((ok) => setTimeout(ok, 1600))
+    det = await lexFetch(`/vouchers/${voucherId}`)
+  }
   if (!det.ok) return { ok: false, error: `voucher HTTP ${det.status}` }
   const j = await det.json().catch(() => ({})) as { files?: unknown[]; voucherNumber?: string }
   const raw = (j.files ?? [])[0]
@@ -394,11 +398,26 @@ export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boo
   // MAGIC-BYTES statt Content-Type-Header — der Header von /files luegt
   // teils (500er bei sevdesk trotz "pdf"-Header); die Datei-Signatur ist
   // die Wahrheit. Unbekannte Typen → Skip mit Hex-Diagnose im Report.
-  const file = await lexFetch(`/files/${fileId}`)
+  let file = await lexFetch(`/files/${fileId}`)
+  if (file.status === 429) {
+    // Rate-Limit 2 req/s — einmal warten und wiederholen
+    await new Promise((ok) => setTimeout(ok, 1600))
+    file = await lexFetch(`/files/${fileId}`)
+  }
   if (!file.ok) return { ok: false, error: `file HTTP ${file.status}` }
-  const buf = Buffer.from(await file.arrayBuffer())
+  let buf = Buffer.from(await file.arrayBuffer())
   const { sniffMediaType } = await import('@/lib/beleg-ki')
-  const mt = sniffMediaType(buf)
+  let mt = sniffMediaType(buf)
+  if (!mt) {
+    // §243f-Befund (Hex /9j/4AAQ…): lexoffice liefert manche Dateien als
+    // BASE64-TEXT im Body statt binaer → dekodieren und erneut sniffen
+    const txt = buf.toString('latin1').replace(/[\r\n\s]+/g, '')
+    if (/^[A-Za-z0-9+/]+=*$/.test(txt.slice(0, 400))) {
+      const dec = Buffer.from(txt, 'base64')
+      const mt2 = sniffMediaType(dec)
+      if (mt2) { buf = dec; mt = mt2 }
+    }
+  }
   if (!mt) {
     const ct = (file.headers.get('content-type') ?? '?').split(';')[0]
     return { ok: false, error: `Unbekannter Dateityp (ct ${ct}, ${buf.length} B, hex ${buf.subarray(0, 12).toString('hex')})` }
