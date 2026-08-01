@@ -297,6 +297,8 @@ export async function POST(req: NextRequest) {
         zweck: String(b.zweck ?? '').trim().slice(0, 160),
         position: { accountDatevId, taxRate: [19, 7, 0].includes(Number(b.taxRate)) ? Number(b.taxRate) : 0, amountGross: betrag, name: String(b.posName ?? b.zweck ?? '').slice(0, 120) },
         grundlage: String(b.grundlage ?? 'Wiederkehrende Zahlung (Merkregel).').slice(0, 300),
+        kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+        zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
       })
       return NextResponse.json({ ok: true }, NO_STORE)
     }
@@ -363,6 +365,7 @@ export async function POST(req: NextRequest) {
           typ: typ as 'miete' | 'privat' | 'sonstiges',
           empfaenger, betrag, zweck, position: positionen[0], grundlage,
           kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+          zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
         })
       }
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
