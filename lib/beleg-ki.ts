@@ -197,7 +197,10 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
   const standorte = [...new Set(wohnungenListe.map((w) => w.group).filter(Boolean))].join(', ')
 
   // §242d: Portal-Provisionen DETERMINISTISCH (5923, §13b MIT Vorsteuerabzug)
-  const provSupplier = /booking\.com|airbnb|expedia|hometogo/i.test(v.supplierName ?? '')
+  // §243q: hometogo RAUS aus dem §13b-Kurzschluss — HomeToGo GmbH ist eine
+  // DEUTSCHE Firma (USt-ID DE…, 19 % ausgewiesen) → Voll-Vision waehlt
+  // korrekt 6770/19 % MIT Vorsteuerabzug (Gutschrift HTG-202611892 bewiesen)
+  const provSupplier = /booking\.com|airbnb|expedia/i.test(v.supplierName ?? '')
   const provText = /provisionsrechnung|invoice|commission/i.test(`${v.supplierName ?? ''} ${v.description ?? ''}`)
   if (provSupplier && provText) {
     const k5923 = guidance.find((x) => x.accountNumber === '5923')
