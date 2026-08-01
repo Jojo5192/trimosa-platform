@@ -26,12 +26,18 @@ export async function listAllCheckAccounts(): Promise<SevAccount[]> {
   return (list ?? []).map((a) => ({ id: String(a.id), name: String(a.name), type: String(a.type), status: a.status }))
 }
 
-/** Das ECHTE Bankkonto (Finom via finAPI): Name-Match vor Typ-Heuristik. */
-export async function findBankAccount(): Promise<SevAccount | null> {
+/** Die ECHTEN Bankkonten (Finom via finAPI): ALLE type 'online' — Finom
+ *  liefert Haupt- + Unterkonten getrennt (Kalibrierung 1.8.: „Main" +
+ *  „Steuerrücklagen"); Payouts können auf jedem davon eintreffen. */
+export async function findBankAccounts(): Promise<SevAccount[]> {
   const all = await listAllCheckAccounts()
-  return all.find((a) => /finom/i.test(a.name))
-    ?? all.find((a) => a.type === 'online')
-    ?? null
+  return all.filter((a) => a.type === 'online')
+}
+
+/** Kompatibilitäts-Helper (ein Konto) — bevorzugt „Main". */
+export async function findBankAccount(): Promise<SevAccount | null> {
+  const online = await findBankAccounts()
+  return online.find((a) => /main|haupt|geschäft/i.test(a.name)) ?? online[0] ?? null
 }
 
 /** Auszahlungs-Klassifikation — bewusst ENG (kein Fallback!): unerkannte
@@ -113,10 +119,10 @@ export interface PayoutSyncReport {
   bank?: string
   zeitraumTage: number
   transaktionen: number
-  payouts: { id: string; datum: string; betrag: number; von: string; zweck: string; konto: string }[]
+  payouts: { id: string; datum: string; betrag: number; von: string; zweck: string; konto: string; bankkonto: string }[]
   gebucht: number
-  unerkannteEingaenge: { id: string; datum: string; betrag: number; von: string; zweck: string }[]
-  moeglicheProvisionsAbbuchungen: { datum: string; betrag: number; von: string; zweck: string }[]
+  unerkannteEingaenge: { id: string; datum: string; betrag: number; von: string; zweck: string; bankkonto: string }[]
+  moeglicheProvisionsAbbuchungen: { datum: string; betrag: number; von: string; zweck: string; bankkonto: string }[]
   fehler: { id: string; error: string }[]
   hinweis?: string
 }
@@ -134,45 +140,51 @@ export async function runPayoutSync(opts: { days?: number; dryRun?: boolean } = 
     dryRun, zeitraumTage: days, transaktionen: 0,
     payouts: [], gebucht: 0, unerkannteEingaenge: [], moeglicheProvisionsAbbuchungen: [], fehler: [],
   }
-  const bank = await findBankAccount()
-  if (!bank) { report.hinweis = 'Kein Finom-/Online-Bankkonto in sevdesk gefunden (action accounts prüfen).'; return report }
-  report.bank = `${bank.name} (${bank.id}, ${bank.type})`
+  const banks = await findBankAccounts()
+  if (!banks.length) { report.hinweis = 'Kein Finom-/Online-Bankkonto in sevdesk gefunden (action accounts prüfen).'; return report }
+  report.bank = banks.map((b) => `${b.name} (${b.id})`).join(' · ')
 
   const state = await getPayoutState()
-  const txs = await listBankTransactions(bank.id, days)
-  report.transaktionen = txs.length
-
-  for (const tx of txs) {
-    const amount = Number(tx.amount)
-    const text = `${tx.payeePayerName ?? ''} ${tx.paymtPurpose ?? ''}`.trim()
-    const datum = String(tx.valueDate ?? tx.entryDate ?? '').slice(0, 10)
-    const label = payoutClearingFor(text)
-    if (amount > 0) {
-      if (Number(tx.status) !== 100 || state.processed.includes(String(tx.id))) continue
-      if (label) {
-        report.payouts.push({
-          id: String(tx.id), datum, betrag: amount,
-          von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90), konto: label,
-        })
-      } else {
-        report.unerkannteEingaenge.push({
-          id: String(tx.id), datum, betrag: amount,
-          von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90),
+  const txById = new Map<string, SevTx>()
+  for (const bank of banks) {
+    const txs = await listBankTransactions(bank.id, days)
+    report.transaktionen += txs.length
+    for (const tx of txs) {
+      txById.set(String(tx.id), tx)
+      const amount = Number(tx.amount)
+      const text = `${tx.payeePayerName ?? ''} ${tx.paymtPurpose ?? ''}`.trim()
+      const datum = String(tx.valueDate ?? tx.entryDate ?? '').slice(0, 10)
+      const label = payoutClearingFor(text)
+      if (amount > 0) {
+        if (Number(tx.status) !== 100 || state.processed.includes(String(tx.id))) continue
+        if (label) {
+          report.payouts.push({
+            id: String(tx.id), datum, betrag: amount,
+            von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90),
+            konto: label, bankkonto: bank.name,
+          })
+        } else {
+          report.unerkannteEingaenge.push({
+            id: String(tx.id), datum, betrag: amount,
+            von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90),
+            bankkonto: bank.name,
+          })
+        }
+      } else if (amount < 0 && label) {
+        // Abbuchung MIT Portal-Bezug = vermutlich Provisions-Lastschrift
+        // (Booking zieht monatlich ein) — nur Report, Buchung kommt mit C2
+        report.moeglicheProvisionsAbbuchungen.push({
+          datum, betrag: amount, von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90),
+          bankkonto: bank.name,
         })
       }
-    } else if (amount < 0 && label) {
-      // Abbuchung MIT Portal-Bezug = vermutlich Provisions-Lastschrift
-      // (Booking zieht monatlich ein) — nur Report, Buchung kommt mit C2
-      report.moeglicheProvisionsAbbuchungen.push({
-        datum, betrag: amount, von: (tx.payeePayerName ?? '').slice(0, 60), zweck: (tx.paymtPurpose ?? '').slice(0, 90),
-      })
     }
   }
 
   if (dryRun || !report.payouts.length) return report
 
   for (const p of report.payouts) {
-    const tx = txs.find((t) => String(t.id) === p.id)!
+    const tx = txById.get(p.id)!
     const r = await bookMoneyTransit(tx, p.konto)
     if (r.ok) {
       report.gebucht++
