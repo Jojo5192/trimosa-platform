@@ -15,7 +15,7 @@ import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
 import CallsPanel from '@/components/team/CallsPanel'
-import BelegePanel from '@/components/team/BelegePanel'
+import BuchhaltungPanel from '@/components/team/BuchhaltungPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -204,10 +204,10 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                   background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
                   boxShadow: wb ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
                 }}>
-                  <span style={{ fontSize: 19 }}>🧾</span>
+                  <span style={{ fontSize: 19 }}>💶</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Beleg-Inbox</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Belege aus den Postfächern — Gesellschaft & Kostenstelle wählen</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Buchhaltung</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Belege zuordnen & verbuchen, offene Zahlungen — ohne sevdesk</span>
                   </span>
                   <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
                 </button>
@@ -297,7 +297,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showQs && <QsArchive onClose={() => setShowQs(false)} />}
       {showTrends && <ScoreTrends onClose={() => setShowTrends(false)} />}
       {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
-      {showBelege && <BelegePanel onClose={() => setShowBelege(false)} />}
+      {showBelege && <BuchhaltungPanel onClose={() => setShowBelege(false)} />}
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
     </div>
   )
