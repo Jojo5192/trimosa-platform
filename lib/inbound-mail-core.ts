@@ -42,18 +42,33 @@ export const stripHtml = (html: string) =>
  *  einsortieren (Dedupe über identischen Inhalt — dieselbe Nachricht kann
  *  auch über den Smoobu-Sync ankommen) + Team-Push. §129 */
 async function saveGuestMessage(bookingId: string, guestName: string | null, text: string): Promise<boolean> {
-  const { data: dupe } = await supabaseAdmin
-    .from('messages').select('id')
-    .eq('booking_id', bookingId).eq('sender_type', 'guest').eq('content', text).limit(1)
-  if (dupe?.length) return false
-  const { error } = await supabaseAdmin.from('messages')
+  // Dedupe WHITESPACE-NORMALISIERT (§240): dieselbe Nachricht kommt über den
+  // Smoobu-Sync oft mit anderen Zeilenumbrüchen als aus der Mail-Fassung
+  const norm = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase()
+  const { data: recent } = await supabaseAdmin
+    .from('messages').select('content')
+    .eq('booking_id', bookingId).eq('sender_type', 'guest')
+    .order('created_at', { ascending: false }).limit(30)
+  if ((recent ?? []).some((m) => norm(String(m.content ?? '')) === norm(text))) return false
+  const { data: inserted, error } = await supabaseAdmin.from('messages')
     .insert({ booking_id: bookingId, sender_type: 'guest', content: text })
+    .select('id').single()
   if (error) { console.error('[inbound-mail] Nachricht-Insert:', error.message); return false }
+  // Übersetzung VOR dem Push (§81-Konsistenz) — Push zeigt Deutsch + Flagge
+  let pushText = text
+  let flag = ''
+  try {
+    const { translateIncoming, LANG_FLAGS } = await import('@/lib/translate')
+    const tr = await translateIncoming([{ id: String(inserted.id), text }])
+    const t = tr.get(String(inserted.id))
+    if (t?.lang && t.lang !== 'de') flag = `${LANG_FLAGS[t.lang] ?? '🌐'} `
+    if (t?.german) pushText = t.german
+  } catch { /* fail-soft: Original pushen */ }
   try {
     const { sendPushToTeam } = await import('@/lib/push')
     await sendPushToTeam(
-      `💬 ${guestName ?? 'Gast'} · FeWo-Mail`,
-      text.replace(/\s+/g, ' ').slice(0, 120),
+      `💬 ${flag}${guestName ?? 'Gast'} · FeWo-Mail`,
+      pushText.replace(/\s+/g, ' ').slice(0, 120),
       '/team?conv=' + bookingId,
       { guestChat: true },
     )
@@ -445,7 +460,11 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     // aber ggf. eine Relay-Adresse im Reply-To und/oder ein Nachrichtentext →
     // Buchung über den Gastnamen zuordnen (nur bei EINDEUTIGEM Treffer unter
     // laufenden/kommenden Buchungen), Relay nach Smoobu, Text in den Chat (§129)
-    const msgText = typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
+    // §240: Chat-Einträge aus Mails NUR für FeWo/HomeAway/Vrbo — Airbnb- und
+    // Booking-Nachrichten kommen autoritativ über den Smoobu-Sync; deren
+    // Benachrichtigungs-Mails erzeugten sonst Duplikate im Thread
+    const fewoSource = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
+    const msgText = fewoSource && typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
     if (relayEmail || msgText.length >= 3) {
       const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
       if (first) {
@@ -527,7 +546,8 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   }
 
   // Persönliche Gast-Nachricht (z. B. Anfrage-Mails MIT Zeitraum) → Chat-Thread
-  const mainMsg = typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
+  const mainFewo = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
+  const mainMsg = mainFewo && typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
   const savedMsg = mainMsg.length >= 3 ? await saveGuestMessage(booking.id, booking.guest_name, mainMsg) : false
 
   console.log('[inbound-mail] verarbeitet:', {
