@@ -52,22 +52,35 @@ export async function POST(request: NextRequest) {
       const tok = (x: string | null | undefined) => String(x ?? '').toLowerCase().split(/[^a-zäöüß0-9]+/).filter((w) => w.length > 3)
       const schon: { kontakt: string; betrag: number; datum: string; grund: string }[] = []
       const neu: typeof vouchers = []
+      // §243e-Haertung: jeder sevdesk-Beleg deckt max. EIN lexoffice-Pendant
+      // (used-Set — sonst verschluckt ein 25-€-Monatsabo alle Monate)
+      const used = new Set<string>()
       for (const v of vouchers) {
         if (v.voucherStatus === 'voided' || !Number.isFinite(v.totalAmount)) continue
-        // Marker-Dedupe (frueherer Import) + inhaltlicher Dedupe:
-        // Betrag exakt + Datum ±7 Tage + ein gemeinsames Namens-Token
-        const marker = sev.find((x) => (x.description ?? '').includes(`lexoffice ${v.voucherNumber}`))
-        const inhalt = sev.find((x) => {
+        // 1) Import-Marker  2) BELEGNUMMER in der sevdesk-Description (die
+        // Mail-gefischten Booking-Provisionen tragen die Invoice-Nr!)
+        // 3) Betrag exakt + Datum ±45 Tage (Mail-Scan-Belege tragen das
+        // SCAN-Datum, nicht das Belegdatum) + gemeinsames Namens-Token
+        const nr = String(v.voucherNumber ?? '').trim()
+        const marker = sev.find((x) => !used.has(x.id) && (x.description ?? '').includes(`lexoffice ${nr}`))
+        const perNr = !marker && nr.length >= 6 && nr !== '-'
+          ? sev.find((x) => !used.has(x.id) && (x.description ?? '').includes(nr))
+          : null
+        const inhalt = (marker || perNr) ? null : sev.find((x) => {
+          if (used.has(x.id)) return false
           if (x.sumGross == null || Math.abs(x.sumGross - v.totalAmount) > 0.01) {
             // Entwuerfe haben sumGross 0 → Betrag steckt in der Description
             if (!(x.status === 50 && (x.description ?? '').includes(v.totalAmount.toFixed(2)))) return false
           }
-          if (!x.voucherDate || Math.abs(Date.parse(x.voucherDate) - Date.parse(v.voucherDate)) > 7 * 864e5) return false
+          if (!x.voucherDate || Math.abs(Date.parse(x.voucherDate) - Date.parse(v.voucherDate)) > 45 * 864e5) return false
           const a = tok(x.supplierName)
           return tok(v.contactName).some((w) => a.includes(w))
         })
-        if (marker || inhalt) schon.push({ kontakt: v.contactName.slice(0, 50), betrag: v.totalAmount, datum: v.voucherDate, grund: marker ? 'Marker' : 'Betrag+Datum+Name' })
-        else neu.push(v)
+        const hit = marker ?? perNr ?? inhalt
+        if (hit) {
+          used.add(hit.id)
+          schon.push({ kontakt: v.contactName.slice(0, 50), betrag: v.totalAmount, datum: v.voucherDate, grund: marker ? 'Marker' : perNr ? 'Belegnummer' : 'Betrag+Datum+Name' })
+        } else neu.push(v)
       }
       if (b.action === 'expense-audit' || b.dryRun !== false) {
         return NextResponse.json({
