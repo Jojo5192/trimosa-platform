@@ -215,6 +215,27 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/** KI-JSON robust extrahieren — Modelle haengen gern Erklaertext ans JSON. */
+function parseJsonLoose(raw: string): Record<string, unknown> {
+  const cleaned = raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim()
+  try { return JSON.parse(cleaned) } catch { /* Text um das JSON herum → balanced scan */ }
+  const start = cleaned.indexOf('\u007B')
+  if (start >= 0) {
+    let depth = 0, inStr = false, esc = false
+    for (let i = start; i < cleaned.length; i++) {
+      const c = cleaned[i]
+      if (esc) { esc = false; continue }
+      if (c === '\\' && inStr) { esc = true; continue }
+      if (c === '"') { inStr = !inStr; continue }
+      if (!inStr) {
+        if (c === '\u007B') depth++
+        else if (c === '\u007D') { depth--; if (depth === 0) return JSON.parse(cleaned.slice(start, i + 1)) }
+      }
+    }
+  }
+  throw new Error('Kein JSON in der KI-Antwort')
+}
+
 export async function POST(req: NextRequest) {
   const user = await requireFinance()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
@@ -258,7 +279,7 @@ export async function POST(req: NextRequest) {
               `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung auf STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — NUR bei echten Indizien setzen, sonst null.`,
               `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
               { mediaType: 'application/pdf', base64: pdf.base64 }, 1500)
-            const oj = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
+            const oj = parseJsonLoose(raw)
             ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
             if (ort && typeof oj.indiz === 'string') ortText = ` \u00B7 Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
           } catch { /* Vision best effort */ }
@@ -285,7 +306,7 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
       const raw = pdf
         ? await askClaudeWithFile(system, userMsg, { mediaType: 'application/pdf', base64: pdf.base64 }, 4000)
         : await askClaude(system, userMsg, 900, FAST_MODEL)
-      const j = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
+      const j = parseJsonLoose(raw)
       const hit = guidance.find((gg) => gg.accountDatevId === Number(j.accountDatevId))
       if (!hit) return NextResponse.json({ error: 'KI lieferte keine g\u00FCltige Kategorie \u2014 bitte manuell w\u00E4hlen.' }, { status: 502 })
       const ort = standortZuKst(typeof j.wohnung === 'string' ? j.wohnung : null, typeof j.standort === 'string' ? j.standort : null, wohnungenListe)
