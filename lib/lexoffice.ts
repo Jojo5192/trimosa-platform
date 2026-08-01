@@ -368,6 +368,34 @@ export async function getInvoicePdf(lexofficeId: string): Promise<{ ok: boolean;
   return { ok: true, pdf: Buffer.from(await file.arrayBuffer()) }
 }
 
+/** §243e: AUSGABEN-Belege (purchaseinvoice/purchasecreditnote) aus der
+ *  voucherlist — fuer die Migration nach sevdesk. Getrennte Calls je Typ
+ *  (§222: Statusfilter je Belegart, gemischte Filter werfen 400). */
+export async function listExpenseVouchers(from: string): Promise<{ vouchers: LexVoucher[]; errors: string[] }> {
+  const out: LexVoucher[] = []
+  const errors: string[] = []
+  for (const t of ['purchaseinvoice', 'purchasecreditnote']) {
+    const r = await fetchVoucherlist(from, t)
+    for (const v of r.vouchers) out.push({ ...v, voucherNumber: v.voucherNumber || t })
+    if (r.error) errors.push(`${t}: ${r.error}`)
+  }
+  return { vouchers: out, errors }
+}
+
+/** §243e: PDF eines lexoffice-BELEGS (Vouchers-API: /vouchers/{id} →
+ *  files[] → /files/{id}). files-Form defensiv (string[] oder [{id}]). */
+export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boolean; pdf?: Buffer; filename?: string; error?: string }> {
+  const det = await lexFetch(`/vouchers/${voucherId}`)
+  if (!det.ok) return { ok: false, error: `voucher HTTP ${det.status}` }
+  const j = await det.json().catch(() => ({})) as { files?: unknown[]; voucherNumber?: string }
+  const raw = (j.files ?? [])[0]
+  const fileId = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? String((raw as { id?: unknown }).id ?? '') : '')
+  if (!fileId) return { ok: false, error: 'Beleg hat keine Datei.' }
+  const file = await lexFetch(`/files/${fileId}`, { headers: { Accept: 'application/pdf' } })
+  if (!file.ok) return { ok: false, error: `file HTTP ${file.status}` }
+  return { ok: true, pdf: Buffer.from(await file.arrayBuffer()), filename: `lexoffice-${(j.voucherNumber ?? voucherId).toString().replace(/[^\w.-]/g, '_')}.pdf` }
+}
+
 /**
  * §160: Q2-Nachschau — Buchungen ab einem Stichtag gegen Lexoffice
  * abgleichen (NUR Liste, nichts erstellen). Matching je Buchung:
