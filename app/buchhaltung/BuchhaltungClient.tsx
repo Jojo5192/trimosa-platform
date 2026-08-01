@@ -195,11 +195,39 @@ function ZuordnungPicker({ value, onChange, wohnungen }: {
 }
 
 function PdfViewer({ links }: { links: { name: string; url: string }[] }) {
+  // Mobil/iOS rendert PDFs in iframes NICHT (leere graue Fläche) → dort
+  // tippbare Datei-Karten; der System-Viewer im neuen Tab ist auf dem
+  // iPhone ohnehin die beste PDF-Ansicht. (Nur nach Interaktion gerendert
+  // — window ist hier immer verfügbar.)
+  const mobil = typeof window !== 'undefined' && window.innerWidth < 900
   if (!links.length) {
     return (
       <div style={{ ...CARD, padding: '22px 20px', textAlign: 'center', color: SUB, fontSize: 13.5 }}>
         📄 Keine PDF-Kopie in der App — der Beleg liegt in sevdesk.
         <div style={{ fontSize: 12, marginTop: 4 }}>Neue Belege aus dem Mail-Scan bringen ihre Kopie automatisch mit.</div>
+      </div>
+    )
+  }
+  if (mobil) {
+    return (
+      <div style={CARD}>
+        {links.map((l, i) => (
+          <a key={l.url} href={l.url} target="_blank" rel="noreferrer" style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+            textDecoration: 'none', boxShadow: i < links.length - 1 ? `inset 0 -0.5px 0 ${HAIRLINE}` : 'none',
+          }}>
+            <span style={{
+              width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: 19,
+              background: 'rgba(176,145,43,0.14)',
+            }}>📄</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
+              <span style={{ display: 'block', fontSize: 12.5, color: SUB, marginTop: 1 }}>Antippen zum Ansehen</span>
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>Öffnen ↗</span>
+          </a>
+        ))}
       </div>
     )
   }
@@ -506,7 +534,7 @@ export default function BuchhaltungClient() {
 
             {k === 'laedt' && (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, color: SUB }}>
-                <span className="team-ptr-spin" style={{ display: 'inline-block' }}>⟳</span> Claude analysiert den Beleg…
+                <span className="team-ptr-spin" style={{ display: 'inline-block' }}>⟳</span> Claude liest den Beleg (bei PDF bis ~20 s)…
               </div>
             )}
             {k === 'fehler' && <div style={{ fontSize: 14, color: RED }}>✨ Vorschlag fehlgeschlagen — bitte manuell wählen.</div>}
@@ -624,7 +652,7 @@ export default function BuchhaltungClient() {
   ]
 
   return (
-    <div style={{ minHeight: '100dvh', background: GROUP_BG, display: 'flex', flexDirection: 'column', WebkitFontSmoothing: 'antialiased' }}>
+    <div style={{ minHeight: '100dvh', background: GROUP_BG, display: 'flex', flexDirection: 'column', WebkitFontSmoothing: 'antialiased', overflowX: 'hidden' }}>
       {/* ── Kopf ── */}
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', position: 'sticky', top: 0, zIndex: 20 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, maxWidth: 1240, margin: '0 auto' }}>
@@ -639,7 +667,7 @@ export default function BuchhaltungClient() {
           <div style={{ display: 'flex', background: 'rgba(118,118,128,0.28)', borderRadius: 10, padding: 2, gap: 2 }}>
             {SEG.map(([key, label, n]) => (
               <button key={key} onClick={() => { haptic(); setSection(key); setSelId(null) }} style={{
-                flex: 1, fontSize: 13.5, fontWeight: 600, padding: '7px 4px', borderRadius: 8,
+                flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, padding: '7px 4px', borderRadius: 8,
                 border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden',
                 textOverflow: 'ellipsis', transition: 'background .15s, color .15s',
                 background: section === key ? '#fff' : 'transparent',
