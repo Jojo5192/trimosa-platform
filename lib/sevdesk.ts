@@ -589,10 +589,18 @@ export async function bookSevVoucher(voucherId: string, opts: {
     // §242-Härtung: saveVoucher kann nur ENTWÜRFE ändern — ein Beleg, der
     // schon Status 100 hat (z. B. weil ein früherer bookAmount scheiterte),
     // muss erst zurück in den Entwurf
+    let zahlungGeloest = false
     try {
       const cur = await sevJson<{ status?: string | number }[] | { status?: string | number }>(`/Voucher/${voucherId}`)
       const st = Number(Array.isArray(cur) ? cur[0]?.status : (cur as { status?: string | number })?.status)
-      if (st === 100) await sevFetch(`/Voucher/${voucherId}/resetToDraft`, { method: 'PUT', body: '{}' })
+      // §243c: BEZAHLTE Belege (1000) erst zurueck auf offen — loest die
+      // Bank-Verknuepfung (Transaktion wird wieder frei; der Aufrufer
+      // verknuepft sie neu bzw. der Bankabgleich matcht sie)
+      if (st === 1000) {
+        await sevFetch(`/Voucher/${voucherId}/resetToOpen`, { method: 'PUT', body: '{}' })
+        zahlungGeloest = true
+      }
+      if (st === 100 || st === 1000) await sevFetch(`/Voucher/${voucherId}/resetToDraft`, { method: 'PUT', body: '{}' })
     } catch { /* best effort — saveVoucher meldet sonst selbst */ }
     const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
     // §242b: bestehende Positionen ERSETZEN — ein Re-Save (Reparatur,
@@ -614,7 +622,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
           // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen;
           // Sonderkonten (§13b EU/Drittland) brauchen ihre eigene Regel
           taxRule: { id: taxRuleId, objectName: 'TaxRule' },
-          ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
+          // costCentreName '' = Kostenstelle EXPLIZIT entfernen (§243c —
+          // Gaestemanagement-Umbuchung: KSt weg, Zuordnung = alle Wohnungen)
+          ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : opts.costCentreName === '' ? { costCentre: null } : {}),
         },
         voucherPosSave: posList.map((p) => {
           const pg = Math.round(p.amountGross * 100) / 100
@@ -659,9 +669,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
           checkAccountTransaction: { id: Number(opts.txId), objectName: 'CheckAccountTransaction' },
         }),
       })
-      return { ok: true, verknuepft: true }
+      return { ok: true, verknuepft: true, ...(zahlungGeloest ? { hinweis: 'Alte Zahlung geloest und neu verknuepft.' } : {}) }
     }
-    return { ok: true, verknuepft: false }
+    return { ok: true, verknuepft: false, ...(zahlungGeloest ? { hinweis: 'Alte Zahlung wurde geloest — Transaktion ist wieder offen (neu verknuepfen oder Bankabgleich).' } : {}) }
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e)
     // §242: Scheitert NUR der bookAmount (Beleg ist da schon kategorisiert +
