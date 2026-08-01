@@ -307,6 +307,7 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
   if (sicher) {
     const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
     let erstellt = 0
+    const voucherIds: string[] = []
     const fehler: string[] = []
     for (const pdf of pdfs) {
       const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
@@ -320,7 +321,7 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
           + bankMatch).slice(0, 255),
         ...(datum ? { voucherDate: datum } : {}),
       })
-      if (v.ok) erstellt++
+      if (v.ok) { erstellt++; if (v.voucherId) voucherIds.push(v.voucherId) }
       else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
     }
     if (erstellt) {
@@ -328,18 +329,37 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
         const { sendPushToTeam } = await import('@/lib/push')
         await sendPushToTeam('🧾 Beleg → sevdesk (A&H)',
           `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''}${bankMatch || ' — eindeutig zugeordnet'}`.slice(0, 140),
-          '/team')
+          '/buchhaltung', { buchhaltung: true })
       } catch { /* best effort */ }
     }
     if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
     if (erstellt) {
       // Protokollzeile → mailKey-/Content-Dedupe greifen auch für diesen Pfad
-      const { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert({
-        source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
+      // §242 Beleg-Viewer: PDF-Kopie in unseren Storage, damit die
+      // Buchhaltungs-Oberfläche den Beleg beim Verbuchen ANZEIGEN kann
+      const rowId = crypto.randomUUID()
+      const files: { path: string; name: string }[] = []
+      try {
+        await ensureBelegeBucket()
+        for (const pdf of pdfs) {
+          const path = `sevdesk/${rowId}/${pdf.name.replace(/[^\w.\-]/g, '_').slice(0, 80)}`
+          const { error: upErr } = await supabaseAdmin.storage.from('belege')
+            .upload(path, pdf.buf, { contentType: 'application/pdf', upsert: true })
+          if (!upErr) files.push({ path, name: pdf.name })
+        }
+      } catch { /* Viewer-Kopie best effort */ }
+      const protRow: Record<string, unknown> = {
+        id: rowId, source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
         from_addr: from.slice(0, 160), subject: subject.slice(0, 200),
         lieferant, betrag, beleg_datum: datum,
-        ki_hinweis: kiHinweis.slice(0, 300), files: [], status: 'sevdesk',
-      })
+        ki_hinweis: kiHinweis.slice(0, 300), files, status: 'sevdesk',
+        sevdesk_voucher_id: voucherIds[0] ?? null,
+      }
+      let { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert(protRow)
+      if (protErr && /sevdesk_voucher_id/.test(protErr.message)) {
+        delete protRow.sevdesk_voucher_id
+        ;({ error: protErr } = await supabaseAdmin.from('beleg_inbox').insert(protRow))
+      }
       if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
     }
     console.log('[inbound-mail] Beleg-Fischer → sevdesk:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
@@ -370,7 +390,7 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
       const { sendPushToTeam } = await import('@/lib/push')
       await sendPushToTeam('🧾 Beleg zur Zuordnung',
         `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''} — Gesellschaft/Kostenstelle in der App wählen`.slice(0, 140),
-        '/team')
+        '/buchhaltung', { buchhaltung: true })
     } catch { /* best effort */ }
     console.log('[inbound-mail] Beleg-Fischer → Inbox:', { lieferant, betrag, datum })
     return { ok: true, belegInbox: rowId, lieferant, betrag }
@@ -397,6 +417,7 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
   })
   const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
   let erstellt = 0
+  const commVoucherIds: string[] = []
   const fehler: string[] = []
   for (const a of attachments) {
     if (!a || typeof a !== 'object') continue
@@ -413,24 +434,30 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
       supplierName: supplier,
       description: `Provisionsrechnung (automatisch aus E-Mail): ${subject}`.slice(0, 200),
     })
-    if (v.ok) erstellt++
+    if (v.ok) { erstellt++; if (v.voucherId) commVoucherIds.push(v.voucherId) }
     else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
   }
   if (erstellt) {
     try {
       const { sendPushToTeam } = await import('@/lib/push')
       await sendPushToTeam('🧾 Provisionsrechnung eingegangen',
-        `${subject.slice(0, 90)} — liegt als Beleg-Entwurf in sevdesk`, '/team')
+        `${subject.slice(0, 90)} — liegt als Beleg-Entwurf in sevdesk`, '/buchhaltung', { buchhaltung: true })
     } catch { /* best effort */ }
   }
   if (fehler.length) console.error('[inbound-mail] Provisionsrechnung-Fehler:', fehler)
   if (erstellt) {
-    const { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert({
+    const protRow: Record<string, unknown> = {
       source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
       from_addr: from.slice(0, 160), subject: subject.slice(0, 200),
       lieferant: 'Provisionsrechnung', ki_hinweis: 'automatisch → sevdesk-Entwurf',
       files: [], status: 'sevdesk',
-    })
+      sevdesk_voucher_id: commVoucherIds[0] ?? null,
+    }
+    let { error: protErr } = await supabaseAdmin.from('beleg_inbox').insert(protRow)
+    if (protErr && /sevdesk_voucher_id/.test(protErr.message)) {
+      delete protRow.sevdesk_voucher_id
+      ;({ error: protErr } = await supabaseAdmin.from('beleg_inbox').insert(protRow))
+    }
     if (protErr) console.error('[inbound-mail] Protokollzeile:', protErr.message)
   }
   console.log('[inbound-mail] Provisionsrechnung:', { erstellt, fehler: fehler.length })
