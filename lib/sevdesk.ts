@@ -590,6 +590,11 @@ export async function bookSevVoucher(voucherId: string, opts: {
   /** §243o: EINNAHME-Beleg (creditDebit 'D') — bookAmount muss dann POSITIV
    *  sein (wie der Bank-Eingang; Vorzeichen-Doktrin §242 gespiegelt) */
   einnahme?: boolean
+  /** §243s: Zahlung gegen ein VERRECHNUNGSKONTO statt einer Bank-Tx —
+   *  Portale, die die Provision mit den Auszahlungen NETTEN (Booking/
+   *  FeWo/Airbnb): bookAmount mit checkAccount only, die Transaktion
+   *  entsteht auf dem Clearing-Konto von selbst (§233) */
+  clearingLabel?: string
 }): Promise<{ ok: boolean; verknuepft?: boolean; hinweis?: string; error?: string }> {
   try {
     const posList = opts.positions?.length
@@ -684,6 +689,19 @@ export async function bookSevVoucher(voucherId: string, opts: {
         }),
       })
       return { ok: true, verknuepft: true, ...(zahlungGeloest ? { hinweis: 'Alte Zahlung geloest und neu verknuepft.' } : {}) }
+    }
+    if (opts.clearingLabel) {
+      const clearingId = await ensureClearingAccount(opts.clearingLabel)
+      await sevJson(`/Voucher/${voucherId}/bookAmount`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: opts.einnahme ? gross : -gross,
+          date: Math.floor(Date.parse((opts.txDate ?? opts.voucherDate ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00Z') / 1000),
+          type: 'FULL_PAYMENT',
+          checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
+        }),
+      })
+      return { ok: true, verknuepft: true, hinweis: `Zahlung gegen ${opts.clearingLabel} gebucht (Netting).` }
     }
     return { ok: true, verknuepft: false, ...(zahlungGeloest ? { hinweis: 'Alte Zahlung wurde geloest — Transaktion ist wieder offen (neu verknuepfen oder Bankabgleich).' } : {}) }
   } catch (e) {
