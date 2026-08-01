@@ -24,6 +24,9 @@ export interface InboundMailInput {
   attachments: unknown[]
   /** FeWo-/Vrbo-Relay-Adresse aus dem Reply-To (Zubringer erntet sie) */
   relayEmail?: string
+  /** §238: Quell-Postfach + stabile Mail-ID (Beleg-Inbox-Dedupe) */
+  mailbox?: string
+  mailKey?: string
 }
 
 export const stripHtml = (html: string) =>
@@ -65,12 +68,12 @@ async function saveGuestMessage(bookingId: string, guestName: string | null, tex
  * existiert, sonst Buchungs-Thread). Nicht zuordenbare Mails werden nur
  * geloggt — das ist zugleich der Spam-Filter für das umgeleitete Postfach.
  */
-async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText: string, attachments: unknown[]): Promise<Record<string, unknown>> {
+async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText: string, attachments: unknown[], mailOpts: { mailbox?: string; mailKey?: string } = {}): Promise<Record<string, unknown>> {
   const email = ((fromRaw.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/) || [])[0] ?? '').toLowerCase()
   if (!email || /no-?reply|mailer-daemon|postmaster|notification|newsletter/i.test(email)) {
     // §236 C3: Lieferanten-Belege kommen oft von noreply-Absendern —
     // hängt ein PDF dran, übernimmt der Beleg-Fischer
-    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText)
+    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText, mailOpts)
     return { ok: true, skipped: 'kein Portal, kein Gast-Absender' }
   }
 
@@ -104,7 +107,7 @@ async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText
   const booking = pick(cands.filter((b) => b.status !== 'cancelled')) ?? pick(cands)
   if (!booking) {
     // §236 C3: kein Gast — mit PDF-Anhang vermutlich ein Lieferanten-Beleg
-    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText)
+    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText, mailOpts)
     console.log('[inbound-mail] Gast-Mail ohne zuordenbare Buchung:', email)
     return { ok: true, skipped: 'Absender keiner Buchung zuordenbar' }
   }
@@ -175,14 +178,29 @@ async function pdfFromAttachment(att: Record<string, unknown>): Promise<{ name: 
   return null
 }
 
+/** §238: Privater Storage-Bucket für die Beleg-Inbox (lazy angelegt). */
+async function ensureBelegeBucket(): Promise<void> {
+  const gb = globalThis as typeof globalThis & { __belegeBucket?: boolean }
+  if (gb.__belegeBucket) return
+  try {
+    await supabaseAdmin.storage.createBucket('belege', {
+      public: false, fileSizeLimit: '15MB', allowedMimeTypes: ['application/pdf'],
+    })
+  } catch { /* existiert bereits */ }
+  gb.__belegeBucket = true
+}
+
 /**
- * §236 C3: Universeller BELEG-FISCHER — Mail mit PDF-Anhang, die weder
- * Portal-Buchung noch Gast-Nachricht ist (Lieferanten-Rechnung, Quittung):
- * KI liest Lieferant/Betrag/Datum aus der Mail, das PDF wird als sevdesk-
- * Beleg-Entwurf abgelegt und gegen die OFFENEN Finom-Abbuchungen gematcht
- * („passt zur Bank-Abbuchung vom …").
+ * §236 C3 / §238: Universeller BELEG-FISCHER — Mail mit PDF-Anhang, die
+ * weder Portal-Buchung noch Gast-Nachricht ist. WICHTIG (Inhaber 1.8.):
+ * Die Postfächer dienen DREI Firmen (eGbR + Immobilien UG + GbR) —
+ * automatisch nach sevdesk (= Apartments & Homes) geht ein Beleg NUR,
+ * wenn (a) eine OFFENE Abbuchung auf dem A&H-Finom-Konto exakt zum Betrag
+ * passt ODER (b) die KI die Zuordnung EINDEUTIG sicher trifft. Alles
+ * andere landet in der BELEG-INBOX (App → Mehr → Beleg-Inbox), wo der
+ * Inhaber Gesellschaft + Kostenstelle entscheidet.
  */
-async function handleReceiptMail(attachments: unknown[], from: string, subject: string, rawText: string): Promise<Record<string, unknown>> {
+async function handleReceiptMail(attachments: unknown[], from: string, subject: string, rawText: string, opts: { mailbox?: string; mailKey?: string } = {}): Promise<Record<string, unknown>> {
   const pdfs: { name: string; buf: Buffer }[] = []
   for (const a of attachments) {
     if (!a || typeof a !== 'object') continue
@@ -194,10 +212,13 @@ async function handleReceiptMail(attachments: unknown[], from: string, subject: 
   let meta: Record<string, unknown> = {}
   try {
     const raw = await askClaude(
-      'Du bekommst eine E-Mail (Betreff + Text), an der ein PDF hängt. Entscheide, ob es ein BUCHHALTUNGSBELEG ist (Rechnung, Quittung oder Gutschrift eines Lieferanten/Dienstleisters an TRIMOSA). Antworte NUR mit JSON: {"ist_beleg": true|false, "lieferant": "<Firmenname oder null>", "betrag_brutto": <Zahl in Euro oder null>, "datum": "YYYY-MM-DD oder null", "belegnummer": "<oder null>"} — nichts raten, nur Werte aus der Mail; deutsche Beträge ("119,00 €") als 119.0.',
-      `Betreff: ${subject}\n\n${rawText.slice(0, 6000)}`, 600, FAST_MODEL)
+      `Du bekommst eine E-Mail (Betreff + Text), an der ein PDF hängt. Entscheide, ob es ein BUCHHALTUNGSBELEG ist (Rechnung, Quittung oder Gutschrift eines Lieferanten/Dienstleisters an TRIMOSA). Antworte NUR mit JSON:
+{"ist_beleg": true|false, "lieferant": "<Firmenname oder null>", "betrag_brutto": <Zahl in Euro oder null>, "datum": "YYYY-MM-DD oder null", "belegnummer": "<oder null>", "zuordnung": "apartments"|"unsicher", "begruendung": "<max 1 Satz>"}
+Nichts raten, nur Werte aus der Mail; deutsche Beträge ("119,00 €") als 119.0.
+ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes eGbR = FERIENWOHNUNGS-Betrieb (Buchungsportale Booking/Airbnb/FeWo-direkt, Smoobu, Gäste-Software, Wäsche-/Reinigungsservice der Ferienwohnungen), (2) TRIMOSA Immobilien UG und (3) eine Immobilien-GbR (Mehrfamilienhäuser, Bau/Sanierung/Hausverwaltung/Mieter). "apartments" NUR, wenn der Beleg EINDEUTIG zum Ferienwohnungs-Betrieb gehört — Handwerker, Baumärkte, Energie, Versicherungen, Server/IT und alles Mehrdeutige sind "unsicher". Im Zweifel IMMER "unsicher".`,
+      `Betreff: ${subject}\n\n${rawText.slice(0, 6000)}`, 700, FAST_MODEL)
     meta = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
-  } catch { /* fail-soft: ohne Meta trotzdem als Beleg ablegen */ }
+  } catch { /* fail-soft: ohne Meta → Inbox-Pfad unten */ }
   if (meta.ist_beleg === false) {
     console.log('[inbound-mail] Beleg-Fischer: laut KI kein Beleg —', subject.slice(0, 80))
     return { ok: true, skipped: 'PDF, aber kein Beleg', subject }
@@ -209,9 +230,10 @@ async function handleReceiptMail(attachments: unknown[], from: string, subject: 
   const betrag = typeof meta.betrag_brutto === 'number' && meta.betrag_brutto > 0
     ? Math.round(meta.betrag_brutto * 100) / 100 : null
   const datum = typeof meta.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(meta.datum) ? meta.datum : null
+  const begruendung = typeof meta.begruendung === 'string' ? meta.begruendung.slice(0, 160) : ''
 
-  // Bank-Abgleich: passt eine OFFENE Finom-Abbuchung zum Betrag? (±90 Tage,
-  // über ALLE Online-Konten — Finom liefert Haupt- + Unterkonten getrennt)
+  // Bank-Abgleich: passt eine OFFENE Abbuchung auf dem A&H-Finom zum
+  // Betrag? (±90 Tage, alle Online-Konten) → stärkstes Zuordnungs-Signal
   let bankMatch = ''
   if (betrag) {
     try {
@@ -221,42 +243,88 @@ async function handleReceiptMail(attachments: unknown[], from: string, subject: 
         const hit = txs.find((t) => Number(t.status) === 100 && Number(t.amount) < 0
           && Math.abs(Math.abs(Number(t.amount)) - betrag) < 0.01)
         if (hit) {
-          bankMatch = ` — passt zur Bank-Abbuchung vom ${String(hit.valueDate ?? hit.entryDate ?? '').slice(0, 10)}`
+          bankMatch = ` — passt zur A&H-Bank-Abbuchung vom ${String(hit.valueDate ?? hit.entryDate ?? '').slice(0, 10)}`
           break
         }
       }
     } catch { /* best effort */ }
   }
 
-  const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
-  let erstellt = 0
-  const fehler: string[] = []
-  for (const pdf of pdfs) {
-    const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
-    if (!up.ok || !up.internalFilename) { fehler.push(up.error ?? 'Upload fehlgeschlagen'); continue }
-    const v = await createSevVoucherDraft({
-      internalFilename: up.internalFilename,
-      supplierName: lieferant,
-      description: (`Beleg (automatisch aus E-Mail): ${subject}`.slice(0, 160)
-        + (betrag ? ` · ${betrag.toFixed(2)} €` : '')
-        + (meta.belegnummer ? ` · Nr. ${String(meta.belegnummer).slice(0, 40)}` : '')
-        + bankMatch).slice(0, 255),
-      ...(datum ? { voucherDate: datum } : {}),
-    })
-    if (v.ok) erstellt++
-    else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
+  const kiHinweis = [
+    meta.zuordnung === 'apartments' ? 'KI: eindeutig Apartments & Homes' : 'KI: Zuordnung unsicher',
+    begruendung, bankMatch.replace(/^ — /, ''),
+  ].filter(Boolean).join(' · ')
+
+  // ── SICHER (Bank-Match oder eindeutige KI-Zuordnung) → direkt sevdesk ──
+  const sicher = !!bankMatch || meta.zuordnung === 'apartments'
+  if (sicher) {
+    const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
+    let erstellt = 0
+    const fehler: string[] = []
+    for (const pdf of pdfs) {
+      const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
+      if (!up.ok || !up.internalFilename) { fehler.push(up.error ?? 'Upload fehlgeschlagen'); continue }
+      const v = await createSevVoucherDraft({
+        internalFilename: up.internalFilename,
+        supplierName: lieferant,
+        description: (`Beleg (automatisch aus E-Mail): ${subject}`.slice(0, 140)
+          + (betrag ? ` · ${betrag.toFixed(2)} €` : '')
+          + (meta.belegnummer ? ` · Nr. ${String(meta.belegnummer).slice(0, 40)}` : '')
+          + bankMatch).slice(0, 255),
+        ...(datum ? { voucherDate: datum } : {}),
+      })
+      if (v.ok) erstellt++
+      else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
+    }
+    if (erstellt) {
+      try {
+        const { sendPushToTeam } = await import('@/lib/push')
+        await sendPushToTeam('🧾 Beleg → sevdesk (A&H)',
+          `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''}${bankMatch || ' — eindeutig zugeordnet'}`.slice(0, 140),
+          '/team')
+      } catch { /* best effort */ }
+    }
+    if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
+    console.log('[inbound-mail] Beleg-Fischer → sevdesk:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
+    return { ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, fehler }
   }
-  if (erstellt) {
+
+  // ── UNSICHER → Beleg-Inbox (Inhaber entscheidet Gesellschaft + Kostenstelle) ──
+  try {
+    if (opts.mailKey) {
+      const { data: dupe } = await supabaseAdmin
+        .from('beleg_inbox').select('id').eq('mail_key', opts.mailKey).limit(1)
+      if (dupe?.length) return { ok: true, skipped: 'Beleg-Inbox: bereits erfasst' }
+    }
+    await ensureBelegeBucket()
+    const rowId = crypto.randomUUID()
+    const files: { path: string; name: string }[] = []
+    for (const pdf of pdfs) {
+      const path = `inbox/${rowId}/${pdf.name.replace(/[^\w.\-]/g, '_').slice(0, 80)}`
+      const { error } = await supabaseAdmin.storage.from('belege')
+        .upload(path, pdf.buf, { contentType: 'application/pdf', upsert: true })
+      if (!error) files.push({ path, name: pdf.name })
+    }
+    if (!files.length) return { ok: false, error: 'Beleg-Inbox: Storage-Upload fehlgeschlagen' }
+    const { error: insErr } = await supabaseAdmin.from('beleg_inbox').insert({
+      id: rowId, source: 'mail', mail_key: opts.mailKey ?? null, mailbox: opts.mailbox ?? null,
+      from_addr: from.slice(0, 160), subject: subject.slice(0, 200),
+      lieferant, betrag, beleg_datum: datum,
+      belegnummer: typeof meta.belegnummer === 'string' ? meta.belegnummer.slice(0, 60) : null,
+      ki_hinweis: kiHinweis.slice(0, 300), files,
+    })
+    if (insErr) return { ok: false, error: `Beleg-Inbox: ${insErr.message}` }
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam('🧾 Beleg eingegangen',
-        `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''}${bankMatch || ' — als Entwurf in sevdesk'}`.slice(0, 140),
+      await sendPushToTeam('🧾 Beleg zur Zuordnung',
+        `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''} — Gesellschaft/Kostenstelle in der App wählen`.slice(0, 140),
         '/team')
     } catch { /* best effort */ }
+    console.log('[inbound-mail] Beleg-Fischer → Inbox:', { lieferant, betrag, datum })
+    return { ok: true, belegInbox: rowId, lieferant, betrag }
+  } catch (e) {
+    return { ok: false, error: `Beleg-Inbox: ${String(e).slice(0, 200)}` }
   }
-  if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
-  console.log('[inbound-mail] Beleg-Fischer:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
-  return { ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, fehler }
 }
 
 /**
@@ -305,6 +373,7 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
 /** Der komplette Klassifikations-Flow für EINE Mail (beide Zubringer). */
 export async function processInboundMail(input: InboundMailInput): Promise<Record<string, unknown>> {
   const { from, subject, rawText, attachments } = input
+  const mailOpts = { mailbox: input.mailbox, mailKey: input.mailKey }
   const relayEmail = input.relayEmail ?? ''
 
   // §236 C2: Provisionsrechnung? (Portal-Absender + Rechnungs-Betreff +
@@ -316,7 +385,7 @@ export async function processInboundMail(input: InboundMailInput): Promise<Recor
 
   if (rawText.trim().length < 80) {
     // Kurzer Body, aber PDF dran → trotzdem durch den Beleg-Fischer
-    if (attachments.length) return handleReceiptMail(attachments, from, subject, rawText)
+    if (attachments.length) return handleReceiptMail(attachments, from, subject, rawText, mailOpts)
     console.error('[inbound-mail] Mail-Body leer/zu kurz:', subject.slice(0, 80))
     return { ok: true, skipped: 'kein Mail-Text verfügbar' }
   }
@@ -325,7 +394,7 @@ export async function processInboundMail(input: InboundMailInput): Promise<Recor
   // Gast antwortet einfach auf unsere Bestätigungs-Mail von buchung@)
   // — bzw. Lieferanten-Beleg (§236 C3, entscheidet der Handler selbst)
   const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
-  if (!relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments)
+  if (!relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments, mailOpts)
 
   // ── Claude extrahiert die Buchungsdaten ──
   const system = `Du extrahierst Buchungsdaten aus der Bestätigungs-E-Mail eines
