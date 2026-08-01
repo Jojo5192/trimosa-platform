@@ -575,6 +575,10 @@ export async function bookSevVoucher(voucherId: string, opts: {
    *  wenn gesetzt, gewinnen sie über die Einzel-Felder; bookAmount läuft
    *  über die Brutto-SUMME */
   positions?: { accountDatevId: number; taxRate: number; amountGross: number; isAsset?: boolean }[]
+  /** §243b: USt-Regel des Belegs — Default 9 (vorsteuerabziehbare
+   *  Aufwendungen); 5 = Reverse Charge §13b (Portal-Provisionen, Konto
+   *  5923) — steuert die UStVA-Kennziffern! */
+  taxRuleId?: number
 }): Promise<{ ok: boolean; verknuepft?: boolean; hinweis?: string; error?: string }> {
   try {
     const posList = opts.positions?.length
@@ -607,8 +611,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
           mapAll: true,
           status: 100,
           // §242: USt-Regel EXPLIZIT — der Update-Save darf die Regel des
-          // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen
-          taxRule: { id: 9, objectName: 'TaxRule' },
+          // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen;
+          // §13b-Belege (5923) buchen mit Regel 5
+          taxRule: { id: opts.taxRuleId ?? 9, objectName: 'TaxRule' },
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
         },
         voucherPosSave: posList.map((p) => {
