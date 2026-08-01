@@ -6,6 +6,7 @@ import {
 } from '@/lib/sevdesk'
 import { findBankAccounts, listBankTransactions, bookMoneyTransit, payoutClearingFor } from '@/lib/sevdesk-payouts'
 import { askClaude, askClaudeWithFile, FAST_MODEL } from '@/lib/ai'
+import { bucheEigenbeleg, resolveTilgungKonto } from '@/lib/eigenbeleg'
 
 /**
  * 💶 BUCHHALTUNGSMODUL (§239) — Admin/Gastgeber: sevdesk komplett aus der
@@ -264,6 +265,28 @@ export async function POST(req: NextRequest) {
       const standorte = [...new Set(wohnungenListe.map((w) => w.group).filter(Boolean))].join(', ')
       const pdf = pdf0
 
+      // §242d: Portal-PROVISIONSRECHNUNGEN deterministisch — die KI wählte
+      // sonst mal 5965 „OHNE Vorsteuerabzug" (echte Steuerlast!) statt 5923
+      // (§13b Reverse-Charge MIT Vorsteuerabzug = Nullsumme fuer
+      // vorsteuerabzugsberechtigte Vermieter). Steuerlich gibt es hier genau
+      // EINE richtige Antwort → kein KI-Wuerfeln.
+      const provSupplier = /booking\.com|airbnb|expedia|hometogo/i.test(v.supplierName ?? '')
+      const provText = /provisionsrechnung|invoice|commission/i.test(`${v.supplierName ?? ''} ${v.description ?? ''}`)
+      if (provSupplier && provText) {
+        const k5923 = guidance.find((x) => x.accountNumber === '5923')
+        if (k5923) {
+          return NextResponse.json({
+            accountDatevId: k5923.accountDatevId, kategorie: k5923.accountName, nr: k5923.accountNumber,
+            taxRate: 0,
+            betrag: null,
+            begruendung: 'Portal-Provisionsrechnung (EU-Anbieter) — feste Regel, keine KI-Wahl.',
+            steuerHinweis: 'Reverse-Charge §13b UStG: TRIMOSA schuldet die USt und zieht sie ZUGLEICH als Vorsteuer (Konto 5923 — Nullsumme). Betrag = NETTOBETRAG der Rechnung.',
+            anlagegut: false,
+            nutzungsdauer: null,
+          }, NO_STORE)
+        }
+      }
+
       // §242b/c: GELERNT — Kategorie/Steuer/Anlagegut vom letzten Mal;
       // Standort/KSt aber NUR aus echten Beleg-Indizien (Inhaber: VP
       // Glanzteam reinigt mehrere Standorte — nie blind den letzten nehmen)
@@ -300,7 +323,7 @@ export async function POST(req: NextRequest) {
       const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
       const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, E\u00DCR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einsch\u00E4tzung. Antworte NUR mit JSON:
 {"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 S\u00E4tze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
-Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u00F6s-/Umsatzkonten (4xxx) w\u00E4hlen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ans\u00E4ssigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erw\u00E4hnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur erm\u00E4\u00DFigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsg\u00FCtern \u00FCber 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: M\u00F6bel 13 J., IT 3 J., K\u00FCchenger\u00E4te 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erw\u00E4hnen). Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
+Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u00F6s-/Umsatzkonten (4xxx) w\u00E4hlen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ans\u00E4ssigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erw\u00E4hnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur erm\u00E4\u00DFigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsg\u00FCtern \u00FCber 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: M\u00F6bel 13 J., IT 3 J., K\u00FCchenger\u00E4te 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erw\u00E4hnen). Bei anlagegut=true w\u00E4hle als Kategorie IMMER 6220 Abschreibungen auf Sachanlagen (sevdesk-Konvention: die Position wird als Anlagegut markiert, sevdesk aktiviert das Gut im Anlagenmodul) \u2014 nie ein Betriebsbedarf-Konto f\u00FCr Anlageg\u00FCter. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
       const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '\u2014'}\nBeschreibung: ${v.description ?? '\u2014'}\nDatum: ${v.voucherDate ?? '\u2014'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
       // Mit PDF-Kopie liest die KI den ECHTEN Rechnungsinhalt (Vision)
       const raw = pdf
@@ -320,6 +343,63 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
         nutzungsdauer: typeof j.nutzungsdauer_jahre === 'number' ? j.nutzungsdauer_jahre : null,
         ...(ort ? { kst: ort.kst, zuordnung: ort.zuordnung } : {}),
       }, NO_STORE)
+    }
+
+    // §243: Zahlung OHNE Fremdbeleg buchen — App generiert einen Eigenbeleg
+    // (PDF), legt ihn als sevdesk-Beleg an, bucht die Positionen und
+    // verknuepft die Bank-Transaktion. Typen: miete | kredit | privat | sonstiges
+    if (b.action === 'eigenbeleg') {
+      const typ = String(b.typ ?? '')
+      const betrag = Math.round(Number(b.betrag) * 100) / 100
+      const empfaenger = String(b.empfaenger ?? '').trim().slice(0, 120)
+      const zweck = String(b.zweck ?? '').trim().slice(0, 160)
+      const datum = typeof b.txDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(b.txDate) ? b.txDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      if (!['miete', 'kredit', 'privat', 'sonstiges'].includes(typ)) return NextResponse.json({ error: 'typ (miete|kredit|privat|sonstiges) noetig.' }, { status: 400 })
+      if (!Number.isFinite(betrag) || betrag <= 0) return NextResponse.json({ error: 'betrag (>0) noetig.' }, { status: 400 })
+      if (!empfaenger || !zweck) return NextResponse.json({ error: 'empfaenger und zweck noetig.' }, { status: 400 })
+      if (!b.txId || !b.txAccountId) return NextResponse.json({ error: 'txId und txAccountId noetig.' }, { status: 400 })
+
+      const guidance = await getReceiptGuidance()
+      const byNr = (nr: string) => {
+        const hit = guidance.find((x) => x.accountNumber === nr)
+        if (!hit) throw new Error(`Konto ${nr} nicht im Katalog.`)
+        return hit
+      }
+      const positionen: { accountDatevId: number; taxRate: number; amountGross: number; name: string }[] = []
+      let grundlage = ''
+      if (typ === 'miete') {
+        const tax = Number(b.taxRate) === 19 ? 19 : 0
+        positionen.push({ accountDatevId: byNr('6310').accountDatevId, taxRate: tax, amountGross: betrag, name: `Miete/Pacht \u2014 ${zweck}` })
+        grundlage = 'Dauerschuldverhaeltnis (Mietvertrag). Miete/Pacht fuer unbewegliche Wirtschaftsgueter, Konto 6310' + (tax === 0 ? ', ohne USt-Ausweis (Vermietung durch Privatperson/ohne Option).' : '.')
+      } else if (typ === 'kredit') {
+        const zins = Math.round(Number(b.zinsAnteil) * 100) / 100
+        if (!Number.isFinite(zins) || zins < 0 || zins > betrag) return NextResponse.json({ error: 'zinsAnteil (0 bis betrag) noetig.' }, { status: 400 })
+        const tilgung = Math.round((betrag - zins) * 100) / 100
+        if (zins > 0) positionen.push({ accountDatevId: byNr('7300').accountDatevId, taxRate: 0, amountGross: zins, name: 'Zinsanteil (Betriebsausgabe, Konto 7300)' })
+        if (tilgung > 0) {
+          const tk = await resolveTilgungKonto()
+          positionen.push({ accountDatevId: tk.accountDatevId, taxRate: 0, amountGross: tilgung, name: `Tilgungsanteil (erfolgsneutral, Konto ${tk.kontoNr})` })
+        }
+        grundlage = 'Darlehensrate gemaess Darlehensvertrag/Tilgungsplan. NUR der Zinsanteil ist Betriebsausgabe; die Tilgung ist erfolgsneutral (keine Betriebsausgabe). Nachweis Zinsanteil: Zinsbescheinigung/Kontoauszug der Bank.'
+      } else if (typ === 'privat') {
+        positionen.push({ accountDatevId: byNr('2100').accountDatevId, taxRate: 0, amountGross: betrag, name: 'Privatentnahme (Konto 2100)' })
+        grundlage = 'Privatentnahme \u2014 keine Betriebsausgabe, reine Kapitalkonten-Bewegung.'
+      } else {
+        const katId = Number(b.accountDatevId)
+        const hit = guidance.find((x) => x.accountDatevId === katId)
+        if (!hit) return NextResponse.json({ error: 'accountDatevId aus dem Katalog noetig.' }, { status: 400 })
+        const tax = [19, 7, 0].includes(Number(b.taxRate)) ? Number(b.taxRate) : 0
+        positionen.push({ accountDatevId: hit.accountDatevId, taxRate: tax, amountGross: betrag, name: `${hit.accountName} (Konto ${hit.accountNumber})` })
+        grundlage = 'Eigenbeleg fuer Zahlung ohne Fremdbeleg.'
+      }
+
+      const r = await bucheEigenbeleg({
+        empfaenger, datum, zweck, positionen, grundlage,
+        kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+        zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
+        txId: String(b.txId), txAccountId: String(b.txAccountId), txDate: datum,
+      })
+      return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
     }
 
     if (b.action === 'verbuchen') {
