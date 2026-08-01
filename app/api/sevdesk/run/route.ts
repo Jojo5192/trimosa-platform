@@ -70,6 +70,19 @@ export async function POST(request: NextRequest) {
     }
 
     // §242-Diagnose: einen Beleg samt Positionen roh ansehen
+    // §243b: ReceiptGuidance-Sonde — z. B. Asset-Konten finden, die NICHT
+    // in forAllAccounts stehen (Anlagegueter: "Must only set isAsset for
+    // asset accounts")
+    if (b.action === 'guidance-probe') {
+      const { sevJson } = await import('@/lib/sevdesk')
+      try {
+        const raw = await sevJson(`/ReceiptGuidance/forAccountNumber?accountNumber=${Number(b.accountNumber)}`)
+        return NextResponse.json({ ok: true, raw })
+      } catch (e) {
+        return NextResponse.json({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) })
+      }
+    }
+
     if (b.action === 'voucher-info') {
       const { sevJson } = await import('@/lib/sevdesk')
       const voucher = await sevJson(`/Voucher/${String(b.voucherId)}`)
