@@ -19,7 +19,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   sevdeskConfigured, createPaidInvoice, invoiceNumberExists, cancelSevInvoice,
-  clearingLabelFor, type SevInvoiceInput,
+  updateSevInvoiceRecipient, clearingLabelFor, type SevInvoiceInput,
 } from '@/lib/sevdesk'
 import { sanitizeRecipient, type InvoiceRecipient } from '@/lib/lexoffice'
 
@@ -276,16 +276,42 @@ export async function createSevInvoiceForBooking(bookingId: string, opts: {
   }
 }
 
-/** §159: Neu-Ausstellung mit anderem Empfänger — Auto-Storno der alten
- *  Rechnung (sevdesk verrechnet die Stornorechnung selbst), dann frisch. */
+/** §159/§235-Nachtrag: Empfänger ändern — DIREKT auf der bestehenden
+ *  Rechnung (gleiche Nummer, sevdesk-Update + PDF-Neu-Render; geht solange
+ *  nicht festgeschrieben — Inhaber-Doktrin). Nur bei festgeschriebenen
+ *  Belegen bleibt der alte Weg: Auto-Storno + Neu-Ausstellung. */
 export async function reissueSevInvoice(bookingId: string, recipient: InvoiceRecipient): Promise<
-  SevCreateResult & { oldNumber?: string | null; stornoNote?: string }
+  SevCreateResult & { updated?: boolean; oldNumber?: string | null; stornoNote?: string }
 > {
   const row = await getSevRow(bookingId)
   if (!row?.sevdesk_id) {
     const r = await createSevInvoiceForBooking(bookingId, { recipient })
     return { ...r }
   }
+  await saveSevRecipient(bookingId, recipient)
+  // Zahlungs-Sicherung nur für BEZAHLTE Rechnungen (row.status 'gebucht') —
+  // „auf Rechnung" ('erstellt') bleibt bewusst offen bis zum Bankabgleich
+  let rebook: { clearingLabel: string; date: string } | undefined
+  if (row.status === 'gebucht') {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings').select('check_in, channel, source').eq('id', bookingId).maybeSingle()
+    if (bk) rebook = { clearingLabel: clearingLabelFor(`${bk.channel ?? ''} ${bk.source ?? ''}`), date: String(bk.check_in) }
+  }
+  const upd = await updateSevInvoiceRecipient(row.sevdesk_id, {
+    contactName: recipient.name,
+    addressText: addressTextFor(recipient) ?? recipient.name,
+    ...(rebook ? { rebook } : {}),
+  })
+  if (upd.ok) {
+    console.log('[sevdesk-engine] Empfänger direkt geändert:', row.invoice_number, '→', recipient.name)
+    return { ok: true, sevdeskId: row.sevdesk_id, number: row.invoice_number, updated: true }
+  }
+  if (!upd.enshrined) {
+    // API lehnt das Update ab (unerwartet) → NICHT automatisch stornieren,
+    // der Fehler soll sichtbar werden statt still eine Storno-Kette zu bauen
+    return { ok: false, error: `Empfänger-Update fehlgeschlagen: ${upd.error}`, oldNumber: row.invoice_number }
+  }
+  // Festgeschrieben (z. B. nach der UStVA) → GoBD-Weg: Storno + Neu
   const oldNumber = row.invoice_number
   const st = await cancelSevInvoice(row.sevdesk_id)
   if (!st.ok) return { ok: false, error: `Storno der alten Rechnung fehlgeschlagen: ${st.error}`, oldNumber }
