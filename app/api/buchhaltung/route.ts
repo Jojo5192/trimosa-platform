@@ -337,13 +337,18 @@ export async function POST(req: NextRequest) {
       if (g && hitG) {
         let ort: { kst: string; zuordnung: Record<string, unknown> } | null = null
         let ortText = ''
+        // §243b: Der Mini-Vision-Check liest neben Standort-Indizien auch den
+        // BETRAG mit — der Gelernt-Pfad lieferte sonst betrag null und die
+        // Verbuchungs-Runde musste Folgebelege ohne Description-Betrag skippen
+        let gBetrag: number | null = null
         if (pdf) {
           try {
             const raw = await askClaudeWithFile(
-              `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung auf STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — NUR bei echten Indizien setzen, sonst null.`,
+              `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG: Lies den Rechnungs-GESAMTBETRAG (brutto). 2) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
               `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
-              { mediaType: 'application/pdf', base64: pdf.base64 }, 1500)
+              { mediaType: 'application/pdf', base64: pdf.base64 }, 1800)
             const oj = parseJsonLoose(raw)
+            if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
             ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
             if (ort && typeof oj.indiz === 'string') ortText = ` \u00B7 Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
           } catch { /* Vision best effort */ }
@@ -352,7 +357,7 @@ export async function POST(req: NextRequest) {
           gelernt: true,
           accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
           taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
-          betrag: null,
+          betrag: gBetrag,
           begruendung: '\u{1F9E0} Kategorie aus deiner letzten Buchung f\u00FCr diesen Lieferanten' + ortText,
           steuerHinweis: '',
           anlagegut: g.anlagegut === true,
@@ -450,16 +455,18 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
       if (!b.voucherId || !Number.isFinite(amountGross) || amountGross <= 0 || !Number.isFinite(accountDatevId)) {
         return NextResponse.json({ error: 'voucherId, accountDatevId und amountGross (>0) nötig.' }, { status: 400 })
       }
-      // §243b: Konto 5923 (EU-Portal-Provisionen) MUSS mit taxRule 5
-      // (Reverse Charge §13b) gebucht werden — sonst falsche UStVA-
-      // Kennziffern. Deterministisch aus dem Konto abgeleitet.
+      // §243b: Konto 5923 (EU-Portal-Provisionen) braucht taxRule 14
+      // (REV_CHARGE_13B_EU_0) — Regel 5 lehnt sevdesk fuer 5923 mit 422 ab
+      // (Kalibrierung 1.8.: "Allowed tax rules: TaxRule(id=14,
+      // code=REV_CHARGE_13B_EU_0)"; die Spec-Regelliste 1-17 ist
+      // unvollstaendig). Sonst falsche UStVA-Kennziffern.
       const gd = await getReceiptGuidance()
       const kontoNr = gd.find((x) => x.accountDatevId === accountDatevId)?.accountNumber
       const r = await bookSevVoucher(String(b.voucherId), {
         accountDatevId,
         taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
         amountGross,
-        ...(kontoNr === '5923' ? { taxRuleId: 5 } : {}),
+        ...(kontoNr === '5923' ? { taxRuleId: 14 } : {}),
         costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
         isAsset: b.anlagegut === true,
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
