@@ -32,6 +32,29 @@ async function requireFinance() {
   return me?.is_admin ? user : null
 }
 
+/** §242b: Die App LERNT aus jeder Verbuchung — je Lieferant die zuletzt
+ *  gewählte Kategorie/Steuer/KSt/Zuordnung (app_settings 'buchhaltung'). */
+type Gelernt = { accountDatevId: number; taxRate: number; anlagegut: boolean; kst: string | null; zuordnung: unknown; at: string }
+async function getBuchhaltungSettings(): Promise<{ ignoredTx?: string[]; gelernt?: Record<string, Gelernt> }> {
+  const { data } = await supabaseAdmin
+    .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
+  return (data?.value ?? {}) as { ignoredTx?: string[]; gelernt?: Record<string, Gelernt> }
+}
+async function saveGelernt(lieferant: string, g: Gelernt): Promise<void> {
+  try {
+    const cur = await getBuchhaltungSettings()
+    const gelernt = { ...(cur.gelernt ?? {}), [lieferant.trim()]: g }
+    // Deckel: älteste raus ab 300 Lieferanten
+    const keys = Object.keys(gelernt)
+    if (keys.length > 300) {
+      keys.sort((a, b) => String(gelernt[a].at).localeCompare(String(gelernt[b].at)))
+      for (const k of keys.slice(0, keys.length - 300)) delete gelernt[k]
+    }
+    await supabaseAdmin.from('app_settings').upsert(
+      { key: 'buchhaltung', value: { ...cur, gelernt } }, { onConflict: 'key' })
+  } catch { /* best effort */ }
+}
+
 async function getIgnored(): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
@@ -169,6 +192,27 @@ export async function POST(req: NextRequest) {
       const v = vouchers.find((x) => x.id === String(b.voucherId))
       if (!v) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
       const guidance = await getReceiptGuidance()
+      // §242b: Erst das GELERNTE — gleicher Lieferant wie zuletzt gebucht →
+      // dieselbe Entscheidung (deterministisch, konsistent, ohne KI-Call)
+      if (v.supplierName) {
+        const { gelernt } = await getBuchhaltungSettings()
+        const g = gelernt?.[v.supplierName.trim()]
+        const hit2 = g ? guidance.find((x) => x.accountDatevId === Number(g.accountDatevId)) : null
+        if (g && hit2) {
+          return NextResponse.json({
+            gelernt: true,
+            accountDatevId: hit2.accountDatevId, kategorie: hit2.accountName, nr: hit2.accountNumber,
+            taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
+            betrag: null,
+            begruendung: '\u{1F9E0} Aus deiner letzten Buchung für diesen Lieferanten übernommen.',
+            steuerHinweis: '',
+            anlagegut: g.anlagegut === true,
+            nutzungsdauer: null,
+            kst: g.kst ?? null,
+            zuordnung: g.zuordnung ?? null,
+          }, NO_STORE)
+        }
+      }
       const katalog = guidance.map((g) => `${g.accountDatevId}|${g.accountNumber}|${g.accountName}`).join('\n')
       const raw = await askClaude(
         `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
@@ -208,6 +252,17 @@ Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 
       // interne Wohnungs-Zuordnung mitschreiben (fail-soft)
       if (r.ok && b.zuordnung && typeof b.zuordnung === 'object') {
         await saveZuordnung(String(b.voucherId), null, b.zuordnung as Record<string, unknown>)
+      }
+      // §242b: aus der Entscheidung LERNEN (nächster Beleg desselben
+      // Lieferanten bekommt sie als Vorschlag)
+      if (r.ok && typeof b.lieferant === 'string' && b.lieferant.trim()) {
+        await saveGelernt(b.lieferant, {
+          accountDatevId, taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
+          anlagegut: b.anlagegut === true,
+          kst: typeof b.kostenstelle === 'string' && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+          zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung : null,
+          at: new Date().toISOString(),
+        })
       }
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
     }
