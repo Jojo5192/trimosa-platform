@@ -686,7 +686,7 @@ export default function BuchhaltungClient() {
       {/* ── Inhalt: Liste + Detail ── */}
       <main style={{ flex: 1, maxWidth: 1240, margin: '0 auto', width: '100%', boxSizing: 'border-box', padding: '14px 16px calc(40px + env(safe-area-inset-bottom))', display: 'grid', gap: 18, gridTemplateColumns: isMobile ? '1fr' : '380px 1fr', alignItems: 'start' }}>
         {/* Liste */}
-        <div style={{ display: (isMobile && detailOffen) ? 'none' : 'block' }}>
+        <div style={{ display: (isMobile && detailOffen) ? 'none' : 'block', minWidth: 0 }}>
           {section === 'zahlungen' && (
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', margin: '2px 2px 12px' }}>
               <Chip active={txRichtung === 'alle'} onClick={() => setTxRichtung('alle')}>Alle</Chip>
@@ -726,7 +726,7 @@ export default function BuchhaltungClient() {
         </div>
 
         {/* Detail */}
-        <div style={{ display: (isMobile && !detailOffen) ? 'none' : 'block' }}>
+        <div style={{ display: (isMobile && !detailOffen) ? 'none' : 'block', minWidth: 0 }}>
           {isMobile && detailOffen && (
             <button onClick={() => { haptic(); setSelId(null) }} style={{ background: 'none', border: 'none', color: GOLD, fontWeight: 600, fontSize: 16, cursor: 'pointer', padding: '0 0 12px', WebkitTapHighlightColor: 'transparent' }}>‹ Zurück</button>
           )}
