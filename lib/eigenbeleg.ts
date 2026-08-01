@@ -143,13 +143,19 @@ export async function bucheEigenbeleg(opts: {
   grundlage: string
   kostenstelle?: string | null
   zuordnung?: Record<string, unknown> | null
-  txId: string
-  txAccountId: string
+  txId?: string
+  txAccountId?: string
   txDate?: string
+  /** §243s: Zahlung gegen ein VERRECHNUNGSKONTO (Portal-Netting) statt
+   *  einer Bank-Transaktion */
+  clearingLabel?: string
   /** §243o: 'eingang' = Erstattung/Einlage — Einnahme-Beleg (creditDebit 'D'),
    *  Zahlung wird POSITIV gegen den Bank-EINGANG gebucht */
   richtung?: 'ausgabe' | 'eingang'
 }): Promise<{ ok: boolean; voucherId?: string; verknuepft?: boolean; hinweis?: string; error?: string }> {
+  if (!opts.clearingLabel && !(opts.txId && opts.txAccountId)) {
+    return { ok: false, error: 'txId+txAccountId ODER clearingLabel noetig.' }
+  }
   const gesamt = Math.round(opts.positionen.reduce((a, p) => a + p.amountGross, 0) * 100) / 100
   if (!opts.positionen.length || gesamt <= 0) return { ok: false, error: 'Keine gültigen Positionen.' }
 
@@ -180,6 +186,7 @@ export async function bucheEigenbeleg(opts: {
     })),
     costCentreName: opts.kostenstelle ?? null,
     txId: opts.txId, txAccountId: opts.txAccountId, txDate: opts.txDate,
+    ...(opts.clearingLabel ? { clearingLabel: opts.clearingLabel } : {}),
     ...(opts.richtung === 'eingang' ? { einnahme: true } : {}),
   })
   if (!booked.ok) return { ok: false, voucherId: draft.voucherId, error: booked.error }
