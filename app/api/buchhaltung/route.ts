@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   listSevVouchers, getReceiptGuidance, updateSevVoucherCostCentre, bookSevVoucher,
+  markTransactionPrivate, deleteSevVoucher,
 } from '@/lib/sevdesk'
 import { findBankAccounts, listBankTransactions, bookMoneyTransit, payoutClearingFor } from '@/lib/sevdesk-payouts'
 import { askClaudeWithFile } from '@/lib/ai'
@@ -299,6 +300,8 @@ export async function POST(req: NextRequest) {
         grundlage: String(b.grundlage ?? 'Wiederkehrende Zahlung (Merkregel).').slice(0, 300),
         kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
         zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
+        // §243o: Zweck-Bedingung — Regel greift nur bei passendem Verwendungszweck
+        zweckMuss: typeof b.zweckMuss === 'string' && b.zweckMuss.trim() ? b.zweckMuss.trim().slice(0, 60) : null,
       })
       return NextResponse.json({ ok: true }, NO_STORE)
     }
@@ -312,6 +315,11 @@ export async function POST(req: NextRequest) {
       const empfaenger = String(b.empfaenger ?? '').trim().slice(0, 120)
       const zweck = String(b.zweck ?? '').trim().slice(0, 160)
       const datum = typeof b.txDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(b.txDate) ? b.txDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      // §243o: EINGANGS-Eigenbeleg (Erstattung/Privateinlage/Auslagenausgleich)
+      const richtung: 'ausgabe' | 'eingang' = b.richtung === 'eingang' ? 'eingang' : 'ausgabe'
+      if (richtung === 'eingang' && !['privat', 'sonstiges'].includes(typ)) {
+        return NextResponse.json({ error: 'Bei Eingaengen nur typ privat (Einlage) oder sonstiges.' }, { status: 400 })
+      }
       if (!['miete', 'kredit', 'privat', 'sonstiges'].includes(typ)) return NextResponse.json({ error: 'typ (miete|kredit|privat|sonstiges) noetig.' }, { status: 400 })
       if (!Number.isFinite(betrag) || betrag <= 0) return NextResponse.json({ error: 'betrag (>0) noetig.' }, { status: 400 })
       if (!empfaenger || !zweck) return NextResponse.json({ error: 'empfaenger und zweck noetig.' }, { status: 400 })
@@ -340,15 +348,24 @@ export async function POST(req: NextRequest) {
         }
         grundlage = 'Darlehensrate gemaess Darlehensvertrag/Tilgungsplan. NUR der Zinsanteil ist Betriebsausgabe; die Tilgung ist erfolgsneutral (keine Betriebsausgabe). Nachweis Zinsanteil: Zinsbescheinigung/Kontoauszug der Bank.'
       } else if (typ === 'privat') {
-        positionen.push({ accountDatevId: byNr('2100').accountDatevId, taxRate: 0, amountGross: betrag, name: 'Privatentnahme (Konto 2100)' })
-        grundlage = 'Privatentnahme \u2014 keine Betriebsausgabe, reine Kapitalkonten-Bewegung.'
+        if (richtung === 'eingang') {
+          // Privateinlage: 2180 falls im Katalog, sonst 2100 (Kapitalkonto)
+          const einlage = guidance.find((x) => x.accountNumber === '2180') ?? byNr('2100')
+          positionen.push({ accountDatevId: einlage.accountDatevId, taxRate: 0, amountGross: betrag, name: `Privateinlage (Konto ${einlage.accountNumber})` })
+          grundlage = 'Privateinlage \u2014 keine Betriebseinnahme, reine Kapitalkonten-Bewegung.'
+        } else {
+          positionen.push({ accountDatevId: byNr('2100').accountDatevId, taxRate: 0, amountGross: betrag, name: 'Privatentnahme (Konto 2100)' })
+          grundlage = 'Privatentnahme \u2014 keine Betriebsausgabe, reine Kapitalkonten-Bewegung.'
+        }
       } else {
         const katId = Number(b.accountDatevId)
         const hit = guidance.find((x) => x.accountDatevId === katId)
         if (!hit) return NextResponse.json({ error: 'accountDatevId aus dem Katalog noetig.' }, { status: 400 })
         const tax = [19, 7, 0].includes(Number(b.taxRate)) ? Number(b.taxRate) : 0
         positionen.push({ accountDatevId: hit.accountDatevId, taxRate: tax, amountGross: betrag, name: `${hit.accountName} (Konto ${hit.accountNumber})` })
-        grundlage = 'Eigenbeleg fuer Zahlung ohne Fremdbeleg.'
+        grundlage = richtung === 'eingang'
+          ? 'Eigenbeleg fuer Zahlungseingang ohne Fremdbeleg (z. B. Erstattung/Auslagenausgleich).'
+          : 'Eigenbeleg fuer Zahlung ohne Fremdbeleg.'
       }
 
       const r = await bucheEigenbeleg({
@@ -356,11 +373,15 @@ export async function POST(req: NextRequest) {
         kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
         zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
         txId: String(b.txId), txAccountId: String(b.txAccountId), txDate: datum,
+        richtung,
       })
       // §243j MERKREGEL: dieselbe wiederkehrende Zahlung (Empfaenger +
       // exakter Betrag) bucht der taegliche Lauf kuenftig automatisch —
       // Privatentnahmen/Mieten/Abos fasst der Inhaber nie wieder an
-      if (r.ok && positionen.length === 1 && typ !== 'kredit') {
+      // §243o: keineRegel unterdrueckt das Merken (Batch-Buchungen mit
+      // wechselnder Zuordnung wie MONTANA — Regeln kommen dort explizit
+      // via eigen-regel mit zweckMuss); Eingaenge merkt der Lauf nie
+      if (r.ok && positionen.length === 1 && typ !== 'kredit' && b.keineRegel !== true && richtung !== 'eingang') {
         await saveEigenRegel({
           typ: typ as 'miete' | 'privat' | 'sonstiges',
           empfaenger, betrag, zweck, position: positionen[0], grundlage,
@@ -441,13 +462,65 @@ export async function POST(req: NextRequest) {
     }
 
     if (b.action === 'tx-ignorieren') {
-      const ignored = await getIgnored()
       const id = String(b.txId ?? '')
       if (!id) return NextResponse.json({ error: 'txId nötig.' }, { status: 400 })
+      // ⚠️ §243o-BUGFIX: vorher wurde das GANZE buchhaltung-Settings-Objekt
+      // ueberschrieben — ein „Kein Beleg noetig"-Klick haette eigenRegeln +
+      // Gelerntes geloescht! Jetzt: vollstaendiger Merge.
+      const { data: cur } = await supabaseAdmin
+        .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
+      const val = (cur?.value ?? {}) as Record<string, unknown>
+      const ignored = Array.isArray(val.ignoredTx) ? (val.ignoredTx as unknown[]).map(String) : []
       const next = b.on === false ? ignored.filter((x) => x !== id) : [...new Set([...ignored, id])].slice(-500)
       await supabaseAdmin.from('app_settings').upsert(
-        { key: 'buchhaltung', value: { ignoredTx: next } }, { onConflict: 'key' })
-      return NextResponse.json({ ok: true, ignoriert: b.on !== false }, NO_STORE)
+        { key: 'buchhaltung', value: { ...val, ignoredTx: next } }, { onConflict: 'key' })
+      // §243o: Spiegel nach sevdesk — Transaktion als PRIVAT (300) markieren,
+      // damit sie auch dort aus dem offenen Bankabgleich verschwindet;
+      // Ruecknahme setzt sie zurueck auf offen (100). Best effort.
+      const priv = await markTransactionPrivate(id, b.on !== false)
+      return NextResponse.json({ ok: true, ignoriert: b.on !== false, sevdeskPrivat: priv.ok, ...(priv.error ? { sevdeskHinweis: priv.error } : {}) }, NO_STORE)
+    }
+
+    // §243o: BESTAND nachziehen — alle bisher nur in der App ignorierten
+    // Transaktionen auch in sevdesk als PRIVAT markieren
+    if (b.action === 'tx-privat-sync') {
+      const ignored = await getIgnored()
+      let okCount = 0
+      const fehler: string[] = []
+      for (const id of ignored) {
+        const r = await markTransactionPrivate(id, true)
+        if (r.ok) okCount++
+        else fehler.push(`${id}: ${r.error ?? '?'}`)
+        await new Promise((res) => setTimeout(res, 250))
+      }
+      return NextResponse.json({ ok: true, gesamt: ignored.length, privat: okCount, fehler: fehler.slice(0, 10) }, NO_STORE)
+    }
+
+    // §243o: Beleg loeschen (Import-Duplikate) — Kalibrier-Versuch, die
+    // Spec kennt kein DELETE /Voucher; Fallback bleibt die sevdesk-UI
+    if (b.action === 'voucher-delete') {
+      if (b.confirm !== 'DELETE') return NextResponse.json({ error: "confirm: 'DELETE' noetig." }, { status: 400 })
+      if (!/^\d{3,15}$/.test(String(b.voucherId ?? ''))) return NextResponse.json({ error: 'voucherId noetig.' }, { status: 400 })
+      const r = await deleteSevVoucher(String(b.voucherId))
+      return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
+    }
+
+    // §243o: Settings-Integritaet (nach dem tx-ignorieren-Bug): Zaehler +
+    // Regel-Keys — read-only Diagnose
+    if (b.action === 'settings-check') {
+      const { data: cur } = await supabaseAdmin
+        .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
+      const val = (cur?.value ?? {}) as Record<string, unknown>
+      const regeln = (val.eigenRegeln ?? {}) as Record<string, unknown>
+      const gelernt = (val.gelernt ?? {}) as Record<string, unknown>
+      const ign = Array.isArray(val.ignoredTx) ? val.ignoredTx.length : 0
+      return NextResponse.json({
+        eigenRegeln: Object.keys(regeln).length,
+        regelKeys: Object.keys(regeln),
+        gelernt: Object.keys(gelernt).length,
+        ignoredTx: ign,
+        topLevelKeys: Object.keys(val),
+      }, NO_STORE)
     }
 
     return NextResponse.json({ error: 'Unbekannte action.' }, { status: 400 })
