@@ -20,7 +20,7 @@ export function sevdeskConfigured(): boolean {
   return !!process.env.SEVDESK_API_TOKEN
 }
 
-async function sevFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function sevFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = process.env.SEVDESK_API_TOKEN
   if (!token) throw new Error('SEVDESK_API_TOKEN fehlt (Vercel-Env).')
   return fetch(`${BASE}${path}`, {
@@ -35,7 +35,7 @@ async function sevFetch(path: string, init?: RequestInit): Promise<Response> {
   })
 }
 
-async function sevJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function sevJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await sevFetch(path, init)
   const text = await res.text()
   if (!res.ok) throw new Error(`sevdesk ${init?.method ?? 'GET'} ${path} HTTP ${res.status}: ${text.slice(0, 300)}`)
@@ -404,6 +404,63 @@ export async function cancelSevInvoice(sevdeskId: string): Promise<{ ok: boolean
     const sr = await sevJson<{ id: string; invoiceNumber?: string | null }>(
       `/Invoice/${sevdeskId}/cancelInvoice`, { method: 'POST' })
     return { ok: true, cancellationId: String(sr?.id ?? ''), cancellationNumber: sr?.invoiceNumber ?? null }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
+/** §236 C2: Beleg-Datei (Provisionsrechnung-PDF) zu sevdesk hochladen —
+ *  multipart, deshalb eigener fetch (sevFetch erzwingt JSON-Content-Type). */
+export async function uploadSevVoucherFile(pdf: Buffer, filename: string): Promise<{ ok: boolean; internalFilename?: string; error?: string }> {
+  const token = process.env.SEVDESK_API_TOKEN
+  if (!token) return { ok: false, error: 'SEVDESK_API_TOKEN fehlt' }
+  try {
+    const form = new FormData()
+    form.append('file', new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), filename)
+    const res = await fetch(`${BASE}/Voucher/Factory/uploadTempFile`, {
+      method: 'POST', headers: { Authorization: token }, body: form, cache: 'no-store',
+    })
+    const text = await res.text()
+    if (!res.ok) return { ok: false, error: `uploadTempFile HTTP ${res.status}: ${text.slice(0, 200)}` }
+    const obj = (JSON.parse(text) as { objects?: { filename?: string } }).objects
+    return obj?.filename
+      ? { ok: true, internalFilename: obj.filename }
+      : { ok: false, error: `uploadTempFile ohne filename: ${text.slice(0, 200)}` }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
+/** §236 C2: Beleg als ENTWURF anlegen (Status 50) — Datei + Lieferant +
+ *  Beschreibung; die Verbuchung (Positionen, Reverse-Charge §13b, Zahlung
+ *  gegen das Verrechnungskonto) bleibt bewusst beim Inhaber bzw. der
+ *  späteren KI-Verbuchungs-Runde. Payload minimal — Kalibrierung §127. */
+export async function createSevVoucherDraft(opts: {
+  internalFilename: string
+  supplierName: string
+  description: string
+  voucherDate?: string
+}): Promise<{ ok: boolean; voucherId?: string; error?: string }> {
+  try {
+    const saved = await sevJson<{ voucher: { id: string } }>('/Voucher/Factory/saveVoucher', {
+      method: 'POST',
+      body: JSON.stringify({
+        voucher: {
+          objectName: 'Voucher',
+          mapAll: true,
+          status: 50,
+          creditDebit: 'C',
+          voucherType: 'VOU',
+          supplierName: opts.supplierName,
+          description: opts.description,
+          ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
+        },
+        voucherPosSave: null,
+        voucherPosDelete: null,
+        filename: opts.internalFilename,
+      }),
+    })
+    return { ok: true, voucherId: String(saved?.voucher?.id ?? '') }
   } catch (e) {
     return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
   }
