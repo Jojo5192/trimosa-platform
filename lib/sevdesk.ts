@@ -298,6 +298,104 @@ export async function getSevInvoicePdf(sevdeskId: string): Promise<{ ok: boolean
   }
 }
 
+/** §235-Nachtrag: Nach resetToOpen bleibt die Zahlung als UNVERKNÜPFTE
+ *  Transaktion auf dem Verrechnungskonto liegen (Spec: „Linked transactions
+ *  will be unlinked") — vor dem Neu-Verbuchen aufräumen, sonst liegt der
+ *  Betrag doppelt auf dem Konto. Verrechnungskonten enthalten NUR unsere
+ *  bookAmount-Buchungen → exakter Betrag + isBooked=false ist eindeutig. */
+async function deleteClearingOrphan(clearingId: string, amount: number): Promise<boolean> {
+  try {
+    const list = await sevJson<{ id: string; amount: string | number }[]>(
+      `/CheckAccountTransaction?checkAccount[id]=${clearingId}&checkAccount[objectName]=CheckAccount&isBooked=false&limit=50`)
+    const hit = (list ?? []).find((t) => Math.abs(Math.abs(Number(t.amount)) - amount) < 0.005)
+    if (!hit) return false
+    const del = await sevFetch(`/CheckAccountTransaction/${hit.id}`, { method: 'DELETE' })
+    return del.ok
+  } catch {
+    return false
+  }
+}
+
+/** §235-Nachtrag: Empfänger DIREKT auf der bestehenden Rechnung ändern —
+ *  möglich, solange sie nicht festgeschrieben ist (Inhaber-Doktrin:
+ *  Festschreibung erst mit der UStVA). Partial-PUT wie beim CostCentre-
+ *  Rename (§234-bewiesen); danach PDF neu rendern, damit der Gast-Link
+ *  sofort die neue Anschrift zeigt.
+ *
+ *  KASKADE für BEZAHLTE Rechnungen (Inhaber-Idee 1.8.): lehnt sevdesk das
+ *  direkte PUT bei Status ≥ 1000 ab → Zahlung rückgängig (resetToOpen) →
+ *  ändern → Waisen-Transaktion vom Verrechnungskonto räumen → Zahlung neu
+ *  verbuchen (bookAmount, exakter sumGross). Jeder Teilschritt ist über
+ *  einen erneuten Aufruf selbstheilend (rebook greift auch, wenn ein
+ *  früherer Versuch die Rechnung offen zurückließ). */
+export async function updateSevInvoiceRecipient(sevdeskId: string, opts: {
+  contactName: string
+  addressText?: string
+  /** Zahlungs-Sicherung für gebuchte Rechnungen: hält die Rechnung nach der
+   *  Änderung garantiert wieder auf „bezahlt" (nur bei bezahlten Belegen
+   *  übergeben — „auf Rechnung" bleibt bewusst offen) */
+  rebook?: { clearingLabel: string; date: string }
+}): Promise<{ ok: boolean; enshrined?: boolean; rebooked?: boolean; error?: string }> {
+  try {
+    type Inv = { id: string; status: string; enshrined?: string | null; sumGross: string | number }
+    let inv = (await sevJson<Inv[]>(`/Invoice/${sevdeskId}`))[0]
+    if (!inv) return { ok: false, error: 'Rechnung nicht gefunden' }
+    if (inv.enshrined) return { ok: false, enshrined: true, error: 'Rechnung ist festgeschrieben' }
+    const sumGross = Number(inv.sumGross)
+
+    const contactId = await ensureContact(opts.contactName)
+    const putRecipient = () => sevJson(`/Invoice/${sevdeskId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        contact: { id: Number(contactId), objectName: 'Contact' },
+        address: opts.addressText ?? opts.contactName,
+      }),
+    })
+
+    let usedReset = false
+    try {
+      await putRecipient()
+    } catch (e) {
+      if (!opts.rebook || Number(inv.status) < 1000) throw e
+      // Bezahlt-Status blockiert das Update → Zahlung rückgängig, dann ändern
+      await sevJson(`/Invoice/${sevdeskId}/resetToOpen`, { method: 'PUT' })
+      usedReset = true
+      await putRecipient()
+    }
+
+    // Zahlungs-Sicherung: steht die Rechnung (nach Reset oder einem früher
+    // abgebrochenen Versuch) auf OFFEN, wird die Zahlung wieder verbucht
+    let rebooked = false
+    if (opts.rebook) {
+      if (usedReset) inv = (await sevJson<Inv[]>(`/Invoice/${sevdeskId}`))[0]
+      if (Number(inv.status) < 1000) {
+        const clearingId = await ensureClearingAccount(opts.rebook.clearingLabel)
+        const orphanWeg = await deleteClearingOrphan(clearingId, sumGross)
+        if (usedReset && !orphanWeg) console.warn('[sevdesk] Waisen-Transaktion nach resetToOpen nicht gefunden — Verrechnungskonto prüfen:', sevdeskId)
+        await sevJson(`/Invoice/${sevdeskId}/bookAmount`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            amount: sumGross,
+            date: Math.floor(Date.parse(opts.rebook.date + 'T12:00:00Z') / 1000),
+            type: 'FULL_PAYMENT',
+            checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
+          }),
+        })
+        rebooked = true
+      }
+    }
+
+    try {
+      await sevFetch(`/Invoice/${sevdeskId}/render`, {
+        method: 'POST', body: JSON.stringify({ forceReload: true }),
+      })
+    } catch { /* best effort — getPdf rendert zur Not selbst neu */ }
+    return { ok: true, rebooked }
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
+  }
+}
+
 /** §235: Rechnung stornieren — sevdesk erzeugt die Stornorechnung, verrechnet
  *  sie automatisch und setzt das Original auf „cancelled" (Spec: cancelInvoice).
  *  ⚠️ Storniert = festgeschrieben (PoC §233) — GoBD-korrekt, nicht rückgängig. */
