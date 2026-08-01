@@ -158,6 +158,70 @@ async function handleWebsiteGuestReply(fromRaw: string, rawText: string): Promis
   return NextResponse.json({ ok: true, bookingId: booking.id, nachricht: saved })
 }
 
+/** §236 C2: PDF aus einem Resend-Anhang holen — Antwortform defensiv
+ *  (base64-content ODER Download-URL; exakte Feldnamen kalibrieren sich am
+ *  ersten Live-Fall über das keys-Log). */
+async function pdfFromAttachment(att: Record<string, unknown>): Promise<{ name: string; buf: Buffer } | null> {
+  const name = String(att.filename ?? att.name ?? 'anhang.pdf')
+  const ct = String(att.content_type ?? att.contentType ?? '')
+  if (!/pdf/i.test(ct) && !/\.pdf$/i.test(name)) return null
+  const content = att.content ?? att.data
+  if (typeof content === 'string' && content.length > 100) {
+    try { return { name, buf: Buffer.from(content, 'base64') } } catch { return null }
+  }
+  const url = String(att.url ?? att.download_url ?? att.downloadUrl ?? '')
+  if (url.startsWith('http')) {
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` } })
+      if (r.ok) return { name, buf: Buffer.from(await r.arrayBuffer()) }
+    } catch { /* fällt unten durch */ }
+  }
+  return null
+}
+
+/**
+ * §236 C2: Provisionsrechnung eines Portals (v. a. Booking.com kommt per
+ * Mail mit PDF) → Datei zu sevdesk hochladen und als Beleg-ENTWURF anlegen.
+ * Verbuchung (Reverse-Charge §13b, Zahlung gegen das Verrechnungskonto)
+ * macht der Inhaber in der sevdesk-UI bzw. später die KI-Verbuchung.
+ */
+async function handleCommissionInvoice(attachments: unknown[], from: string, subject: string): Promise<NextResponse> {
+  console.log('[inbound-mail] Provisionsrechnung erkannt:', {
+    from: from.slice(0, 60), subject: subject.slice(0, 90), anhaenge: attachments.length,
+    keys: attachments[0] && typeof attachments[0] === 'object' ? Object.keys(attachments[0] as object) : [],
+  })
+  const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
+  let erstellt = 0
+  const fehler: string[] = []
+  for (const a of attachments) {
+    if (!a || typeof a !== 'object') continue
+    const pdf = await pdfFromAttachment(a as Record<string, unknown>)
+    if (!pdf) continue
+    const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
+    if (!up.ok || !up.internalFilename) { fehler.push(up.error ?? 'Upload fehlgeschlagen'); continue }
+    const supplier = /booking/i.test(from) ? 'Booking.com B.V.'
+      : /airbnb/i.test(from) ? 'Airbnb Ireland UC'
+      : /expedia|vrbo|fewo|homeaway/i.test(from) ? 'Expedia Group / Vrbo' : 'Buchungsportal'
+    const v = await createSevVoucherDraft({
+      internalFilename: up.internalFilename,
+      supplierName: supplier,
+      description: `Provisionsrechnung (automatisch aus E-Mail): ${subject}`.slice(0, 200),
+    })
+    if (v.ok) erstellt++
+    else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
+  }
+  if (erstellt) {
+    try {
+      const { sendPushToTeam } = await import('@/lib/push')
+      await sendPushToTeam('🧾 Provisionsrechnung eingegangen',
+        `${subject.slice(0, 90)} — liegt als Beleg-Entwurf in sevdesk`, '/team')
+    } catch { /* best effort */ }
+  }
+  if (fehler.length) console.error('[inbound-mail] Provisionsrechnung-Fehler:', fehler)
+  console.log('[inbound-mail] Provisionsrechnung:', { erstellt, fehler: fehler.length })
+  return NextResponse.json({ ok: true, provisionsBelege: erstellt, fehler })
+}
+
 const stripHtml = (html: string) =>
   html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -193,6 +257,7 @@ export async function POST(req: NextRequest) {
   // bleiben die Original-Header erhalten — Reply-To trägt die buchungs-
   // spezifische Adresse, über die Smoobu den Gast anschreiben kann
   let relayEmail = ''
+  let attachments: unknown[] = Array.isArray(data.attachments) ? data.attachments : []
   const emailId = String(data.email_id ?? '')
   if (emailId && process.env.RESEND_API_KEY) {
     try {
@@ -201,6 +266,7 @@ export async function POST(req: NextRequest) {
       })
       if (r.ok) {
         const full = await r.json() as Record<string, unknown>
+        if (Array.isArray(full.attachments) && full.attachments.length) attachments = full.attachments
         if (rawText.trim().length < 80) {
           rawText = String(full.text ?? '') || stripHtml(String(full.html ?? ''))
           if (!rawText.trim()) console.error('[inbound-mail] Body-Nachladen leer — Keys:', Object.keys(full))
@@ -219,6 +285,13 @@ export async function POST(req: NextRequest) {
       console.error('[inbound-mail] Body-Nachladen fehlgeschlagen:', e)
     }
   }
+  // §236 C2: Provisionsrechnung? (Portal-Absender + Rechnungs-Betreff +
+  // PDF-Anhang) — VOR dem Body-Längen-Guard, solche Mails sind oft kurz
+  const isCommission = /(booking\.com|airbnb|expedia|vrbo|fewo)/i.test(from)
+    && /invoice|rechnung|provision|commission|gutschrift/i.test(subject)
+    && attachments.length > 0
+  if (isCommission) return handleCommissionInvoice(attachments, from, subject)
+
   if (rawText.trim().length < 80) {
     console.error('[inbound-mail] Mail-Body leer/zu kurz — Payload-Keys:', Object.keys(data))
     return NextResponse.json({ ok: true, skipped: 'kein Mail-Text verfügbar' })
