@@ -450,10 +450,16 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
       if (!b.voucherId || !Number.isFinite(amountGross) || amountGross <= 0 || !Number.isFinite(accountDatevId)) {
         return NextResponse.json({ error: 'voucherId, accountDatevId und amountGross (>0) nötig.' }, { status: 400 })
       }
+      // §243b: Konto 5923 (EU-Portal-Provisionen) MUSS mit taxRule 5
+      // (Reverse Charge §13b) gebucht werden — sonst falsche UStVA-
+      // Kennziffern. Deterministisch aus dem Konto abgeleitet.
+      const gd = await getReceiptGuidance()
+      const kontoNr = gd.find((x) => x.accountDatevId === accountDatevId)?.accountNumber
       const r = await bookSevVoucher(String(b.voucherId), {
         accountDatevId,
         taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
         amountGross,
+        ...(kontoNr === '5923' ? { taxRuleId: 5 } : {}),
         costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
         isAsset: b.anlagegut === true,
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
