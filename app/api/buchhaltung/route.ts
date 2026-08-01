@@ -5,7 +5,7 @@ import {
   listSevVouchers, getReceiptGuidance, updateSevVoucherCostCentre, bookSevVoucher,
 } from '@/lib/sevdesk'
 import { findBankAccounts, listBankTransactions, bookMoneyTransit, payoutClearingFor } from '@/lib/sevdesk-payouts'
-import { askClaude, FAST_MODEL } from '@/lib/ai'
+import { askClaude, askClaudeWithFile, FAST_MODEL } from '@/lib/ai'
 
 /**
  * 💶 BUCHHALTUNGSMODUL (§239) — Admin/Gastgeber: sevdesk komplett aus der
@@ -34,7 +34,7 @@ async function requireFinance() {
 
 /** §242b: Die App LERNT aus jeder Verbuchung — je Lieferant die zuletzt
  *  gewählte Kategorie/Steuer/KSt/Zuordnung (app_settings 'buchhaltung'). */
-type Gelernt = { accountDatevId: number; taxRate: number; anlagegut: boolean; kst: string | null; zuordnung: unknown; at: string }
+type Gelernt = { accountDatevId: number; taxRate: number; anlagegut: boolean; at: string }
 async function getBuchhaltungSettings(): Promise<{ ignoredTx?: string[]; gelernt?: Record<string, Gelernt> }> {
   const { data } = await supabaseAdmin
     .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
@@ -55,6 +55,40 @@ async function saveGelernt(lieferant: string, g: Gelernt): Promise<void> {
   } catch { /* best effort */ }
 }
 
+/** §242c: PDF-Kopie eines sevdesk-Belegs aus dem Storage holen (base64) —
+ *  Grundlage für die Vision-Analyse (echter Rechnungsinhalt statt Betreff). */
+async function pdfForVoucher(voucherId: string): Promise<{ base64: string } | null> {
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('beleg_inbox').select('files').eq('sevdesk_voucher_id', voucherId).maybeSingle()
+    const files = (row?.files ?? []) as { path: string; name: string }[]
+    if (!files.length) return null
+    const { data: file } = await supabaseAdmin.storage.from('belege').download(files[0].path)
+    if (!file) return null
+    const buf = Buffer.from(await file.arrayBuffer())
+    if (buf.length > 8_000_000) return null
+    return { base64: buf.toString('base64') }
+  } catch { return null }
+}
+
+/** §242c: erkannten Standort/Wohnungs-Hinweis auf KSt + interne Zuordnung
+ *  mappen (KSt = Standort-Doktrin §240; Wohnung ohne Gruppe = eigener Standort). */
+function standortZuKst(
+  wohnung: string | null, standort: string | null,
+  wohnungen: { id: string; title: string; group: string | null }[],
+): { kst: string; zuordnung: Record<string, unknown> } | null {
+  if (wohnung) {
+    const w = wohnungen.find((x) => x.title.toLowerCase() === wohnung.toLowerCase().trim())
+    if (w) return { kst: w.group ?? w.title, zuordnung: { modus: 'wohnung', listingIds: [w.id] } }
+  }
+  if (standort) {
+    const groups = new Set(wohnungen.map((w) => w.group).filter(Boolean) as string[])
+    const g = [...groups].find((x) => x.toLowerCase() === standort.toLowerCase().trim())
+    if (g) return { kst: g, zuordnung: { modus: 'standort', standort: g } }
+  }
+  return null
+}
+
 async function getIgnored(): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
@@ -70,6 +104,11 @@ async function saveZuordnung(voucherId: string | null, inboxId: string | null, z
     modus: ['allgemein', 'standort', 'wohnung', 'split'].includes(String(z.modus)) ? String(z.modus) : 'allgemein',
     ...(typeof z.standort === 'string' && z.standort ? { standort: z.standort.slice(0, 60) } : {}),
     ...(Array.isArray(z.listingIds) ? { listingIds: z.listingIds.map(String).slice(0, 10) } : {}),
+    // §242c: optionale GEWICHTE (%) parallel zu listingIds — z. B. Heizkosten
+    // nach Wohnungsgröße statt gleichmäßig
+    ...(Array.isArray(z.anteile) && Array.isArray(z.listingIds) && z.anteile.length === z.listingIds.length
+      ? { anteile: z.anteile.map((a) => Math.max(0, Math.min(100, Math.round(Number(a) * 10) / 10))).slice(0, 10) }
+      : {}),
   }
   try {
     if (inboxId) {
@@ -188,41 +227,63 @@ export async function POST(req: NextRequest) {
     }
 
     if (b.action === 'ki-vorschlag') {
-      const vouchers = await listSevVouchers([50, 100])
+      const vouchers = await listSevVouchers([50, 100, 750])
       const v = vouchers.find((x) => x.id === String(b.voucherId))
       if (!v) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
       const guidance = await getReceiptGuidance()
-      // §242b: Erst das GELERNTE — gleicher Lieferant wie zuletzt gebucht →
-      // dieselbe Entscheidung (deterministisch, konsistent, ohne KI-Call)
-      if (v.supplierName) {
-        const { gelernt } = await getBuchhaltungSettings()
-        const g = gelernt?.[v.supplierName.trim()]
-        const hit2 = g ? guidance.find((x) => x.accountDatevId === Number(g.accountDatevId)) : null
-        if (g && hit2) {
-          return NextResponse.json({
-            gelernt: true,
-            accountDatevId: hit2.accountDatevId, kategorie: hit2.accountName, nr: hit2.accountNumber,
-            taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
-            betrag: null,
-            begruendung: '\u{1F9E0} Aus deiner letzten Buchung für diesen Lieferanten übernommen.',
-            steuerHinweis: '',
-            anlagegut: g.anlagegut === true,
-            nutzungsdauer: null,
-            kst: g.kst ?? null,
-            zuordnung: g.zuordnung ?? null,
-          }, NO_STORE)
+      const { data: listRows } = await supabaseAdmin
+        .from('listings').select('id, title, location_group').eq('is_active', true)
+      const wohnungenListe = (listRows ?? []).map((l) => ({ id: String(l.id), title: String(l.title), group: l.location_group ? String(l.location_group) : null }))
+      const wohnNamen = wohnungenListe.map((w) => `${w.title}${w.group ? ` (Standort ${w.group})` : ''}`).join(', ')
+      const standorte = [...new Set(wohnungenListe.map((w) => w.group).filter(Boolean))].join(', ')
+      const pdf = await pdfForVoucher(String(b.voucherId))
+
+      // §242b/c: GELERNT — Kategorie/Steuer/Anlagegut vom letzten Mal;
+      // Standort/KSt aber NUR aus echten Beleg-Indizien (Inhaber: VP
+      // Glanzteam reinigt mehrere Standorte — nie blind den letzten nehmen)
+      const { gelernt } = await getBuchhaltungSettings()
+      const g = v.supplierName ? gelernt?.[v.supplierName.trim()] : undefined
+      const hitG = g ? guidance.find((x) => x.accountDatevId === Number(g.accountDatevId)) : null
+      if (g && hitG) {
+        let ort: { kst: string; zuordnung: Record<string, unknown> } | null = null
+        let ortText = ''
+        if (pdf) {
+          try {
+            const raw = await askClaudeWithFile(
+              `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung auf STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — NUR bei echten Indizien setzen, sonst null.`,
+              `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
+              { mediaType: 'application/pdf', base64: pdf.base64 }, 400)
+            const oj = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
+            ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
+            if (ort && typeof oj.indiz === 'string') ortText = ` \u00B7 Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
+          } catch { /* Vision best effort */ }
         }
+        return NextResponse.json({
+          gelernt: true,
+          accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
+          taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
+          betrag: null,
+          begruendung: '\u{1F9E0} Kategorie aus deiner letzten Buchung f\u00FCr diesen Lieferanten' + ortText,
+          steuerHinweis: '',
+          anlagegut: g.anlagegut === true,
+          nutzungsdauer: null,
+          ...(ort ? { kst: ort.kst, zuordnung: ort.zuordnung } : {}),
+        }, NO_STORE)
       }
-      const katalog = guidance.map((g) => `${g.accountDatevId}|${g.accountNumber}|${g.accountName}`).join('\n')
-      const raw = await askClaude(
-        `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
-{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (Booking/Airbnb: taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent, private Mitveranlassung>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>}
-Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 nur bei ermäßigten Leistungen; 0 bei steuerfrei/Reverse-Charge (EU-Anbieter, z. B. Booking.com-Provision). ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (kein Anlagegut, im steuer_hinweis erwähnen). Betrag aus der Beschreibung, wenn erkennbar.`,
-        `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`,
-        900, FAST_MODEL)
-      const j = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
-      const hit = guidance.find((g) => g.accountDatevId === Number(j.accountDatevId))
-      if (!hit) return NextResponse.json({ error: 'KI lieferte keine gültige Kategorie — bitte manuell wählen.' }, { status: 502 })
+
+      const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
+      const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, E\u00DCR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einsch\u00E4tzung. Antworte NUR mit JSON:
+{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 S\u00E4tze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
+Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 nur erm\u00E4\u00DFigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsg\u00FCtern \u00FCber 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: M\u00F6bel 13 J., IT 3 J., K\u00FCchenger\u00E4te 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erw\u00E4hnen). Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
+      const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '\u2014'}\nBeschreibung: ${v.description ?? '\u2014'}\nDatum: ${v.voucherDate ?? '\u2014'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
+      // Mit PDF-Kopie liest die KI den ECHTEN Rechnungsinhalt (Vision)
+      const raw = pdf
+        ? await askClaudeWithFile(system, userMsg, { mediaType: 'application/pdf', base64: pdf.base64 }, 1000)
+        : await askClaude(system, userMsg, 900, FAST_MODEL)
+      const j = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
+      const hit = guidance.find((gg) => gg.accountDatevId === Number(j.accountDatevId))
+      if (!hit) return NextResponse.json({ error: 'KI lieferte keine g\u00FCltige Kategorie \u2014 bitte manuell w\u00E4hlen.' }, { status: 502 })
+      const ort = standortZuKst(typeof j.wohnung === 'string' ? j.wohnung : null, typeof j.standort === 'string' ? j.standort : null, wohnungenListe)
       return NextResponse.json({
         accountDatevId: hit.accountDatevId, kategorie: hit.accountName, nr: hit.accountNumber,
         taxRate: [19, 7, 0].includes(Number(j.taxRate)) ? Number(j.taxRate) : 19,
@@ -231,6 +292,7 @@ Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 
         steuerHinweis: String(j.steuer_hinweis ?? '').slice(0, 400),
         anlagegut: j.anlagegut === true,
         nutzungsdauer: typeof j.nutzungsdauer_jahre === 'number' ? j.nutzungsdauer_jahre : null,
+        ...(ort ? { kst: ort.kst, zuordnung: ort.zuordnung } : {}),
       }, NO_STORE)
     }
 
@@ -259,8 +321,6 @@ Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 
         await saveGelernt(b.lieferant, {
           accountDatevId, taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
           anlagegut: b.anlagegut === true,
-          kst: typeof b.kostenstelle === 'string' && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
-          zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung : null,
           at: new Date().toISOString(),
         })
       }
