@@ -317,6 +317,8 @@ export async function POST(req: NextRequest) {
       const empfaenger = String(b.empfaenger ?? '').trim().slice(0, 120)
       const zweck = String(b.zweck ?? '').trim().slice(0, 160)
       const datum = typeof b.txDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(b.txDate) ? b.txDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      // §243s: fuer Clearing-Eigenbelege darf das Belegdatum direkt kommen
+      const belegDatumDirekt = typeof b.belegDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.belegDatum) ? b.belegDatum : null
       // §243o: EINGANGS-Eigenbeleg (Erstattung/Privateinlage/Auslagenausgleich)
       const richtung: 'ausgabe' | 'eingang' = b.richtung === 'eingang' ? 'eingang' : 'ausgabe'
       if (richtung === 'eingang' && !['privat', 'sonstiges'].includes(typ)) {
@@ -325,7 +327,8 @@ export async function POST(req: NextRequest) {
       if (!['miete', 'kredit', 'privat', 'sonstiges'].includes(typ)) return NextResponse.json({ error: 'typ (miete|kredit|privat|sonstiges) noetig.' }, { status: 400 })
       if (!Number.isFinite(betrag) || betrag <= 0) return NextResponse.json({ error: 'betrag (>0) noetig.' }, { status: 400 })
       if (!empfaenger || !zweck) return NextResponse.json({ error: 'empfaenger und zweck noetig.' }, { status: 400 })
-      if (!b.txId || !b.txAccountId) return NextResponse.json({ error: 'txId und txAccountId noetig.' }, { status: 400 })
+      const eigenClearing = typeof b.clearingLabel === 'string' && b.clearingLabel.startsWith('Verrechnung') ? b.clearingLabel : null
+      if (!eigenClearing && (!b.txId || !b.txAccountId)) return NextResponse.json({ error: 'txId+txAccountId oder clearingLabel noetig.' }, { status: 400 })
 
       const guidance = await getReceiptGuidance()
       const byNr = (nr: string) => {
@@ -371,10 +374,12 @@ export async function POST(req: NextRequest) {
       }
 
       const r = await bucheEigenbeleg({
-        empfaenger, datum, zweck, positionen, grundlage,
+        empfaenger, datum: belegDatumDirekt ?? datum, zweck, positionen, grundlage,
         kostenstelle: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
         zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
-        txId: String(b.txId), txAccountId: String(b.txAccountId), txDate: datum,
+        ...(eigenClearing
+          ? { clearingLabel: eigenClearing, txDate: belegDatumDirekt ?? datum }
+          : { txId: String(b.txId), txAccountId: String(b.txAccountId), txDate: datum }),
         richtung,
       })
       // §243j MERKREGEL: dieselbe wiederkehrende Zahlung (Empfaenger +
@@ -424,6 +429,9 @@ export async function POST(req: NextRequest) {
         // §243h: echtes Rechnungsdatum aus der KI-Analyse durchreichen
         ...(typeof b.belegDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.belegDatum) ? { voucherDate: b.belegDatum } : {}),
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
+        // §243s: Portal-Netting — Zahlung gegen das Verrechnungskonto
+        ...(typeof b.clearingLabel === 'string' && b.clearingLabel.startsWith('Verrechnung')
+          ? { clearingLabel: b.clearingLabel, txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
       })
       // interne Wohnungs-Zuordnung mitschreiben (fail-soft)
       if (r.ok && b.zuordnung && typeof b.zuordnung === 'object') {
@@ -439,6 +447,36 @@ export async function POST(req: NextRequest) {
         })
       }
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
+    }
+
+    // §243s: NETTING-Zahlung fuer einen FERTIG gebuchten Beleg — bookAmount
+    // gegen das Verrechnungskonto, OHNE den Beleg anzufassen (Portale, die
+    // Provisionen mit den Auszahlungen verrechnen: Booking/FeWo/Airbnb)
+    if (b.action === 'clearing-zahlung') {
+      const label = typeof b.clearingLabel === 'string' && b.clearingLabel.startsWith('Verrechnung') ? b.clearingLabel : null
+      if (!label || !/^\d{3,15}$/.test(String(b.voucherId ?? ''))) {
+        return NextResponse.json({ error: 'voucherId + clearingLabel noetig.' }, { status: 400 })
+      }
+      const { sevJson, ensureClearingAccount } = await import('@/lib/sevdesk')
+      const vRaw = await sevJson<{ sumGross?: unknown; voucherDate?: unknown; status?: unknown; creditDebit?: unknown }[] | { sumGross?: unknown; voucherDate?: unknown; status?: unknown; creditDebit?: unknown }>(`/Voucher/${b.voucherId}`)
+      const vv = Array.isArray(vRaw) ? vRaw[0] : vRaw
+      if (!vv) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
+      if (Number(vv.status) >= 1000) return NextResponse.json({ ok: true, hinweis: 'Beleg ist schon bezahlt.' }, NO_STORE)
+      const gross = Math.round(Number(vv.sumGross) * 100) / 100
+      if (!Number.isFinite(gross) || gross <= 0) return NextResponse.json({ error: 'Beleg ohne Betrag.' }, { status: 400 })
+      const einnahme = String(vv.creditDebit) === 'D'
+      const clearingId = await ensureClearingAccount(label)
+      const datum = String(vv.voucherDate ?? '').slice(0, 10) || new Date().toISOString().slice(0, 10)
+      await sevJson(`/Voucher/${b.voucherId}/bookAmount`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: einnahme ? gross : -gross,
+          date: Math.floor(Date.parse(datum + 'T12:00:00Z') / 1000),
+          type: 'FULL_PAYMENT',
+          checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
+        }),
+      })
+      return NextResponse.json({ ok: true, betrag: einnahme ? gross : -gross, label }, NO_STORE)
     }
 
     // §242: interne Wohnungs-Zuordnung separat speichern
