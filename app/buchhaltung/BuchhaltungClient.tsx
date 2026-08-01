@@ -286,6 +286,9 @@ export default function BuchhaltungClient() {
         ...(j.betrag ? { betrag: String(j.betrag) } : {}),
         ...(j.anlagegut ? { anlagegut: true } : {}),
         ...(match ? { txId: match.id } : {}),
+        // §242b: Gelerntes übernimmt auch KSt + interne Zuordnung
+        ...(typeof j.kst === 'string' && j.kst ? { kst: j.kst } : {}),
+        ...(j.zuordnung ? { zuordnung: j.zuordnung } : {}),
       })
     }).catch(() => setKi((p) => ({ ...p, [selId]: 'fehler' })))
   }, [section, selId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -301,7 +304,7 @@ export default function BuchhaltungClient() {
       const res = await post({
         action: 'verbuchen', voucherId: v.id, accountDatevId: Number(f.kat),
         taxRate: Number(f.tax), amountGross: betrag, kostenstelle: f.kst,
-        anlagegut: f.anlagegut,
+        anlagegut: f.anlagegut, lieferant: v.supplierName,
         ...(f.zuordnung ? { zuordnung: f.zuordnung } : {}),
         ...(tx ? { txId: tx.id, txAccountId: tx.bankAccountId, txDate: tx.datum } : {}),
       })
