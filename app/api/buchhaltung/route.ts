@@ -26,9 +26,10 @@ async function requireFinance() {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+  // §242: strikt NUR Admins (wie die /buchhaltung-Seite selbst)
   const { data: me } = await supabaseAdmin
-    .from('profiles').select('is_admin, is_host').eq('id', user.id).maybeSingle()
-  return (me?.is_admin || me?.is_host) ? user : null
+    .from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  return me?.is_admin ? user : null
 }
 
 async function getIgnored(): Promise<string[]> {
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const [vouchers, guidance, ignored, banks] = await Promise.all([
-      listSevVouchers([50, 100]),
+      listSevVouchers([50, 100, 750]),
       getReceiptGuidance(),
       getIgnored(),
       findBankAccounts(),
