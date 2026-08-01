@@ -27,7 +27,7 @@ interface Tx {
 interface Kategorie { id: number; nr: string; name: string }
 interface Wohnung { id: string; title: string; group: string | null }
 interface ViewerInfo { links: { name: string; url: string }[]; zuordnung: Zuordnung | null; rowId: string }
-interface Zuordnung { modus: 'allgemein' | 'standort' | 'wohnung' | 'split'; standort?: string; listingIds?: string[] }
+interface Zuordnung { modus: 'allgemein' | 'standort' | 'wohnung' | 'split'; standort?: string; listingIds?: string[]; anteile?: number[] }
 interface KiVorschlag {
   accountDatevId: number; kategorie: string; nr: string; taxRate: number
   betrag: number | null; begruendung: string; steuerHinweis: string
@@ -141,8 +141,19 @@ function ZuordnungPicker({ value, onChange, wohnungen }: {
     if (next.has(id)) next.delete(id)
     else next.add(id)
     const ids = [...next]
+    // Auswahl ändert sich → Gewichte zurück auf gleichmäßig
     onChange(ids.length ? { modus: ids.length > 1 ? 'split' : 'wohnung', listingIds: ids } : { modus: 'allgemein' })
   }
+  const anteilVon = (i: number) => z.anteile?.[i] ?? Math.round(1000 / (z.listingIds?.length ?? 1)) / 10
+  const setAnteil = (i: number, val: number) => {
+    const n = z.listingIds?.length ?? 0
+    const basis = z.listingIds?.map((_, idx) => z.anteile?.[idx] ?? Math.round(1000 / n) / 10) ?? []
+    basis[i] = Math.max(0, Math.min(100, val))
+    onChange({ ...z, modus: 'split', anteile: basis })
+  }
+  const anteilSumme = z.modus === 'split'
+    ? (z.listingIds ?? []).reduce((acc, _, i) => acc + anteilVon(i), 0)
+    : 100
   return (
     <div>
       <div style={LABEL}>Interne Zuordnung · Auswertung</div>
@@ -156,8 +167,27 @@ function ZuordnungPicker({ value, onChange, wohnungen }: {
         ))}
       </div>
       {z.modus === 'split' && (
-        <div style={{ fontSize: 12.5, color: SUB, margin: '7px 4px 0' }}>
-          Wird gleichmäßig auf {sel.size} Wohnungen aufgeteilt.
+        <div style={{ marginTop: 9, display: 'grid', gap: 6 }}>
+          {(z.listingIds ?? []).map((id, i) => {
+            const w = wohnungen.find((x) => x.id === id)
+            return (
+              <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <span style={{ flex: 1, fontSize: 13.5, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w?.title ?? '?'}</span>
+                <input type="number" min={0} max={100} step={0.5} value={anteilVon(i)}
+                  onChange={(e) => setAnteil(i, parseFloat(e.target.value) || 0)}
+                  style={{ ...SELECT, width: 84, textAlign: 'right' as const, padding: '7px 9px' }} />
+                <span style={{ fontSize: 13.5, color: SUB }}>%</span>
+              </div>
+            )
+          })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, margin: '2px 4px 0' }}>
+            <span style={{ color: Math.abs(anteilSumme - 100) < 0.5 ? SUB : '#B45309', fontWeight: Math.abs(anteilSumme - 100) < 0.5 ? 400 : 700 }}>
+              Summe {anteilSumme.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %{Math.abs(anteilSumme - 100) >= 0.5 ? ' — sollte 100 % sein' : ''}
+            </span>
+            {z.anteile && (
+              <button onClick={() => onChange({ modus: 'split', listingIds: z.listingIds })} style={{ background: 'none', border: 'none', color: GOLD, fontWeight: 600, fontSize: 12.5, cursor: 'pointer', padding: 0 }}>Gleichmäßig</button>
+            )}
+          </div>
         </div>
       )}
     </div>
