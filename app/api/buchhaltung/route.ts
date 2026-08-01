@@ -38,6 +38,37 @@ async function getIgnored(): Promise<string[]> {
   return Array.isArray(v.ignoredTx) ? v.ignoredTx.map(String) : []
 }
 
+/** §242: interne Wohnungs-Zuordnung ({modus, standort?, listingIds?}) auf
+ *  der Protokollzeile speichern — via voucherId ODER inboxId; existiert zum
+ *  Voucher noch keine Zeile, wird eine minimale angelegt. */
+async function saveZuordnung(voucherId: string | null, inboxId: string | null, z: Record<string, unknown>): Promise<boolean> {
+  const clean = {
+    modus: ['allgemein', 'standort', 'wohnung', 'split'].includes(String(z.modus)) ? String(z.modus) : 'allgemein',
+    ...(typeof z.standort === 'string' && z.standort ? { standort: z.standort.slice(0, 60) } : {}),
+    ...(Array.isArray(z.listingIds) ? { listingIds: z.listingIds.map(String).slice(0, 10) } : {}),
+  }
+  try {
+    if (inboxId) {
+      const { error } = await supabaseAdmin.from('beleg_inbox').update({ zuordnung: clean }).eq('id', inboxId)
+      return !error
+    }
+    if (voucherId) {
+      const { data: row, error: selErr } = await supabaseAdmin
+        .from('beleg_inbox').select('id').eq('sevdesk_voucher_id', voucherId).maybeSingle()
+      if (selErr) return false
+      if (row) {
+        const { error } = await supabaseAdmin.from('beleg_inbox').update({ zuordnung: clean }).eq('id', row.id)
+        return !error
+      }
+      const { error } = await supabaseAdmin.from('beleg_inbox').insert({
+        source: 'app', status: 'sevdesk', files: [], sevdesk_voucher_id: voucherId, zuordnung: clean,
+      })
+      return !error
+    }
+  } catch { /* fail-soft */ }
+  return false
+}
+
 export async function GET(req: NextRequest) {
   const user = await requireFinance()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
@@ -74,8 +105,28 @@ export async function GET(req: NextRequest) {
     }
     openTx.sort((a, b) => b.datum.localeCompare(a.datum))
 
+    // §242: Protokollzeilen zu den offenen Belegen (Beleg-Viewer + interne
+    // Wohnungs-Zuordnung) — verknüpft über sevdesk_voucher_id
+    const viewer: Record<string, { links: { name: string; url: string }[]; zuordnung: unknown; rowId: string }> = {}
+    try {
+      const vIds = vouchers.map((v) => v.id)
+      if (vIds.length) {
+        const { data: prot } = await supabaseAdmin
+          .from('beleg_inbox').select('id, sevdesk_voucher_id, files, zuordnung')
+          .in('sevdesk_voucher_id', vIds)
+        for (const r of (prot ?? []) as { id: string; sevdesk_voucher_id: string; files: { path: string; name: string }[]; zuordnung: unknown }[]) {
+          const links: { name: string; url: string }[] = []
+          for (const f of r.files ?? []) {
+            const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
+            if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+          }
+          viewer[r.sevdesk_voucher_id] = { links, zuordnung: r.zuordnung ?? null, rowId: r.id }
+        }
+      }
+    } catch { /* Migration 20260801_buchhaltung_v2 fehlt noch — fail-soft */ }
+
     const { data: listings } = await supabaseAdmin
-      .from('listings').select('title, location_group').eq('is_active', true).order('title')
+      .from('listings').select('id, title, location_group').eq('is_active', true).order('title')
     // §240-Doktrin: KSt = Standorte; Wohnungen nur ohne Gruppe (River) —
     // wohnungsgenau wertet die App aus
     const titles = (listings ?? []).filter((l) => !l.location_group).map((l) => String(l.title))
@@ -93,6 +144,8 @@ export async function GET(req: NextRequest) {
       clearingLabels: ['Verrechnung Booking.com', 'Verrechnung Airbnb', 'Verrechnung FeWo-direkt', 'Verrechnung Direkt/Website', 'Verrechnung HomeToGo'],
       inboxCount: inboxCount ?? 0,
       zeitraumTage: days,
+      viewer,
+      wohnungen: (listings ?? []).map((l) => ({ id: String(l.id), title: String(l.title), group: l.location_group ? String(l.location_group) : null })),
     }, NO_STORE)
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e).slice(0, 300) }, { status: 500 })
@@ -117,9 +170,11 @@ export async function POST(req: NextRequest) {
       const guidance = await getReceiptGuidance()
       const katalog = guidance.map((g) => `${g.accountDatevId}|${g.accountNumber}|${g.accountName}`).join('\n')
       const raw = await askClaude(
-        'Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR). Ordne den Beleg der passenden Buchungskategorie zu. Antworte NUR mit JSON: {"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>"} — accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 nur bei ermäßigten Leistungen; 0 bei steuerfreien/Reverse-Charge. Betrag aus der Beschreibung, wenn erkennbar.',
+        `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
+{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (Booking/Airbnb: taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent, private Mitveranlassung>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>}
+Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 nur bei ermäßigten Leistungen; 0 bei steuerfrei/Reverse-Charge (EU-Anbieter, z. B. Booking.com-Provision). ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (kein Anlagegut, im steuer_hinweis erwähnen). Betrag aus der Beschreibung, wenn erkennbar.`,
         `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`,
-        700, FAST_MODEL)
+        900, FAST_MODEL)
       const j = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
       const hit = guidance.find((g) => g.accountDatevId === Number(j.accountDatevId))
       if (!hit) return NextResponse.json({ error: 'KI lieferte keine gültige Kategorie — bitte manuell wählen.' }, { status: 502 })
@@ -128,6 +183,9 @@ export async function POST(req: NextRequest) {
         taxRate: [19, 7, 0].includes(Number(j.taxRate)) ? Number(j.taxRate) : 19,
         betrag: typeof j.betrag_brutto === 'number' && j.betrag_brutto > 0 ? Math.round(j.betrag_brutto * 100) / 100 : null,
         begruendung: String(j.begruendung ?? '').slice(0, 200),
+        steuerHinweis: String(j.steuer_hinweis ?? '').slice(0, 400),
+        anlagegut: j.anlagegut === true,
+        nutzungsdauer: typeof j.nutzungsdauer_jahre === 'number' ? j.nutzungsdauer_jahre : null,
       }, NO_STORE)
     }
 
@@ -143,9 +201,24 @@ export async function POST(req: NextRequest) {
         taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
         amountGross,
         costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+        isAsset: b.anlagegut === true,
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
       })
+      // interne Wohnungs-Zuordnung mitschreiben (fail-soft)
+      if (r.ok && b.zuordnung && typeof b.zuordnung === 'object') {
+        await saveZuordnung(String(b.voucherId), null, b.zuordnung as Record<string, unknown>)
+      }
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
+    }
+
+    // §242: interne Wohnungs-Zuordnung separat speichern
+    if (b.action === 'zuordnung') {
+      if (!b.zuordnung || typeof b.zuordnung !== 'object') return NextResponse.json({ error: 'zuordnung fehlt.' }, { status: 400 })
+      const ok = await saveZuordnung(
+        typeof b.voucherId === 'string' ? b.voucherId : null,
+        typeof b.inboxId === 'string' ? b.inboxId : null,
+        b.zuordnung as Record<string, unknown>)
+      return NextResponse.json(ok ? { ok: true } : { error: 'Zuordnung nicht speicherbar (Migration 20260801_buchhaltung_v2 fehlt?).' }, ok ? NO_STORE : { status: 500 })
     }
 
     if (b.action === 'geldtransit') {
