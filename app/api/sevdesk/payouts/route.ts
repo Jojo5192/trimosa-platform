@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
-  runPayoutSync, listAllCheckAccounts, findBankAccount, bookMoneyTransit,
+  runPayoutSync, listAllCheckAccounts, findBankAccounts, bookMoneyTransit,
   listBankTransactions, getPayoutState, setPayoutAuto,
 } from '@/lib/sevdesk-payouts'
 
@@ -47,15 +47,18 @@ export async function POST(request: NextRequest) {
     const b = await request.json().catch(() => ({}))
     if (b.action === 'accounts') {
       const all = await listAllCheckAccounts()
-      const bank = await findBankAccount()
-      return NextResponse.json({ konten: all, erkanntesBankkonto: bank, auto: (await getPayoutState()).auto }, NO_STORE)
+      const banks = await findBankAccounts()
+      return NextResponse.json({ konten: all, erkannteBankkonten: banks, auto: (await getPayoutState()).auto }, NO_STORE)
     }
     if (b.action === 'probe') {
       // Kalibrierung: EINE benannte Transaktion als Geldtransit buchen
-      const bank = await findBankAccount()
-      if (!bank) return NextResponse.json({ error: 'Kein Bankkonto erkannt.' }, { status: 400 })
-      const txs = await listBankTransactions(bank.id, 120)
-      const tx = txs.find((t) => String(t.id) === String(b.txId))
+      const banks = await findBankAccounts()
+      if (!banks.length) return NextResponse.json({ error: 'Kein Bankkonto erkannt.' }, { status: 400 })
+      let tx = null as Awaited<ReturnType<typeof listBankTransactions>>[number] | null
+      for (const bank of banks) {
+        tx = (await listBankTransactions(bank.id, 120)).find((t) => String(t.id) === String(b.txId)) ?? null
+        if (tx) break
+      }
       if (!tx) return NextResponse.json({ error: `Transaktion ${b.txId} nicht gefunden.` }, { status: 404 })
       const label = typeof b.clearingLabel === 'string' && b.clearingLabel.startsWith('Verrechnung ')
         ? b.clearingLabel : null
