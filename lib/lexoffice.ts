@@ -391,16 +391,21 @@ export async function getExpenseVoucherPdf(voucherId: string): Promise<{ ok: boo
   const raw = (j.files ?? [])[0]
   const fileId = typeof raw === 'string' ? raw : (raw && typeof raw === 'object' ? String((raw as { id?: unknown }).id ?? '') : '')
   if (!fileId) return { ok: false, error: 'Beleg hat keine Datei.' }
-  // KEIN Accept-Zwang: lexoffice-Belege sind teils JPG/PNG-Scans — das
-  // Original mit ECHTEM Content-Type holen (sevdesk-Upload braucht die
-  // passende Endung, sonst 500 "Error while trying to read the file")
+  // MAGIC-BYTES statt Content-Type-Header — der Header von /files luegt
+  // teils (500er bei sevdesk trotz "pdf"-Header); die Datei-Signatur ist
+  // die Wahrheit. Unbekannte Typen → Skip mit Hex-Diagnose im Report.
   const file = await lexFetch(`/files/${fileId}`)
   if (!file.ok) return { ok: false, error: `file HTTP ${file.status}` }
-  const ct = (file.headers.get('content-type') ?? 'application/pdf').split(';')[0].trim().toLowerCase()
-  const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg' : ct.includes('png') ? 'png' : ct.includes('pdf') ? 'pdf' : 'bin'
-  if (ext === 'bin') return { ok: false, error: `Dateityp ${ct} nicht unterstützt.` }
+  const buf = Buffer.from(await file.arrayBuffer())
+  const { sniffMediaType } = await import('@/lib/beleg-ki')
+  const mt = sniffMediaType(buf)
+  if (!mt) {
+    const ct = (file.headers.get('content-type') ?? '?').split(';')[0]
+    return { ok: false, error: `Unbekannter Dateityp (ct ${ct}, ${buf.length} B, hex ${buf.subarray(0, 12).toString('hex')})` }
+  }
+  const ext = mt === 'image/jpeg' ? 'jpg' : mt === 'image/png' ? 'png' : 'pdf'
   return {
-    ok: true, pdf: Buffer.from(await file.arrayBuffer()), mime: ct,
+    ok: true, pdf: buf, mime: mt,
     filename: `lexoffice-${(j.voucherNumber ?? voucherId).toString().replace(/[^\w.-]/g, '_')}.${ext}`,
   }
 }
