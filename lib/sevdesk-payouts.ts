@@ -66,24 +66,27 @@ export async function listBankTransactions(accountId: string, days: number): Pro
   return list ?? []
 }
 
-/** Geldtransit: Gegen-Transaktion auf dem Verrechnungskonto, verknüpft über
- *  sourceTransaction. Betrag = −Auszahlung (das Verrechnungskonto gibt ab). */
-export async function bookMoneyTransit(tx: SevTx, clearingLabel: string): Promise<{ ok: boolean; counterId?: string; error?: string }> {
+/** Geldtransit: Umbuchung der Bank-Auszahlung gegen das Verrechnungskonto.
+ *  Mechanik per UI-Netzwerk-Mitschnitt kalibriert (1.8., §236): der direkte
+ *  Transaktions-POST auf Verrechnungskonten ist verboten (422) — die UI
+ *  nutzt POST /CheckAccount/{clearingId}/clearingAccountMoneyTransitEvent
+ *  mit {sourceTransaction, amount (NEGATIV — das Verrechnungskonto gibt
+ *  ab), transactionDate, differenceReason FULL_PAYMENT}. Erzeugt die
+ *  „Transfer an Main"-Gegenbuchung und setzt die Bank-Transaktion auf
+ *  „Gebucht" (Status ≠ 100 → der Sync fasst sie nie wieder an). */
+export async function bookMoneyTransit(tx: SevTx, clearingLabel: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const clearingId = await ensureClearingAccount(clearingLabel)
-    const created = await sevJson<{ id: string }>('/CheckAccountTransaction', {
+    await sevJson<unknown>(`/CheckAccount/${clearingId}/clearingAccountMoneyTransitEvent`, {
       method: 'POST',
       body: JSON.stringify({
-        checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
-        valueDate: String(tx.valueDate ?? tx.entryDate ?? new Date().toISOString()).slice(0, 10),
+        sourceTransaction: String(tx.id),
         amount: -Math.abs(Number(tx.amount)),
-        payeePayerName: tx.payeePayerName ?? 'Geldtransit',
-        paymtPurpose: `Auszahlung ${clearingLabel.replace('Verrechnung ', '')} → Bank (Geldtransit)`,
-        status: 100,
-        sourceTransaction: { id: Number(tx.id), objectName: 'CheckAccountTransaction' },
+        transactionDate: String(tx.valueDate ?? tx.entryDate ?? new Date().toISOString()).slice(0, 10),
+        differenceReason: 'FULL_PAYMENT',
       }),
     })
-    return { ok: true, counterId: String(created?.id ?? '') }
+    return { ok: true }
   } catch (e) {
     return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }
   }
