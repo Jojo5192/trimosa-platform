@@ -602,7 +602,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
       const existing = await sevJson<{ id: unknown }[]>(`/VoucherPos?voucher[id]=${voucherId}&voucher[objectName]=Voucher&limit=20`)
       if (existing?.length) posDelete = existing.map((x) => ({ id: Number(x.id), objectName: 'VoucherPos' as const }))
     } catch { /* best effort */ }
-    await sevJson('/Voucher/Factory/saveVoucher', {
+    const doSave = (taxRuleId: number) => sevJson('/Voucher/Factory/saveVoucher', {
       method: 'POST',
       body: JSON.stringify({
         voucher: {
@@ -612,8 +612,8 @@ export async function bookSevVoucher(voucherId: string, opts: {
           status: 100,
           // §242: USt-Regel EXPLIZIT — der Update-Save darf die Regel des
           // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen;
-          // §13b-Belege (5923) buchen mit Regel 5
-          taxRule: { id: opts.taxRuleId ?? 9, objectName: 'TaxRule' },
+          // Sonderkonten (§13b EU/Drittland) brauchen ihre eigene Regel
+          taxRule: { id: taxRuleId, objectName: 'TaxRule' },
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
         },
         voucherPosSave: posList.map((p) => {
@@ -632,6 +632,18 @@ export async function bookSevVoucher(voucherId: string, opts: {
         voucherPosDelete: posDelete,
       }),
     })
+    try {
+      await doSave(opts.taxRuleId ?? 9)
+    } catch (e) {
+      // §243b SELBSTKALIBRIEREND: sevdesk nennt im 422 die fuer das Konto
+      // erlaubte Steuerregel („Allowed tax rules: TaxRule(id=14, …") —
+      // einmaliger Retry damit deckt ALLE Sonderkonten ab (5923→14,
+      // Drittlands-Leistungen etc.), ohne jede Regel zu hartkodieren
+      const msg = String(e instanceof Error ? e.message : e)
+      const m = msg.match(/Allowed tax rules: TaxRule\(id=(\d+)/)
+      if (!m) throw e
+      await doSave(Number(m[1]))
+    }
     if (opts.txId && opts.txAccountId) {
       await sevJson(`/Voucher/${voucherId}/bookAmount`, {
         method: 'PUT',
