@@ -50,9 +50,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ mails: await peekMail(typeof b.hours === 'number' ? b.hours : 24) }, NO_STORE)
     }
     if (b.action === 'scan') {
+      // §241 Historien-Scan: { belegeOnly:true, from:'2026-01-01', to:'2026-02-01' }
+      // — nur der Beleg-Fischer läuft, Cursor/processed bleiben unberührt
+      const iso = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00Z` : null
       return NextResponse.json(await runMailScan({
         ...(typeof b.hours === 'number' ? { hours: b.hours } : {}),
         ...(b.force === true ? { force: true } : {}),
+        ...(b.belegeOnly === true ? { belegeOnly: true } : {}),
+        ...(iso(b.from) ? { sinceIso: iso(b.from)! } : {}),
+        ...(iso(b.to) ? { untilIso: iso(b.to)! } : {}),
       }), NO_STORE)
     }
     if (b.action === 'enable') {
