@@ -70,6 +70,29 @@ export async function POST(request: NextRequest) {
     }
 
     // §242-Diagnose: einen Beleg samt Positionen roh ansehen
+    // §243i: Status-Verteilung der Bank-Transaktionen — Abgleich mit
+    // sevdesks "offene Zahlungen"-Zaehlung (100 Created · 200 Linked ·
+    // 300 Private · 350 Auto-booked ohne Bestaetigung · 400 Booked)
+    if (b.action === 'tx-status') {
+      const days = Math.min(Math.max(Number(b.days) || 400, 7), 400)
+      const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
+      const banks = await findBankAccounts()
+      const konten: Record<string, Record<string, number>> = {}
+      const probe: string[] = []
+      for (const bank of banks) {
+        const verteilung: Record<string, number> = {}
+        for (const t of await listBankTransactions(bank.id, days)) {
+          const st = String(t.status)
+          verteilung[st] = (verteilung[st] ?? 0) + 1
+          if (st === '100' && probe.length < 12) {
+            probe.push(`${bank.name} · ${String(t.valueDate ?? t.entryDate ?? '').slice(0, 10)} · ${Number(t.amount).toFixed(2)} € · ${String(t.payeePayerName ?? t.paymtPurpose ?? '?').slice(0, 40)}`)
+          }
+        }
+        konten[bank.name] = verteilung
+      }
+      return NextResponse.json({ zeitraumTage: days, konten, statusLegende: { 100: 'offen (Created)', 200: 'Linked', 300: 'Privat', 350: 'AUTO-gebucht ohne Bestaetigung', 400: 'Gebucht' }, probeOffene: probe })
+    }
+
     // §243b: ReceiptGuidance-Sonde — z. B. Asset-Konten finden, die NICHT
     // in forAllAccounts stehen (Anlagegueter: "Must only set isAsset for
     // asset accounts")
