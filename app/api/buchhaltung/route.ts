@@ -227,16 +227,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (b.action === 'ki-vorschlag') {
-      const vouchers = await listSevVouchers([50, 100, 750])
-      const v = vouchers.find((x) => x.id === String(b.voucherId))
-      if (!v) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
-      const guidance = await getReceiptGuidance()
-      const { data: listRows } = await supabaseAdmin
-        .from('listings').select('id, title, location_group').eq('is_active', true)
+      const { sevJson } = await import('@/lib/sevdesk')
+      const [vRaw, guidance, listResp, pdf0] = await Promise.all([
+        sevJson<{ supplierName?: string; description?: string; voucherDate?: string }[] | { supplierName?: string; description?: string; voucherDate?: string }>(`/Voucher/${String(b.voucherId)}`),
+        getReceiptGuidance(),
+        supabaseAdmin.from('listings').select('id, title, location_group').eq('is_active', true),
+        pdfForVoucher(String(b.voucherId)),
+      ])
+      const vObj = Array.isArray(vRaw) ? vRaw[0] : vRaw
+      if (!vObj) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
+      const v = { supplierName: vObj.supplierName ?? null, description: vObj.description ?? null, voucherDate: vObj.voucherDate ?? null }
+      const listRows = listResp.data
       const wohnungenListe = (listRows ?? []).map((l) => ({ id: String(l.id), title: String(l.title), group: l.location_group ? String(l.location_group) : null }))
       const wohnNamen = wohnungenListe.map((w) => `${w.title}${w.group ? ` (Standort ${w.group})` : ''}`).join(', ')
       const standorte = [...new Set(wohnungenListe.map((w) => w.group).filter(Boolean))].join(', ')
-      const pdf = await pdfForVoucher(String(b.voucherId))
+      const pdf = pdf0
 
       // §242b/c: GELERNT — Kategorie/Steuer/Anlagegut vom letzten Mal;
       // Standort/KSt aber NUR aus echten Beleg-Indizien (Inhaber: VP
@@ -252,7 +257,7 @@ export async function POST(req: NextRequest) {
             const raw = await askClaudeWithFile(
               `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung auf STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — NUR bei echten Indizien setzen, sonst null.`,
               `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
-              { mediaType: 'application/pdf', base64: pdf.base64 }, 400)
+              { mediaType: 'application/pdf', base64: pdf.base64 }, 1500)
             const oj = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
             ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
             if (ort && typeof oj.indiz === 'string') ortText = ` \u00B7 Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
@@ -274,11 +279,11 @@ export async function POST(req: NextRequest) {
       const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
       const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, E\u00DCR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einsch\u00E4tzung. Antworte NUR mit JSON:
 {"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 S\u00E4tze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
-Regeln: accountDatevId MUSS aus dem Katalog stammen. Steuersatz: Standard 19; 7 nur erm\u00E4\u00DFigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsg\u00FCtern \u00FCber 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: M\u00F6bel 13 J., IT 3 J., K\u00FCchenger\u00E4te 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erw\u00E4hnen). Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
+Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u00F6s-/Umsatzkonten (4xxx) w\u00E4hlen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ans\u00E4ssigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erw\u00E4hnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur erm\u00E4\u00DFigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsg\u00FCtern \u00FCber 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: M\u00F6bel 13 J., IT 3 J., K\u00FCchenger\u00E4te 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erw\u00E4hnen). Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
       const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '\u2014'}\nBeschreibung: ${v.description ?? '\u2014'}\nDatum: ${v.voucherDate ?? '\u2014'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
       // Mit PDF-Kopie liest die KI den ECHTEN Rechnungsinhalt (Vision)
       const raw = pdf
-        ? await askClaudeWithFile(system, userMsg, { mediaType: 'application/pdf', base64: pdf.base64 }, 1000)
+        ? await askClaudeWithFile(system, userMsg, { mediaType: 'application/pdf', base64: pdf.base64 }, 4000)
         : await askClaude(system, userMsg, 900, FAST_MODEL)
       const j = JSON.parse(raw.replace(/^\u0060\u0060\u0060(?:json)?\s*/i, '').replace(/\s*\u0060\u0060\u0060$/, '').trim())
       const hit = guidance.find((gg) => gg.accountDatevId === Number(j.accountDatevId))
