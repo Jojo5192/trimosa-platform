@@ -245,7 +245,7 @@ async function handleReceiptMail(attachments: unknown[], from: string, subject: 
   let meta: Record<string, unknown> = {}
   try {
     const raw = await askClaude(
-      `Du bekommst eine E-Mail (Betreff + Text), an der ein PDF hängt. Entscheide, ob es ein BUCHHALTUNGSBELEG ist (Rechnung, Quittung oder Gutschrift eines Lieferanten/Dienstleisters an TRIMOSA). Antworte NUR mit JSON:
+      `Du bekommst eine E-Mail (Betreff + Text), an der ein PDF hängt. Entscheide, ob es ein BUCHHALTUNGSBELEG ist (Rechnung, Quittung oder Gutschrift eines Lieferanten/Dienstleisters an TRIMOSA). WICHTIG: Mails, die eine Rechnung/Quittung als PDF ZUSTELLEN („New invoice available", „Your receipt", „recurring payment", „Rechnung im Anhang"), sind Belege — auch wenn der Mail-TEXT selbst nur eine kurze Benachrichtigung ist. KEINE Belege: Angebote, Mahn-/Zahlungs-Erinnerungen ohne Rechnung, Vertragsunterlagen, von TRIMOSA selbst AUSGESTELLTE Rechnungen. Antworte NUR mit JSON:
 {"ist_beleg": true|false, "lieferant": "<Firmenname oder null>", "betrag_brutto": <Zahl in Euro oder null>, "datum": "YYYY-MM-DD oder null", "belegnummer": "<oder null>", "zuordnung": "apartments"|"unsicher", "begruendung": "<max 1 Satz>"}
 Nichts raten, nur Werte aus der Mail; deutsche Beträge ("119,00 €") als 119.0.
 ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes eGbR = FERIENWOHNUNGS-Betrieb (Buchungsportale Booking/Airbnb/FeWo-direkt, Smoobu, Gäste-Software, Wäsche-/Reinigungsservice der Ferienwohnungen), (2) TRIMOSA Immobilien UG und (3) eine Immobilien-GbR (Mehrfamilienhäuser, Bau/Sanierung/Hausverwaltung/Mieter). "apartments" NUR, wenn der Beleg EINDEUTIG zum Ferienwohnungs-Betrieb gehört — Handwerker, Baumärkte, Energie, Versicherungen, Server/IT und alles Mehrdeutige sind "unsicher". Im Zweifel IMMER "unsicher".`,
@@ -404,7 +404,8 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
     if (!pdf) continue
     const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
     if (!up.ok || !up.internalFilename) { fehler.push(up.error ?? 'Upload fehlgeschlagen'); continue }
-    const supplier = /booking/i.test(from) ? 'Booking.com B.V.'
+    const supplier = /hometogo/i.test(from) ? 'HomeToGo GmbH'
+      : /booking/i.test(from) ? 'Booking.com B.V.'
       : /airbnb/i.test(from) ? 'Airbnb Ireland UC'
       : /expedia|vrbo|fewo|homeaway/i.test(from) ? 'Expedia Group / Vrbo' : 'Buchungsportal'
     const v = await createSevVoucherDraft({
@@ -444,7 +445,7 @@ export async function processInboundMail(input: InboundMailInput, opts: { belege
 
   // §236 C2: Provisionsrechnung? (Portal-Absender + Rechnungs-Betreff +
   // PDF-Anhang) — VOR dem Body-Längen-Guard, solche Mails sind oft kurz
-  const isCommission = /(booking\.com|airbnb|expedia|vrbo|fewo)/i.test(from)
+  const isCommission = /(booking\.com|airbnb|expedia|vrbo|fewo|hometogo)/i.test(from)
     && /invoice|rechnung|provision|commission|gutschrift/i.test(subject)
     && attachments.length > 0
   if (isCommission) return handleCommissionInvoice(attachments, from, subject, mailOpts)
