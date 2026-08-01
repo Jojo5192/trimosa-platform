@@ -341,19 +341,25 @@ export async function POST(req: NextRequest) {
         // BETRAG mit — der Gelernt-Pfad lieferte sonst betrag null und die
         // Verbuchungs-Runde musste Folgebelege ohne Description-Betrag skippen
         let gBetrag: number | null = null
+        // §243c: Ein Lieferant kann VERSCHIEDENE Leistungen abrechnen (VP
+        // Glanzteam: Reinigung UND Gaestemanagement!) — die Mini-Vision prueft
+        // deshalb, ob die GELERNTE Kategorie zur Leistung passt; bei Mismatch
+        // faellt der Beleg in die Voll-Analyse statt blind zu uebernehmen
+        let kategoriePasst = true
         if (pdf) {
           try {
             const raw = await askClaudeWithFile(
-              `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG: Lies den Rechnungs-GESAMTBETRAG (brutto). 2) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
+              `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG: Lies den Rechnungs-GESAMTBETRAG (brutto). 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
               `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
               { mediaType: 'application/pdf', base64: pdf.base64 }, 1800)
             const oj = parseJsonLoose(raw)
             if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
+            if (oj.kategorie_passt === false) kategoriePasst = false
             ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
             if (ort && typeof oj.indiz === 'string') ortText = ` \u00B7 Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
           } catch { /* Vision best effort */ }
         }
-        return NextResponse.json({
+        if (kategoriePasst) return NextResponse.json({
           gelernt: true,
           accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
           taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
@@ -388,6 +394,47 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
         anlagegut: j.anlagegut === true,
         nutzungsdauer: typeof j.nutzungsdauer_jahre === 'number' ? j.nutzungsdauer_jahre : null,
         ...(ort ? { kst: ort.kst, zuordnung: ort.zuordnung } : {}),
+      }, NO_STORE)
+    }
+
+    // §243c: Alle Belege EINES Lieferanten (offen 100 + bezahlt 1000) —
+    // Grundlage fuer den Leistungsart-Audit (VP Glanzteam)
+    if (b.action === 'lieferant-belege') {
+      const lief = String(b.lieferant ?? '').trim()
+      if (!lief) return NextResponse.json({ error: 'lieferant noetig.' }, { status: 400 })
+      const { sevJson } = await import('@/lib/sevdesk')
+      const found: { id: string; status: number; datum: string | null; sumGross: number | null; beschreibung: string | null }[] = []
+      for (const st of [50, 100, 1000]) {
+        for (let offset = 0; offset < 300; offset += 100) {
+          const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=100&offset=${offset}&supplierName=${encodeURIComponent(lief)}`)
+          for (const v of list ?? []) {
+            found.push({
+              id: String(v.id), status: Number(v.status),
+              datum: v.voucherDate ? String(v.voucherDate).slice(0, 10) : null,
+              sumGross: v.sumGross != null ? Number(v.sumGross) : null,
+              beschreibung: (v.description as string | null) ?? null,
+            })
+          }
+          if (!list || list.length < 100) break
+        }
+      }
+      return NextResponse.json({ anzahl: found.length, belege: found }, NO_STORE)
+    }
+
+    // §243c: Leistungsart eines Belegs klassifizieren (Vision) — fuer den
+    // Audit gemischter Lieferanten
+    if (b.action === 'beleg-klassifizieren') {
+      const pdf = await pdfForVoucher(String(b.voucherId))
+      if (!pdf) return NextResponse.json({ leistung: 'KEIN_PDF' }, NO_STORE)
+      const raw = await askClaudeWithFile(
+        'Klassifiziere die abgerechnete LEISTUNG dieser Rechnung einer Ferienwohnungs-Vermietung. Antworte NUR mit JSON: {"leistung": "reinigung"|"gaestemanagement"|"gemischt"|"anderes", "betrag_brutto": <Zahl oder null>, "hinweis": "<1 kurzer Satz: was wird abgerechnet>"}',
+        'Beleg klassifizieren.',
+        { mediaType: 'application/pdf', base64: pdf.base64 }, 1200)
+      const oj = parseJsonLoose(raw)
+      return NextResponse.json({
+        leistung: typeof oj.leistung === 'string' ? oj.leistung : 'unklar',
+        betrag: typeof oj.betrag_brutto === 'number' ? Math.round(oj.betrag_brutto * 100) / 100 : null,
+        hinweis: String(oj.hinweis ?? '').slice(0, 200),
       }, NO_STORE)
     }
 
@@ -467,7 +514,10 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) \u2014 NIEMALS Erl\u
         taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
         amountGross,
         ...(kontoNr === '5923' ? { taxRuleId: 14 } : {}),
-        costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle && b.kostenstelle !== 'Allgemein' ? b.kostenstelle : null,
+        // 'Allgemein' loescht eine vorhandene KSt explizit ('' — §243c),
+        // fehlende Angabe laesst sie unangetastet (null)
+        costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle
+          ? (b.kostenstelle === 'Allgemein' ? '' : b.kostenstelle) : null,
         isAsset: b.anlagegut === true,
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
       })
