@@ -37,6 +37,38 @@ export async function POST(request: NextRequest) {
   if (!me?.is_admin && !me?.is_host) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
     const b = await request.json().catch(() => ({}))
+    // §242-Reparatur: falsch-vorzeichige Zahlung lösen + korrekt neu buchen
+    if (b.action === 'voucher-repair') {
+      const { sevJson, sevFetch } = await import('@/lib/sevdesk')
+      const vid = String(b.voucherId)
+      const amt = Math.abs(Number(b.amountGross))
+      if (!vid || !Number.isFinite(amt) || amt <= 0) return NextResponse.json({ error: 'voucherId + amountGross nötig.' }, { status: 400 })
+      // Zahlung lösen (Transaktion wird wieder frei) …
+      const r1 = await sevFetch(`/Voucher/${vid}/resetToOpen`, { method: 'PUT', body: '{}' })
+      if (!r1.ok) return NextResponse.json({ error: `resetToOpen HTTP ${r1.status}: ${(await r1.text()).slice(0, 200)}` }, { status: 502 })
+      // Ohne txId: nur lösen — die freigewordene Transaktion wird danach
+      // regulär über 'verbuchen' (mit korrektem Vorzeichen) neu verknüpft
+      if (!b.txId) {
+        const after0 = await sevJson<{ status?: unknown; paidAmount?: unknown }[]>(`/Voucher/${vid}`)
+        const av0 = Array.isArray(after0) ? after0[0] : after0
+        return NextResponse.json({ ok: true, nurGeloest: true, status: (av0 as { status?: unknown })?.status, paidAmount: (av0 as { paidAmount?: unknown })?.paidAmount })
+      }
+      // … und mit korrektem NEGATIVEN Betrag neu verknüpfen
+      await sevJson(`/Voucher/${vid}/bookAmount`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: -amt,
+          date: Math.floor(Date.parse(String(b.txDate ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00Z') / 1000),
+          type: 'FULL_PAYMENT',
+          checkAccount: { id: Number(b.txAccountId), objectName: 'CheckAccount' },
+          checkAccountTransaction: { id: Number(b.txId), objectName: 'CheckAccountTransaction' },
+        }),
+      })
+      const after = await sevJson<{ status?: unknown; paidAmount?: unknown }[]>(`/Voucher/${vid}`)
+      const av = Array.isArray(after) ? after[0] : after
+      return NextResponse.json({ ok: true, status: (av as { status?: unknown })?.status, paidAmount: (av as { paidAmount?: unknown })?.paidAmount })
+    }
+
     // §242-Diagnose: einen Beleg samt Positionen roh ansehen
     if (b.action === 'voucher-info') {
       const { sevJson } = await import('@/lib/sevdesk')
