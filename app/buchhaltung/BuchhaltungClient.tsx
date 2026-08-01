@@ -43,7 +43,10 @@ const fmtD = (iso: string | null) => {
 const betragAusText = (s: string | null): number | null => {
   const m = (s ?? '').match(/(\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})\s*€/)
   if (!m) return null
-  return Math.round(parseFloat(m[1].replace(/\./g, '').replace(',', '.')) * 100) / 100
+  // Deutsch „1.234,56" (Punkte = Tausender) vs. Punkt-Dezimal „55.00" —
+  // Punkte nur strippen, wenn ein Komma da ist (sonst wurde 55.00 → 5500!)
+  const raw = m[1].includes(',') ? m[1].replace(/\./g, '').replace(',', '.') : m[1]
+  return Math.round(parseFloat(raw) * 100) / 100
 }
 
 const NAVY = '#12222E'
@@ -249,14 +252,16 @@ export default function BuchhaltungClient() {
     const tx = openTx.find((t) => t.id === f.txId)
     setBusy(v.id); setErr('')
     try {
-      await post({
+      const res = await post({
         action: 'verbuchen', voucherId: v.id, accountDatevId: Number(f.kat),
         taxRate: Number(f.tax), amountGross: betrag, kostenstelle: f.kst,
         anlagegut: f.anlagegut,
         ...(f.zuordnung ? { zuordnung: f.zuordnung } : {}),
         ...(tx ? { txId: tx.id, txAccountId: tx.bankAccountId, txDate: tx.datum } : {}),
       })
-      setNotice(`✓ ${v.supplierName ?? 'Beleg'} verbucht${tx ? ' + Zahlung verknüpft' : ''}${f.anlagegut ? ' · als Anlagegut markiert' : ''}`)
+      setNotice(res.hinweis
+        ? `✓ ${v.supplierName ?? 'Beleg'}: ${res.hinweis}`
+        : `✓ ${v.supplierName ?? 'Beleg'} verbucht${res.verknuepft ? ' + Zahlung verknüpft' : ''}${f.anlagegut ? ' · als Anlagegut markiert' : ''}`)
       setSelId(null)
       await load()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
