@@ -150,15 +150,15 @@ export async function POST(req: NextRequest) {
     if (b.action === 'datum-fix') {
       const dryRun = b.dryRun !== false
       const scanTag = typeof b.scanDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.scanDatum) ? b.scanDatum : '2026-08-01'
-      const limit = Math.min(Math.max(Number(b.limit) || 15, 1), 25)
-      const { sevJson } = await import('@/lib/sevdesk')
-      const verdacht: { id: string; status: number; lieferant: string; datum: string }[] = []
+      const limit = Math.min(Math.max(Number(b.limit) || 10, 1), 15)
+      const { sevJson, sevFetch } = await import('@/lib/sevdesk')
+      const verdacht: { id: string; status: number; lieferant: string; datum: string; sumGross: number }[] = []
       for (const st of [50, 100, 1000]) {
         for (let offset = 0; offset < 500; offset += 100) {
           const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=100&offset=${offset}`)
           for (const v of list ?? []) {
             const d = v.voucherDate ? String(v.voucherDate).slice(0, 10) : ''
-            if (d === scanTag) verdacht.push({ id: String(v.id), status: Number(v.status), lieferant: String(v.supplierName ?? '?'), datum: d })
+            if (d === scanTag) verdacht.push({ id: String(v.id), status: Number(v.status), lieferant: String(v.supplierName ?? '?'), datum: d, sumGross: Number(v.sumGross ?? 0) })
           }
           if (!list || list.length < 100) break
         }
@@ -166,8 +166,12 @@ export async function POST(req: NextRequest) {
       const report: string[] = []
       let fixed = 0
       const t0 = Date.now()
+      // §243h-Kalibrierung: PUT geht NUR auf Entwuerfe ("only update draft
+      // documents") — gebuchte Belege brauchen den Reset-Zyklus; bezahlte
+      // verlieren dabei die Zahlung → Phase B verknuepft neu
+      const neuVerknuepfen: { id: string; sumGross: number; datum: string; lieferant: string }[] = []
       for (const v of verdacht.slice(0, limit)) {
-        if (Date.now() - t0 > 90_000) { report.push('Zeitbudget — Rest im naechsten Lauf'); break }
+        if (Date.now() - t0 > 80_000) { report.push('Zeitbudget — Rest im naechsten Lauf'); break }
         const pdf = await pdfForVoucher(v.id)
         if (!pdf) { report.push(`${v.lieferant} ${v.id}: kein Dokument`); continue }
         try {
@@ -178,15 +182,59 @@ export async function POST(req: NextRequest) {
           const echt = typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum) ? oj.datum : null
           if (!echt) { report.push(`${v.lieferant} ${v.id}: Datum nicht lesbar`); continue }
           if (echt === v.datum) { report.push(`${v.lieferant} ${v.id}: Datum stimmt (${echt})`); continue }
-          if (dryRun) { report.push(`${v.lieferant} ${v.id}: ${v.datum} → ${echt} (dryRun)`); continue }
+          if (dryRun) { report.push(`${v.lieferant} ${v.id}: ${v.datum} → ${echt} (dryRun, St ${v.status})`); continue }
+          if (v.status === 1000) await sevFetch(`/Voucher/${v.id}/resetToOpen`, { method: 'PUT', body: '{}' })
+          if (v.status >= 100) await sevFetch(`/Voucher/${v.id}/resetToDraft`, { method: 'PUT', body: '{}' })
           await sevJson(`/Voucher/${v.id}`, { method: 'PUT', body: JSON.stringify({ voucherDate: echt }) })
+          if (v.status >= 100) {
+            // zurueck auf "offen" — Positionen bleiben erhalten (kein posSave)
+            await sevJson('/Voucher/Factory/saveVoucher', {
+              method: 'POST',
+              body: JSON.stringify({ voucher: { id: Number(v.id), objectName: 'Voucher', mapAll: true, status: 100 }, voucherPosSave: null, voucherPosDelete: null }),
+            })
+          }
+          if (v.status === 1000 && v.sumGross > 0) neuVerknuepfen.push({ id: v.id, sumGross: v.sumGross, datum: echt, lieferant: v.lieferant })
           fixed++
           report.push(`${v.lieferant} ${v.id}: ${v.datum} → ${echt} ✓ (St ${v.status})`)
         } catch (e) {
-          report.push(`${v.lieferant} ${v.id}: FEHLER ${String(e instanceof Error ? e.message : e).slice(0, 120)}`)
+          report.push(`${v.lieferant} ${v.id}: FEHLER ${String(e instanceof Error ? e.message : e).slice(0, 140)}`)
         }
       }
-      return NextResponse.json({ verdacht: verdacht.length, geprueft: Math.min(limit, verdacht.length), korrigiert: fixed, report }, NO_STORE)
+      // Phase B: die eben geloesten Zahlungen der Ex-1000er neu verknuepfen
+      // (Transaktionen NACH den Resets laden — vorher waren sie verknuepft)
+      let neuVerknuepft = 0
+      if (neuVerknuepfen.length) {
+        try {
+          const banks = await findBankAccounts()
+          const frei: { id: string; accountId: string; datum: string; betrag: number }[] = []
+          for (const bank of banks) {
+            for (const t of await listBankTransactions(bank.id, 400)) {
+              if (Number(t.status) !== 100 || Number(t.amount) >= 0) continue
+              frei.push({ id: String(t.id), accountId: bank.id, datum: String(t.valueDate ?? t.entryDate ?? '').slice(0, 10), betrag: Number(t.amount) })
+            }
+          }
+          const used = new Set<string>()
+          for (const nv of neuVerknuepfen) {
+            const kand = frei.filter((t) => !used.has(t.id) && Math.abs(Math.abs(t.betrag) - nv.sumGross) < 0.005)
+            kand.sort((x, y) => Math.abs(Date.parse(x.datum) - Date.parse(nv.datum)) - Math.abs(Date.parse(y.datum) - Date.parse(nv.datum)))
+            const tx = kand[0]
+            if (!tx) { report.push(`${nv.lieferant} ${nv.id}: Zahlung nicht re-matchbar (Bankabgleich)`); continue }
+            await sevJson(`/Voucher/${nv.id}/bookAmount`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                amount: -nv.sumGross,
+                date: Math.floor(Date.parse(tx.datum + 'T12:00:00Z') / 1000),
+                type: 'FULL_PAYMENT',
+                checkAccount: { id: Number(tx.accountId), objectName: 'CheckAccount' },
+                checkAccountTransaction: { id: Number(tx.id), objectName: 'CheckAccountTransaction' },
+              }),
+            })
+            used.add(tx.id)
+            neuVerknuepft++
+          }
+        } catch (e) { report.push(`Phase B: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`) }
+      }
+      return NextResponse.json({ verdacht: verdacht.length, geprueft: Math.min(limit, verdacht.length), korrigiert: fixed, zahlungNeu: neuVerknuepft, report }, NO_STORE)
     }
 
     // §243c: Alle Belege EINES Lieferanten (offen 100 + bezahlt 1000) —
