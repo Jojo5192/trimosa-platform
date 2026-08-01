@@ -14,7 +14,7 @@ import { uploadSevVoucherFile, createSevVoucherDraft } from '@/lib/sevdesk'
  *         verworfen = kein Beleg / irrelevant
  */
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
 async function requireFinance() {
@@ -69,23 +69,9 @@ export async function GET(req: NextRequest) {
   }, NO_STORE)
 }
 
-export async function POST(req: NextRequest) {
-  const user = await requireFinance()
-  if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
-  const b = await req.json().catch(() => ({}))
-  const ziel = String(b.ziel ?? '')
-  if (!b.id || !['sevdesk', 'andere', 'verworfen'].includes(ziel)) {
-    return NextResponse.json({ error: 'id + ziel (sevdesk|andere|verworfen) nötig.' }, { status: 400 })
-  }
-  const { data: row } = await supabaseAdmin
-    .from('beleg_inbox').select('*').eq('id', b.id).maybeSingle()
-  if (!row) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
-  if (row.status !== 'offen') return NextResponse.json({ error: `Bereits entschieden (${row.status}).` }, { status: 409 })
-  const r = row as BelegRow
-
+/** Entscheidung auf EINE Inbox-Zeile anwenden (Einzel- und Bulk-Pfad). */
+async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null, userId: string): Promise<{ ok: boolean; error?: string }> {
   if (ziel === 'sevdesk') {
-    const kostenstelle = typeof b.kostenstelle === 'string' && b.kostenstelle.trim() && b.kostenstelle !== 'Allgemein'
-      ? b.kostenstelle.trim().slice(0, 80) : null
     let erstellt = 0
     const fehler: string[] = []
     for (const f of r.files ?? []) {
@@ -107,15 +93,48 @@ export async function POST(req: NextRequest) {
       if (v.ok) erstellt++
       else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
     }
-    if (!erstellt) return NextResponse.json({ error: `sevdesk-Upload fehlgeschlagen: ${fehler.join(' · ').slice(0, 300)}` }, { status: 502 })
-    await supabaseAdmin.from('beleg_inbox').update({
-      status: 'sevdesk', decided_by: user.id, decided_at: new Date().toISOString(),
-    }).eq('id', r.id)
-    return NextResponse.json({ ok: true, erstellt, fehler }, NO_STORE)
+    if (!erstellt) return { ok: false, error: `sevdesk-Upload fehlgeschlagen: ${fehler.join(' · ').slice(0, 200)}` }
+  }
+  await supabaseAdmin.from('beleg_inbox').update({
+    status: ziel, decided_by: userId, decided_at: new Date().toISOString(),
+  }).eq('id', r.id)
+  return { ok: true }
+}
+
+export async function POST(req: NextRequest) {
+  const user = await requireFinance()
+  if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  const b = await req.json().catch(() => ({}))
+  const ziel = String(b.ziel ?? '')
+  if (!['sevdesk', 'andere', 'verworfen'].includes(ziel)) {
+    return NextResponse.json({ error: 'ziel (sevdesk|andere|verworfen) nötig.' }, { status: 400 })
+  }
+  const kostenstelle = typeof b.kostenstelle === 'string' && b.kostenstelle.trim() && b.kostenstelle !== 'Allgemein'
+    ? b.kostenstelle.trim().slice(0, 80) : null
+
+  // §241: Sammel-Aktion — alle OFFENEN Belege eines Lieferanten auf einmal
+  // (z. B. 38× VP Glanzteam → sevdesk mit einer Kostenstelle)
+  if (typeof b.bulkLieferant === 'string' && b.bulkLieferant.trim()) {
+    const { data: rows } = await supabaseAdmin
+      .from('beleg_inbox').select('*')
+      .eq('status', 'offen').eq('lieferant', b.bulkLieferant.trim()).limit(60)
+    if (!rows?.length) return NextResponse.json({ error: 'Keine offenen Belege dieses Lieferanten.' }, { status: 404 })
+    let ok = 0
+    const fehler: string[] = []
+    for (const row of rows as BelegRow[]) {
+      const res = await decideRow(row, ziel, kostenstelle, user.id)
+      if (res.ok) ok++
+      else fehler.push(`${row.subject?.slice(0, 40) ?? row.id}: ${res.error}`)
+    }
+    return NextResponse.json({ ok: true, erledigt: ok, fehler: fehler.slice(0, 10) }, NO_STORE)
   }
 
-  await supabaseAdmin.from('beleg_inbox').update({
-    status: ziel, decided_by: user.id, decided_at: new Date().toISOString(),
-  }).eq('id', r.id)
+  if (!b.id) return NextResponse.json({ error: 'id oder bulkLieferant nötig.' }, { status: 400 })
+  const { data: row } = await supabaseAdmin
+    .from('beleg_inbox').select('*').eq('id', b.id).maybeSingle()
+  if (!row) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
+  if (row.status !== 'offen') return NextResponse.json({ error: `Bereits entschieden (${row.status}).` }, { status: 409 })
+  const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id)
+  if (!res.ok) return NextResponse.json({ error: res.error }, { status: 502 })
   return NextResponse.json({ ok: true, status: ziel }, NO_STORE)
 }
