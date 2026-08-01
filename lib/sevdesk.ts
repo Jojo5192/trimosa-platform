@@ -491,20 +491,28 @@ export interface SevVoucherLite {
 export async function listSevVouchers(statuses: number[] = [50, 100]): Promise<SevVoucherLite[]> {
   const out: SevVoucherLite[] = []
   for (const st of statuses) {
-    const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=50&embed=costCentre`)
-    for (const v of list ?? []) {
-      const cc = v.costCentre as { name?: string } | null
-      out.push({
-        id: String(v.id), status: Number(v.status),
-        creditDebit: (v.creditDebit as string | null) ?? null,
-        supplierName: (v.supplierName as string | null) ?? null,
-        description: (v.description as string | null) ?? null,
-        voucherDate: v.voucherDate ? String(v.voucherDate).slice(0, 10) : null,
-        sumGross: v.sumGross != null ? Number(v.sumGross) : null,
-        costCentreName: cc?.name ?? null,
-      })
+    // §243b: PAGINIERT — beim limit=50-Deckel fielen frisch aus der Inbox
+    // uebernommene Belege aus der Liste, sobald >50 Entwuerfe existierten
+    // (§129-Lektion: sevdesk-Listen IMMER paginieren)
+    for (let offset = 0; offset < 500; offset += 100) {
+      const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=100&offset=${offset}&embed=costCentre`)
+      for (const v of list ?? []) {
+        const cc = v.costCentre as { name?: string } | null
+        out.push({
+          id: String(v.id), status: Number(v.status),
+          creditDebit: (v.creditDebit as string | null) ?? null,
+          supplierName: (v.supplierName as string | null) ?? null,
+          description: (v.description as string | null) ?? null,
+          voucherDate: v.voucherDate ? String(v.voucherDate).slice(0, 10) : null,
+          sumGross: v.sumGross != null ? Number(v.sumGross) : null,
+          costCentreName: cc?.name ?? null,
+        })
+      }
+      if (!list || list.length < 100) break
     }
   }
+  // Neueste zuerst — stabil ueber die numerische ID
+  out.sort((a, b) => Number(b.id) - Number(a.id))
   return out
 }
 
