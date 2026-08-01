@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
       const raw = await askClaudeWithFile(
         'Klassifiziere die abgerechnete LEISTUNG dieser Rechnung einer Ferienwohnungs-Vermietung. Antworte NUR mit JSON: {"leistung": "reinigung"|"gaestemanagement"|"gemischt"|"anderes", "betrag_brutto": <Zahl oder null>, "hinweis": "<1 kurzer Satz: was wird abgerechnet>"}',
         'Beleg klassifizieren.',
-        { mediaType: 'application/pdf', base64: pdf.base64 }, 1200)
+        { mediaType: pdf.mediaType, base64: pdf.base64 }, 1200)
       const oj = parseJsonLoose(raw)
       return NextResponse.json({
         leistung: typeof oj.leistung === 'string' ? oj.leistung : 'unklar',
