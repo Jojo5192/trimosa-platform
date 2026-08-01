@@ -113,7 +113,9 @@ export async function GET(req: NextRequest) {
       vouchers,
       openTx,
       kategorien: guidance.map((g) => ({ id: g.accountDatevId, nr: g.accountNumber, name: g.accountName })),
-      kostenstellen: ['Allgemein', ...groups, ...titles],
+      // §243p: Kanzem = angemietetes UG-Objekt MIT Mietvertrag (noch ohne
+      // Listings) — eigene Kostenstelle, bis die Kanzem-Wohnungen live sind
+      kostenstellen: ['Allgemein', ...groups, 'Kanzem', ...titles],
       clearingLabels: ['Verrechnung Booking.com', 'Verrechnung Airbnb', 'Verrechnung FeWo-direkt', 'Verrechnung Direkt/Website', 'Verrechnung HomeToGo'],
       inboxCount: inboxCount ?? 0,
       zeitraumTage: days,
