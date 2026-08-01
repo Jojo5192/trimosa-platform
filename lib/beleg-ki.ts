@@ -60,7 +60,7 @@ export async function saveGelernt(lieferant: string, g: Gelernt): Promise<void> 
  *  sevdesk (/Document/{id}/download, §243b — undokumentiert, defensiv). */
 /** MIME per Magic-Bytes — lexoffice-Importe sind teils JPG/PNG-Scans;
  *  die KI braucht Bilder als image-Block, PDFs als document-Block (§116). */
-function sniffMediaType(buf: Buffer): 'application/pdf' | 'image/jpeg' | 'image/png' | null {
+export function sniffMediaType(buf: Buffer): 'application/pdf' | 'image/jpeg' | 'image/png' | null {
   if (buf.length < 8) return null
   if (buf.subarray(0, 4).toString('latin1') === '%PDF') return 'application/pdf'
   if (buf[0] === 0xFF && buf[1] === 0xD8) return 'image/jpeg'
