@@ -454,6 +454,10 @@ export async function createSevVoucherDraft(opts: {
           supplierName: opts.supplierName,
           description: opts.description,
           ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
+          // Auch der ENTWURF braucht eine Steuerregel (422 „Valid tax type
+          // must be given", Kalibrierung 1.8.) — Standard: vorsteuer-
+          // abziehbare Aufwendungen; §13b (Portale) stellt die Verbuchung um
+          taxRule: { id: 9, objectName: 'TaxRule' },
         },
         voucherPosSave: null,
         voucherPosDelete: null,
