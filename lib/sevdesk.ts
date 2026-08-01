@@ -585,6 +585,9 @@ export async function bookSevVoucher(voucherId: string, opts: {
           objectName: 'Voucher',
           mapAll: true,
           status: 100,
+          // §242: USt-Regel EXPLIZIT — der Update-Save darf die Regel des
+          // Entwurfs (9 = vorsteuerabziehbare Aufwendungen) nicht kippen
+          taxRule: { id: 9, objectName: 'TaxRule' },
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
         },
         voucherPosSave: [{
