@@ -215,6 +215,9 @@ export interface EigenRegel {
   posName: string
   grundlage: string
   kostenstelle?: string | null
+  /** §243l: interne Wohnungs-Zuordnung fuer die Auswertung (Mieten je
+   *  Standort!) — wird bei jeder Auto-Buchung mitgespeichert */
+  zuordnung?: Record<string, unknown> | null
   at: string
 }
 
@@ -246,6 +249,7 @@ export async function saveEigenRegel(opts: {
   position: EigenbelegPosition
   grundlage: string
   kostenstelle?: string | null
+  zuordnung?: Record<string, unknown> | null
 }): Promise<void> {
   if (opts.typ === 'kredit') return
   try {
@@ -261,6 +265,7 @@ export async function saveEigenRegel(opts: {
       posName: zweckOhneMonat(opts.position.name),
       grundlage: opts.grundlage,
       kostenstelle: opts.kostenstelle ?? null,
+      zuordnung: opts.zuordnung ?? null,
       at: new Date().toISOString(),
     }
     const keys = Object.keys(regeln)
@@ -311,6 +316,7 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
           positionen: [{ accountDatevId: regel.accountDatevId, taxRate: regel.taxRate, amountGross: betrag, name: `${regel.posName} \u00B7 ${monat}` }],
           grundlage: regel.grundlage,
           kostenstelle: regel.kostenstelle ?? null,
+          zuordnung: regel.zuordnung ?? null,
           txId, txAccountId: bank.id, txDate: datum,
         })
         if (r.ok) {
