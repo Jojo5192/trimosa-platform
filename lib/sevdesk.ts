@@ -440,8 +440,11 @@ export async function createSevVoucherDraft(opts: {
   supplierName: string
   description: string
   voucherDate?: string
+  /** §238: Kostenstelle (Wohnung/Standort) — aus der Beleg-Inbox gewählt */
+  costCentreName?: string
 }): Promise<{ ok: boolean; voucherId?: string; error?: string }> {
   try {
+    const costCentreId = opts.costCentreName ? await ensureCostCentre(opts.costCentreName) : null
     const saved = await sevJson<{ voucher: { id: string } }>('/Voucher/Factory/saveVoucher', {
       method: 'POST',
       body: JSON.stringify({
@@ -454,6 +457,7 @@ export async function createSevVoucherDraft(opts: {
           supplierName: opts.supplierName,
           description: opts.description,
           ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
+          ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : {}),
           // Auch der ENTWURF braucht eine Steuerregel (422 „Valid tax type
           // must be given", Kalibrierung 1.8.) — Standard: vorsteuer-
           // abziehbare Aufwendungen; §13b (Portale) stellt die Verbuchung um
