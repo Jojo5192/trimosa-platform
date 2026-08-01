@@ -73,12 +73,13 @@ export default function BuchhaltungPanel({ onClose }: { onClose: () => void }) {
   // Verbuchen-Formular je Beleg
   const [form, setForm] = useState<Record<string, { kat: string; tax: string; betrag: string; kst: string; txId: string; hint?: string }>>({})
   const [transit, setTransit] = useState<Record<string, string>>({})
+  const [txDays, setTxDays] = useState(45)
 
-  const load = async () => {
+  const load = async (days = txDays) => {
     setLoading(true)
     try {
       const [bu, be] = await Promise.all([
-        fetch('/api/buchhaltung', { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
+        fetch(`/api/buchhaltung?days=${days}`, { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
         fetch('/api/belege', { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
       ])
       if (!bu.ok) throw new Error(bu.j.error ?? 'Buchhaltung nicht ladbar')
@@ -327,9 +328,19 @@ export default function BuchhaltungPanel({ onClose }: { onClose: () => void }) {
         {/* ── 💳 ZAHLUNGEN ─────────────────────────────────────────────── */}
         {!loading && tab === 'zahlungen' && (
           <>
-            <div style={{ fontSize: 12.5, color: '#8A8578', margin: '0 2px 12px', lineHeight: 1.45 }}>
-              Offene Bank-Transaktionen (letzte 45 Tage). Abbuchungen ohne Beleg: Beleg kommt per
+            <div style={{ fontSize: 12.5, color: '#8A8578', margin: '0 2px 10px', lineHeight: 1.45 }}>
+              Offene Bank-Transaktionen. Abbuchungen ohne Beleg: Beleg kommt per
               Mail-Scan oder Foto — die Verknüpfung passiert beim Verbuchen im Belege-Reiter.
+            </div>
+            <div style={{ display: 'flex', gap: 8, margin: '0 2px 14px', flexWrap: 'wrap' }}>
+              {[45, 90, 180, 365].map((n) => (
+                <button key={n} onClick={() => { setTxDays(n); load(n) }} style={{
+                  fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
+                  border: '0.5px solid rgba(60,60,67,0.25)', cursor: 'pointer',
+                  background: txDays === n ? '#1A1814' : '#fff',
+                  color: txDays === n ? '#fff' : '#1A1814',
+                }}>{n === 365 ? 'Jahr' : `${n} Tage`}</button>
+              ))}
             </div>
             {!openTx.length && <div style={{ textAlign: 'center', color: '#8A8578', padding: '40px 20px' }}>🎉 Keine offenen Zahlungen.</div>}
             {openTx.map((t) => (
