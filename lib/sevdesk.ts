@@ -600,7 +600,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
           sumNet: net,
           sumGross: gross,
         }],
-        voucherPosDelete: null,
+        voucherPosDelete: posDelete,
       }),
     })
     if (opts.txId && opts.txAccountId) {
