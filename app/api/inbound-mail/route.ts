@@ -73,9 +73,12 @@ async function saveGuestMessage(bookingId: string, guestName: string | null, tex
  * existiert, sonst Buchungs-Thread). Nicht zuordenbare Mails werden nur
  * geloggt — das ist zugleich der Spam-Filter für das umgeleitete Postfach.
  */
-async function handleWebsiteGuestReply(fromRaw: string, rawText: string): Promise<NextResponse> {
+async function handleWebsiteGuestReply(fromRaw: string, subject: string, rawText: string, attachments: unknown[]): Promise<NextResponse> {
   const email = ((fromRaw.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/) || [])[0] ?? '').toLowerCase()
   if (!email || /no-?reply|mailer-daemon|postmaster|notification|newsletter/i.test(email)) {
+    // §236 C3: Lieferanten-Belege kommen oft von noreply-Absendern —
+    // hängt ein PDF dran, übernimmt der Beleg-Fischer
+    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText)
     return NextResponse.json({ ok: true, skipped: 'kein Portal, kein Gast-Absender' })
   }
 
@@ -108,6 +111,8 @@ async function handleWebsiteGuestReply(fromRaw: string, rawText: string): Promis
   const pick = (list: BRow[]) => list.find((b) => b.check_out >= today) ?? list[list.length - 1] ?? null
   const booking = pick(cands.filter((b) => b.status !== 'cancelled')) ?? pick(cands)
   if (!booking) {
+    // §236 C3: kein Gast — mit PDF-Anhang vermutlich ein Lieferanten-Beleg
+    if (attachments.length) return handleReceiptMail(attachments, fromRaw, subject, rawText)
     console.log('[inbound-mail] Gast-Mail ohne zuordenbare Buchung:', email)
     return NextResponse.json({ ok: true, skipped: 'Absender keiner Buchung zuordenbar' })
   }
@@ -177,6 +182,92 @@ async function pdfFromAttachment(att: Record<string, unknown>): Promise<{ name: 
     } catch { /* fällt unten durch */ }
   }
   return null
+}
+
+/**
+ * §236 C3: Universeller BELEG-FISCHER — Mail mit PDF-Anhang, die weder
+ * Portal-Buchung noch Gast-Nachricht ist (Lieferanten-Rechnung, Quittung):
+ * KI liest Lieferant/Betrag/Datum aus der Mail, das PDF wird als sevdesk-
+ * Beleg-Entwurf abgelegt und gegen die OFFENEN Finom-Abbuchungen gematcht
+ * („passt zur Bank-Abbuchung vom …"). Der „Scanner" ist die Outlook-
+ * Umleiten-Regel des Inhabers — was hierher umgeleitet wird, landet
+ * automatisch in sevdesk.
+ */
+async function handleReceiptMail(attachments: unknown[], from: string, subject: string, rawText: string): Promise<NextResponse> {
+  const pdfs: { name: string; buf: Buffer }[] = []
+  for (const a of attachments) {
+    if (!a || typeof a !== 'object') continue
+    const p = await pdfFromAttachment(a as Record<string, unknown>)
+    if (p) pdfs.push(p)
+  }
+  if (!pdfs.length) return NextResponse.json({ ok: true, skipped: 'Anhang, aber kein PDF' })
+
+  let meta: Record<string, unknown> = {}
+  try {
+    const raw = await askClaude(
+      'Du bekommst eine E-Mail (Betreff + Text), an der ein PDF hängt. Entscheide, ob es ein BUCHHALTUNGSBELEG ist (Rechnung, Quittung oder Gutschrift eines Lieferanten/Dienstleisters an TRIMOSA). Antworte NUR mit JSON: {"ist_beleg": true|false, "lieferant": "<Firmenname oder null>", "betrag_brutto": <Zahl in Euro oder null>, "datum": "YYYY-MM-DD oder null", "belegnummer": "<oder null>"} — nichts raten, nur Werte aus der Mail; deutsche Beträge ("119,00 €") als 119.0.',
+      `Betreff: ${subject}\n\n${rawText.slice(0, 6000)}`, 600, FAST_MODEL)
+    meta = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
+  } catch { /* fail-soft: ohne Meta trotzdem als Beleg ablegen */ }
+  if (meta.ist_beleg === false) {
+    console.log('[inbound-mail] Beleg-Fischer: laut KI kein Beleg —', subject.slice(0, 80))
+    return NextResponse.json({ ok: true, skipped: 'PDF, aber kein Beleg', subject })
+  }
+
+  const lieferant = typeof meta.lieferant === 'string' && meta.lieferant.trim()
+    ? meta.lieferant.trim().slice(0, 100)
+    : ((from.match(/@([\w.-]+)/) || [])[1] ?? 'Unbekannter Absender')
+  const betrag = typeof meta.betrag_brutto === 'number' && meta.betrag_brutto > 0
+    ? Math.round(meta.betrag_brutto * 100) / 100 : null
+  const datum = typeof meta.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(meta.datum) ? meta.datum : null
+
+  // Bank-Abgleich: passt eine OFFENE Finom-Abbuchung zum Betrag? (±90 Tage,
+  // über ALLE Online-Konten — Finom liefert Haupt- + Unterkonten getrennt)
+  let bankMatch = ''
+  if (betrag) {
+    try {
+      const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
+      for (const bank of await findBankAccounts()) {
+        const txs = await listBankTransactions(bank.id, 90)
+        const hit = txs.find((t) => Number(t.status) === 100 && Number(t.amount) < 0
+          && Math.abs(Math.abs(Number(t.amount)) - betrag) < 0.01)
+        if (hit) {
+          bankMatch = ` — passt zur Bank-Abbuchung vom ${String(hit.valueDate ?? hit.entryDate ?? '').slice(0, 10)}`
+          break
+        }
+      }
+    } catch { /* best effort */ }
+  }
+
+  const { uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
+  let erstellt = 0
+  const fehler: string[] = []
+  for (const pdf of pdfs) {
+    const up = await uploadSevVoucherFile(pdf.buf, pdf.name)
+    if (!up.ok || !up.internalFilename) { fehler.push(up.error ?? 'Upload fehlgeschlagen'); continue }
+    const v = await createSevVoucherDraft({
+      internalFilename: up.internalFilename,
+      supplierName: lieferant,
+      description: (`Beleg (automatisch aus E-Mail): ${subject}`.slice(0, 160)
+        + (betrag ? ` · ${betrag.toFixed(2)} €` : '')
+        + (meta.belegnummer ? ` · Nr. ${String(meta.belegnummer).slice(0, 40)}` : '')
+        + bankMatch).slice(0, 255),
+      ...(datum ? { voucherDate: datum } : {}),
+    })
+    if (v.ok) erstellt++
+    else fehler.push(v.error ?? 'saveVoucher fehlgeschlagen')
+  }
+  if (erstellt) {
+    try {
+      const { sendPushToTeam } = await import('@/lib/push')
+      await sendPushToTeam('🧾 Beleg eingegangen',
+        `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''}${bankMatch || ' — als Entwurf in sevdesk'}`.slice(0, 140),
+        '/team')
+    } catch { /* best effort */ }
+  }
+  if (fehler.length) console.error('[inbound-mail] Beleg-Fischer-Fehler:', fehler)
+  console.log('[inbound-mail] Beleg-Fischer:', { lieferant, betrag, datum, erstellt, bankMatch: !!bankMatch })
+  return NextResponse.json({ ok: true, belege: erstellt, lieferant, betrag, bankTreffer: bankMatch || null, fehler })
 }
 
 /**
@@ -299,8 +390,9 @@ export async function POST(req: NextRequest) {
 
   // Kein Portal-Absender → Antwort-Mail eines WEBSITE-Gasts? (§134 — der
   // Gast antwortet einfach auf unsere Bestätigungs-Mail von buchung@)
+  // — bzw. Lieferanten-Beleg (§236 C3, entscheidet der Handler selbst)
   const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
-  if (!relevant) return handleWebsiteGuestReply(from, rawText)
+  if (!relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments)
 
   // ── Claude extrahiert die Buchungsdaten ──
   const system = `Du extrahierst Buchungsdaten aus der Bestätigungs-E-Mail eines
