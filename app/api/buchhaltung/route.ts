@@ -418,6 +418,9 @@ export async function POST(req: NextRequest) {
         costCentreName: typeof b.kostenstelle === 'string' && b.kostenstelle
           ? (b.kostenstelle === 'Allgemein' ? '' : b.kostenstelle) : null,
         isAsset: b.anlagegut === true,
+        // §243q: Gutschrift/Erstattung — Beleg wird EINNAHME (creditDebit D,
+        // bookAmount positiv gegen einen Bank-EINGANG)
+        ...(b.einnahme === true ? { einnahme: true } : {}),
         // §243h: echtes Rechnungsdatum aus der KI-Analyse durchreichen
         ...(typeof b.belegDatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.belegDatum) ? { voucherDate: b.belegDatum } : {}),
         ...(b.txId ? { txId: String(b.txId), txAccountId: String(b.txAccountId ?? ''), txDate: typeof b.txDate === 'string' ? b.txDate : undefined } : {}),
