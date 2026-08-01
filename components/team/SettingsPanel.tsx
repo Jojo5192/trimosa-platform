@@ -15,7 +15,6 @@ import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
 import CallsPanel from '@/components/team/CallsPanel'
-import BuchhaltungPanel from '@/components/team/BuchhaltungPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -58,7 +57,7 @@ function Row({ title, subtitle, last, children }: {
 export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean } | null>(null)
+  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; buchhaltung: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
@@ -69,7 +68,6 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [showCalls, setShowCalls] = useState(false)
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
-  const [showBelege, setShowBelege] = useState(false)
   const [belegeOk, setBelegeOk] = useState(false)
 
   useEffect(() => {
@@ -80,7 +78,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats, bookings: d.bookings !== false }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats, bookings: d.bookings !== false, buchhaltung: d.buchhaltung !== false }) })
       .catch(() => {})
     fetch('/api/admin/oncall', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -141,7 +139,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     } finally { setBusy(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings') {
+  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'buchhaltung') {
     if (!prefs) return
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
@@ -199,7 +197,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                 <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
               </button>
               {belegeOk && (
-                <button onClick={() => setShowBelege(true)} style={{
+                <button onClick={() => { window.location.href = '/buchhaltung' }} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
                   background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
                   boxShadow: wb ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
@@ -207,7 +205,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                   <span style={{ fontSize: 19 }}>💶</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Buchhaltung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Belege zuordnen & verbuchen, offene Zahlungen — ohne sevdesk</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Eigene Vollbild-Oberfläche — Belege, Zahlungen, Verbuchen (nur Admins)</span>
                   </span>
                   <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
                 </button>
@@ -251,9 +249,14 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               <Switch on={prefs?.guestChats ?? true} disabled={!prefs} onChange={() => togglePref('guestChats')} />
             </Row>
           )}
-          <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last={!wb}>
+          <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last={false}>
             <Switch on={prefs?.teamChats ?? true} disabled={!prefs} onChange={() => togglePref('teamChats')} />
           </Row>
+          {belegeOk && (
+            <Row title="💶 Buchhaltung" subtitle="Neue Belege aus dem Mail-Scan (nur Admins)" last={!wb}>
+              <Switch on={prefs?.buchhaltung ?? true} disabled={!prefs} onChange={() => togglePref('buchhaltung')} />
+            </Row>
+          )}
           {wb && (
             <Row title="⚡ Ladevorgang gestartet" subtitle="Push, sobald ein Gast zu laden beginnt">
               <Switch on={wb.pushStart} onChange={() => toggleWallboxPush('pushStart')} />
@@ -297,7 +300,6 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showQs && <QsArchive onClose={() => setShowQs(false)} />}
       {showTrends && <ScoreTrends onClose={() => setShowTrends(false)} />}
       {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
-      {showBelege && <BuchhaltungPanel onClose={() => setShowBelege(false)} />}
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
     </div>
   )
