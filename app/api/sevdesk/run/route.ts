@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { runSevInvoiceRun } from '@/lib/sevdesk-engine'
+import { migrateInvoiceCostCentres } from '@/lib/sevdesk'
 
 /**
  * 🧾 sevdesk-Tageslauf (§235) — übernimmt ab dem Stichtag 02.08.2026 den
@@ -36,6 +37,19 @@ export async function POST(request: NextRequest) {
   if (!me?.is_admin && !me?.is_host) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
     const b = await request.json().catch(() => ({}))
+    // §240: Bestand von Wohnungs- auf Standort-Kostenstellen umziehen
+    if (b.action === 'kst-migrate') {
+      const { data: listings } = await supabaseAdmin
+        .from('listings').select('title, location_group').eq('is_active', true)
+      const mapping: Record<string, string> = {}
+      for (const l of listings ?? []) {
+        if (l.location_group) mapping[String(l.title)] = String(l.location_group)
+      }
+      return NextResponse.json(await migrateInvoiceCostCentres(mapping, {
+        dryRun: b.dryRun !== false,
+        ...(typeof b.limit === 'number' ? { limit: b.limit } : {}),
+      }))
+    }
     return NextResponse.json(await runSevInvoiceRun({ dryRun: b.dryRun !== false }))
   } catch (err) {
     console.error('[sevdesk-engine] manual:', err)
