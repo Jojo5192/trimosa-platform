@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         try {
           const pdf = await getExpenseVoucherPdf(v.id)
           if (!pdf.ok || !pdf.pdf) { fehler.push(`${v.voucherNumber}: ${pdf.error}`); continue }
-          const up = await uploadSevVoucherFile(pdf.pdf, pdf.filename ?? `lexoffice-${v.id}.pdf`)
+          const up = await uploadSevVoucherFile(pdf.pdf, pdf.filename ?? `lexoffice-${v.id}.pdf`, pdf.mime ?? 'application/pdf')
           if (!up.ok || !up.internalFilename) { fehler.push(`${v.voucherNumber}: ${up.error}`); continue }
           const d = await createSevVoucherDraft({
             internalFilename: up.internalFilename,
