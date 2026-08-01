@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix, findVoucherByNumber, invoiceAudit } from '@/lib/lexoffice'
+import { runInvoiceRun, q2Check, q2Backfill, q2PaymentReport, deleteInvoice, priceFix, findVoucherByNumber, invoiceAudit, listExpenseVouchers, getExpenseVoucherPdf } from '@/lib/lexoffice'
 
 /**
  * 🧾 Lexoffice-Tageslauf (§158):
@@ -40,6 +40,66 @@ export async function POST(request: NextRequest) {
     // noch OFFENEN neu ausstellen. dryRun ist Default.
     // §221: Beleg-ID zu einer Rechnungsnummer (Vorstufe zu lex-link)
     // §222: Bilanz-Prüfung — wird jede Buchung nur EINMAL fakturiert?
+    // §243e: AUSGABEN-Belege aus lexoffice nach sevdesk migrieren.
+    // 'expense-audit' = Liste + Dedupe-Vorschau (nichts wird angelegt);
+    // 'expense-import' {limit, dryRun:false} = PDFs als sevdesk-Entwuerfe.
+    if (b.action === 'expense-audit' || b.action === 'expense-import') {
+      const from = typeof b.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.from) ? b.from : '2026-01-01'
+      const { vouchers, errors } = await listExpenseVouchers(from)
+      const { listSevVouchers, uploadSevVoucherFile, createSevVoucherDraft } = await import('@/lib/sevdesk')
+      // Dedupe-Basis: ALLE sevdesk-Belege (Entwurf/offen/teilbezahlt/bezahlt)
+      const sev = await listSevVouchers([50, 100, 750, 1000])
+      const tok = (x: string | null | undefined) => String(x ?? '').toLowerCase().split(/[^a-zäöüß0-9]+/).filter((w) => w.length > 3)
+      const schon: { kontakt: string; betrag: number; datum: string; grund: string }[] = []
+      const neu: typeof vouchers = []
+      for (const v of vouchers) {
+        if (v.voucherStatus === 'voided' || !Number.isFinite(v.totalAmount)) continue
+        // Marker-Dedupe (frueherer Import) + inhaltlicher Dedupe:
+        // Betrag exakt + Datum ±7 Tage + ein gemeinsames Namens-Token
+        const marker = sev.find((x) => (x.description ?? '').includes(`lexoffice ${v.voucherNumber}`))
+        const inhalt = sev.find((x) => {
+          if (x.sumGross == null || Math.abs(x.sumGross - v.totalAmount) > 0.01) {
+            // Entwuerfe haben sumGross 0 → Betrag steckt in der Description
+            if (!(x.status === 50 && (x.description ?? '').includes(v.totalAmount.toFixed(2)))) return false
+          }
+          if (!x.voucherDate || Math.abs(Date.parse(x.voucherDate) - Date.parse(v.voucherDate)) > 7 * 864e5) return false
+          const a = tok(x.supplierName)
+          return tok(v.contactName).some((w) => a.includes(w))
+        })
+        if (marker || inhalt) schon.push({ kontakt: v.contactName.slice(0, 50), betrag: v.totalAmount, datum: v.voucherDate, grund: marker ? 'Marker' : 'Betrag+Datum+Name' })
+        else neu.push(v)
+      }
+      if (b.action === 'expense-audit' || b.dryRun !== false) {
+        return NextResponse.json({
+          zeitraum: from, geladen: vouchers.length, schonInSevdesk: schon.length, neuZuImportieren: neu.length,
+          neu: neu.slice(0, 80).map((v) => ({ id: v.id, nr: v.voucherNumber, kontakt: v.contactName.slice(0, 50), betrag: v.totalAmount, datum: v.voucherDate, status: v.voucherStatus })),
+          errors,
+        })
+      }
+      // scharfer Import
+      const limit = Math.min(Math.max(Number(b.limit) || 30, 1), 40)
+      let importiert = 0
+      const fehler: string[] = []
+      for (const v of neu.slice(0, limit)) {
+        try {
+          const pdf = await getExpenseVoucherPdf(v.id)
+          if (!pdf.ok || !pdf.pdf) { fehler.push(`${v.voucherNumber}: ${pdf.error}`); continue }
+          const up = await uploadSevVoucherFile(pdf.pdf, pdf.filename ?? `lexoffice-${v.id}.pdf`)
+          if (!up.ok || !up.internalFilename) { fehler.push(`${v.voucherNumber}: ${up.error}`); continue }
+          const d = await createSevVoucherDraft({
+            internalFilename: up.internalFilename,
+            supplierName: (v.contactName || 'Unbekannt').slice(0, 80),
+            description: `Beleg (aus lexoffice ${v.voucherNumber}): ${v.contactName}`.slice(0, 160) + ` \u00B7 ${v.totalAmount.toFixed(2)} \u20AC`,
+            voucherDate: v.voucherDate,
+          })
+          if (!d.ok) { fehler.push(`${v.voucherNumber}: ${d.error}`); continue }
+          importiert++
+          await new Promise((ok) => setTimeout(ok, 600))
+        } catch (e) { fehler.push(`${v.voucherNumber}: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`) }
+      }
+      return NextResponse.json({ importiert, verbleibend: Math.max(0, neu.length - limit), fehler: fehler.slice(0, 15) })
+    }
+
     if (b.action === 'invoice-audit') {
       return NextResponse.json(await invoiceAudit(typeof b.from === 'string' ? b.from : undefined))
     }
