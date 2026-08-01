@@ -425,6 +425,23 @@ export default function BuchhaltungClient() {
   const setEigenF = (id: string, t: Tx, patch: Partial<EigenForm>) =>
     setEigen((p) => ({ ...p, [id]: { ...eigenOf(t), ...p[id], ...patch } }))
 
+  // §243g: 📸 Papier-Beleg fotografieren/hochladen → sevdesk + Voll-Automatik
+  const [fotoBusy, setFotoBusy] = useState(false)
+  const [fotoErgebnis, setFotoErgebnis] = useState('')
+  const fotoUpload = async (file: File) => {
+    setFotoBusy(true); setFotoErgebnis(''); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await fetch('/api/buchhaltung/upload', { method: 'POST', body: fd })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+      haptic()
+      setFotoErgebnis((j.auto ? '✅ ' : '🧾 ') + (j.lieferant ?? 'Beleg') + ' — ' + (j.text ?? 'angelegt'))
+      await load()
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setFotoBusy(false) }
+  }
+
   const eigenbelegBuchen = async (t: Tx) => {
     const f = eigenOf(t)
     setBusy(t.id); setErr('')
@@ -553,7 +570,9 @@ export default function BuchhaltungClient() {
       const match = exaktesMatch(Number.isFinite(betragNum) ? betragNum : null)
       return (
         <div style={{ display: 'grid', gap: 14 }}>
-          <PdfViewer links={viewer[v.id]?.links ?? []} />
+          <PdfViewer links={viewer[v.id]?.links?.length
+            ? viewer[v.id].links
+            : [{ name: 'Beleg ansehen (aus sevdesk)', url: '/api/buchhaltung/beleg-pdf?voucherId=' + v.id }]} />
           <div style={{ ...CARD, padding: 18, display: 'grid', gap: 16 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <Avatar name={v.supplierName ?? '?'} />
@@ -645,6 +664,22 @@ export default function BuchhaltungClient() {
             <div style={{ fontSize: 13, color: SUB, marginTop: 2 }}>{fmtD(t.datum)} · {t.bankkonto}</div>
             {t.zweck && <div style={{ fontSize: 13.5, color: INK, marginTop: 8, lineHeight: 1.4 }}>{t.zweck}</div>}
           </div>
+          {(() => {
+            // §243g: WARUM ist diese Zahlung unzugeordnet? — Heuristik-Hinweis
+            const portal = /booking|airbnb|expedia|hometogo|vrbo|fewo|homeaway/i.test(t.von)
+            const wiederkehrend = openTx.filter(x => Math.abs(Math.abs(x.betrag) - Math.abs(t.betrag)) < 0.005).length >= 3
+            const intern = /trimosa|steuerr/i.test(t.von)
+            const hinweis = t.betrag < 0 && portal
+              ? '📦 Vermutlich SAMMEL-Lastschrift des Portals — die Einzel-Belege sind in sevdesk; die Aufteilung auf mehrere Belege macht der sevdesk-Bankabgleich (Splitten).'
+              : intern
+              ? '🔄 Vermutlich Übertrag zwischen euren eigenen Konten — „Kein Beleg nötig" oder in sevdesk als Umbuchung.'
+              : wiederkehrend
+              ? '🔁 Wiederkehrender Betrag — Miete, Kreditrate oder Abo ohne Mail-Rechnung? → unten „Ohne Beleg buchen" oder 📸 Beleg im Belege-Reiter hochladen.'
+              : null
+            return hinweis ? (
+              <div style={{ fontSize: 13, color: SUB, background: GROUP_BG, borderRadius: 12, padding: '10px 13px', lineHeight: 1.45 }}>{hinweis}</div>
+            ) : null
+          })()}
           {t.betrag < 0 && (() => {
             const f = eigenOf(t)
             const zinsNum = Number(String(f.zins).replace(',', '.'))
@@ -811,6 +846,28 @@ export default function BuchhaltungClient() {
                 <Chip key={n} active={txDays === n} onClick={() => { setTxDays(n); load(n) }}>{n === 365 ? 'Jahr' : `${n} Tage`}</Chip>
               ))}
             </div>
+          )}
+          {section === 'belege' && (
+            <label style={{
+              ...CARD, display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
+              marginBottom: 12, cursor: fotoBusy ? 'wait' : 'pointer', WebkitTapHighlightColor: 'transparent',
+            }}>
+              <span style={{
+                width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: 'inline-flex',
+                alignItems: 'center', justifyContent: 'center', fontSize: 19, background: 'rgba(176,145,43,0.14)',
+              }}>📸</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: INK }}>
+                  {fotoBusy ? '⏳ Claude liest den Beleg…' : 'Papier-Beleg fotografieren / hochladen'}
+                </span>
+                <span style={{ display: 'block', fontSize: 12.5, color: SUB, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {fotoErgebnis || 'Kassenbon, Quittung, Rechnung — KI liest, kategorisiert & verbucht'}
+                </span>
+              </span>
+              <input type="file" accept="image/*,application/pdf" capture="environment" disabled={fotoBusy}
+                style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) fotoUpload(f) }} />
+            </label>
           )}
           {loading && <div style={CARD}><SkeletonRows kind="chat" count={7} /></div>}
           {!loading && !rows.length && (
