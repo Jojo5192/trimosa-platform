@@ -33,14 +33,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   if (String(b.check_in) >= SEV_ENGINE_STICHTAG) {
     const { data: inv } = await supabaseAdmin
       .from('sevdesk_invoices').select('sevdesk_id, invoice_number').eq('booking_id', b.id).maybeSingle()
-    if (!inv?.sevdesk_id) return NextResponse.json({ error: 'Noch keine Rechnung vorhanden.' }, { status: 404 })
-    const pdf = await getSevInvoicePdf(inv.sevdesk_id)
-    if (!pdf.ok || !pdf.pdf) {
-      console.error('[rechnung] sevdesk-PDF-Abruf:', pdf.error)
-      return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
+    if (inv?.sevdesk_id) {
+      const pdf = await getSevInvoicePdf(inv.sevdesk_id)
+      if (!pdf.ok || !pdf.pdf) {
+        console.error('[rechnung] sevdesk-PDF-Abruf:', pdf.error)
+        return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
+      }
+      const name = `Rechnung${inv.invoice_number ? `-${inv.invoice_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
+      return pdfResponse(pdf.pdf, name)
     }
-    const name = `Rechnung${inv.invoice_number ? `-${inv.invoice_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
-    return pdfResponse(pdf.pdf, name)
+    // §243ac-Randfall (Manuela Marc): Anreise ≥ Stichtag, aber die Rechnung
+    // wurde noch VOR dem Umzug in lexoffice ausgestellt („auf Rechnung") —
+    // ohne diesen Fallback lieferte der Link 404 statt der echten Rechnung.
+    const { data: legacy } = await supabaseAdmin
+      .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', b.id).maybeSingle()
+    if (!legacy?.lexoffice_id) return NextResponse.json({ error: 'Noch keine Rechnung vorhanden.' }, { status: 404 })
+    const lname = `Rechnung${legacy.voucher_number ? `-${legacy.voucher_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
+    const { data: archived } = await supabaseAdmin.storage.from('belege')
+      .download(`lex-archiv/${legacy.lexoffice_id}.pdf`)
+    if (archived) return pdfResponse(Buffer.from(await archived.arrayBuffer()), lname)
+    const lpdf = await getInvoicePdf(legacy.lexoffice_id)
+    if (!lpdf.ok || !lpdf.pdf) return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
+    return pdfResponse(lpdf.pdf, lname)
   }
 
   const { data: inv } = await supabaseAdmin
