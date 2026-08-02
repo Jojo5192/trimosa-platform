@@ -120,13 +120,21 @@ export async function buildAuswertung(): Promise<AuswertungDaten> {
     if (seen.has(b.id)) continue
     seen.add(b.id)
     if (!b.datum || !b.pos.length) continue
+    if (b.st === 50) continue // Entwürfe sind noch nicht gebucht
     const m = b.datum.slice(0, 7)
     if (!m.startsWith('2026') && !m.startsWith('2025')) continue
     const vz = b.cd === 'D' ? -1 : 1
+    // §243ae: Positions-Leichen-Schutz — die Reset-Zyklen können alte
+    // VoucherPos hinterlassen haben; der Beleg-sumGross ist autoritativ →
+    // weicht Σpos ab, werden die Positionen proportional darauf normiert
+    const posSum = b.pos.reduce((s, p) => s + p.g, 0)
+    const soll = b.gross != null ? Math.abs(b.gross) : null
+    const faktor = soll != null && soll > 0 && posSum > 0 && Math.abs(posSum - soll) > 0.05
+      ? soll / posSum : 1
     const e = anteileFuer(zuoMap.get(b.id) ?? null, b.kst, einheiten)
     for (const p of b.pos) {
       if (!p.g) continue
-      ausgaben.push({ m, nr: p.nr, name: p.name, g: Math.round(p.g * vz * 100) / 100, e, lief: (b.lief ?? '?').slice(0, 40) })
+      ausgaben.push({ m, nr: p.nr, name: p.name, g: Math.round(p.g * faktor * vz * 100) / 100, e, lief: (b.lief ?? '?').slice(0, 40) })
     }
   }
 
