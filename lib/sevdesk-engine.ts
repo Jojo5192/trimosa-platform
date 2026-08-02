@@ -638,19 +638,30 @@ export async function fewoBruttoFix(opts: {
     res.bookingId = b.id
     res.gast = b.guest_name ?? res.gast
     res.alt = b.total_price == null ? null : Math.round(Number(b.total_price) * 100) / 100
-    if (res.alt != null && Math.abs(res.alt - res.neu) < 0.02) {
-      res.uebersprungen = 'bereits korrekt'; uebersprungen++; details.push(res); continue
+    // Die drei Systeme werden UNABHÄNGIG geprüft: ein abgebrochener Lauf
+    // kann total_price schon gesetzt haben, während die Rechnung noch auf
+    // dem alten Betrag steht — dann darf hier nicht übersprungen werden.
+    const dbPasst = res.alt != null && Math.abs(res.alt - res.neu) < 0.02
+    if (dryRun) {
+      if (dbPasst) { res.uebersprungen = 'total_price korrekt — Rechnung wird geprüft'; uebersprungen++ }
+      details.push(res); continue
     }
-    if (dryRun) { details.push(res); continue }
     if (done >= limit) { res.uebersprungen = 'Limit erreicht — erneut aufrufen'; uebersprungen++; details.push(res); continue }
     done++
 
     // a) App-Datenbank
-    const { error: dbErr } = await supabaseAdmin
-      .from('bookings').update({ total_price: res.neu }).eq('id', b.id)
-    res.db = dbErr ? 'FEHLER: ' + dbErr.message : 'ok'
+    let dbErr: { message: string } | null = null
+    if (dbPasst) {
+      res.db = 'schon korrekt'
+    } else {
+      const { error } = await supabaseAdmin
+        .from('bookings').update({ total_price: res.neu }).eq('id', b.id)
+      dbErr = error ? { message: error.message } : null
+      res.db = error ? 'FEHLER: ' + error.message : 'ok'
+    }
 
-    // b) Smoobu (Quelle — sonst zieht der 2×/Std-Abgleich den alten Wert zurück!)
+    // b) Smoobu (Quelle — sonst zieht der 2×/Std-Abgleich den alten Wert
+    //    zurück!). Idempotent: der PUT setzt denselben Preis erneut.
     if (b.smoobu_reservation_id) {
       const err = await updateReservation(Number(b.smoobu_reservation_id), { price: res.neu })
       res.smoobu = err ? 'FEHLER: ' + err.slice(0, 120) : 'ok'
@@ -665,7 +676,7 @@ export async function fewoBruttoFix(opts: {
       : (inv.skipped ?? 'FEHLER: ' + (inv.error ?? ''))
 
     if (inv.ok && !dbErr) korrigiert++
-    else { fehler++; res.fehler = inv.error ?? dbErr?.message }
+    else { fehler++; res.fehler = inv.error ?? dbErr?.message ?? undefined }
     details.push(res)
     await new Promise((ok) => setTimeout(ok, 500))
   }
