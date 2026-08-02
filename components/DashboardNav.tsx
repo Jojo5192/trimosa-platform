@@ -42,6 +42,8 @@ export default function DashboardNav() {
         gap: '2px',
         minWidth: 'max-content',
       }}>
+        {/* §243ag Apple-Redesign: aktive Seite als gefüllte iOS-Pill statt
+            Unterstrich-Tab */}
         {items.map(({ href, icon, label }) => {
           const active = href === '/dashboard'
             ? path === '/dashboard'
@@ -54,14 +56,16 @@ export default function DashboardNav() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '12px 14px',
+                margin: '8px 1px',
+                padding: '7px 13px',
+                borderRadius: 999,
                 fontSize: '13px',
-                fontWeight: active ? 700 : 500,
-                color: active ? 'var(--gold)' : '#555',
+                fontWeight: 600,
+                background: active ? 'rgba(174,141,45,0.14)' : 'transparent',
+                color: active ? 'var(--gold-dark, #8A7020)' : '#555',
                 textDecoration: 'none',
-                borderBottom: active ? '2px solid var(--gold)' : '2px solid transparent',
                 whiteSpace: 'nowrap',
-                transition: 'color 0.15s',
+                transition: 'background 0.15s, color 0.15s',
               }}
             >
               <span style={{ fontSize: '15px' }}>{icon}</span>
