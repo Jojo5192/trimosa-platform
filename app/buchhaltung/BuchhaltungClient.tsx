@@ -15,6 +15,9 @@ interface InboxBeleg {
   lieferant: string | null; betrag: number | null; datum: string | null
   belegnummer: string | null; kiHinweis: string | null
   links: { name: string; url: string }[]
+  /** §243ad: Team-Einreichung — Ort-Wunsch + Notiz des Einreichers */
+  eingereichtOrt?: string | null
+  eingereichtNotiz?: string | null
 }
 interface Voucher {
   id: string; status: number; supplierName: string | null; description: string | null
@@ -249,7 +252,10 @@ function PdfViewer({ links }: { links: { name: string; url: string }[] }) {
 }
 
 export default function BuchhaltungClient() {
-  const [section, setSection] = useState<'inbox' | 'belege' | 'zahlungen'>('belege')
+  // §243ad: Inbox + Belege sind EIN Reiter (Drei-Firmen-Entscheidung als
+  // Status im Belege-Reiter); 'gebucht' lädt zusätzlich bezahlte Belege
+  const [section, setSection] = useState<'belege' | 'zahlungen'>('belege')
+  const [belegFilter, setBelegFilter] = useState<'todo' | 'gebucht'>('todo')
   const [selId, setSelId] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -284,11 +290,11 @@ export default function BuchhaltungClient() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const load = async (days = txDays) => {
+  const load = async (days = txDays, mitBezahlten = belegFilter === 'gebucht') => {
     setLoading(true)
     try {
       const [bu, be] = await Promise.all([
-        fetch(`/api/buchhaltung?days=${days}`, { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
+        fetch(`/api/buchhaltung?days=${days}${mitBezahlten ? '&bezahlt=1' : ''}`, { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
         fetch('/api/belege', { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
       ])
       if (!bu.ok) throw new Error(bu.j.error ?? 'Buchhaltung nicht ladbar')
@@ -299,6 +305,14 @@ export default function BuchhaltungClient() {
       setKostenstellen(bu.j.kostenstellen ?? ['Allgemein'])
       setClearingLabels(bu.j.clearingLabels ?? [])
       setWohnungen(bu.j.wohnungen ?? [])
+      // §243ad: VORAB gespeicherte KI-Analysen — Belege öffnen instant
+      // (laufende/erledigte Client-States gewinnen über den Server-Cache)
+      const ka = (bu.j.kiAnalysen ?? {}) as Record<string, KiVorschlag>
+      setKi((p) => {
+        const next = { ...p }
+        for (const [id, a] of Object.entries(ka)) if (!next[id] && a?.accountDatevId) next[id] = a
+        return next
+      })
       if (be.ok) setInbox(be.j.belege ?? [])
       setErr('')
     } catch (e) {
@@ -337,14 +351,14 @@ export default function BuchhaltungClient() {
   const setF = (id: string, patch: Partial<ReturnType<typeof fOf>>) =>
     setForm((p) => ({ ...p, [id]: { ...(p[id] ?? fOf(vouchers.find((v) => v.id === id)!)), ...patch } }))
 
-  // ✨ KI-Vorschlag automatisch beim Öffnen eines Belegs
+  // ✨ KI-Vorschlag beim Öffnen eines Belegs — §243ad: liegt die Analyse
+  // schon als Server-Vorab-Cache vor (kiAnalysen aus dem GET), wird nur noch
+  // das Formular vorbefüllt, kein API-Call mehr (Beleg öffnet instant)
   useEffect(() => {
     if (section !== 'belege' || !selId) return
     const v = vouchers.find((x) => x.id === selId)
-    if (!v || ki[selId]) return
-    setKi((p) => ({ ...p, [selId]: 'laedt' }))
-    post({ action: 'ki-vorschlag', voucherId: selId }).then((j) => {
-      setKi((p) => ({ ...p, [selId]: j as KiVorschlag }))
+    if (!v) return
+    const uebernehmen = (j: KiVorschlag) => {
       const match = exaktesMatch(j.betrag ?? betragAusText(v.description))
       setF(selId, {
         kat: String(j.accountDatevId), tax: String(j.taxRate),
@@ -355,6 +369,17 @@ export default function BuchhaltungClient() {
         ...(typeof j.kst === 'string' && j.kst ? { kst: j.kst } : {}),
         ...(j.zuordnung ? { zuordnung: j.zuordnung } : {}),
       })
+    }
+    const vorhanden = ki[selId]
+    if (vorhanden && typeof vorhanden === 'object') {
+      if (!form[selId]) uebernehmen(vorhanden)
+      return
+    }
+    if (vorhanden) return // 'laedt' | 'fehler'
+    setKi((p) => ({ ...p, [selId]: 'laedt' }))
+    post({ action: 'ki-vorschlag', voucherId: selId }).then((j) => {
+      setKi((p) => ({ ...p, [selId]: j as KiVorschlag }))
+      uebernehmen(j as KiVorschlag)
     }).catch(() => setKi((p) => ({ ...p, [selId]: 'fehler' })))
   }, [section, selId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -402,7 +427,27 @@ export default function BuchhaltungClient() {
       haptic()
       setInbox((p) => bulk ? p.filter((x) => x.lieferant !== b.lieferant) : p.filter((x) => x.id !== b.id))
       setSelId(null)
+      // §243ad: nach der Einzel-Übernahme läuft die Voll-Automatik mit —
+      // Ergebnis („✅ automatisch verbucht" vs. „🧾 zur Prüfung") anzeigen
+      if (!bulk && j.autoText) setNotice((j.auto ? '✅ ' : '🧾 ') + (b.lieferant ?? 'Beleg') + ': ' + j.autoText)
       if (ziel === 'sevdesk') await load()
+    } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
+  }
+
+  // §243ad: 🗑 sevdesk-Beleg löschen (voucher-delete: bezahlt → Zahlung wird
+  // vorher gelöst; Entwurf/offen → direkt weg)
+  const belegLoeschen = async (v: Voucher) => {
+    const warn = v.status === 1000
+      ? `„${v.supplierName ?? 'Beleg'}" ist BEZAHLT — die verknüpfte Zahlung wird gelöst und der Beleg gelöscht. Sicher?`
+      : `„${v.supplierName ?? 'Beleg'}" endgültig aus sevdesk löschen?`
+    if (!confirm(warn)) return
+    setBusy(v.id); setErr('')
+    try {
+      await post({ action: 'voucher-delete', voucherId: v.id, confirm: 'DELETE' })
+      haptic()
+      setVouchers((p) => p.filter((x) => x.id !== v.id))
+      setSelId(null)
+      setNotice(`🗑 ${v.supplierName ?? 'Beleg'} gelöscht.`)
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
@@ -431,19 +476,55 @@ export default function BuchhaltungClient() {
   const setEigenF = (id: string, t: Tx, patch: Partial<EigenForm>) =>
     setEigen((p) => ({ ...p, [id]: { ...eigenOf(t), ...p[id], ...patch } }))
 
-  // §243g: 📸 Papier-Beleg fotografieren/hochladen → sevdesk + Voll-Automatik
+  // §243g/§243ad: 📸 Beleg-Upload → sevdesk + Voll-Automatik.
+  // KEIN capture-Attribut mehr — iOS zeigt so die native Auswahl
+  // „Fotomediathek / Foto aufnehmen / Dateien" (inkl. Dokumente-Scanner).
+  // Mehrere Fotos in EINER Auswahl = EIN mehrseitiger Beleg → Client-PDF.
   const [fotoBusy, setFotoBusy] = useState(false)
   const [fotoErgebnis, setFotoErgebnis] = useState('')
-  const fotoUpload = async (file: File) => {
+  const bildZuJpeg = async (file: File): Promise<Uint8Array> => {
+    const bmp = await createImageBitmap(file)
+    const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bmp.width * s))
+    canvas.height = Math.max(1, Math.round(bmp.height * s))
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    const blob: Blob = await new Promise((res, rej) =>
+      canvas.toBlob((b) => (b ? res(b) : rej(new Error('Bild-Konvertierung fehlgeschlagen'))), 'image/jpeg', 0.88))
+    return new Uint8Array(await blob.arrayBuffer())
+  }
+  const uploadEinzeln = async (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const r = await fetch('/api/buchhaltung/upload', { method: 'POST', body: fd })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+    return j as { auto?: boolean; lieferant?: string; text?: string }
+  }
+  const fotoUpload = async (list: File[]) => {
+    if (!list.length) return
     setFotoBusy(true); setFotoErgebnis(''); setErr('')
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const r = await fetch('/api/buchhaltung/upload', { method: 'POST', body: fd })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+      const pdfs = list.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+      const bilder = list.filter((f) => !pdfs.includes(f))
+      const uploads: File[] = [...pdfs]
+      if (bilder.length === 1) uploads.push(bilder[0])
+      else if (bilder.length > 1) {
+        const { PDFDocument } = await import('pdf-lib')
+        const doc = await PDFDocument.create()
+        for (const b of bilder) {
+          const jpg = await doc.embedJpg(await bildZuJpeg(b))
+          const page = doc.addPage([jpg.width, jpg.height])
+          page.drawImage(jpg, { x: 0, y: 0, width: jpg.width, height: jpg.height })
+        }
+        const bytes = await doc.save()
+        uploads.push(new File([bytes as unknown as BlobPart], `scan-${bilder.length}-seiten.pdf`, { type: 'application/pdf' }))
+      }
+      let letztes: { auto?: boolean; lieferant?: string; text?: string } = {}
+      for (const f of uploads) letztes = await uploadEinzeln(f)
       haptic()
-      setFotoErgebnis((j.auto ? '✅ ' : '🧾 ') + (j.lieferant ?? 'Beleg') + ' — ' + (j.text ?? 'angelegt'))
+      const prefix = uploads.length > 1 ? `${uploads.length} Belege · zuletzt ` : ''
+      setFotoErgebnis(prefix + (letztes.auto ? '✅ ' : '🧾 ') + (letztes.lieferant ?? 'Beleg') + ' — ' + (letztes.text ?? 'angelegt'))
       await load()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setFotoBusy(false) }
   }
@@ -477,21 +558,28 @@ export default function BuchhaltungClient() {
 
   interface Row { id: string; titel: string; sub: string; betrag: string | null; farbe: string; avatar: ReactNode }
   const rows: Row[] = useMemo(() => {
-    if (section === 'inbox') return inbox.map((b) => ({
-      id: b.id, titel: b.lieferant ?? '?',
-      sub: `${fmtD(b.datum) ?? '—'} · ${(b.subject ?? '').slice(0, 48)}`,
-      betrag: b.betrag != null ? eur(b.betrag) : null, farbe: INK,
-      avatar: <Avatar name={b.lieferant ?? '?'} />,
-    }))
-    if (section === 'belege') return vouchers.map((v) => {
-      const betrag = v.sumGross && v.sumGross > 0 ? v.sumGross : betragAusText(v.description)
-      return {
-        id: v.id, titel: v.supplierName ?? '?',
-        sub: `${fmtD(v.voucherDate) ?? '—'} · ${(v.description ?? '').replace(/^(Beleg|Provisionsrechnung) \((automatisch aus E-Mail|aus Beleg-Inbox)\): /, '').slice(0, 48)}`,
-        betrag: betrag != null ? eur(betrag) : null, farbe: INK,
-        avatar: <Avatar name={v.supplierName ?? '?'} />,
-      }
-    })
+    // §243ad: EIN Belege-Reiter — Inbox-Zeilen (Gesellschaft entscheiden)
+    // stehen gekennzeichnet VOR den sevdesk-Belegen; „Gebucht" zeigt St1000
+    if (section === 'belege') {
+      const inboxRows: Row[] = belegFilter === 'gebucht' ? [] : inbox.map((b) => ({
+        id: b.id, titel: b.lieferant ?? '?',
+        sub: `⚠️ Zuordnung offen · ${fmtD(b.datum) ?? '—'}${b.eingereichtOrt ? ` · 👤 ${b.eingereichtOrt}` : ''} · ${(b.subject ?? '').slice(0, 36)}`,
+        betrag: b.betrag != null ? eur(b.betrag) : null, farbe: INK,
+        avatar: <Avatar name={b.lieferant ?? '?'} />,
+      }))
+      const vRows: Row[] = vouchers
+        .filter((v) => belegFilter === 'gebucht' ? v.status === 1000 : v.status < 1000)
+        .map((v) => {
+          const betrag = v.sumGross && v.sumGross > 0 ? v.sumGross : betragAusText(v.description)
+          return {
+            id: v.id, titel: v.supplierName ?? '?',
+            sub: `${v.status === 1000 ? '✓ Gebucht · ' : ''}${fmtD(v.voucherDate) ?? '—'} · ${(v.description ?? '').replace(/^(Beleg|Provisionsrechnung) \((automatisch aus E-Mail|aus Beleg-Inbox)\): /, '').slice(0, 48)}`,
+            betrag: betrag != null ? eur(betrag) : null, farbe: INK,
+            avatar: <Avatar name={v.supplierName ?? '?'} />,
+          }
+        })
+      return [...inboxRows, ...vRows]
+    }
     return gefilterteTx.map((t) => ({
       id: t.id, titel: t.von || t.zweck.slice(0, 40) || '—',
       sub: `${fmtD(t.datum)} · ${t.bankkonto}${t.zweck ? ' · ' + t.zweck.slice(0, 38) : ''}`,
@@ -505,7 +593,7 @@ export default function BuchhaltungClient() {
         }}>{t.betrag < 0 ? '↑' : '↓'}</span>
       ),
     }))
-  }, [section, inbox, vouchers, gefilterteTx])
+  }, [section, belegFilter, inbox, vouchers, gefilterteTx])
 
   const sel = {
     inbox: inbox.find((b) => b.id === selId) ?? null,
@@ -528,7 +616,7 @@ export default function BuchhaltungClient() {
 
   // ── Detail-Inhalte ──
   const renderDetail = () => {
-    if (section === 'inbox' && sel.inbox) {
+    if (section === 'belege' && sel.inbox) {
       const b = sel.inbox
       const gleiche = inbox.filter((x) => x.lieferant === b.lieferant).length
       return (
@@ -544,6 +632,11 @@ export default function BuchhaltungClient() {
               {b.betrag != null && <div style={{ marginLeft: 'auto', fontSize: 20, fontWeight: 700, color: INK, fontVariantNumeric: 'tabular-nums' }}>{eur(b.betrag)}</div>}
             </div>
             {b.kiHinweis && <div style={{ fontSize: 13.5, color: '#7A6520', background: '#FBF6E9', borderRadius: 12, padding: '10px 13px', lineHeight: 1.45 }}>🤖 {b.kiHinweis}</div>}
+            {(b.eingereichtOrt || b.eingereichtNotiz) && (
+              <div style={{ fontSize: 13.5, color: '#1D4ED8', background: 'rgba(10,132,255,0.08)', borderRadius: 12, padding: '10px 13px', lineHeight: 1.45 }}>
+                👤 Vom Team eingereicht{b.eingereichtOrt ? ` · ${b.eingereichtOrt}` : ''}{b.eingereichtNotiz ? ` — „${b.eingereichtNotiz}"` : ''}
+              </div>
+            )}
             <div>
               <div style={LABEL}>sevdesk-Kostenstelle · Standort</div>
               <select value={inboxKst[b.id] ?? 'Allgemein'} onChange={(e) => setInboxKst((p) => ({ ...p, [b.id]: e.target.value }))} style={SELECT}>
@@ -585,7 +678,7 @@ export default function BuchhaltungClient() {
               <Avatar name={v.supplierName ?? '?'} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 19, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{v.supplierName ?? '?'}</div>
-                <div style={{ fontSize: 13, color: SUB, marginTop: 1 }}>{fmtD(v.voucherDate) ?? 'ohne Datum'} · {v.status === 50 ? 'Entwurf' : v.status === 750 ? 'teilbezahlt' : 'offen'}</div>
+                <div style={{ fontSize: 13, color: SUB, marginTop: 1 }}>{fmtD(v.voucherDate) ?? 'ohne Datum'} · {v.status === 50 ? 'Entwurf' : v.status === 750 ? 'teilbezahlt' : v.status === 1000 ? '✓ gebucht & bezahlt' : 'offen'}</div>
               </div>
             </div>
 
@@ -654,7 +747,11 @@ export default function BuchhaltungClient() {
             <ZuordnungPicker value={f.zuordnung} onChange={(z) => setF(v.id, { zuordnung: z })} wohnungen={wohnungen} />
 
             <button onClick={() => verbuchen(v)} disabled={busy === v.id} style={{ ...BTN, background: GOLD, color: '#fff', fontSize: 16.5 }}>
-              {busy === v.id ? '⏳ Verbuche…' : `Verbuchen${f.txId ? ' + Zahlung zuordnen' : ''}`}
+              {busy === v.id ? '⏳ Verbuche…' : v.status === 1000 ? 'Umbuchen (Zahlung wird neu verknüpft)' : `Verbuchen${f.txId ? ' + Zahlung zuordnen' : ''}`}
+            </button>
+            <button onClick={() => belegLoeschen(v)} disabled={busy === v.id}
+              style={{ ...BTN, background: 'rgba(215,0,21,0.08)', color: RED }}>
+              🗑 Beleg löschen{v.status === 1000 ? ' (löst die Zahlung)' : ''}
             </button>
           </div>
         </div>
@@ -800,16 +897,14 @@ export default function BuchhaltungClient() {
 
     return (
       <div style={{ textAlign: 'center', color: SUB, padding: '90px 24px', fontSize: 15, lineHeight: 1.6 }}>
-        {section === 'inbox' && <>📥<br />Beleg auswählen — Gesellschaft & Zuordnung entscheiden.</>}
-        {section === 'belege' && <>🧾<br />Beleg auswählen — ✨ schlägt Kategorie, Steuer & Zahlung automatisch vor.</>}
+        {section === 'belege' && <>🧾<br />Beleg auswählen — ✨ hat Kategorie, Steuer & Zahlung schon vorbereitet.</>}
         {section === 'zahlungen' && <>💳<br />Zahlung auswählen.</>}
       </div>
     )
   }
 
   const SEG: [typeof section, string, number][] = [
-    ['inbox', '📥 Inbox', inbox.length],
-    ['belege', '🧾 Belege', vouchers.length],
+    ['belege', '🧾 Belege', inbox.length + vouchers.filter((v) => v.status < 1000).length],
     ['zahlungen', '💳 Zahlungen', openTx.length],
   ]
 
@@ -861,6 +956,16 @@ export default function BuchhaltungClient() {
             </div>
           )}
           {section === 'belege' && (
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', margin: '2px 2px 12px' }}>
+              <Chip active={belegFilter === 'todo'} onClick={() => { setBelegFilter('todo'); setSelId(null) }}>Zu erledigen</Chip>
+              <Chip active={belegFilter === 'gebucht'} onClick={() => {
+                setBelegFilter('gebucht'); setSelId(null)
+                // §243ad: bezahlte Belege on-demand nachladen (GET ?bezahlt=1)
+                if (!vouchers.some((v) => v.status === 1000)) load(txDays, true)
+              }}>✓ Gebucht</Chip>
+            </div>
+          )}
+          {section === 'belege' && belegFilter === 'todo' && (
             <label style={{
               ...CARD, display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px',
               marginBottom: 12, cursor: fotoBusy ? 'wait' : 'pointer', WebkitTapHighlightColor: 'transparent',
@@ -871,15 +976,15 @@ export default function BuchhaltungClient() {
               }}>📸</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: INK }}>
-                  {fotoBusy ? '⏳ Claude liest den Beleg…' : 'Papier-Beleg fotografieren / hochladen'}
+                  {fotoBusy ? '⏳ Claude liest den Beleg…' : 'Beleg hochladen — Foto, Scan oder Datei'}
                 </span>
                 <span style={{ display: 'block', fontSize: 12.5, color: SUB, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {fotoErgebnis || 'Kassenbon, Quittung, Rechnung — KI liest, kategorisiert & verbucht'}
+                  {fotoErgebnis || 'Mehrere Fotos = ein mehrseitiger Beleg · KI liest, kategorisiert & verbucht'}
                 </span>
               </span>
-              <input type="file" accept="image/*,application/pdf" capture="environment" disabled={fotoBusy}
+              <input type="file" accept="image/*,application/pdf" multiple disabled={fotoBusy}
                 style={{ display: 'none' }}
-                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) fotoUpload(f) }} />
+                onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) fotoUpload(fs) }} />
             </label>
           )}
           {loading && <div style={CARD}><SkeletonRows kind="chat" count={7} /></div>}
