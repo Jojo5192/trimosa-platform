@@ -25,7 +25,16 @@ export async function GET(request: NextRequest) {
   try {
     const state = await getGraphMailState()
     if (!state.enabled) return NextResponse.json({ skipped: 'Mail-Scan ist aus (erst Setup + action enable).' })
-    return NextResponse.json(await runMailScan())
+    const report = await runMailScan()
+    // §243ad: Vorab-Analyse für Bestands-Belege ohne KI-Cache (max. 2 je
+    // Lauf) — Kategorie/Steuer/Zahlungs-Match sind fertig, BEVOR der
+    // Inhaber die /buchhaltung öffnet
+    let vorab: { analysiert: number; offenOhneCache: number } | null = null
+    try {
+      const { vorabAnalyse } = await import('@/lib/beleg-ki')
+      vorab = await vorabAnalyse(2)
+    } catch { /* fail-soft */ }
+    return NextResponse.json({ ...report, ...(vorab ? { vorabAnalyse: vorab } : {}) })
   } catch (err) {
     console.error('[mail-scan] cron:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
