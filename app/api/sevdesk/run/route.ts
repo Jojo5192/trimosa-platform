@@ -73,6 +73,25 @@ export async function POST(request: NextRequest) {
     // §243i: Status-Verteilung der Bank-Transaktionen — Abgleich mit
     // sevdesks "offene Zahlungen"-Zaehlung (100 Created · 200 Linked ·
     // 300 Private · 350 Auto-booked ohne Bestaetigung · 400 Booked)
+    // §243ac VOLL-AUDIT: alle Belege + Rechnungen mit Konten/KSt roh auslesen
+    if (b.action === 'voll-audit') {
+      const { vollAudit } = await import('@/lib/sevdesk')
+      const raw = await vollAudit()
+      // interne Wohnungs-Zuordnungen (beleg_inbox) dazulegen
+      const zuo: Record<string, unknown> = {}
+      for (let fromIdx = 0; ; fromIdx += 1000) {
+        const { data } = await supabaseAdmin
+          .from('beleg_inbox')
+          .select('sevdesk_voucher_id, zuordnung')
+          .not('sevdesk_voucher_id', 'is', null)
+          .range(fromIdx, fromIdx + 999)
+        for (const r of data ?? []) {
+          if (r.sevdesk_voucher_id && r.zuordnung) zuo[String(r.sevdesk_voucher_id)] = r.zuordnung
+        }
+        if (!data || data.length < 1000) break
+      }
+      return NextResponse.json({ ...raw, zuordnungen: zuo })
+    }
     if (b.action === 'tx-status') {
       const days = Math.min(Math.max(Number(b.days) || 400, 7), 400)
       const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
