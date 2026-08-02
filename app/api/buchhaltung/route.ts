@@ -49,13 +49,20 @@ export async function GET(req: NextRequest) {
   // §241: Zeitraum wählbar (Zahlungen-Reiter 45/90/180/365 Tage)
   const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days')) || 45, 7), 400)
 
+  // §243ad: „Gebucht"-Ansicht lädt auch bezahlte Belege (Status 1000)
+  const mitBezahlten = req.nextUrl.searchParams.get('bezahlt') === '1'
+
   try {
-    const [vouchers, guidance, ignored, banks] = await Promise.all([
-      listSevVouchers([50, 100, 750]),
+    const [vouchersRaw, guidance, ignored, banks] = await Promise.all([
+      listSevVouchers(mitBezahlten ? [50, 100, 750, 1000] : [50, 100, 750]),
       getReceiptGuidance(),
       getIgnored(),
       findBankAccounts(),
     ])
+    // §243ac-Lektion: sevdesks Status-Filter liefert Belege teils in zwei
+    // Status-Schleifen doppelt → nach id deduplizieren
+    const seen = new Set<string>()
+    const vouchers = vouchersRaw.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true))).slice(0, 400)
 
     const openTx: {
       id: string; bankAccountId: string; bankkonto: string; datum: string
@@ -81,9 +88,30 @@ export async function GET(req: NextRequest) {
     // §242: Protokollzeilen zu den offenen Belegen (Beleg-Viewer + interne
     // Wohnungs-Zuordnung) — verknüpft über sevdesk_voucher_id
     const viewer: Record<string, { links: { name: string; url: string }[]; zuordnung: unknown; rowId: string }> = {}
+    // §243ad: VORAB gespeicherte KI-Analysen (Instant-Anzeige beim Öffnen)
+    const kiAnalysen: Record<string, unknown> = {}
     try {
       const vIds = vouchers.map((v) => v.id)
       if (vIds.length) {
+        const { data: prot } = await supabaseAdmin
+          .from('beleg_inbox').select('id, sevdesk_voucher_id, files, zuordnung, ki_analyse')
+          .in('sevdesk_voucher_id', vIds)
+        for (const r of (prot ?? []) as { id: string; sevdesk_voucher_id: string; files: { path: string; name: string }[]; zuordnung: unknown; ki_analyse?: unknown }[]) {
+          const links: { name: string; url: string }[] = []
+          for (const f of r.files ?? []) {
+            const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
+            if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+          }
+          viewer[r.sevdesk_voucher_id] = { links, zuordnung: r.zuordnung ?? null, rowId: r.id }
+          // nur brauchbare Analysen (Fehlschlag-Cache trägt kein accountDatevId)
+          const ka = r.ki_analyse as Record<string, unknown> | null | undefined
+          if (ka && ka.accountDatevId) kiAnalysen[r.sevdesk_voucher_id] = ka
+        }
+      }
+    } catch {
+      // Migration fehlt noch (ki_analyse-Spalte) — Retry ohne die Spalte
+      try {
+        const vIds = vouchers.map((v) => v.id)
         const { data: prot } = await supabaseAdmin
           .from('beleg_inbox').select('id, sevdesk_voucher_id, files, zuordnung')
           .in('sevdesk_voucher_id', vIds)
@@ -95,8 +123,8 @@ export async function GET(req: NextRequest) {
           }
           viewer[r.sevdesk_voucher_id] = { links, zuordnung: r.zuordnung ?? null, rowId: r.id }
         }
-      }
-    } catch { /* Migration 20260801_buchhaltung_v2 fehlt noch — fail-soft */ }
+      } catch { /* fail-soft */ }
+    }
 
     const { data: listings } = await supabaseAdmin
       .from('listings').select('id, title, location_group').eq('is_active', true).order('title')
@@ -120,6 +148,7 @@ export async function GET(req: NextRequest) {
       inboxCount: inboxCount ?? 0,
       zeitraumTage: days,
       viewer,
+      kiAnalysen,
       wohnungen: (listings ?? []).map((l) => ({ id: String(l.id), title: String(l.title), group: l.location_group ? String(l.location_group) : null })),
     }, NO_STORE)
   } catch (e) {
@@ -140,9 +169,25 @@ export async function POST(req: NextRequest) {
 
     if (b.action === 'ki-vorschlag') {
       // §243f: Analyse-Kern lebt jetzt in lib/beleg-ki (geteilt mit der
-      // Voll-Automatik im Mail-Scan) — Antwort-Shape unveraendert
-      const ki = await analysiereBeleg(String(b.voucherId))
+      // Voll-Automatik im Mail-Scan) — Antwort-Shape unveraendert.
+      // §243ad CACHE-FIRST: vorab gespeicherte Analyse (Eingang/Upload)
+      // instant zurueckgeben; { force: true } erzwingt eine frische Analyse.
+      const vid = String(b.voucherId)
+      if (b.force !== true) {
+        try {
+          const { data: row } = await supabaseAdmin
+            .from('beleg_inbox').select('ki_analyse').eq('sevdesk_voucher_id', vid).maybeSingle()
+          const cached = row?.ki_analyse as Record<string, unknown> | null
+          if (cached && cached.accountDatevId) {
+            const { ok: _o, weg: _w, error: _e, ...shape } = cached as { ok?: unknown; weg?: unknown; error?: unknown }
+            return NextResponse.json(shape, NO_STORE)
+          }
+        } catch { /* Spalte fehlt noch — frisch analysieren */ }
+      }
+      const ki = await analysiereBeleg(vid)
       if (!ki.ok) return NextResponse.json({ error: ki.error ?? 'Analyse fehlgeschlagen.' }, { status: ki.error === 'Beleg nicht gefunden.' ? 404 : 502 })
+      const { speichereKiAnalyse } = await import('@/lib/beleg-ki')
+      await speichereKiAnalyse(vid, ki)
       const { ok: _ok, weg: _weg, error: _err, ...shape } = ki
       return NextResponse.json(shape, NO_STORE)
     }
