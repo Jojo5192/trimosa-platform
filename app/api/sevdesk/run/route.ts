@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runSevInvoiceRun } from '@/lib/sevdesk-engine'
+import { runSevInvoiceRun, fewoBruttoFix, type FewoFixRow } from '@/lib/sevdesk-engine'
 import { migrateInvoiceCostCentres } from '@/lib/sevdesk'
 
 /**
@@ -74,6 +74,22 @@ export async function POST(request: NextRequest) {
     // sevdesks "offene Zahlungen"-Zaehlung (100 Created · 200 Linked ·
     // 300 Private · 350 Auto-booked ohne Bestaetigung · 400 Booked)
     // §243ac VOLL-AUDIT: alle Belege + Rechnungen mit Konten/KSt roh auslesen
+    // §243aj: FeWo-Buchungen tragen den AUSZAHLUNGS- statt des
+    // Brutto-Betrags (händische Smoobu-Eingabe). Korrigiert alle drei
+    // Systeme: Smoobu, bookings.total_price und die sevdesk-Rechnung
+    // (Storno + Neu). dryRun ist Default.
+    if (b.action === 'fewo-brutto-fix') {
+      if (!Array.isArray(b.rows) || b.rows.length === 0) {
+        return NextResponse.json({ error: 'rows fehlt.' }, { status: 400 })
+      }
+      const rows = (b.rows as FewoFixRow[]).filter(
+        (r) => r && typeof r.checkIn === 'string' && typeof r.checkOut === 'string' && typeof r.brutto === 'number',
+      )
+      return NextResponse.json(await fewoBruttoFix({
+        rows, dryRun: b.dryRun !== false, limit: typeof b.limit === 'number' ? b.limit : undefined,
+      }))
+    }
+
     if (b.action === 'voll-audit') {
       const { vollAudit } = await import('@/lib/sevdesk')
       const raw = await vollAudit()
