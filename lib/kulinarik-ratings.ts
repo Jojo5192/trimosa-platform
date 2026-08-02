@@ -5,13 +5,15 @@
  * GOOGLE_PLACES_API_KEY never leaves Vercel. Uses Places API (New) Text
  * Search with a minimal field mask.
  *
- * Cost control: results are cached in-process for 24 h (globalThis survives
- * across invocations while the lambda stays warm) AND the region page itself
- * is ISR-cached (revalidate 3600), so lookups only run when a page actually
- * regenerates on a cold instance. Failures degrade gracefully — no rating
- * badge, page renders normally.
+ * Cost control (§243af): ZWEI Cache-Ebenen — L1 in-process (überlebt, solange
+ * die Lambda warm bleibt) + L2 in der DB (app_settings 'kulinarik_ratings',
+ * überlebt Instanz-übergreifend). Vorher holte JEDE kalte Vercel-Instanz die
+ * ~26 Details-Calls neu (auch für Crawler!) → „Place Details Enterprise"
+ * ~32 €/Monat. Mit dem DB-Cache läuft die Places-API nur noch ~1×/24 h
+ * insgesamt → zurück unters Freikontingent. Failures degrade gracefully.
  */
 import type { KulinarikTipp } from '@/lib/regions'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export interface KulinarikRating {
   rating: number
@@ -81,6 +83,36 @@ async function lookupRating(query: string, placeId: string | undefined, key: str
   return value
 }
 
+const DB_KEY = 'kulinarik_ratings'
+
+/** L2: DB-Cache in L1 mergen (nur noch gültige Einträge). */
+async function ladeDbCache(): Promise<void> {
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', DB_KEY).maybeSingle()
+    const obj = (row?.value ?? {}) as Record<string, CacheEntry>
+    const now = Date.now()
+    for (const [k, e] of Object.entries(obj)) {
+      if (e && typeof e.expires === 'number' && e.expires > now && !cache.has(k)) cache.set(k, e)
+    }
+  } catch { /* fail-soft — dann eben nur L1 */ }
+}
+
+async function speichereDbCache(keys: string[]): Promise<void> {
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', DB_KEY).maybeSingle()
+    const obj = (row?.value ?? {}) as Record<string, CacheEntry>
+    const now = Date.now()
+    for (const [k, e] of Object.entries(obj)) if (!e || e.expires <= now) delete obj[k]
+    for (const k of keys) {
+      const e = cache.get(k)
+      if (e) obj[k] = e
+    }
+    await supabaseAdmin.from('app_settings').upsert({ key: DB_KEY, value: obj }, { onConflict: 'key' })
+  } catch { /* fail-soft */ }
+}
+
 /** Ratings keyed by tip name. Empty when no API key is configured. */
 export async function getKulinarikRatings(tipps: KulinarikTipp[]): Promise<Record<string, KulinarikRating>> {
   const key = process.env.GOOGLE_PLACES_API_KEY
@@ -90,14 +122,25 @@ export async function getKulinarikRatings(tipps: KulinarikTipp[]): Promise<Recor
   }
 
   const withQuery = tipps.filter((t): t is KulinarikTipp & { googleQuery: string } => !!t.googleQuery)
+  const cacheKeys = withQuery.map((t) => t.googlePlaceId ?? t.googleQuery)
+  const now = Date.now()
+
+  // §243af: Erst L2 laden, wenn L1 nicht alles frisch hat — dann treffen
+  // kalte Instanzen den DB-Cache statt der teuren Places-API
+  const l1Frisch = cacheKeys.every((k) => (cache.get(k)?.expires ?? 0) > now)
+  if (!l1Frisch) await ladeDbCache()
+  const fehltDanach = cacheKeys.some((k) => (cache.get(k)?.expires ?? 0) <= now)
+
   const results = await Promise.all(
     withQuery.map(async (t) => [t.name, await lookupRating(t.googleQuery, t.googlePlaceId, key)] as const)
   )
+  // nur wenn wirklich neu gegen die API aufgelöst wurde, zurückschreiben
+  if (fehltDanach) await speichereDbCache(cacheKeys)
 
   const map: Record<string, KulinarikRating> = {}
   for (const [name, rating] of results) {
     if (rating) map[name] = rating
   }
-  console.log(`[kulinarik-ratings] ${Object.keys(map).length}/${withQuery.length} Ratings aufgelöst`)
+  console.log(`[kulinarik-ratings] ${Object.keys(map).length}/${withQuery.length} Ratings aufgelöst${fehltDanach ? ' (API-Lauf, DB-Cache aktualisiert)' : ' (aus Cache)'}`)
   return map
 }
