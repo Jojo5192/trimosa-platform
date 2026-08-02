@@ -450,6 +450,8 @@ function nameTokens(s: string): string[] {
  */
 export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number, opts: {
   clearingLabel: string
+  /** true = Rechnung soll am Ende als bezahlt gegen das Clearing gebucht sein */
+  sollBezahlt?: boolean
 }): Promise<{ ok: boolean; number?: string | null; error?: string; skipped?: string; hinweis?: string }> {
   const ziel = Math.round(newGross * 100) / 100
   if (!Number.isFinite(ziel) || ziel <= 0) return { ok: false, error: 'ungueltiger Betrag' }
@@ -465,7 +467,9 @@ export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number
   if (Math.abs(altGross - ziel) < 0.02) return { ok: true, number: inv.invoiceNumber, skipped: 'Betrag bereits korrekt' }
 
   const clearingId = await ensureClearingAccount(opts.clearingLabel)
-  const warBezahlt = Number(inv.status) >= 1000
+  // Nach einem abgebrochenen Vorlauf steht die Rechnung als Entwurf da —
+  // dann sagt der Aufrufer, ob sie am Ende wieder bezahlt sein soll.
+  const warBezahlt = Number(inv.status) >= 1000 || opts.sollBezahlt === true
 
   // 1) Zahlung lösen + Waisen-Transaktion vom Verrechnungskonto räumen
   if (warBezahlt) {
@@ -481,32 +485,63 @@ export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number
   }
   const nummer = inv.invoiceNumber
 
-  // 3) Position(en) aktualisieren — bestehende ID mitgeben = Update
-  const pos = await sevJson<{ id: string; name?: string | null; text?: string | null }[]>(
+  // 3) Position aktualisieren. sevdesk nimmt Positions-Änderungen je nach
+  //    Beleg mal über den direkten PUT, mal nur über die saveInvoice-Factory
+  //    an — beide Wege werden probiert und JEWEILS verifiziert (der erste,
+  //    der den Brutto-Zielwert erreicht, gewinnt).
+  const pos = await sevJson<{ id: string; name?: string | null; text?: string | null; quantity?: number | string }[]>(
     `/InvoicePos?invoice[id]=${sevdeskId}&invoice[objectName]=Invoice&limit=50`)
   if (!pos?.length) return { ok: false, error: 'keine Rechnungsposition gefunden' }
+  if (pos.length > 1) return { ok: false, error: `${pos.length} Positionen — bitte manuell prüfen` }
   const net = Math.round((ziel / 1.07) * 10000) / 10000
-  await sevJson('/Invoice/Factory/saveInvoice', {
-    method: 'POST',
-    body: JSON.stringify({
-      invoice: { id: Number(sevdeskId), objectName: 'Invoice', mapAll: true },
-      invoicePosSave: [{
-        id: Number(pos[0].id), objectName: 'InvoicePos', mapAll: true,
-        quantity: 1, price: net, taxRate: 7,
-        name: pos[0].name ?? undefined, text: pos[0].text ?? undefined,
-        unity: { id: 1, objectName: 'Unity' },
-      }],
-      // mehrfache Positionen kommen bei diesen Rechnungen nicht vor —
-      // falls doch, bleiben sie unangetastet (kein blindes Löschen)
-      invoicePosDelete: null, discountSave: null, discountDelete: null,
-    }),
-  })
+  const posId = Number(pos[0].id)
+  const posName = pos[0].name ?? 'Übernachtung'
+  const posText = pos[0].text ?? ''
+
+  const brutto = async (): Promise<number> => {
+    inv = await load()
+    return Math.round(Number(inv.sumGross) * 100) / 100
+  }
+  const wege: string[] = []
+
+  // Weg A: direkter Partial-PUT auf die Position
+  try {
+    await sevJson(`/InvoicePos/${posId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ price: net, quantity: 1, taxRate: 7 }),
+    })
+    wege.push('pos-put')
+  } catch (e) {
+    wege.push('pos-put:' + String(e).slice(0, 80))
+  }
+
+  // Weg B: saveInvoice-Factory mit vollständigem Positions-Objekt
+  if (Math.abs((await brutto()) - ziel) > 0.02) {
+    try {
+      await sevJson('/Invoice/Factory/saveInvoice', {
+        method: 'POST',
+        body: JSON.stringify({
+          invoice: { id: Number(sevdeskId), objectName: 'Invoice', mapAll: true },
+          invoicePosSave: [{
+            id: posId, objectName: 'InvoicePos', mapAll: true,
+            invoice: { id: Number(sevdeskId), objectName: 'Invoice' },
+            quantity: 1, price: net, taxRate: 7,
+            name: posName, text: posText,
+            unity: { id: 1, objectName: 'Unity' },
+          }],
+          invoicePosDelete: null, discountSave: null, discountDelete: null,
+        }),
+      })
+      wege.push('factory')
+    } catch (e) {
+      wege.push('factory:' + String(e).slice(0, 120))
+    }
+  }
 
   // 4) verifizieren, BEVOR wieder finalisiert wird
-  inv = await load()
-  const neuGross = Math.round(Number(inv.sumGross) * 100) / 100
+  const neuGross = await brutto()
   if (Math.abs(neuGross - ziel) > 0.02) {
-    return { ok: false, error: `Betrag nicht uebernommen: sevdesk ${neuGross} vs. Soll ${ziel} (Rechnung ist Entwurf — bitte pruefen)` }
+    return { ok: false, error: `Betrag nicht uebernommen: sevdesk ${neuGross} vs. Soll ${ziel} [${wege.join(' | ')}]` }
   }
 
   // 5) wieder finalisieren (Nummer muss erhalten bleiben)
@@ -554,7 +589,9 @@ export async function fixSevInvoiceAmount(bookingId: string, newAmount: number):
   const b = bRaw as { channel: string | null; source: string | null; smoobu_reservation_id: number | null } | null
   const clearingLabel = clearingLabelFor(`${b?.channel ?? ''} ${b?.source ?? ''}`)
 
-  const r = await updateSevInvoiceAmount(row.sevdesk_id, newAmount, { clearingLabel })
+  const r = await updateSevInvoiceAmount(row.sevdesk_id, newAmount, {
+    clearingLabel, sollBezahlt: row.status === 'gebucht',
+  })
   if (r.ok) {
     await writeSevRow(bookingId, b?.smoobu_reservation_id ?? null, {
       amount: Math.round(newAmount * 100) / 100, status: 'gebucht', error: null,
