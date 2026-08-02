@@ -880,6 +880,13 @@ export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: 
       if (!list || list.length < 100) break
     }
   }
+  // §243ae: sevdesks status-Filter liefert Belege teils in ZWEI Schleifen
+  // doppelt — VOR dem Positions-Zuordnen dedupen, sonst hängen die pos an
+  // der einen Instanz und Auswerter erwischen die andere (leere)
+  const dedupe = new Map<string, AuditBelegRow>()
+  for (const b of belege) if (!dedupe.has(b.id)) dedupe.set(b.id, b)
+  belege.length = 0
+  belege.push(...dedupe.values())
   const byId = new Map(belege.map((b) => [b.id, b]))
 
   // 3) alle VoucherPos (paginiert, embed accountDatev) den Belegen zuordnen
