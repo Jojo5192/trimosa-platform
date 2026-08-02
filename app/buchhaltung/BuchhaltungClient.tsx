@@ -917,6 +917,10 @@ export default function BuchhaltungClient() {
           <div style={{ fontSize: 10.5, color: GOLDL, letterSpacing: 2.4, fontWeight: 700 }}>TRIMOSA</div>
           <div style={{ flex: 1 }} />
           <button onClick={() => { haptic(); load() }} title="Aktualisieren" style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', padding: 4 }}>↻</button>
+          <a href="/buchhaltung/auswertung" style={{
+            fontSize: 13.5, color: '#fff', fontWeight: 700, textDecoration: 'none',
+            background: 'rgba(227,200,120,0.22)', borderRadius: 999, padding: '5px 12px',
+          }}>📊 Auswertung</a>
           <a href="/team" style={{ fontSize: 14, color: GOLDL, fontWeight: 600, textDecoration: 'none' }}>Team-App</a>
         </div>
         {/* Segmented Control */}
