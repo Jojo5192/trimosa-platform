@@ -20,11 +20,16 @@ export const KONTO_GRUPPEN: { id: string; label: string; emoji: string; konten: 
   { id: 'bank', label: 'Zinsen & Bankgebühren', emoji: '💳', konten: ['6855', '7300', '7310'] },
 ]
 
-/** Konten, die NICHT erfolgswirksam sind — separat ausgewiesen, nie „Ausgabe". */
+/**
+ * Konten, die NICHT erfolgswirksam sind — separat ausgewiesen, nie „Ausgabe".
+ * Robust: erfolgswirksam sind NUR 4-stellige 4/5/6/7-Aufwandskonten — alles
+ * andere (Anlagen wie „500"/„0650", Bilanz-, Privat-, Verrechnungskonten)
+ * ist neutral. Reihenfolge zählt: privat/durchlaufend matchen vor anlagen.
+ */
 export const NEUTRAL_GRUPPEN: { id: string; label: string; test: (nr: string) => boolean }[] = [
-  { id: 'privat', label: 'Privatentnahmen', test: (nr) => nr === '2100' || nr === '2180' },
+  { id: 'privat', label: 'Privatentnahmen & -einlagen', test: (nr) => nr === '2100' || nr === '2180' },
   { id: 'durchlaufend', label: 'Durchlaufende Posten & Tilgung', test: (nr) => nr === '1370' || nr === '3150' },
-  { id: 'anlagen', label: 'Anlagenkäufe (aktiviert — AfA läuft in sevdesk)', test: (nr) => /^0\d/.test(nr) },
+  { id: 'anlagen', label: 'Anlagenkäufe & Bilanzkonten (AfA läuft in sevdesk)', test: (nr) => !/^[4567]\d{3}$/.test(nr) },
 ]
 
 export function gruppeFuerKonto(nr: string): { id: string; label: string; emoji: string } {
