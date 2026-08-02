@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { runSevInvoiceRun, fewoBruttoFix, type FewoFixRow } from '@/lib/sevdesk-engine'
-import { migrateInvoiceCostCentres } from '@/lib/sevdesk'
+import { migrateInvoiceCostCentres, sevJson } from '@/lib/sevdesk'
 
 /**
  * 🧾 sevdesk-Tageslauf (§235) — übernimmt ab dem Stichtag 02.08.2026 den
@@ -88,6 +88,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(await fewoBruttoFix({
         rows, dryRun: b.dryRun !== false, limit: typeof b.limit === 'number' ? b.limit : undefined,
       }))
+    }
+
+    // Diagnose: rohe Rechnung + Positionen ansehen (und optional testweise
+    // einen Positions-Preis setzen) — kalibriert das Update-Verhalten der
+    // sevdesk-API am echten Beleg (§127-Muster).
+    if (b.action === 'invoice-probe') {
+      const id = String(b.sevdeskId ?? '')
+      if (!id) return NextResponse.json({ error: 'sevdeskId fehlt.' }, { status: 400 })
+      const inv = (await sevJson<Record<string, unknown>[]>(`/Invoice/${id}`))[0]
+      const posVor = await sevJson<Record<string, unknown>[]>(
+        `/InvoicePos?invoice[id]=${id}&invoice[objectName]=Invoice&limit=50`)
+      let putAntwort: unknown = null
+      let posNach: unknown = null
+      let invNach: unknown = null
+      if (typeof b.setPrice === 'number' && posVor?.[0]) {
+        try {
+          putAntwort = await sevJson(`/InvoicePos/${posVor[0].id}`, {
+            method: 'PUT', body: JSON.stringify({ price: b.setPrice }),
+          })
+        } catch (e) { putAntwort = 'FEHLER: ' + String(e).slice(0, 300) }
+        posNach = await sevJson<Record<string, unknown>[]>(
+          `/InvoicePos?invoice[id]=${id}&invoice[objectName]=Invoice&limit=50`)
+        invNach = (await sevJson<Record<string, unknown>[]>(`/Invoice/${id}`))[0]
+      }
+      const schmal = (o: Record<string, unknown> | undefined) => o && Object.fromEntries(
+        Object.entries(o).filter(([k]) => /^(id|status|invoiceNumber|sumNet|sumGross|sumTax|price|quantity|name|taxRate|enshrined|priceGross|priceNet|priceTax)$/.test(k)))
+      return NextResponse.json({
+        invoice: schmal(inv),
+        positionenVor: (posVor ?? []).map(schmal),
+        putAntwort,
+        positionenNach: Array.isArray(posNach) ? posNach.map(schmal) : posNach,
+        invoiceNach: schmal(invNach as Record<string, unknown> | undefined),
+      })
     }
 
     if (b.action === 'voll-audit') {
