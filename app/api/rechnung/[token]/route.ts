@@ -47,12 +47,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', b.id).maybeSingle()
   if (!inv?.lexoffice_id) return NextResponse.json({ error: 'Noch keine Rechnung vorhanden.' }, { status: 404 })
 
+  const name = `Rechnung${inv.voucher_number ? `-${inv.voucher_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
+
+  // §243ac: STORAGE-ARCHIV zuerst (die lexoffice-Kündigung killt die Live-API;
+  // archiveInvoicePdfs hat alle Alt-PDFs nach belege/lex-archiv/ gelegt)
+  const { data: archived } = await supabaseAdmin.storage.from('belege')
+    .download(`lex-archiv/${inv.lexoffice_id}.pdf`)
+  if (archived) {
+    return pdfResponse(Buffer.from(await archived.arrayBuffer()), name)
+  }
+
   const pdf = await getInvoicePdf(inv.lexoffice_id)
   if (!pdf.ok || !pdf.pdf) {
     console.error('[rechnung] PDF-Abruf:', pdf.error)
     return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
   }
-  const name = `Rechnung${inv.voucher_number ? `-${inv.voucher_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
   return pdfResponse(pdf.pdf, name)
 }
 
