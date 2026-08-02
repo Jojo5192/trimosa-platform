@@ -23,7 +23,8 @@ type QsCheck = {
 
 const TEAL = '#0F766E'
 const TEAL_BG = 'linear-gradient(135deg, #F7FDFC, #EFFAF7)'
-const TEAL_RING = 'inset 0 0 0 1px #A7E8DC'
+// §243ag: weicher iOS-Look statt hartem Teal-Ring
+const TEAL_RING = 'inset 0 0 0 0.5px rgba(15,118,110,0.3), 0 1px 3px rgba(0,0,0,0.05)'
 
 function todayIso(): string {
   const d = new Date()
