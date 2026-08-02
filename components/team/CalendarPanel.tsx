@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
-import { usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { usePullToRefresh, PullHint, SkeletonRows, Segmented } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null; totalPrice?: number | null }
@@ -322,17 +322,14 @@ export default function CalendarPanel() {
         padding: '14px 16px 10px',
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
       }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Kalender</h1>
-        {/* Ansichts-Umschalter: Belegung · Agenda · Reinigungsplaner */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {([['belegung', '📊 Belegung'], ['agenda', '📋 Agenda'], ['reinigung', '🧹 Reinigung']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setView(id)} style={{
-              padding: '6px 14px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700, flexShrink: 0,
-              background: view === id ? '#111' : 'rgba(120,120,128,0.12)',
-              color: view === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>{label}</button>
-          ))}
-        </div>
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 11px', color: '#111', letterSpacing: '-0.6px' }}>Kalender</h1>
+        {/* Ansichts-Umschalter: Belegung · Agenda · Reinigungsplaner —
+            §243ag als echtes iOS-Segmented-Control */}
+        <Segmented
+          options={[['belegung', '📊 Belegung'], ['agenda', '📋 Agenda'], ['reinigung', '🧹 Reinigung']]}
+          value={view}
+          onChange={(id) => setView(id as typeof view)}
+        />
       </div>
 
       {/* 👤 Persönlicher Zugangs-Code (§141) — Navy-Karte, nur der EIGENE
