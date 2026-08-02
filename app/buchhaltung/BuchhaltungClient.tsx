@@ -912,16 +912,22 @@ export default function BuchhaltungClient() {
     <div style={{ minHeight: '100dvh', background: GROUP_BG, display: 'flex', flexDirection: 'column', WebkitFontSmoothing: 'antialiased', overflowX: 'hidden' }}>
       {/* ── Kopf ── */}
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', position: 'sticky', top: 0, zIndex: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, maxWidth: 1240, margin: '0 auto' }}>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>Buchhaltung</div>
-          <div style={{ fontSize: 10.5, color: GOLDL, letterSpacing: 2.4, fontWeight: 700 }}>TRIMOSA</div>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => { haptic(); load() }} title="Aktualisieren" style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', padding: 4 }}>↻</button>
-          <a href="/buchhaltung/auswertung" style={{
-            fontSize: 13.5, color: '#fff', fontWeight: 700, textDecoration: 'none',
-            background: 'rgba(227,200,120,0.22)', borderRadius: 999, padding: '5px 12px',
-          }}>📊 Auswertung</a>
-          <a href="/team" style={{ fontSize: 14, color: GOLDL, fontWeight: 600, textDecoration: 'none' }}>Team-App</a>
+        {/* §243af: iOS-Navigation-Muster — kleine Aktions-Zeile oben, Large
+            Title darunter (die alte Ein-Zeilen-Variante lief mobil über) */}
+        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 10.5, color: GOLDL, letterSpacing: 2.4, fontWeight: 700 }}>TRIMOSA</div>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => { haptic(); load() }} title="Aktualisieren" style={{ background: 'none', border: 'none', color: '#fff', fontSize: 17, cursor: 'pointer', padding: '2px 4px' }}>↻</button>
+            <a href="/team" style={{ fontSize: 13.5, color: GOLDL, fontWeight: 600, textDecoration: 'none' }}>Team-App ›</a>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
+            <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: -0.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Buchhaltung</div>
+            <a href="/buchhaltung/auswertung" style={{
+              fontSize: 13.5, color: '#fff', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap',
+              background: 'rgba(227,200,120,0.22)', borderRadius: 999, padding: '6px 13px', flexShrink: 0,
+            }}>📊 Auswertung</a>
+          </div>
         </div>
         {/* Segmented Control */}
         <div style={{ maxWidth: 1240, margin: '12px auto 0' }}>
