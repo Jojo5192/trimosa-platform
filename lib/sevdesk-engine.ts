@@ -19,8 +19,10 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   sevdeskConfigured, createPaidInvoice, invoiceNumberExists, cancelSevInvoice,
-  updateSevInvoiceRecipient, clearingLabelFor, type SevInvoiceInput,
+  updateSevInvoiceRecipient, clearingLabelFor, sevJson, sevFetch, ensureClearingAccount,
+  deleteClearingOrphan, type SevInvoiceInput,
 } from '@/lib/sevdesk'
+import { updateReservation } from '@/lib/smoobu'
 import { sanitizeRecipient, type InvoiceRecipient } from '@/lib/lexoffice'
 
 /** Ab dieser Anreise ist sevdesk das führende Rechnungssystem. */
@@ -385,4 +387,250 @@ export async function runSevInvoiceRun(opts: { dryRun?: boolean } = {}): Promise
     await new Promise((ok) => setTimeout(ok, 400))
   }
   return report
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * §243aj — FEWO-BRUTTO-KORREKTUR
+ *
+ * FeWo überträgt keine Preise an Smoobu (§127) → die Beträge wurden dort
+ * händisch eingetragen, und zwar systematisch der AUSZAHLUNGS-Betrag
+ * (nach 8 % Vermieter-Provision) statt des Brutto-Buchungsbetrags. Folge:
+ * Umsatz zu niedrig ausgewiesen, während die Provision zusätzlich als
+ * Ausgabe gebucht ist (§243s) — dieselbe Provision mindert den Gewinn
+ * zweimal. Airbnb/Booking sind nachweislich sauber (Brutto).
+ *
+ * Diese Korrektur zieht ALLE drei Systeme nach: Smoobu (Quelle),
+ * bookings.total_price (App/Auswertung) und die sevdesk-Rechnung
+ * (In-Place-Update, gleiche Rechnungsnummer).
+ * ═══════════════════════════════════════════════════════════════════ */
+
+export interface FewoFixRow {
+  /** Anreise YYYY-MM-DD */
+  checkIn: string
+  /** Abreise YYYY-MM-DD */
+  checkOut: string
+  /** Brutto-Buchungsbetrag aus dem FeWo-Einkommensreport */
+  brutto: number
+  /** Gastname aus dem Report — nur zur Entschärfung bei Mehrdeutigkeit */
+  name?: string
+}
+
+export interface FewoFixResult {
+  gast: string
+  zeitraum: string
+  alt: number | null
+  neu: number
+  bookingId?: string
+  smoobu?: string
+  db?: string
+  rechnung?: string
+  fehler?: string
+  uebersprungen?: string
+}
+
+/** Nachnamen-Token für die Entschärfung mehrdeutiger Treffer. */
+function nameTokens(s: string): string[] {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z]+/).filter((t) => t.length >= 3)
+}
+
+/**
+ * Ändert den BETRAG einer bestehenden sevdesk-Rechnung — ohne Storno,
+ * gleiche Rechnungsnummer (Inhaber-Vorgabe 2.8.). Möglich, weil die
+ * Rechnungen bewusst NICHT festgeschrieben sind (§234-Doktrin „buchen,
+ * nicht festschreiben").
+ *
+ * Ablauf: bezahlte Rechnung → Zahlung lösen (resetToOpen) + Waise vom
+ * Verrechnungskonto räumen → in den Entwurf zurück → Position mit dem
+ * neuen Netto-Preis speichern (saveInvoice-Factory, bestehende Positions-ID
+ * = Update statt Neuanlage) → Brutto verifizieren → wieder finalisieren
+ * (sendBy, Nummer bleibt) → Zahlung neu gegen das Kanal-Verrechnungskonto
+ * buchen. Jeder Schritt ist idempotent: ein erneuter Aufruf nach einem
+ * Abbruch führt die Rechnung sauber zu Ende.
+ */
+export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number, opts: {
+  clearingLabel: string
+}): Promise<{ ok: boolean; number?: string | null; error?: string; skipped?: string; hinweis?: string }> {
+  const ziel = Math.round(newGross * 100) / 100
+  if (!Number.isFinite(ziel) || ziel <= 0) return { ok: false, error: 'ungueltiger Betrag' }
+
+  type Inv = {
+    id: string; status: string | number; invoiceNumber: string | null; sumGross: string | number
+    invoiceDate?: string; enshrined?: unknown
+  }
+  const load = async (): Promise<Inv> => (await sevJson<Inv[]>(`/Invoice/${sevdeskId}`))[0]
+  let inv = await load()
+  if (inv.enshrined) return { ok: false, error: 'Rechnung ist festgeschrieben — nur per Storno korrigierbar' }
+  const altGross = Math.round(Number(inv.sumGross) * 100) / 100
+  if (Math.abs(altGross - ziel) < 0.02) return { ok: true, number: inv.invoiceNumber, skipped: 'Betrag bereits korrekt' }
+
+  const clearingId = await ensureClearingAccount(opts.clearingLabel)
+  const warBezahlt = Number(inv.status) >= 1000
+
+  // 1) Zahlung lösen + Waisen-Transaktion vom Verrechnungskonto räumen
+  if (warBezahlt) {
+    await sevJson(`/Invoice/${sevdeskId}/resetToOpen`, { method: 'PUT' })
+    const weg = await deleteClearingOrphan(clearingId, altGross)
+    if (!weg) console.warn('[sev-amount] Waise nicht gefunden:', sevdeskId, altGross)
+    inv = await load()
+  }
+  // 2) zurück in den Entwurf — nur Entwuerfe nehmen Positions-Aenderungen an
+  if (Number(inv.status) >= 200) {
+    await sevFetch(`/Invoice/${sevdeskId}/resetToDraft`, { method: 'PUT' })
+    inv = await load()
+  }
+  const nummer = inv.invoiceNumber
+
+  // 3) Position(en) aktualisieren — bestehende ID mitgeben = Update
+  const pos = await sevJson<{ id: string; name?: string | null; text?: string | null }[]>(
+    `/InvoicePos?invoice[id]=${sevdeskId}&invoice[objectName]=Invoice&limit=50`)
+  if (!pos?.length) return { ok: false, error: 'keine Rechnungsposition gefunden' }
+  const net = Math.round((ziel / 1.07) * 10000) / 10000
+  await sevJson('/Invoice/Factory/saveInvoice', {
+    method: 'POST',
+    body: JSON.stringify({
+      invoice: { id: Number(sevdeskId), objectName: 'Invoice', mapAll: true },
+      invoicePosSave: [{
+        id: Number(pos[0].id), objectName: 'InvoicePos', mapAll: true,
+        quantity: 1, price: net, taxRate: 7,
+        name: pos[0].name ?? undefined, text: pos[0].text ?? undefined,
+        unity: { id: 1, objectName: 'Unity' },
+      }],
+      // mehrfache Positionen kommen bei diesen Rechnungen nicht vor —
+      // falls doch, bleiben sie unangetastet (kein blindes Löschen)
+      invoicePosDelete: null, discountSave: null, discountDelete: null,
+    }),
+  })
+
+  // 4) verifizieren, BEVOR wieder finalisiert wird
+  inv = await load()
+  const neuGross = Math.round(Number(inv.sumGross) * 100) / 100
+  if (Math.abs(neuGross - ziel) > 0.02) {
+    return { ok: false, error: `Betrag nicht uebernommen: sevdesk ${neuGross} vs. Soll ${ziel} (Rechnung ist Entwurf — bitte pruefen)` }
+  }
+
+  // 5) wieder finalisieren (Nummer muss erhalten bleiben)
+  if (Number(inv.status) < 200) {
+    await sevJson(`/Invoice/${sevdeskId}/sendBy`, {
+      method: 'PUT', body: JSON.stringify({ sendType: 'VPR', sendDraft: false }),
+    })
+    inv = await load()
+    if (nummer && (inv.invoiceNumber ?? '') !== nummer) {
+      return { ok: false, error: `Nummern-Drift beim Finalisieren: war ${nummer}, jetzt ${inv.invoiceNumber}` }
+    }
+  }
+
+  // 6) Zahlung neu buchen (nur wenn sie vorher bezahlt war)
+  let hinweis: string | undefined
+  if (warBezahlt && Number(inv.status) < 1000) {
+    try {
+      await sevJson(`/Invoice/${sevdeskId}/bookAmount`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: neuGross,
+          date: Math.floor(Date.parse(String(inv.invoiceDate ?? '').slice(0, 10) + 'T12:00:00Z') / 1000) || Math.floor(Date.now() / 1000),
+          type: 'FULL_PAYMENT',
+          checkAccount: { id: Number(clearingId), objectName: 'CheckAccount' },
+        }),
+      })
+    } catch (e) {
+      hinweis = 'Zahlung nicht neu verknuepft: ' + String(e).slice(0, 140)
+    }
+  }
+  return { ok: true, number: inv.invoiceNumber, ...(hinweis ? { hinweis } : {}) }
+}
+
+/** Betrags-Korrektur einer Buchung: findet ihre sevdesk-Rechnung und
+ *  aktualisiert sie in place (kein Storno). */
+export async function fixSevInvoiceAmount(bookingId: string, newAmount: number): Promise<
+  { ok: boolean; number?: string | null; error?: string; skipped?: string; hinweis?: string }
+> {
+  if (!sevdeskConfigured()) return { ok: false, error: 'SEVDESK_API_TOKEN fehlt' }
+  const row = await getSevRow(bookingId)
+  if (!row?.sevdesk_id) return { ok: false, skipped: 'keine sevdesk-Rechnung vorhanden' }
+
+  const { data: bRaw } = await supabaseAdmin
+    .from('bookings').select('channel, source, smoobu_reservation_id').eq('id', bookingId).maybeSingle()
+  const b = bRaw as { channel: string | null; source: string | null; smoobu_reservation_id: number | null } | null
+  const clearingLabel = clearingLabelFor(`${b?.channel ?? ''} ${b?.source ?? ''}`)
+
+  const r = await updateSevInvoiceAmount(row.sevdesk_id, newAmount, { clearingLabel })
+  if (r.ok) {
+    await writeSevRow(bookingId, b?.smoobu_reservation_id ?? null, {
+      amount: Math.round(newAmount * 100) / 100, status: 'gebucht', error: null,
+    })
+  }
+  return r
+}
+
+/**
+ * Korrigiert FeWo-Buchungen auf den Brutto-Betrag — in Smoobu, in der App
+ * (bookings.total_price) UND in sevdesk (Storno + Neu).
+ * dryRun (Default) zeigt nur, was passieren würde.
+ */
+export async function fewoBruttoFix(opts: {
+  rows: FewoFixRow[]
+  dryRun?: boolean
+  limit?: number
+}): Promise<{ geprueft: number; korrigiert: number; fehler: number; uebersprungen: number; details: FewoFixResult[] }> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(1, opts.limit ?? 40), 60)
+  const details: FewoFixResult[] = []
+  let korrigiert = 0, fehler = 0, uebersprungen = 0, done = 0
+
+  for (const r of opts.rows) {
+    const res: FewoFixResult = {
+      gast: r.name ?? '—', zeitraum: `${r.checkIn}–${r.checkOut}`,
+      alt: null, neu: Math.round(r.brutto * 100) / 100,
+    }
+    const { data: cands } = await supabaseAdmin
+      .from('bookings')
+      .select('id, guest_name, total_price, channel, source, status, smoobu_reservation_id')
+      .eq('check_in', r.checkIn).eq('check_out', r.checkOut).eq('status', 'confirmed')
+    type Cand = { id: string; guest_name: string | null; total_price: number | string | null; channel: string | null; source: string | null; smoobu_reservation_id: number | null }
+    let list = ((cands ?? []) as Cand[]).filter((c) => /fewo|homeaway|vrbo|expedia/i.test(`${c.channel ?? ''} ${c.source ?? ''}`))
+    if (list.length > 1 && r.name) {
+      const want = nameTokens(r.name)
+      const narrowed = list.filter((c) => nameTokens(c.guest_name ?? '').some((t) => want.includes(t)))
+      if (narrowed.length === 1) list = narrowed
+    }
+    if (list.length === 0) { res.uebersprungen = 'keine FeWo-Buchung gefunden'; uebersprungen++; details.push(res); continue }
+    if (list.length > 1) { res.uebersprungen = `mehrdeutig (${list.length} Buchungen)`; uebersprungen++; details.push(res); continue }
+
+    const b = list[0]
+    res.bookingId = b.id
+    res.gast = b.guest_name ?? res.gast
+    res.alt = b.total_price == null ? null : Math.round(Number(b.total_price) * 100) / 100
+    if (res.alt != null && Math.abs(res.alt - res.neu) < 0.02) {
+      res.uebersprungen = 'bereits korrekt'; uebersprungen++; details.push(res); continue
+    }
+    if (dryRun) { details.push(res); continue }
+    if (done >= limit) { res.uebersprungen = 'Limit erreicht — erneut aufrufen'; uebersprungen++; details.push(res); continue }
+    done++
+
+    // a) App-Datenbank
+    const { error: dbErr } = await supabaseAdmin
+      .from('bookings').update({ total_price: res.neu }).eq('id', b.id)
+    res.db = dbErr ? 'FEHLER: ' + dbErr.message : 'ok'
+
+    // b) Smoobu (Quelle — sonst zieht der 2×/Std-Abgleich den alten Wert zurück!)
+    if (b.smoobu_reservation_id) {
+      const err = await updateReservation(Number(b.smoobu_reservation_id), { price: res.neu })
+      res.smoobu = err ? 'FEHLER: ' + err.slice(0, 120) : 'ok'
+    } else {
+      res.smoobu = 'keine Reservierungs-ID'
+    }
+
+    // c) sevdesk-Rechnung — Betrag in place aendern (kein Storno)
+    const inv = await fixSevInvoiceAmount(b.id, res.neu)
+    res.rechnung = inv.ok
+      ? `${inv.storniert ?? 'storniert'} → ${inv.number}`
+      : (inv.skipped ?? 'FEHLER: ' + (inv.error ?? ''))
+
+    if (inv.ok && !dbErr) korrigiert++
+    else { fehler++; res.fehler = inv.error ?? dbErr?.message }
+    details.push(res)
+    await new Promise((ok) => setTimeout(ok, 500))
+  }
+  return { geprueft: opts.rows.length, korrigiert, fehler, uebersprungen, details }
 }
