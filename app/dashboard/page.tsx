@@ -78,14 +78,16 @@ export default async function DashboardPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
+          {/* §243ag: KPI-Kacheln im Buchhaltungs-Look — weiß, Hairline,
+              Akzent nur in der Zahl (tabular-nums) */}
           {[
-            { value: listings?.length ?? 0, label: 'Inserate', accent: '#1D1D1F', bg: '#fff' },
-            { value: pendingBookings.length,  label: 'Offene Anfragen', accent: 'var(--gold)', bg: '#FAF5E4' },
-            { value: confirmedBookings.length, label: 'Bestätigt', accent: '#16A34A', bg: '#F0FDF4' },
+            { value: listings?.length ?? 0, label: 'INSERATE', accent: '#1D1D1F' },
+            { value: pendingBookings.length,  label: 'OFFENE ANFRAGEN', accent: 'var(--gold-dark, #8A7020)' },
+            { value: confirmedBookings.length, label: 'BESTÄTIGT', accent: '#248A3D' },
           ].map((stat) => (
-            <div key={stat.label} className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: stat.bg, border: '1px solid #E5E5EA' }}>
-              <p className="text-2xl font-bold" style={{ color: stat.accent }}>{stat.value}</p>
-              <p className="text-xs mt-1" style={{ color: '#6E6E73' }}>{stat.label}</p>
+            <div key={stat.label} className="rounded-2xl p-5" style={{ backgroundColor: '#fff', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1), 0 1px 3px rgba(0,0,0,0.04)' }}>
+              <p className="text-xs font-bold" style={{ color: '#8A8578', letterSpacing: '0.04em' }}>{stat.label}</p>
+              <p className="text-3xl font-extrabold mt-1" style={{ color: stat.accent, letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' }}>{stat.value}</p>
             </div>
           ))}
         </div>
