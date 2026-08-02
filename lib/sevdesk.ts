@@ -606,8 +606,15 @@ export async function bookSevVoucher(voucherId: string, opts: {
     // schon Status 100 hat (z. B. weil ein früherer bookAmount scheiterte),
     // muss erst zurück in den Entwurf
     let zahlungGeloest = false
+    // §243z: sevdesk verlangt beim Finalisieren eine description — Belege
+    // ohne (manche UI-/Upload-Wege) bekommen einen Fallback aus Lieferant+Datum
+    let descFallback: string | null = null
     try {
-      const cur = await sevJson<{ status?: string | number }[] | { status?: string | number }>(`/Voucher/${voucherId}`)
+      const cur = await sevJson<{ status?: string | number; description?: unknown; supplierName?: unknown; voucherDate?: unknown }[] | { status?: string | number; description?: unknown; supplierName?: unknown; voucherDate?: unknown }>(`/Voucher/${voucherId}`)
+      const cv = Array.isArray(cur) ? cur[0] : cur
+      if (cv && !String(cv.description ?? '').trim()) {
+        descFallback = `Beleg ${String(cv.supplierName ?? '').trim() || 'ohne Lieferant'} ${String(cv.voucherDate ?? '').slice(0, 10)}`.trim()
+      }
       const st = Number(Array.isArray(cur) ? cur[0]?.status : (cur as { status?: string | number })?.status)
       // §243c: BEZAHLTE Belege (1000) erst zurueck auf offen — loest die
       // Bank-Verknuepfung (Transaktion wird wieder frei; der Aufrufer
@@ -641,6 +648,7 @@ export async function bookSevVoucher(voucherId: string, opts: {
           // §243q: Gutschriften/Erstattungen — Beleg als EINNAHME (D) drehen
           ...(opts.einnahme ? { creditDebit: 'D' } : {}),
           ...(opts.voucherDate ? { voucherDate: opts.voucherDate } : {}),
+          ...(descFallback ? { description: descFallback } : {}),
           // costCentreName '' = Kostenstelle EXPLIZIT entfernen (§243c —
           // Gaestemanagement-Umbuchung: KSt weg, Zuordnung = alle Wohnungen)
           ...(costCentreId ? { costCentre: { id: Number(costCentreId), objectName: 'CostCentre' } } : opts.costCentreName === '' ? { costCentre: null } : {}),
