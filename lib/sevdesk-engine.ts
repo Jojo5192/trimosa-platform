@@ -508,18 +508,31 @@ export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number
   }
   const wege: string[] = []
 
-  // Weg A: direkter Partial-PUT auf die Position
-  try {
-    await sevJson(`/InvoicePos/${posId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ price: net, quantity: 1, taxRate: 7 }),
-    })
-    wege.push('pos-put')
-  } catch (e) {
-    wege.push('pos-put:' + String(e).slice(0, 80))
+  // ⚠️ KALIBRIERT (§243aj, 2.8.): Diese Rechnungen laufen mit sevdesks
+  // NEUER Preislogik (`propertyUseNewCalculation: "1"`). Dort sind
+  // priceNet/priceGross/priceTax maßgeblich — ein PUT auf das Legacy-Feld
+  // `price` wird mit HTTP 200 quittiert und STILL VERWORFEN (Position
+  // behält ihren alten Preis). Darum mehrere Varianten, jede einzeln
+  // verifiziert; die erste, die den Brutto-Zielwert erreicht, gewinnt.
+  const tax = Math.round((ziel - net) * 10000) / 10000
+  const varianten: { name: string; body: Record<string, unknown> }[] = [
+    { name: 'priceNet+Gross+Tax', body: { priceNet: net, priceGross: ziel, priceTax: tax, quantity: 1, taxRate: 7 } },
+    { name: 'priceGross', body: { priceGross: ziel, quantity: 1, taxRate: 7 } },
+    { name: 'priceNet', body: { priceNet: net, quantity: 1, taxRate: 7 } },
+    { name: 'price(legacy)', body: { price: net, quantity: 1, taxRate: 7 } },
+  ]
+  for (const v of varianten) {
+    try {
+      await sevJson(`/InvoicePos/${posId}`, { method: 'PUT', body: JSON.stringify(v.body) })
+      const jetzt = await brutto()
+      wege.push(`${v.name}=${jetzt}`)
+      if (Math.abs(jetzt - ziel) <= 0.02) break
+    } catch (e) {
+      wege.push(`${v.name}:${String(e).slice(0, 70)}`)
+    }
   }
 
-  // Weg B: saveInvoice-Factory mit vollständigem Positions-Objekt
+  // Letzter Weg: saveInvoice-Factory mit vollständigem Positions-Objekt
   if (Math.abs((await brutto()) - ziel) > 0.02) {
     try {
       await sevJson('/Invoice/Factory/saveInvoice', {
@@ -529,16 +542,16 @@ export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number
           invoicePosSave: [{
             id: posId, objectName: 'InvoicePos', mapAll: true,
             invoice: { id: Number(sevdeskId), objectName: 'Invoice' },
-            quantity: 1, price: net, taxRate: 7,
-            name: posName, text: posText,
+            quantity: 1, price: net, priceNet: net, priceGross: ziel, priceTax: tax,
+            taxRate: 7, name: posName, text: posText,
             unity: { id: 1, objectName: 'Unity' },
           }],
           invoicePosDelete: null, discountSave: null, discountDelete: null,
         }),
       })
-      wege.push('factory')
+      wege.push('factory=' + (await brutto()))
     } catch (e) {
-      wege.push('factory:' + String(e).slice(0, 120))
+      wege.push('factory:' + String(e).slice(0, 100))
     }
   }
 
