@@ -403,8 +403,23 @@ export async function POST(req: NextRequest) {
       const amountGross = Number(b.amountGross)
       const accountDatevId = Number(b.accountDatevId)
       const taxRate = Number(b.taxRate)
-      if (!b.voucherId || !Number.isFinite(amountGross) || amountGross <= 0 || !Number.isFinite(accountDatevId)) {
-        return NextResponse.json({ error: 'voucherId, accountDatevId und amountGross (>0) nötig.' }, { status: 400 })
+      // §243y: MEHRERE Positionen (gemischte Belege wie Hotel-Klausur:
+      // betrieblicher Anteil + Privatanteil mit verschiedenen Konten/
+      // Steuersätzen) — gewinnen über die Einzel-Felder; bookAmount läuft
+      // über die Brutto-Summe
+      const posRaw = Array.isArray(b.positionen) ? (b.positionen as Record<string, unknown>[]) : null
+      const positionen = posRaw
+        ? posRaw
+            .map((p) => ({
+              accountDatevId: Number(p?.accountDatevId),
+              taxRate: [19, 7, 0].includes(Number(p?.taxRate)) ? Number(p?.taxRate) : 0,
+              amountGross: Math.round(Number(p?.amountGross) * 100) / 100,
+              isAsset: p?.isAsset === true,
+            }))
+            .filter((p) => Number.isFinite(p.accountDatevId) && Number.isFinite(p.amountGross) && p.amountGross > 0)
+        : null
+      if (!b.voucherId || (!positionen?.length && (!Number.isFinite(amountGross) || amountGross <= 0 || !Number.isFinite(accountDatevId)))) {
+        return NextResponse.json({ error: 'voucherId und (accountDatevId + amountGross > 0) ODER positionen[] nötig.' }, { status: 400 })
       }
       // §243b: Konto 5923 (EU-Portal-Provisionen) braucht taxRule 14
       // (REV_CHARGE_13B_EU_0) — Regel 5 lehnt sevdesk fuer 5923 mit 422 ab
@@ -412,11 +427,12 @@ export async function POST(req: NextRequest) {
       // code=REV_CHARGE_13B_EU_0)"; die Spec-Regelliste 1-17 ist
       // unvollstaendig). Sonst falsche UStVA-Kennziffern.
       const gd = await getReceiptGuidance()
-      const kontoNr = gd.find((x) => x.accountDatevId === accountDatevId)?.accountNumber
+      const kontoNr = positionen?.length ? undefined : gd.find((x) => x.accountDatevId === accountDatevId)?.accountNumber
       const r = await bookSevVoucher(String(b.voucherId), {
-        accountDatevId,
-        taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
-        amountGross,
+        accountDatevId: positionen?.length ? positionen[0].accountDatevId : accountDatevId,
+        taxRate: positionen?.length ? positionen[0].taxRate : ([19, 7, 0].includes(taxRate) ? taxRate : 19),
+        amountGross: positionen?.length ? positionen[0].amountGross : amountGross,
+        ...(positionen?.length ? { positions: positionen } : {}),
         ...(kontoNr === '5923' ? { taxRuleId: 14 } : {}),
         // 'Allgemein' loescht eine vorhandene KSt explizit ('' — §243c),
         // fehlende Angabe laesst sie unangetastet (null)
@@ -438,8 +454,9 @@ export async function POST(req: NextRequest) {
         await saveZuordnung(String(b.voucherId), null, b.zuordnung as Record<string, unknown>)
       }
       // §242b: aus der Entscheidung LERNEN (nächster Beleg desselben
-      // Lieferanten bekommt sie als Vorschlag)
-      if (r.ok && typeof b.lieferant === 'string' && b.lieferant.trim()) {
+      // Lieferanten bekommt sie als Vorschlag) — NICHT bei Mehrfach-
+      // Positionen (Split ist einzelfallspezifisch, §243y)
+      if (r.ok && !positionen?.length && typeof b.lieferant === 'string' && b.lieferant.trim()) {
         await saveGelernt(b.lieferant, {
           accountDatevId, taxRate: [19, 7, 0].includes(taxRate) ? taxRate : 19,
           anlagegut: b.anlagegut === true,
