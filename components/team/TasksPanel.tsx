@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import QsBlock from '@/components/team/QsPanel'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented } from '@/components/team/ux'
 
 export interface Task {
   id: string
@@ -66,17 +66,25 @@ type Person = { id: string; name: string; isProvider: boolean }
 type ListingOpt = { id: string; title: string }
 
 const HAIR = '0.5px solid rgba(60,60,67,0.15)'
+// §243ag Apple-Redesign: iOS-Systemfarben als dezente Tints statt knalliger
+// Web-Chips; die Priorität wird zusätzlich als Reminders-Punkt vor dem Titel
+// gezeigt (PRIO_DOT)
+const PRIO_DOT: Record<string, string> = { hoch: '#FF3B30', mittel: '#FF9F0A', niedrig: '#C7C7CC' }
 const PRIO_META: Record<string, { label: string; color: string; bg: string }> = {
-  hoch: { label: 'Hoch', color: '#B91C1C', bg: '#FEE2E2' },
-  mittel: { label: 'Mittel', color: '#92400E', bg: '#FEF3C7' },
-  niedrig: { label: 'Niedrig', color: '#374151', bg: '#F3F4F6' },
+  hoch: { label: 'Hoch', color: '#D70015', bg: 'rgba(255,59,48,0.12)' },
+  mittel: { label: 'Mittel', color: '#C2410C', bg: 'rgba(255,159,10,0.15)' },
+  niedrig: { label: 'Niedrig', color: '#6B7280', bg: 'rgba(118,118,128,0.12)' },
 }
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  vorschlag: { label: 'Vorschlag', color: '#6D28D9', bg: '#EDE9FE' },
-  offen: { label: 'Offen', color: '#1D4ED8', bg: '#DBEAFE' },
-  in_arbeit: { label: 'In Arbeit', color: '#92400E', bg: '#FEF3C7' },
-  erledigt: { label: 'Erledigt', color: '#166534', bg: '#DCFCE7' },
-  verworfen: { label: 'Verworfen', color: '#6B7280', bg: '#F3F4F6' },
+  vorschlag: { label: 'Vorschlag', color: '#6D28D9', bg: 'rgba(109,40,217,0.10)' },
+  offen: { label: 'Offen', color: '#5B5E66', bg: 'rgba(118,118,128,0.12)' },
+  in_arbeit: { label: 'In Arbeit', color: '#C2410C', bg: 'rgba(255,159,10,0.15)' },
+  erledigt: { label: 'Erledigt', color: '#248A3D', bg: 'rgba(52,199,89,0.15)' },
+  verworfen: { label: 'Verworfen', color: '#6B7280', bg: 'rgba(118,118,128,0.12)' },
+}
+const CHIP: CSSProperties = {
+  fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+  background: '#F2F2F7', color: '#3C3C43',
 }
 
 function todayIso(): string {
@@ -315,21 +323,19 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         padding: '14px 16px 10px',
         boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.15)`,
       }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 10px', color: '#111', letterSpacing: '-0.4px' }}>Aufgaben</h1>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {([
-            ['aktiv', `Aktiv${counts.aktiv ? ` ${counts.aktiv}` : ''}`],
-            ['erledigt', `Erledigt${counts.erledigt ? ` ${counts.erledigt}` : ''}`],
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 11px', color: '#111', letterSpacing: '-0.6px' }}>Aufgaben</h1>
+        {/* §243ag: echtes iOS-Segmented-Control statt Pill-Reihe */}
+        <Segmented
+          options={[
+            ['aktiv', `Aktiv${counts.aktiv ? ` · ${counts.aktiv}` : ''}`],
+            ['erledigt', 'Erledigt'],
             ['alle', 'Alle'],
-            ...(apiRole === 'admin' ? [['vorschlaege', `🤖 Vorschläge${suggestions.length ? ` ${suggestions.length}` : ''}`]] : []),
-          ] as [Filter, string][]).map(([f, label]) => (
-            <button key={f} onClick={() => setFilter(f)} style={{
-              padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, flexShrink: 0,
-              background: filter === f ? (f === 'vorschlaege' ? '#6D28D9' : '#111') : f === 'vorschlaege' && suggestions.length ? '#EDE9FE' : 'rgba(120,120,128,0.12)',
-              color: filter === f ? '#fff' : f === 'vorschlaege' && suggestions.length ? '#6D28D9' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>{label}</button>
-          ))}
-        </div>
+            ...(apiRole === 'admin' ? [['vorschlaege', `🤖${suggestions.length ? ` ${suggestions.length}` : ''}`] as [string, string]] : []),
+          ] as [string, string][]}
+          value={filter}
+          onChange={(f) => setFilter(f as Filter)}
+          accent={{ vorschlaege: '#6D28D9' }}
+        />
         {/* Personen-Schnellfilter (nur wer alle Aufgaben sieht) */}
         {viewAll && people.length > 0 && filter !== 'vorschlaege' && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
@@ -458,42 +464,49 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             <div key={t.id} id={`task-card-${t.id}`}
               onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
               style={{
-                background: '#fff', borderRadius: 16, padding: '13px 15px',
+                background: '#fff', borderRadius: 18, padding: '13px 15px',
                 boxShadow: t.id === highlightId
                   ? 'inset 0 0 0 2px var(--gold, #AE8D2D), 0 0 0 4px rgba(174,141,45,0.25)'
-                  : overdue ? 'inset 0 0 0 1.5px #EF4444' : `inset 0 0 0 0.5px rgba(60,60,67,0.15)`,
+                  : overdue ? 'inset 0 0 0 1.5px #FF3B30, 0 1px 3px rgba(0,0,0,0.05)'
+                  : 'inset 0 0 0 0.5px rgba(60,60,67,0.1), 0 1px 3px rgba(0,0,0,0.05)',
                 cursor: manage && t.editable !== false ? 'pointer' : 'default',
-                opacity: done ? 0.65 : 1,
+                opacity: done ? 0.6 : 1,
                 transition: 'box-shadow .3s',
               }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111', flex: 1, textDecoration: done ? 'line-through' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                {/* §243ag: Prio als Reminders-Punkt (rot/orange/grau) */}
+                <span title={`Priorität: ${prio.label}`} style={{
+                  width: 10, height: 10, borderRadius: '50%', flexShrink: 0, marginTop: 5,
+                  background: done ? '#C7C7CC' : (PRIO_DOT[t.prio] ?? PRIO_DOT.mittel),
+                }} />
+                <span style={{ fontSize: 15, fontWeight: 650, color: '#111', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
                   {t.title}
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.color, flexShrink: 0 }}>{st.label}</span>
+                {t.status !== 'offen' && (
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.color, flexShrink: 0 }}>{st.label}</span>
+                )}
               </div>
               {t.description && (
-                <p style={{ fontSize: 13, color: '#6B7280', margin: '5px 0 0', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                <p style={{ fontSize: 13, color: '#6B7280', margin: '5px 0 0 19px', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                   {t.description.length > 140 && manage ? t.description.slice(0, 140) + '…' : t.description}
                 </p>
               )}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: prio.bg, color: prio.color }}>{prio.label}</span>
-                <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#374151' }}>{scopeChip(t)}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, marginLeft: 19, alignItems: 'center' }}>
+                <span style={CHIP}>{scopeChip(t)}</span>
                 {manage && (
-                  <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#6B7280' }}>
+                  <span style={{ ...CHIP, color: '#6B7280' }}>
                     {VIS_META[t.visibility ?? 'admin']}
                   </span>
                 )}
                 {!!t.recur_days && (
-                  <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#E0F2FE', color: '#0369A1' }}>
+                  <span style={CHIP}>
                     🔁 {recurLabel(t.recur_days)}
                   </span>
                 )}
                 {t.due_date && (
                   <span style={{
-                    fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-                    background: overdue ? '#EF4444' : '#F3F4F6', color: overdue ? '#fff' : '#374151',
+                    ...CHIP, fontWeight: 700,
+                    ...(overdue ? { background: '#FF3B30', color: '#fff' } : {}),
                   }}>
                     {overdue ? `⚠︎ seit ${fmtDate(t.due_date)}` : `bis ${fmtDate(t.due_date)}`}
                   </span>
@@ -510,7 +523,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               </div>
               {/* Foto-Strip */}
               {(t.photos?.length ?? 0) > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', gap: 6, marginTop: 9, marginLeft: 19, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                   {(t.photos ?? []).slice(0, 4).map((p, i) => (
                     <a key={i} href={p.url} target="_blank" rel="noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -524,13 +537,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               )}
 
               {/* Aktionszeile: Kommentare + Foto (alle Rollen) */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 9 }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, marginLeft: 19 }} onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)} style={{
-                  padding: '6px 12px', borderRadius: 999, border: HAIR, background: openComments === t.id ? '#EDE9FE' : '#fff',
-                  color: '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  padding: '6px 13px', borderRadius: 999, border: 'none',
+                  background: openComments === t.id ? 'rgba(174,141,45,0.16)' : '#F2F2F7',
+                  color: openComments === t.id ? '#8A7020' : '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>💬 {commentCounts[t.id] ?? 0}</button>
                 <label style={{
-                  padding: '6px 12px', borderRadius: 999, border: HAIR, background: '#fff',
+                  padding: '6px 13px', borderRadius: 999, border: 'none', background: '#F2F2F7',
                   color: '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>
                   {uploadingFor === t.id ? '⏳ lädt…' : '📷 Foto'}
@@ -549,13 +563,13 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
-                      flex: 1, padding: '9px 0', borderRadius: 12, border: HAIR, background: '#FEF3C7',
-                      color: '#92400E', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'rgba(255,159,10,0.15)',
+                      color: '#C2410C', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                     }}>▶ In Arbeit</button>
                   )}
                   <button onClick={() => setCompleting(t)} style={{
-                    flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: '#16A34A',
-                    color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: '#34C759',
+                    color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                   }}>✓ Erledigt</button>
                 </div>
               )}
