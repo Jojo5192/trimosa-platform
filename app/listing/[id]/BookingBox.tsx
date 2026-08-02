@@ -156,6 +156,29 @@ export default function BookingBox({
   const [priceSuggestion, setPriceSuggestion] = useState('')
   const [bppOpen, setBppOpen] = useState(false)
 
+  // §243af: Gutscheincode — Anzeige-Validierung hier, autoritativ rechnet
+  // der Server in /api/bookings mit derselben Rundung
+  const [codeOpen, setCodeOpen] = useState(false)
+  const [codeInput, setCodeInput] = useState('')
+  const [codeChecking, setCodeChecking] = useState(false)
+  const [codeError, setCodeError] = useState(false)
+  const [discount, setDiscount] = useState<{ code: string; pct: number } | null>(null)
+
+  async function redeemCode() {
+    const c = codeInput.trim()
+    if (!c || codeChecking) return
+    setCodeChecking(true); setCodeError(false)
+    try {
+      const r = await fetch('/api/discount/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: c }),
+      })
+      const j = await r.json()
+      if (j.ok && j.pct) { setDiscount({ code: j.code, pct: j.pct }); setCodeOpen(false); setCodeInput('') }
+      else { setDiscount(null); setCodeError(true) }
+    } catch { setCodeError(true) } finally { setCodeChecking(false) }
+  }
+
   const [rates, setRates] = useState<SmoobuRateMap>({})
   const [loadingRates, setLoadingRates] = useState(true)
   const [totalPrice, setTotalPrice] = useState<number | null>(null)
@@ -227,6 +250,10 @@ export default function BookingBox({
 
   const nights = calcNights()
   const displayPrice = totalPrice !== null ? totalPrice : (pricePerNight * nights || null)
+  // §243af: Endpreis mit Gutschein (gleiche Rundung wie der Server)
+  const finalPrice = displayPrice != null && discount
+    ? Math.round(displayPrice * (1 - discount.pct / 100))
+    : displayPrice
   const hasBothDates = !!(checkIn && checkOut)
 
   const requestNightsOk = mode === 'request' ? nights >= minRequestNights : true
@@ -281,6 +308,7 @@ export default function BookingBox({
         message,
         booking_type: mode,
         guest_price_suggestion: mode === 'request' && priceSuggestion ? parseFloat(priceSuggestion) : undefined,
+        ...(discount ? { discount_code: discount.code } : {}),
       }),
     })
 
@@ -320,7 +348,10 @@ export default function BookingBox({
           <div style={{ height: '28px', width: '100px', borderRadius: '6px', background: '#F5F5F7' }} />
         ) : hasBothDates && displayPrice ? (
           <>
-            <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {displayPrice}</span>
+            {discount && finalPrice != null && finalPrice !== displayPrice && (
+              <s style={{ fontSize: '15px', color: '#98989E' }}>€ {displayPrice}</s>
+            )}
+            <span style={{ fontSize: '24px', fontWeight: 700, color: '#111' }}>€ {finalPrice}</span>
             <span style={{ fontSize: '13px', color: '#999' }}>/ {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
           </>
         ) : pricePerNight > 0 ? (
@@ -537,12 +568,48 @@ export default function BookingBox({
             <span>€ {displayPrice != null && nights > 0 ? Math.round(displayPrice / nights) : pricePerNight} × {nights} {nights === 1 ? t(lang, 'Nacht') : t(lang, 'Nächte')}</span>
             <span>≈ € {displayPrice ?? '—'}</span>
           </div>
+          {discount && displayPrice != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600, color: '#16A34A', marginBottom: '4px' }}>
+              <span>🏷 {discount.code} (−{discount.pct} %)</span>
+              <span>− € {displayPrice - (finalPrice ?? displayPrice)}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 700, color: '#111' }}>
             <span>{t(lang, 'Gesamt')}</span>
-            <span>€ {displayPrice ?? '—'}</span>
+            <span>€ {finalPrice ?? '—'}</span>
           </div>
         </div>
       )}
+
+      {/* §243af: Gutscheincode */}
+      <div style={{ marginBottom: '12px' }}>
+        {discount ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12.5px', color: '#16A34A', fontWeight: 600 }}>
+            <span>✓ {t(lang, 'Gutscheincode aktiv:')} {discount.code} (−{discount.pct} %)</span>
+            <button onClick={() => setDiscount(null)} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '13px', padding: 0 }}>✕</button>
+          </div>
+        ) : !codeOpen ? (
+          <button onClick={() => { setCodeOpen(true); setCodeError(false) }} style={{
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            fontSize: '12.5px', color: '#8A8578', textDecoration: 'underline',
+          }}>🏷 {t(lang, 'Gutscheincode einlösen')}</button>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={codeInput} onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeError(false) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') redeemCode() }}
+                placeholder={t(lang, 'Code')} autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                style={{ flex: 1, minWidth: 0, borderRadius: '10px', border: `1.5px solid ${codeError ? '#FCA5A5' : '#E0DDD6'}`, padding: '9px 12px', fontSize: '16px', textTransform: 'uppercase' }} />
+              <button onClick={redeemCode} disabled={codeChecking || !codeInput.trim()} style={{
+                borderRadius: '10px', border: 'none', background: '#12222E', color: '#fff',
+                fontSize: '13.5px', fontWeight: 700, padding: '0 16px', cursor: 'pointer',
+                opacity: codeChecking || !codeInput.trim() ? 0.55 : 1, whiteSpace: 'nowrap',
+              }}>{codeChecking ? '…' : t(lang, 'Einlösen')}</button>
+            </div>
+            {codeError && <p style={{ fontSize: '12px', color: '#DC2626', margin: '6px 0 0' }}>{t(lang, 'Code ungültig oder abgelaufen.')}</p>}
+          </div>
+        )}
+      </div>
 
       {/* Request disclaimer */}
       {mode === 'request' && (
