@@ -5,6 +5,7 @@ import { getQuote } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getUiLang } from '@/lib/i18n-server'
+import { findActiveDiscount } from '@/lib/discounts'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -67,26 +68,45 @@ export async function POST(request: Request) {
     totalPrice = Math.round((listing.price_per_night ?? 0) * nights * markup)
   }
 
+  // §243af: Gutscheincode SERVERSEITIG anwenden (der Client zeigt nur an) —
+  // gleiche Rundung wie die BookingBox-Anzeige, damit Anzeige = Zahlbetrag
+  let discount: { code: string; pct: number } | null = null
+  if (typeof body.discount_code === 'string' && body.discount_code.trim()) {
+    const hit = await findActiveDiscount(body.discount_code)
+    if (!hit) return NextResponse.json({ error: 'Der Gutscheincode ist ungültig oder abgelaufen.' }, { status: 400 })
+    discount = { code: hit.code, pct: hit.pct }
+    totalPrice = Math.round(totalPrice * (1 - hit.pct / 100))
+    console.log('[Bookings] Gutschein', hit.code, `−${hit.pct}% →`, totalPrice)
+  }
+
   const initialStatus = booking_type === 'instant' ? 'confirmed' : 'pending'
 
-  const { data: newBooking, error: bookingError } = await supabaseAdmin
+  const insertRow = {
+    guest_lang: await getUiLang(),
+    listing_id: listingId,
+    guest_id: user.id,
+    check_in: checkIn,
+    check_out: checkOut,
+    total_price: totalPrice,
+    adults,
+    children,
+    status: initialStatus,
+    message,
+    booking_type,
+    guest_price_suggestion: guest_price_suggestion ?? null,
+  }
+  // eslint-disable-next-line prefer-const
+  let { data: newBooking, error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .insert({
-      guest_lang: await getUiLang(),
-      listing_id: listingId,
-      guest_id: user.id,
-      check_in: checkIn,
-      check_out: checkOut,
-      total_price: totalPrice,
-      adults,
-      children,
-      status: initialStatus,
-      message,
-      booking_type,
-      guest_price_suggestion: guest_price_suggestion ?? null,
-    })
+    .insert(discount ? { ...insertRow, discount_code: discount.code, discount_pct: discount.pct } : insertRow)
     .select('id')
     .single()
+  if (bookingError && discount && /discount_code|discount_pct/.test(bookingError.message)) {
+    // Migration 20260802_discount_codes fehlt noch → ohne die Doku-Spalten
+    // (der RABATTIERTE Preis steht ja in total_price)
+    ;({ data: newBooking, error: bookingError } = await supabaseAdmin
+      .from('bookings').insert(insertRow).select('id').single())
+  }
 
   if (bookingError || !newBooking) {
     // 23P01 = exclusion_violation → the DB-level double-booking guard caught
