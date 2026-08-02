@@ -124,6 +124,15 @@ export async function POST(request: NextRequest) {
     if (b.action === 'invoice-audit') {
       return NextResponse.json(await invoiceAudit(typeof b.from === 'string' ? b.from : undefined))
     }
+    // §243ac: PDFs aller lexoffice-Gastrechnungen in den Storage archivieren
+    // (vor der lexoffice-Kündigung — Gast-Links laufen danach über den Storage)
+    if (b.action === 'lex-archiv') {
+      const { archiveInvoicePdfs } = await import('@/lib/lexoffice')
+      return NextResponse.json(await archiveInvoicePdfs({
+        dryRun: b.dryRun !== false,
+        ...(typeof b.limit === 'number' ? { limit: b.limit } : {}),
+      }))
+    }
     if (b.action === 'lex-find' && typeof b.voucherNumber === 'string') {
       return NextResponse.json(await findVoucherByNumber(b.voucherNumber))
     }
