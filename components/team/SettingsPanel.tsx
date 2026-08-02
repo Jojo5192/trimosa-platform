@@ -15,6 +15,7 @@ import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
 import CallsPanel from '@/components/team/CallsPanel'
+import BelegEinreichen from '@/components/team/BelegEinreichen'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -66,6 +67,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // ⚡ Wallbox (§185) — nur Admins (probe liefert sonst 403 → Bereich + Toggles bleiben aus)
   const [showWallbox, setShowWallbox] = useState(false)
   const [showCalls, setShowCalls] = useState(false)
+  const [showBeleg, setShowBeleg] = useState(false)
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
   const [belegeOk, setBelegeOk] = useState(false)
@@ -227,6 +229,23 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           </>
         )}
 
+        {/* §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister
+            (Upload + Ort + Notiz; keinerlei Finanz-Einblick) */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BELEGE</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+          <button onClick={() => setShowBeleg(true)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+          }}>
+            <span style={{ fontSize: 19 }}>🧾</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Beleg einreichen</span>
+              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren — die Buchhaltung übernimmt</span>
+            </span>
+            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+          </button>
+        </div>
+
         <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
           <Row
@@ -301,6 +320,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showTrends && <ScoreTrends onClose={() => setShowTrends(false)} />}
       {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
+      {showBeleg && <BelegEinreichen onClose={() => setShowBeleg(false)} />}
     </div>
   )
 }
