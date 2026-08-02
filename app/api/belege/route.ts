@@ -51,11 +51,15 @@ export async function GET(req: NextRequest) {
       const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
       if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
     }
+    const rx = r as BelegRow & { eingereicht_ort?: string | null; eingereicht_notiz?: string | null }
     belege.push({
       id: r.id, mailbox: r.mailbox, from: r.from_addr, subject: r.subject,
       lieferant: r.lieferant, betrag: r.betrag == null ? null : Number(r.betrag),
       datum: r.beleg_datum, belegnummer: r.belegnummer, kiHinweis: r.ki_hinweis,
       links, erhalten: r.created_at,
+      // §243ad: Team-Einreichungen tragen Ort-Wunsch + Notiz des Einreichers
+      eingereichtOrt: rx.eingereicht_ort ?? null,
+      eingereichtNotiz: rx.eingereicht_notiz ?? null,
     })
   }
 
@@ -151,5 +155,19 @@ export async function POST(req: NextRequest) {
   if (row.status !== 'offen') return NextResponse.json({ error: `Bereits entschieden (${row.status}).` }, { status: 409 })
   const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id, zuordnung)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 502 })
-  return NextResponse.json({ ok: true, status: ziel }, NO_STORE)
+  // §243ad: nach der Einzel-Übernahme direkt die Voll-Automatik (§243f) —
+  // sichere Kategorien werden sofort verbucht, sonst liegt die Analyse
+  // danach als Vorab-Cache am Entwurf (bulk bewusst ohne: Vision-Zeit)
+  let auto: { auto: boolean; text: string } | null = null
+  if (ziel === 'sevdesk') {
+    try {
+      const { data: fresh } = await supabaseAdmin
+        .from('beleg_inbox').select('sevdesk_voucher_id').eq('id', b.id).maybeSingle()
+      if (fresh?.sevdesk_voucher_id) {
+        const { autoVerbucheBeleg } = await import('@/lib/beleg-ki')
+        auto = await autoVerbucheBeleg(String(fresh.sevdesk_voucher_id))
+      }
+    } catch { /* fail-soft */ }
+  }
+  return NextResponse.json({ ok: true, status: ziel, ...(auto ? { auto: auto.auto, autoText: auto.text } : {}) }, NO_STORE)
 }
