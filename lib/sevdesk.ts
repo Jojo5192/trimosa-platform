@@ -824,3 +824,101 @@ export async function migrateInvoiceCostCentres(
   }
   return { geprueft, geaendert, uebersprungen, fehler: fehler.slice(0, 20), dryRun }
 }
+
+/* ── §243ac VOLL-AUDIT: jeden Beleg + jede Rechnung 1.1.–heute prüfen ── */
+
+export interface AuditBelegRow {
+  id: string
+  st: number
+  cd: string | null
+  datum: string | null
+  lief: string | null
+  gross: number | null
+  kst: string | null
+  /** Positionen: Konto-Nr (via Guidance bzw. embed), Steuersatz, Brutto */
+  pos: { nr: string; name: string; tax: number; g: number }[]
+}
+
+export interface AuditInvoiceRow {
+  id: string
+  nr: string | null
+  datum: string | null
+  gross: number | null
+  kst: string | null
+  st: number
+}
+
+/**
+ * Liest ALLE Ausgabe-Belege (Status 50/100/750/1000) inkl. Positionen/Konten
+ * und ALLE Rechnungen inkl. Kostenstelle — Rohdaten für das Voll-Audit
+ * (Kategorie-/KSt-/Steuersatz-Prüfung §243ac). Nur lesen, ändert nichts.
+ */
+export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: AuditInvoiceRow[] }> {
+  // 1) Konten-Map aus der Guidance (accountDatevId → Nummer/Name); Konten
+  //    außerhalb der Guidance (z. B. Anlagen 0650) kommen aus dem embed
+  const guidance = await getReceiptGuidance().catch(() => [] as ReceiptGuide[])
+  const kontoMap = new Map<number, { nr: string; name: string }>()
+  for (const g of guidance) kontoMap.set(g.accountDatevId, { nr: g.accountNumber, name: g.accountName })
+
+  // 2) alle Belege (paginiert je Status, Cap 1500)
+  const belege: AuditBelegRow[] = []
+  for (const st of [50, 100, 750, 1000]) {
+    for (let offset = 0; offset < 1500; offset += 100) {
+      const list = await sevJson<Record<string, unknown>[]>(`/Voucher?status=${st}&limit=100&offset=${offset}&embed=costCentre`)
+      for (const v of list ?? []) {
+        const cc = v.costCentre as { name?: string } | null
+        belege.push({
+          id: String(v.id), st: Number(v.status),
+          cd: (v.creditDebit as string | null) ?? null,
+          datum: v.voucherDate ? String(v.voucherDate).slice(0, 10) : null,
+          lief: (v.supplierName as string | null) ?? null,
+          gross: v.sumGross != null ? Number(v.sumGross) : null,
+          kst: cc?.name ?? null,
+          pos: [],
+        })
+      }
+      if (!list || list.length < 100) break
+    }
+  }
+  const byId = new Map(belege.map((b) => [b.id, b]))
+
+  // 3) alle VoucherPos (paginiert, embed accountDatev) den Belegen zuordnen
+  for (let offset = 0; offset < 5000; offset += 100) {
+    const page = await sevJson<Record<string, unknown>[]>(`/VoucherPos?limit=100&offset=${offset}&embed=accountDatev`)
+    for (const p of page ?? []) {
+      const vRef = p.voucher as { id?: unknown } | null
+      const b = vRef?.id != null ? byId.get(String(vRef.id)) : undefined
+      if (!b) continue
+      const acc = p.accountDatev as { id?: unknown; number?: unknown; accountNumber?: unknown; name?: unknown; accountName?: unknown } | null
+      const accId = acc?.id != null ? Number(acc.id) : NaN
+      const guide = Number.isFinite(accId) ? kontoMap.get(accId) : undefined
+      b.pos.push({
+        nr: guide?.nr ?? String(acc?.number ?? acc?.accountNumber ?? accId ?? '?'),
+        name: (guide?.name ?? String(acc?.name ?? acc?.accountName ?? '')).slice(0, 40),
+        tax: Number(p.taxRate ?? 0),
+        g: p.sumGross != null ? Math.round(Number(p.sumGross) * 100) / 100 : 0,
+      })
+    }
+    if (!page || page.length < 100) break
+  }
+
+  // 4) alle Rechnungen (Einnahmen) mit KSt
+  const invoices: AuditInvoiceRow[] = []
+  for (let offset = 0; offset < 2000; offset += 100) {
+    const page = await sevJson<Record<string, unknown>[]>(`/Invoice?limit=100&offset=${offset}&embed=costCentre`)
+    for (const inv of page ?? []) {
+      const cc = inv.costCentre as { name?: string } | null
+      invoices.push({
+        id: String(inv.id),
+        nr: (inv.invoiceNumber as string | null) ?? null,
+        datum: inv.invoiceDate ? String(inv.invoiceDate).slice(0, 10) : null,
+        gross: inv.sumGross != null ? Number(inv.sumGross) : null,
+        kst: cc?.name ?? null,
+        st: Number(inv.status),
+      })
+    }
+    if (!page || page.length < 100) break
+  }
+
+  return { belege, invoices }
+}
