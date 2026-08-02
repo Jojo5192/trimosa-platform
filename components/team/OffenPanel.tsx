@@ -424,10 +424,10 @@ export default function OffenPanel({ visible, onCount }: {
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.2)', flexShrink: 0,
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>📥 Offen</span>
+        <span style={{ fontSize: 28, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>Offen</span>
         {loaded && queue.length > 0 && (
           <span style={{
-            fontSize: 12, fontWeight: 800, color: '#fff', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+            fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
             borderRadius: 999, padding: '3px 10px',
           }}>{queue.length}</span>
         )}
