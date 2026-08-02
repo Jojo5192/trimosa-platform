@@ -467,12 +467,16 @@ export async function updateSevInvoiceAmount(sevdeskId: string, newGross: number
   if (Math.abs(altGross - ziel) < 0.02) return { ok: true, number: inv.invoiceNumber, skipped: 'Betrag bereits korrekt' }
 
   const clearingId = await ensureClearingAccount(opts.clearingLabel)
-  // Nach einem abgebrochenen Vorlauf steht die Rechnung als Entwurf da —
-  // dann sagt der Aufrufer, ob sie am Ende wieder bezahlt sein soll.
-  const warBezahlt = Number(inv.status) >= 1000 || opts.sollBezahlt === true
+  // WICHTIG: „ist gerade bezahlt" (→ Zahlung muss gelöst werden) und „soll
+  // am Ende bezahlt sein" (→ am Schluss buchen) sind zwei verschiedene
+  // Dinge. Nach einem abgebrochenen Vorlauf steht die Rechnung als Entwurf
+  // da — dann darf resetToOpen NICHT laufen (wäre eine Status-Erhöhung,
+  // die sevdesk mit 422 ablehnt), das Buchen am Ende aber schon.
+  const istBezahlt = Number(inv.status) >= 1000
+  const warBezahlt = istBezahlt || opts.sollBezahlt === true
 
   // 1) Zahlung lösen + Waisen-Transaktion vom Verrechnungskonto räumen
-  if (warBezahlt) {
+  if (istBezahlt) {
     await sevJson(`/Invoice/${sevdeskId}/resetToOpen`, { method: 'PUT' })
     const weg = await deleteClearingOrphan(clearingId, altGross)
     if (!weg) console.warn('[sev-amount] Waise nicht gefunden:', sevdeskId, altGross)
@@ -669,8 +673,12 @@ export async function fewoBruttoFix(opts: {
       res.smoobu = 'keine Reservierungs-ID'
     }
 
-    // c) sevdesk-Rechnung — Betrag in place aendern (kein Storno)
-    const inv = await fixSevInvoiceAmount(b.id, res.neu)
+    // c) sevdesk-Rechnung — Betrag in place aendern (kein Storno).
+    //    Fehler bleiben auf DIESER Zeile: ein Einzelfall darf den Lauf
+    //    über die restlichen Buchungen nicht abbrechen.
+    type InvRes = Awaited<ReturnType<typeof fixSevInvoiceAmount>>
+    const inv: InvRes = await fixSevInvoiceAmount(b.id, res.neu)
+      .catch((e): InvRes => ({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }))
     res.rechnung = inv.ok
       ? `${inv.number ?? 'aktualisiert'}${inv.hinweis ? ' — ' + inv.hinweis : ''}`
       : (inv.skipped ?? 'FEHLER: ' + (inv.error ?? ''))
