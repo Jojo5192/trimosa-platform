@@ -18,6 +18,7 @@ import CalendarVisibilityCard from './CalendarVisibilityCard'
 import CleaningCard from './CleaningCard'
 import LocksCard from './LocksCard'
 import OncallCard from './OncallCard'
+import DiscountsCard from './DiscountsCard'
 
 type TabId = 'team' | 'betrieb' | 'zugang' | 'ki' | 'sichtbarkeit'
 
@@ -86,12 +87,14 @@ export default function AdminSections() {
 
       {section('betrieb',
         <>Sichtbar: <strong>nur Admins</strong>. Wirkt auf: den Reinigungsplaner im
-        Team-Kalender (alle Rollen — Kosten-Sätze sehen nur Admins/Gastgeber) und
-        die QS-Termine/Checklisten der zuständigen Person.</>,
+        Team-Kalender (alle Rollen — Kosten-Sätze sehen nur Admins/Gastgeber), die
+        QS-Termine/Checklisten der zuständigen Person und die Gutscheincodes im
+        Buchungsflow der Website (alle Gäste).</>,
         <>
           <CleaningCard />
           <QsSettingsCard />
           <QsTemplateEditor />
+          <DiscountsCard />
         </>)}
 
       {section('zugang',
