@@ -624,7 +624,7 @@ export async function fewoBruttoFix(opts: {
     // c) sevdesk-Rechnung — Betrag in place aendern (kein Storno)
     const inv = await fixSevInvoiceAmount(b.id, res.neu)
     res.rechnung = inv.ok
-      ? `${inv.storniert ?? 'storniert'} → ${inv.number}`
+      ? `${inv.number ?? 'aktualisiert'}${inv.hinweis ? ' — ' + inv.hinweis : ''}`
       : (inv.skipped ?? 'FEHLER: ' + (inv.error ?? ''))
 
     if (inv.ok && !dbErr) korrigiert++
