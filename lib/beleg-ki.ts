@@ -312,12 +312,18 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/
 export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: boolean; text: string }> {
   try {
     const ki = await analysiereBeleg(voucherId)
+    // §243ad: Nicht-Auto-Fälle behalten die Analyse als VORAB-Cache — die
+    // /buchhaltung-Oberfläche zeigt sie dann instant (ki-vorschlag cache-first)
+    const merken = async (text: string): Promise<{ auto: boolean; text: string }> => {
+      if (ki.ok) await speichereKiAnalyse(voucherId, ki).catch(() => {})
+      return { auto: false, text }
+    }
     if (!ki.ok || !ki.accountDatevId) return { auto: false, text: `zur Prüfung (${ki.error ?? 'keine Kategorie'})` }
-    if (ki.anlagegut) return { auto: false, text: 'zur Prüfung (Anlagegut — AfA bestätigen)' }
-    if (ki.weg !== 'provision' && ki.weg !== 'gelernt') return { auto: false, text: `zur Prüfung (neuer Lieferant — Vorschlag: ${ki.nr} ${ki.kategorie ?? ''})` }
+    if (ki.anlagegut) return merken('zur Prüfung (Anlagegut — AfA bestätigen)')
+    if (ki.weg !== 'provision' && ki.weg !== 'gelernt') return merken(`zur Prüfung (neuer Lieferant — Vorschlag: ${ki.nr} ${ki.kategorie ?? ''})`)
     const betrag = typeof ki.betrag === 'number' && ki.betrag > 0 ? ki.betrag : null
-    if (!betrag) return { auto: false, text: 'zur Prüfung (Betrag nicht sicher lesbar)' }
-    if (betrag > 5000) return { auto: false, text: `zur Prüfung (${betrag.toFixed(2)} € über der Auto-Grenze)` }
+    if (!betrag) return merken('zur Prüfung (Betrag nicht sicher lesbar)')
+    if (betrag > 5000) return merken(`zur Prüfung (${betrag.toFixed(2)} € über der Auto-Grenze)`)
 
     // passende offene Abbuchung suchen (exakter Betrag, ±45 Tage)
     let tx: { id: string; accountId: string; datum: string } | null = null
@@ -346,7 +352,7 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
       ...(ki.nr === '5923' ? { taxRuleId: 14 } : {}),
       ...(tx ? { txId: tx.id, txAccountId: tx.accountId, txDate: tx.datum } : {}),
     })
-    if (!r.ok) return { auto: false, text: `zur Prüfung (Buchung fehlgeschlagen: ${(r.error ?? '').slice(0, 80)})` }
+    if (!r.ok) return merken(`zur Prüfung (Buchung fehlgeschlagen: ${(r.error ?? '').slice(0, 80)})`)
     await saveZuordnung(voucherId, null, ki.zuordnung ?? { modus: 'allgemein' })
     return {
       auto: true,
@@ -355,5 +361,64 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
     }
   } catch (e) {
     return { auto: false, text: `zur Prüfung (${String(e instanceof Error ? e.message : e).slice(0, 80)})` }
+  }
+}
+
+/**
+ * §243ad: KI-Analyse VORAB in beleg_inbox.ki_analyse cachen — die
+ * /buchhaltung-Oberfläche zeigt sie dann instant statt beim Öffnen ~20 s
+ * Vision zu warten. Legt die Protokollzeile an, falls sie fehlt.
+ * Deploy-sicher: ohne die Migrations-Spalte scheitert das Update still.
+ */
+export async function speichereKiAnalyse(voucherId: string, ki: KiErgebnis): Promise<void> {
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('beleg_inbox').select('id').eq('sevdesk_voucher_id', voucherId).maybeSingle()
+    if (row) {
+      await supabaseAdmin.from('beleg_inbox').update({ ki_analyse: ki }).eq('id', row.id)
+    } else {
+      await supabaseAdmin.from('beleg_inbox').insert({
+        source: 'app', status: 'sevdesk', sevdesk_voucher_id: voucherId, ki_analyse: ki,
+      })
+    }
+  } catch { /* fail-soft — Analyse läuft dann eben beim Öffnen */ }
+}
+
+/**
+ * §243ad: VORAB-Analyse-Lauf für BESTANDS-Belege ohne Cache — läuft im
+ * 10-Minuten-Mail-Scan-Cron mit (max. `limit` Vision-Calls je Lauf, konvergiert
+ * schnell, weil neue Belege ihre Analyse schon beim Entstehen bekommen).
+ * So sind Kategorie/Steuer/Betrag/Zahlungs-Match fertig, BEVOR der Inhaber
+ * die /buchhaltung öffnet.
+ */
+export async function vorabAnalyse(limit = 2): Promise<{ analysiert: number; offenOhneCache: number }> {
+  try {
+    const { listSevVouchers } = await import('@/lib/sevdesk')
+    const vouchers = await listSevVouchers([50, 100, 750])
+    if (!vouchers.length) return { analysiert: 0, offenOhneCache: 0 }
+    const ids = vouchers.map((v) => String(v.id))
+    const cached = new Set<string>()
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabaseAdmin
+        .from('beleg_inbox').select('sevdesk_voucher_id')
+        .in('sevdesk_voucher_id', ids.slice(i, i + 200)).not('ki_analyse', 'is', null)
+      for (const r of data ?? []) if (r.sevdesk_voucher_id) cached.add(String(r.sevdesk_voucher_id))
+    }
+    const fehlen = ids.filter((id) => !cached.has(id))
+    let analysiert = 0
+    for (const id of fehlen.slice(0, Math.max(0, limit))) {
+      try {
+        const ki = await analysiereBeleg(id)
+        if (ki.ok) await speichereKiAnalyse(id, ki)
+        // Fehlschlag ebenfalls cachen (ok:false) — sonst frisst derselbe
+        // kaputte Beleg jeden Lauf einen Vision-Call; Client/GET filtern
+        // auf accountDatevId und ignorieren solche Einträge
+        else await speichereKiAnalyse(id, ki)
+        analysiert++
+      } catch { /* nächster Lauf */ }
+    }
+    return { analysiert, offenOhneCache: fehlen.length - analysiert }
+  } catch {
+    return { analysiert: 0, offenOhneCache: 0 }
   }
 }
