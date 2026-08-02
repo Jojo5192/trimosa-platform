@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
 
 /**
  * GET /api/reviews/sync — daily Vercel cron.
- * Syncs the 3 listings whose reviews are stalest, so ~20 listings rotate
- * through roughly once a week without blowing the function time limit.
+ * Mondays only: Apify-syncs the 1 stalest listing (~7-week rotation, §243ai);
+ * every day: the free score snapshot for the trend charts (§171).
  * Auth: Vercel sends "Authorization: Bearer ${CRON_SECRET}" for cron calls.
  */
 export async function GET(req: NextRequest) {
@@ -50,21 +50,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 401 })
   }
 
-  const { data: listings } = await supabaseAdmin
-    .from('listings')
-    .select(LISTING_FIELDS)
-    .eq('is_active', true)
-    // any of the four sources configured
-    .or('airbnb_url.not.is.null,booking_url.not.is.null,vrbo_url.not.is.null,google_place_id.not.is.null')
-    .order('reviews_synced_at', { ascending: true, nullsFirst: true })
-    // §172-Kosten: 1 Inserat/Tag (jede Wohnung ~wöchentlich frisch — das
-    // ursprüngliche Design). Bei 3/Tag lief jede Wohnung alle ~2 Tage und
-    // Apify kostete ~29 $/Monat (Bezahl-Actors rechnen je gescraptem
-    // Review, und jeder Lauf holt ALLE Reviews neu) → jetzt ~⅓ davon.
-    .limit(1)
+  // §243ai-Kosten (2.8.): Apify-Scrape nur noch MONTAGS, 1 Inserat/Woche —
+  // jede Wohnung alle ~7 Wochen automatisch frisch. Die Bezahl-Actors
+  // rechnen je gescraptem Review und holen bei JEDEM Lauf ALLE Reviews
+  // neu (~$0,50/Inserat-Sync); täglich lief das auf ~$15–45/Monat.
+  // Wöchentlich sind es ~$2/Monat → das $5-Free-Guthaben reicht inkl.
+  // manueller Editor-Syncs (Starter-Abo gekündigt, endet 12.8.).
+  // Der Cron selbst bleibt TÄGLICH: der Score-Snapshot (§171) unten
+  // braucht tägliche Datenpunkte und kostet nichts.
+  const scrapeToday = new Date().getUTCDay() === 1
+  const listingsRes = scrapeToday
+    ? await supabaseAdmin
+        .from('listings')
+        .select(LISTING_FIELDS)
+        .eq('is_active', true)
+        // any of the four sources configured
+        .or('airbnb_url.not.is.null,booking_url.not.is.null,vrbo_url.not.is.null,google_place_id.not.is.null')
+        .order('reviews_synced_at', { ascending: true, nullsFirst: true })
+        .limit(1)
+    : null
 
   const out = []
-  for (const listing of listings ?? []) {
+  for (const listing of listingsRes?.data ?? []) {
     out.push({ listingId: listing.id, results: await syncListingReviews(listing) })
   }
 
