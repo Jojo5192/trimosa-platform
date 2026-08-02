@@ -1942,7 +1942,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
                 {t(uiLang, 'Kommunikation')}
               </p>
-              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#111', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111', margin: 0, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {t(uiLang, 'Nachrichten')}
                 {unread > 0 && (
                   <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--gold)', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
