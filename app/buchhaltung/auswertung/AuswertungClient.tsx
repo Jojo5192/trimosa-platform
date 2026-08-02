@@ -223,13 +223,21 @@ export default function AuswertungClient() {
   return (
     <div style={{ minHeight: '100dvh', background: GROUP_BG, WebkitFontSmoothing: 'antialiased', overflowX: 'hidden' }}>
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', position: 'sticky', top: 0, zIndex: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, maxWidth: 1080, margin: '0 auto' }}>
-          <a href="/buchhaltung" style={{ color: GOLDL, fontSize: 15, fontWeight: 600, textDecoration: 'none' }}>‹ Buchhaltung</a>
-          <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: -0.4 }}>📊 Auswertung</div>
-          <div style={{ flex: 1 }} />
-          {daten && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)' }}>Stand {new Date(daten.stand).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>}
-          <button onClick={() => load(true)} disabled={busy} title="Neu berechnen (dauert ~1 Min)"
-            style={{ background: 'none', border: 'none', color: '#fff', fontSize: 17, cursor: 'pointer', padding: 4 }}>↻</button>
+        {/* §243af: iOS-Navigation-Muster — Zurück-Zeile oben, Large Title
+            darunter (die alte baseline-Zeile wrappte mobil hässlich) */}
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
+            <a href="/buchhaltung" style={{ color: GOLDL, fontSize: 14.5, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>‹ Buchhaltung</a>
+            <div style={{ flex: 1 }} />
+            {daten && (
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Stand {new Date(daten.stand).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
+            <button onClick={() => load(true)} disabled={busy} title="Neu berechnen (dauert ~1 Min)"
+              style={{ background: 'none', border: 'none', color: '#fff', fontSize: 17, cursor: 'pointer', padding: '2px 4px', flexShrink: 0 }}>↻</button>
+          </div>
+          <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: -0.5, marginTop: 2 }}>📊 Auswertung</div>
         </div>
       </header>
 
