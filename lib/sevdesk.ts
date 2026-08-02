@@ -889,9 +889,12 @@ export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: 
   belege.push(...dedupe.values())
   const byId = new Map(belege.map((b) => [b.id, b]))
 
-  // 3) alle VoucherPos (paginiert, embed accountDatev) den Belegen zuordnen
-  for (let offset = 0; offset < 5000; offset += 100) {
-    const page = await sevJson<Record<string, unknown>[]>(`/VoucherPos?limit=100&offset=${offset}&embed=accountDatev`)
+  // 3) alle VoucherPos (paginiert, embed accountDatev) den Belegen zuordnen.
+  // §243ae: 500er-Seiten + hohes Cap — die Reset-Zyklen (Umbuchungen) haben
+  // die Positions-Liste weit über 5.000 wachsen lassen; das alte Cap schnitt
+  // die NEUESTEN Positionen ab (Rübezahl-Belege fehlten in der Auswertung)
+  for (let offset = 0; offset < 40000; offset += 500) {
+    const page = await sevJson<Record<string, unknown>[]>(`/VoucherPos?limit=500&offset=${offset}&embed=accountDatev`)
     for (const p of page ?? []) {
       const vRef = p.voucher as { id?: unknown } | null
       const b = vRef?.id != null ? byId.get(String(vRef.id)) : undefined
@@ -906,7 +909,7 @@ export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: 
         g: p.sumGross != null ? Math.round(Number(p.sumGross) * 100) / 100 : 0,
       })
     }
-    if (!page || page.length < 100) break
+    if (!page || page.length < 500) break
   }
 
   // 4) alle Rechnungen (Einnahmen) mit KSt
