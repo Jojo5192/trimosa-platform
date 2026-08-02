@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import { Segmented } from '@/components/team/ux'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null }
 type Rules = { avoidSundays: boolean; avoidHolidays: boolean; bundleTravel?: boolean }
@@ -397,14 +398,13 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   return (
     <div>
       <input ref={fileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFile} style={{ display: 'none' }} />
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-        {([['liste', '📋 Liste'], ['touren', '🗺 Touren'], ...(isAdmin ? [['kosten', '💶 Kosten']] : [])] as [typeof mode, string][]).map(([id, label]) => (
-          <button key={id} onClick={() => setMode(id)} style={{
-            padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-            background: mode === id ? '#1A1814' : 'rgba(120,120,128,0.12)',
-            color: mode === id ? '#fff' : '#3C3C43', cursor: 'pointer',
-          }}>{label}</button>
-        ))}
+      {/* §243ag: iOS-Segmented statt Pill-Reihe */}
+      <div style={{ marginBottom: 10 }}>
+        <Segmented
+          options={[['liste', '📋 Liste'], ['touren', '🗺 Touren'], ...(isAdmin ? [['kosten', '💶 Kosten'] as [string, string]] : [])]}
+          value={mode}
+          onChange={(id) => setMode(id as typeof mode)}
+        />
       </div>
       {/* 👤 Filter nach Reinigungskraft — gilt für ALLE drei Ansichten */}
       {personChips}
