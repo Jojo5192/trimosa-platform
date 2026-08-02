@@ -950,3 +950,69 @@ export async function runInvoiceRun(opts: { dryRun?: boolean } = {}): Promise<In
   }
   return report
 }
+
+/* ── §243ac lexoffice-PDF-ARCHIVIERUNG vor der Kündigung ── */
+
+export interface LexArchivReport {
+  gesamt: number
+  schonArchiviert: number
+  neuArchiviert: number
+  ohneId: number
+  fehler: string[]
+  dryRun: boolean
+}
+
+/**
+ * Lädt die PDFs ALLER lexoffice-Gastrechnungen einmalig in den privaten
+ * Storage-Bucket 'belege' (Pfad lex-archiv/<lexofficeId>.pdf) — damit die
+ * Gast-Download-Links (/api/rechnung/<token>) auch NACH der lexoffice-
+ * Kündigung funktionieren (die Route prüft den Storage zuerst, §243ac).
+ * Idempotent; Rate-Limit-Pacing 550 ms (lexoffice 2 req/s).
+ */
+export async function archiveInvoicePdfs(opts: { dryRun?: boolean; limit?: number } = {}): Promise<LexArchivReport> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(Number(opts.limit) || 150, 1), 250)
+  const { supabaseAdmin } = await import('./supabase-admin')
+
+  // vorhandene Archiv-Dateien (ein list-Call, Bucket ist privat)
+  const have = new Set<string>()
+  for (let offset = 0; ; offset += 1000) {
+    const { data: files } = await supabaseAdmin.storage.from('belege')
+      .list('lex-archiv', { limit: 1000, offset })
+    for (const f of files ?? []) have.add(f.name)
+    if (!files || files.length < 1000) break
+  }
+
+  // alle Rechnungs-Zeilen mit lexoffice_id (PostgREST-1000er-Cap → range)
+  const rows: { lexoffice_id: string | null; voucher_number: string | null }[] = []
+  for (let fromIdx = 0; ; fromIdx += 1000) {
+    const { data } = await supabaseAdmin
+      .from('lexoffice_invoices')
+      .select('lexoffice_id, voucher_number')
+      .not('lexoffice_id', 'is', null)
+      .range(fromIdx, fromIdx + 999)
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+
+  const report: LexArchivReport = { gesamt: rows.length, schonArchiviert: 0, neuArchiviert: 0, ohneId: 0, fehler: [], dryRun }
+  for (const r of rows) {
+    if (!r.lexoffice_id) { report.ohneId++; continue }
+    const name = `${r.lexoffice_id}.pdf`
+    if (have.has(name)) { report.schonArchiviert++; continue }
+    if (dryRun) { report.neuArchiviert++; continue }
+    if (report.neuArchiviert >= limit) continue
+    try {
+      const pdf = await getInvoicePdf(r.lexoffice_id)
+      if (!pdf.ok || !pdf.pdf) throw new Error(pdf.error || 'kein PDF')
+      const { error } = await supabaseAdmin.storage.from('belege')
+        .upload(`lex-archiv/${name}`, pdf.pdf, { contentType: 'application/pdf', upsert: true })
+      if (error) throw new Error(error.message)
+      report.neuArchiviert++
+    } catch (e) {
+      report.fehler.push(`${r.voucher_number ?? r.lexoffice_id}: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`)
+    }
+    await new Promise((res) => setTimeout(res, 550))
+  }
+  return report
+}
