@@ -303,7 +303,7 @@ export async function getSevInvoicePdf(sevdeskId: string): Promise<{ ok: boolean
  *  will be unlinked") — vor dem Neu-Verbuchen aufräumen, sonst liegt der
  *  Betrag doppelt auf dem Konto. Verrechnungskonten enthalten NUR unsere
  *  bookAmount-Buchungen → exakter Betrag + isBooked=false ist eindeutig. */
-async function deleteClearingOrphan(clearingId: string, amount: number): Promise<boolean> {
+export async function deleteClearingOrphan(clearingId: string, amount: number): Promise<boolean> {
   try {
     const list = await sevJson<{ id: string; amount: string | number }[]>(
       `/CheckAccountTransaction?checkAccount[id]=${clearingId}&checkAccount[objectName]=CheckAccount&isBooked=false&limit=50`)
