@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
-import { haptic } from '@/components/team/ux'
+import { haptic, TabIcon } from '@/components/team/ux'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
@@ -189,10 +189,17 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
           return (
             <button key={t.id} onClick={() => { haptic(); setTab(t.id) }} style={{
               flex: 1, border: 'none', background: 'none', cursor: 'pointer',
-              padding: '7px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              padding: '7px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              WebkitTapHighlightColor: 'transparent',
             }}>
-              <span style={{ position: 'relative', fontSize: 22, filter: active ? 'none' : 'grayscale(1) opacity(0.55)' }}>
-                {t.icon}
+              {/* §243ag: SF-Symbol-artige SVG-Icons statt Emojis — getintet
+                  über currentColor (aktiv Gold, inaktiv iOS-Grau) */}
+              <span style={{
+                position: 'relative', display: 'inline-flex',
+                color: active ? 'var(--gold, #AE8D2D)' : '#999BA0',
+                transition: 'color .15s',
+              }}>
+                <TabIcon name={t.id} />
                 {t.id === 'intern' && internUnread > 0 && (
                   <span style={{
                     position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
