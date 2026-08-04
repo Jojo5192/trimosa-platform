@@ -26,26 +26,28 @@ export async function GET(request: Request) {
 
   // §247: solution mitladen — Deploy-sicherer Retry ohne die neue Spalte,
   // falls die Migration noch nicht gelaufen ist.
-  const build = (cols: string) => {
+  type CallRow = {
+    id: string; conversation_id: string | null; booking_id: string | null
+    caller_number: string | null; summary: string | null; transcript: string | null
+    guest_inquiry: boolean | null; created_at: string; solution?: string | null
+  }
+  // §123-Lektion: dynamische Select-Strings kann supabase-js nicht typisieren
+  // → Ergebnis SOFORT auf einen breiten eigenen Typ heben.
+  type Res = { data: CallRow[] | null; error: { message: string } | null }
+  const build = async (cols: string): Promise<Res> => {
     let q = supabaseAdmin
       .from('voice_calls')
       .select(cols)
       .order('created_at', { ascending: false })
       .limit(100)
     if (bookingId) q = q.eq('booking_id', bookingId)
-    return q
+    return (await q) as unknown as Res
   }
   const BASE = 'id, conversation_id, booking_id, caller_number, summary, transcript, guest_inquiry, created_at'
-  type CallRow = {
-    id: string; conversation_id: string | null; booking_id: string | null
-    caller_number: string | null; summary: string | null; transcript: string | null
-    guest_inquiry: boolean | null; created_at: string; solution?: string | null
-  }
   let res = await build(`${BASE}, solution`)
   if (res.error) res = await build(BASE)
-  const { data, error } = res
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  const calls = (data ?? []) as unknown as CallRow[]
+  if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
+  const calls = res.data ?? []
 
   // Buchungs-Zuordnung (Gast + Wohnung) in einem Batch nachladen
   const bIds = [...new Set((calls ?? []).map((c) => c.booking_id).filter(Boolean))] as string[]
