@@ -36,6 +36,23 @@ export async function learnFromCalls(): Promise<{ calls: number; loesungen: numb
   // (b) Lösungs-Kommentare erledigter Anruf-Aufgaben seit dem Cursor
   const cursor = String((await getSetting(CURSOR_KEY) as { at?: string } | null)?.at
     ?? new Date(Date.now() - 7 * 86400_000).toISOString())
+
+  // (b2) §247: Lösungen, die das Team DIREKT am Telefonat erfasst hat
+  // (Gast-Thread → Anruf-Karte → „✅ So gelöst"). Seit §246g entsteht bei
+  // bekanntem Gast keine Aufgabe mehr — ohne diesen Kanal versiegt genau
+  // dort das Lernen. Auswahl über solution_at, damit nachgetragene
+  // Lösungen auch bei längst gelerntem Transkript ankommen.
+  const { data: solRows } = await supabaseAdmin
+    .from('voice_calls')
+    .select('summary, solution, solution_at')
+    .not('solution', 'is', null)
+    .gt('solution_at', cursor)
+    .order('solution_at', { ascending: true })
+    .limit(40)
+  const callSolutions = (solRows ?? []).map((r) => ({
+    titel: `Telefonat: ${String(r.summary ?? '').slice(0, 250)}`,
+    loesung: `✅ Lösung (Telefonat): ${String(r.solution ?? '').slice(0, 500)}`,
+  }))
   const { data: comments } = await supabaseAdmin
     .from('task_comments')
     .select('task_id, content, created_at')
@@ -60,6 +77,7 @@ export async function learnFromCalls(): Promise<{ calls: number; loesungen: numb
       })
       .filter((x): x is { titel: string; loesung: string } => !!x)
   }
+  loesungen = [...loesungen, ...callSolutions]   // §247
 
   if (!calls.length && !loesungen.length) {
     await setSetting(CURSOR_KEY, { at: new Date().toISOString() })
