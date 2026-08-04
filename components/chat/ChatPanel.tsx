@@ -16,6 +16,7 @@ interface InlineCall {
   transcript: string | null
   guestInquiry: boolean
   hasAudio: boolean
+  solution: string | null   // §247: „So wurde es gelöst" (Futter fürs Lernen)
 }
 
 interface Conversation {
@@ -38,6 +39,7 @@ interface Conversation {
   mappeUrl?: string | null
   bookingId?: string | null
   listingId?: string | null
+  doorCode?: string | null   // §247: Türcode in der Gast-Karte (team-only)
 }
 
 /** §209: Breite der Swipe-Aktionsleiste (📞 + ✓) in der Thread-Liste */
@@ -83,6 +85,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     mappeUrl: (t.mappeUrl as string | null) ?? null,
     bookingId: (t.bookingId as string | null) ?? (t.kind === 'booking' ? (t.id as string) : null),
     listingId: (t.listingId as string | null) ?? null,
+    doorCode: (t.doorCode as string | null) ?? null,
   } as unknown as Conversation
 }
 
@@ -294,6 +297,28 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [cbBusy, setCbBusy] = useState(false)
   const [cbNote, setCbNote] = useState<string | null>(null)
 
+  // ✅ §247: „So wurde es gelöst" am Telefonat erfassen — der einzige
+  // Lernkanal für Anrufe bekannter Gäste (dort entsteht keine Aufgabe mehr).
+  const [solFor, setSolFor]   = useState<string | null>(null)   // Anruf-ID mit offenem Feld
+  const [solText, setSolText] = useState('')
+  const [solBusy, setSolBusy] = useState(false)
+
+  async function saveSolution(callId: string) {
+    setSolBusy(true)
+    try {
+      const r = await fetch(`/api/voice/calls/${callId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ solution: solText.trim() }),
+      })
+      if (r.ok) {
+        const val = solText.trim() || null
+        setCalls((prev) => prev.map((c) => (c.id === callId ? { ...c, solution: val } : c)))
+        setSolFor(null); setSolText(''); haptic()
+      }
+    } catch { /* still: Feld bleibt offen, Team kann erneut speichern */ }
+    finally { setSolBusy(false) }
+  }
+
   async function startAiCallback(num: string) {
     if (!num || cbText.trim().length < 5) return
     setCbBusy(true); setCbNote(null)
@@ -325,6 +350,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           summary: (c.summary as string | null) ?? null,
           transcript: (c.transcript as string | null) ?? null,
           guestInquiry: c.guestInquiry === true, hasAudio: c.hasAudio === true,
+          solution: (c.solution as string | null) ?? null,
         })))
       })
       .catch(() => {})
@@ -1252,11 +1278,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             desktop thread shows it too (the overlay has it in its own bar) */}
         {(showBack || variant !== 'overlay') && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
+            display: 'flex', flexDirection: 'column',
             padding: '10px 14px', background: 'rgba(255,255,255,0.85)',
             backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
             borderBottom: '0.5px solid rgba(60,60,67,0.15)', flexShrink: 0,
           }}>
+            {/* §247 Zeile 1: VOLLER Name (darf umbrechen) + Aktions-Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {showBack && (
             <button
               onClick={() => setMobileView('list')}
@@ -1273,25 +1301,18 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               onClick={team ? () => setShowGuestInfo(v => !v) : undefined}
               style={{ flex: 1, minWidth: 0, cursor: team ? 'pointer' : 'default' }}
             >
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {/* §247: kein nowrap/ellipsis mehr — der ganze Name bleibt lesbar
+                  (bei sehr langen Namen bricht er auf zwei Zeilen um). Die
+                  Zusatz-Infos wandern in die Mini-Zeile darunter. */}
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814', lineHeight: 1.25, wordBreak: 'break-word' }}>
                 {partner(active)}
                 {team && <span style={{ fontSize: 10, color: '#B5A97F', marginLeft: 6 }}>{showGuestInfo ? '▲' : '▼'}</span>}
               </div>
-              <div style={{ fontSize: 11, color: '#AAA', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {active.listing_title}
-                {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
-              </div>
             </div>
-            {(active.platform || active.guestStatus || guestLang) && (
-              // minWidth: 0 statt flexShrink: 0 — bei langen Badges schrumpft
-              // die Badge-Zeile (Ellipse), statt 📞/✓ aus dem Screen zu drücken
-              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                {guestLang && guestLang !== 'de' && (
-                  <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}`} style={{ fontSize: 15 }}>
-                    {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 10, color: '#8E8E93', verticalAlign: 'super' }}>~</span> : null}
-                  </span>
-                )}
-                <ThreadBadges c={active} size={10.5} />
+            {/* §247: nur noch die AKTIONEN in Zeile 1 — Plattform/Status/
+                Sprache stehen jetzt in der Mini-Zeile darunter und können
+                den Namen nicht mehr verdrängen. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 {team && (
                   <button
                     onClick={openTaskPanel}
@@ -1344,7 +1365,33 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </>
                 )}
               </div>
-            )}
+            </div>
+            {/* §247 Zeile 2: die wichtigsten Infos IMMER sichtbar, ganz klein
+                und einzeilig — Sprache · Wohnung · Zeitraum · Plattform/Status.
+                Tipp darauf klappt (wie auf den Namen) die Gast-Karte auf. */}
+            <div
+              onClick={team ? () => setShowGuestInfo(v => !v) : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginTop: 3,
+                paddingLeft: showBack ? 48 : 48, minWidth: 0, overflow: 'hidden',
+                cursor: team ? 'pointer' : 'default',
+              }}
+            >
+              {guestLang && guestLang !== 'de' && (
+                <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}`} style={{ fontSize: 12, flexShrink: 0 }}>
+                  {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 8, color: '#8E8E93', verticalAlign: 'super' }}>~</span> : null}
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                {active.listing_title}
+                {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
+              </span>
+              {team && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                  <ThreadBadges c={active} size={9.5} />
+                </span>
+              )}
+            </div>
           </div>
         )}
         {/* ☎️ §227c: Telefonate zu dieser Buchung — Vollbild-Overlay */}
@@ -1428,6 +1475,24 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {row('👥', 'Personen:', persons > 0 ? `${persons}${active.children ? ` (${active.adults} Erw. + ${active.children} Kind${active.children === 1 ? '' : 'er'})` : ''}` : '— (Plattform-Buchung)')}
               {row('🏠', 'Wohnung:', active.listing_title ?? '—')}
               {row('🛎️', 'Kanal:', `${active.platform ?? '—'}${guestLang && guestLang !== 'de' ? ` · Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}` : ''}`)}
+              {/* 🔑 §247: Türcode direkt hier — beim Anruf eines ausgesperrten
+                  Gasts muss niemand mehr in Nuki oder den Admin-Bereich. */}
+              {active.doorCode && (
+                <div style={{ display: 'flex', gap: 7, fontSize: 12.5, alignItems: 'center' }}>
+                  <span style={{ width: 18, flexShrink: 0 }}>🔑</span>
+                  <span style={{ color: '#8A8578', flexShrink: 0 }}>Türcode:</span>
+                  <span style={{
+                    color: '#1A1814', fontWeight: 800, letterSpacing: 2,
+                    fontVariantNumeric: 'tabular-nums', fontSize: 14,
+                    background: '#F4EFE0', borderRadius: 7, padding: '2px 8px',
+                  }}>{active.doorCode}</span>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(String(active.doorCode)); haptic() }}
+                    title="Code kopieren"
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#8A8578', padding: 0 }}
+                  >⧉</button>
+                </div>
+              )}
             </div>
           )
         })()}
@@ -1525,6 +1590,63 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             ) : (
                               <div style={{ fontSize: 11.5, color: '#7A8CA5' }}>Kein Transkript vorhanden.</div>
                             )}
+                            {/* ✅ §247: So wurde es gelöst — wandert nachts in die
+                                Telefon-Wissensbasis (lib/voice-learn, 4:40 Uhr). */}
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #C9D9EF' }}>
+                              {c.solution && solFor !== c.id ? (
+                                <div style={{
+                                  background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10,
+                                  padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5, color: '#166534',
+                                }}>
+                                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, marginBottom: 3 }}>
+                                    ✅ SO WURDE ES GELÖST — fließt in die KI-Wissensbasis
+                                  </div>
+                                  {c.solution}
+                                  <button
+                                    onClick={() => { setSolFor(c.id); setSolText(c.solution ?? '') }}
+                                    style={{ display: 'block', marginTop: 6, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#166534' }}
+                                  >✏️ Ändern</button>
+                                </div>
+                              ) : solFor === c.id ? (
+                                <div>
+                                  <textarea
+                                    value={solText}
+                                    onChange={(e) => setSolText(e.target.value)}
+                                    placeholder="Wie wurde das Anliegen gelöst? z. B. „Router im Flurschrank neu gestartet, WLAN lief danach wieder.“"
+                                    rows={3}
+                                    style={{
+                                      width: '100%', borderRadius: 10, border: '1px solid #BBF7D0',
+                                      padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
+                                      resize: 'vertical', boxSizing: 'border-box',
+                                    }}
+                                  />
+                                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                                    <button
+                                      onClick={() => saveSolution(c.id)}
+                                      disabled={solBusy}
+                                      style={{
+                                        flex: 1, border: 'none', borderRadius: 10, padding: '9px 12px',
+                                        fontSize: 13, fontWeight: 700, background: solBusy ? '#BBF7D0' : '#16A34A',
+                                        color: '#fff', cursor: solBusy ? 'default' : 'pointer',
+                                      }}
+                                    >{solBusy ? '⏳ Speichern…' : '✅ Lösung speichern'}</button>
+                                    <button
+                                      onClick={() => { setSolFor(null); setSolText('') }}
+                                      style={{ border: '1px solid #D8E4F2', background: '#fff', color: '#5A6B82', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                                    >Abbrechen</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => { setSolFor(c.id); setSolText('') }}
+                                  style={{
+                                    width: '100%', border: '1px dashed #9FD6B4', background: '#F7FDF9',
+                                    color: '#166534', borderRadius: 10, padding: '9px 12px',
+                                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                                  }}
+                                >✅ So wurde es gelöst — erfassen</button>
+                              )}
+                            </div>
                             {/* 📞 §246g Rückruf-Werkstatt: bei bekanntem Gast gehören
                                 Anrufen und KI-Rückruf HIER hin, nicht in den Aufgaben-Tab. */}
                             {c.caller && (
