@@ -67,40 +67,15 @@ export async function POST(request: Request) {
       '/team?conv=' + booking.id,
     ).catch(() => {})
 
-    // §246f: Bei DRINGENDEN Anliegen reicht die Chat-Nachricht NICHT — der
-    // Gast wartet auf einen Rückruf, und die Rückruf-Werkstatt (📞-Anrufen,
-    // 🤖 KI-Rückruf, ✨-Vorschläge) hängt an einer echten ☎️-Aufgabe.
-    // Ohne sie sah das Team am 4.8. nur eine Chat-Zeile und hatte KEINEN
-    // Weg, aus der App heraus zurückzurufen.
-    let taskId: string | null = null
-    if (urgent) {
-      const { data: t, error: tErr } = await supabaseAdmin.from('tasks').insert({
-        title: `🚨 Notfall-Anruf: ${booking.guestName.split(/\s+/)[0] || name} · ${booking.listingTitle}`.slice(0, 120),
-        description: [
-          message,
-          '',
-          `Anrufer: ${name}`,
-          `Rückrufnummer: ${number}`,
-          `Gast: ${booking.guestName} · ${booking.listingTitle} · ${booking.checkIn} bis ${booking.checkOut}`,
-          `Aufgenommen vom Telefon-Assistenten am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} — der Verlauf steht im Gast-Chat.`,
-        ].join('\n').slice(0, 2000),
-        source: 'anruf',
-        source_ref: number !== 'unterdrückt' ? number : null,
-        listing_id: booking.listingId,
-        is_general: !booking.listingId,
-        prio: 'hoch',
-        status: 'offen',
-        visibility: 'team',
-      }).select('id').maybeSingle()
-      if (tErr) console.error('[voice] take-message Notfall-Task:', tErr.message)
-      else taskId = (t?.id as string | null) ?? null
-    }
+    // §246g (Inhaber-Entscheid): Ist der Gast BEKANNT, gehört alles in den
+    // Gast-Thread — dort sitzen jetzt auch 📞 Anrufen und 🤖 KI-Rückruf
+    // direkt an der Anruf-Karte. Eine separate Aufgabe entsteht nur noch,
+    // wenn der Anrufer NICHT zugeordnet werden konnte (siehe unten).
     return Response.json({
       ok: true,
       delivered: 'chat',
-      task_created: !!taskId,
       note: urgent
-        ? 'Nachricht liegt im Gast-Thread, eine dringende Aufgabe mit Rückrufnummer wurde angelegt und das Team benachrichtigt.'
+        ? 'Dringende Nachricht liegt im Gast-Thread, das Team wurde sofort benachrichtigt und kann direkt zurückrufen.'
         : 'Nachricht liegt im Gast-Thread, das Team wurde benachrichtigt.',
     })
   }
