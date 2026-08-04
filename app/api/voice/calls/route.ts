@@ -24,14 +24,28 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const bookingId = url.searchParams.get('bookingId')
 
-  let q = supabaseAdmin
-    .from('voice_calls')
-    .select('id, conversation_id, booking_id, caller_number, summary, transcript, guest_inquiry, created_at')
-    .order('created_at', { ascending: false })
-    .limit(100)
-  if (bookingId) q = q.eq('booking_id', bookingId)
-  const { data: calls, error } = await q
+  // §247: solution mitladen — Deploy-sicherer Retry ohne die neue Spalte,
+  // falls die Migration noch nicht gelaufen ist.
+  const build = (cols: string) => {
+    let q = supabaseAdmin
+      .from('voice_calls')
+      .select(cols)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (bookingId) q = q.eq('booking_id', bookingId)
+    return q
+  }
+  const BASE = 'id, conversation_id, booking_id, caller_number, summary, transcript, guest_inquiry, created_at'
+  type CallRow = {
+    id: string; conversation_id: string | null; booking_id: string | null
+    caller_number: string | null; summary: string | null; transcript: string | null
+    guest_inquiry: boolean | null; created_at: string; solution?: string | null
+  }
+  let res = await build(`${BASE}, solution`)
+  if (res.error) res = await build(BASE)
+  const { data, error } = res
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const calls = (data ?? []) as unknown as CallRow[]
 
   // Buchungs-Zuordnung (Gast + Wohnung) in einem Batch nachladen
   const bIds = [...new Set((calls ?? []).map((c) => c.booking_id).filter(Boolean))] as string[]
@@ -69,6 +83,7 @@ export async function GET(request: Request) {
         apartment: b?.listingId ? lMap.get(b.listingId) ?? null : null,
         zeitraum: b ? `${b.checkIn}–${b.checkOut}` : null,
         hasAudio: !!c.conversation_id,
+        solution: c.solution ?? null,   // §247
       }
     }),
   })
