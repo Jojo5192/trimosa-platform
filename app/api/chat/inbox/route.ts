@@ -95,11 +95,11 @@ export async function GET(request: Request) {
   const [{ data: conversations }, { data: bookings }] = await Promise.all([
     supabaseAdmin
       .from('conversations')
-      .select('*, bookings(check_in, check_out, channel, listing_id, status, adults, children, portal_token)')
+      .select('*, bookings(check_in, check_out, channel, listing_id, status, adults, children, portal_token, door_code)')
       .order('last_message_at', { ascending: false }),
     supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, adults, children, portal_token, listings(title), conversations(id)')
+      .select('id, guest_name, check_in, check_out, channel, source, status, listing_id, smoobu_reservation_id, created_at, adults, children, portal_token, door_code, listings(title), conversations(id)')
       .not('smoobu_reservation_id', 'is', null)
       .order('check_in', { ascending: false })
       .limit(400),
@@ -295,6 +295,8 @@ export async function GET(request: Request) {
       phoneResolved: last?.phone ?? false,
       adults: b?.adults ?? null,
       children: b?.children ?? null,
+      // §247: Türcode fürs Team direkt in der Gast-Karte (Route ist team-gated)
+      doorCode: (b?.door_code as string | null) ?? null,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -329,6 +331,7 @@ export async function GET(request: Request) {
         phoneResolved: last && 'phone' in last ? !!last.phone : false,
         adults: b.adults ?? null,
         children: b.children ?? null,
+        doorCode: (b.door_code as string | null) ?? null,   // §247
         unread: bUnread[b.id] ?? 0,
       }
     })
