@@ -25,7 +25,7 @@ type BRow = {
   check_out: string
   door_code: string | null
   portal_token: string | null
-  listings: { title: string | null; check_in_time?: string | null } | null
+  listings: { title: string | null; check_in_time?: string | null; locks?: unknown } | null
 }
 
 /**
@@ -42,7 +42,7 @@ function deliveryHint(delivery: string, was: string): string {
 async function loadBooking(id: string): Promise<BRow | null> {
   const { data } = await supabaseAdmin
     .from('bookings')
-    .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+    .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time, locks)')
     .eq('id', id)
     .maybeSingle()
   return (data as unknown as BRow) ?? null
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
   if (!booking && codeIn.length >= 5) {
     const { data } = await supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time, locks)')
       .eq('status', 'confirmed')
       .eq('door_code', codeIn)
       .gte('check_out', cutoff)
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   if (!booking && lastName && /^\d{4}-\d{2}-\d{2}$/.test(arrival)) {
     const { data } = await supabaseAdmin
       .from('bookings')
-      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+      .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time, locks)')
       .eq('status', 'confirmed')
       .eq('check_in', arrival)
       .ilike('guest_name', `%${lastName}%`)
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
       if (ids.length) {
         const { data } = await supabaseAdmin
           .from('bookings')
-          .select('id, guest_name, guest_id, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time)')
+          .select('id, guest_name, guest_id, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time, locks)')
           .eq('status', 'confirmed')
           .eq('check_in', arrival)
           .in('guest_id', ids)
@@ -272,13 +272,21 @@ export async function POST(request: Request) {
 
     // §189/§190: Ausgesperrt = erst GEMEINSAM lösen, nicht sofort eskalieren —
     // Prüfschritte aber NUR bei Bedarf, nicht vorab herunterbeten
-    const sirzenich = /cozy|magnolia|sweet/i.test(title)
-    const doorInfo = sirzenich
-      ? 'Diese Wohnung ist in Sirzenich: HAUSTÜR und WOHNUNGSTÜR haben je ein Keypad — DIESER Code gilt für beide Türen.'
-      : ''
-    // §227: River hat tedee (MIT ✓-Taste); alle anderen Nuki-Keypads haben
-    // KEIN Häkchen — die Tür entriegelt automatisch nach der 6. Ziffer.
-    const tedee = /river/i.test(title)
+    // §246e: TÜR-FAKTEN kommen aus listings.locks — NICHT aus Wohnungsnamen.
+    // Der Grünsfelder-Vorfall (4.8.) entstand, weil dieses Feld für Minden LEER
+    // war: Das Modell hat die Sirzenich-Regel („gilt für beide Türen“) einfach
+    // übertragen. Jetzt sagt der Server IMMER explizit, wie viele Türen ein
+    // Code öffnet — auch im Negativfall.
+    const locks = (booking.listings?.locks as { provider?: string; label?: string }[] | null) ?? []
+    const lockCount = locks.length
+    const doorInfo = lockCount > 1
+      ? `Diese Wohnung hat ${lockCount} Schlösser mit Keypad (u. a. Haustür und Wohnungstür) — DIESER Code gilt für ALLE davon.`
+      : lockCount === 1
+        ? 'WICHTIG: Nur die WOHNUNGSTÜR hat ein Keypad. Der Code gilt AUSSCHLIESSLICH für die Wohnungstür — behaupte NIEMALS, er öffne auch die Haustür. Kommt der Anrufer schon nicht ins HAUS, ist das ein anderes Problem: nicht raten, sondern nachricht_aufnehmen mit urgent=true.'
+        : 'Zu dieser Wohnung ist KEIN Keypad-Schloss hinterlegt — sage nichts über Türen oder Keypads, sondern nimm eine Nachricht für das Team auf.'
+    // §227: tedee-Keypads brauchen die ✓-Taste, Nuki-Keypads NICHT — auch das
+    // aus den echten Schloss-Daten statt aus dem Wohnungsnamen.
+    const tedee = locks.some((l) => String(l?.provider ?? '').toLowerCase() === 'tedee')
     const keypadStep = tedee
       ? '2) Beim tedee-Keypad muss die Eingabe mit der ✓-Taste bestätigt werden — wurde das gemacht?'
       : '2) WICHTIG: Unser Nuki-Keypad hat KEIN Häkchen und keine Bestätigen-Taste — nach der 6. Ziffer entriegelt die Tür AUTOMATISCH. Bei Vertippen kurz warten und die 6 Ziffern neu eingeben. Erzähle dem Gast NIE etwas von einem Häkchen.'
@@ -301,7 +309,7 @@ export async function POST(request: Request) {
       hint: 'Code langsam und deutlich Ziffer für Ziffer nennen' + deliveryHint(sent.delivery, 'den Code')
         + earlyNote
         + (doorInfo ? ` ${doorInfo}` : '')
-        + ` Sag dem Anrufer EXAKT die Ziffern aus dem Feld door_code dieser Antwort — NIEMALS einen Code aus dem Gedächtnis oder eine eigene Zahl. Danach nur fragen, ob es geklappt hat — KEINE Bedienungs-Anleitung vorab. NUR falls der Gast nach dem Versuch nicht reinkommt, gemeinsam eingrenzen (eine Frage nach der anderen): 1) Welchen Code hat er eingetippt? Mit diesem abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. ${keypadStep} 3) Was zeigt das Keypad — rotes Licht, gar kein Licht (kann leere Batterie heißen), ein Ton? Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.`,
+        + ` Sag dem Anrufer EXAKT die Ziffern aus dem Feld door_code dieser Antwort — NIEMALS einen Code aus dem Gedächtnis oder eine eigene Zahl. Danach nur fragen, ob es geklappt hat — KEINE Bedienungs-Anleitung vorab. NUR falls der Gast nach dem Versuch nicht reinkommt, gemeinsam eingrenzen (eine Frage nach der anderen): 1) Welchen Code hat er eingetippt? Mit diesem abgleichen — oft wurde ein alter/anderer Code aus einer früheren Nachricht probiert oder Ziffern vertauscht. ${keypadStep} 3) Was zeigt das Keypad — lass es dir GENAU beschreiben und deute nichts hinein. Bekannt ist nur: ein umlaufendes Lauflicht am Nuki bedeutet, dass der Code ABGELEHNT wurde (nicht etwa erkannt); gar kein Licht kann eine leere Batterie sein. Alles andere gibst du unverändert ans Team weiter, statt zu raten. Erst wenn das gemeinsam nicht klappt: nachricht_aufnehmen mit urgent=true.`,
     })
   }
 
