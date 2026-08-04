@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches, foldName, isTeamCaller, deliverToGuest } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches, foldName, isTeamCaller, deliverToGuest, dateText } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -315,10 +315,15 @@ export async function POST(request: Request) {
     apartment: title,
     check_in: booking.check_in,
     check_out: booking.check_out,
+    // §5.10: Wochentag AUSGESCHRIEBEN mitliefern — LLMs rechnen ihn
+    // notorisch falsch aus (4.8. Fall Bosbach: Abreise Do 6.8. wurde als
+    // „Freitag" angesagt). Der Bot darf ihn nur noch vorlesen.
+    check_in_text: dateText(booking.check_in),
+    check_out_text: dateText(booking.check_out),
     nights,
     persons: persons > 0 ? persons : null,
     adults: booking.adults,
     children: booking.children,
-    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Personenzahl und Zeitraum stehen DIREKT in dieser Antwort — nutze sie und sag nie, du hättest keinen Zugriff auf Buchungsdetails. Türcodes nur über request=tuercode.',
+    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Personenzahl und Zeitraum stehen DIREKT in dieser Antwort — nutze sie und sag nie, du hättest keinen Zugriff auf Buchungsdetails. WOCHENTAGE NIEMALS selbst berechnen: nenne Datumsangaben ausschliesslich so, wie sie in check_in_text / check_out_text stehen. Türcodes nur über request=tuercode.',
   })
 }
