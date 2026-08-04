@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, MONTHS_SHORT, type UiLang } from '@/lib/i18n'
 
 /* ── 6. Reviews Section (aggregated from all platforms) ──── */
 
@@ -92,8 +92,9 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
 
   function formatReviewDate(iso: string) {
     const d = new Date(iso)
-    const months = ['Jan.','Feb.','Mär.','Apr.','Mai','Jun.','Jul.','Aug.','Sep.','Okt.','Nov.','Dez.']
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+    // §5.9: Monatsnamen in der Besuchersprache (vorher fest deutsch — auf
+    // /en stand „Mai 22, 2026" neben „Jul. 15, 2026")
+    return `${MONTHS_SHORT[lang][d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
   }
 
   function renderStars(rating: number) {
@@ -147,7 +148,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
           </div>
           <div style={{ marginTop: '6px' }}>{renderStars(data.overall.avg)}</div>
           <div style={{ fontSize: '12px', color: '#8A8065', marginTop: '4px', fontWeight: 500 }}>
-            {data.overall.count} Bewertung{data.overall.count !== 1 ? 'en' : ''} · {Object.keys(data.sources).length} Plattform{Object.keys(data.sources).length !== 1 ? 'en' : ''}
+            {data.overall.count} {t(lang, data.overall.count !== 1 ? 'Bewertungen' : 'Bewertung')} · {Object.keys(data.sources).length} {t(lang, Object.keys(data.sources).length !== 1 ? 'Plattformen' : 'Plattform')}
           </div>
         </div>
 
@@ -161,7 +162,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
                 key={src}
                 type="button"
                 onClick={() => handleFilterSource(isActive ? null : src)}
-                title={isActive ? 'Filter entfernen' : `Nur ${meta.label}-Bewertungen anzeigen`}
+                title={isActive ? t(lang, 'Filter entfernen') : `${meta.label} — ${t(lang, 'Bewertungen')}`}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
                   background: isActive ? '#fff' : 'transparent',
@@ -362,7 +363,7 @@ function ReviewText({ text }: { text: string }) {
           onClick={() => setExpanded(!expanded)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '4px', fontSize: '13px', fontWeight: 600, color: 'var(--gold)' }}
         >
-          {expanded ? 'Weniger' : 'Mehr lesen'}
+          {t(lang, expanded ? 'Weniger' : 'Mehr lesen')}
         </button>
       )}
     </div>
