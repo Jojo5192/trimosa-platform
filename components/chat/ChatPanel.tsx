@@ -11,6 +11,7 @@ import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 interface InlineCall {
   id: string
   createdAt: string
+  caller: string | null
   summary: string | null
   transcript: string | null
   guestInquiry: boolean
@@ -286,6 +287,27 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // Header UND chronologisch eingewoben in den Nachrichten-Verlauf
   const [callsOpen, setCallsOpen] = useState(false)
   const [calls, setCalls] = useState<InlineCall[]>([])
+  // 📞 §246g: Rückruf-Werkstatt DIREKT im Gast-Thread (Inhaber-Wunsch) —
+  // bei bekanntem Gast gehört alles in den Thread, nicht in den Aufgaben-Tab.
+  const [cbFor, setCbFor]   = useState<string | null>(null)   // Anruf-ID mit offenem KI-Rückruf-Feld
+  const [cbText, setCbText] = useState('')
+  const [cbBusy, setCbBusy] = useState(false)
+  const [cbNote, setCbNote] = useState<string | null>(null)
+
+  async function startAiCallback(num: string) {
+    if (!num || cbText.trim().length < 5) return
+    setCbBusy(true); setCbNote(null)
+    try {
+      const r = await fetch('/api/voice/callback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toNumber: num, instruction: cbText.trim() }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok) { setCbNote('✅ Die KI ruft gleich zurück.'); setCbText(''); setCbFor(null) }
+      else setCbNote(`⚠️ ${j?.error ?? 'Rückruf konnte nicht gestartet werden.'}`)
+    } catch { setCbNote('⚠️ Netzwerkfehler — bitte erneut versuchen.') }
+    finally { setCbBusy(false) }
+  }
   const [openCallId, setOpenCallId] = useState<string | null>(null)
   useEffect(() => {
     setCallsOpen(false)
@@ -299,6 +321,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         if (!Array.isArray(j?.calls)) return
         setCalls(j.calls.map((c: Record<string, unknown>) => ({
           id: String(c.id), createdAt: String(c.createdAt ?? ''),
+          caller: (c.caller as string | null) ?? null,
           summary: (c.summary as string | null) ?? null,
           transcript: (c.transcript as string | null) ?? null,
           guestInquiry: c.guestInquiry === true, hasAudio: c.hasAudio === true,
@@ -1502,6 +1525,52 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             ) : (
                               <div style={{ fontSize: 11.5, color: '#7A8CA5' }}>Kein Transkript vorhanden.</div>
                             )}
+                            {/* 📞 §246g Rückruf-Werkstatt: bei bekanntem Gast gehören
+                                Anrufen und KI-Rückruf HIER hin, nicht in den Aufgaben-Tab. */}
+                            {c.caller && (
+                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #C9D9EF' }}>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <a href={`tel:${c.caller.replace(/[^\d+]/g, '')}`} style={{
+                                    flex: '1 1 130px', textAlign: 'center', textDecoration: 'none',
+                                    background: '#2C5282', color: '#fff', borderRadius: 10,
+                                    padding: '9px 12px', fontSize: 13, fontWeight: 700,
+                                  }}>📞 {c.caller}</a>
+                                  <button onClick={() => { setCbFor(cbFor === c.id ? null : c.id); setCbNote(null) }} style={{
+                                    flex: '1 1 130px', border: '1px solid #C9D9EF', background: '#fff',
+                                    color: '#2C5282', borderRadius: 10, padding: '9px 12px',
+                                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                                  }}>🤖 KI ruft zurück</button>
+                                </div>
+                                {cbFor === c.id && (
+                                  <div style={{ marginTop: 8 }}>
+                                    <textarea
+                                      value={cbText}
+                                      onChange={(e) => setCbText(e.target.value)}
+                                      placeholder="Was soll die KI ausrichten? z. B. „Der Techniker kommt in 20 Minuten, bitte am Eingang warten.“"
+                                      rows={3}
+                                      style={{
+                                        width: '100%', borderRadius: 10, border: '1px solid #C9D9EF',
+                                        padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
+                                        resize: 'vertical', boxSizing: 'border-box',
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => startAiCallback(c.caller!)}
+                                      disabled={cbBusy || cbText.trim().length < 5}
+                                      style={{
+                                        marginTop: 6, width: '100%', border: 'none', borderRadius: 10,
+                                        padding: '9px 12px', fontSize: 13, fontWeight: 700,
+                                        background: cbBusy || cbText.trim().length < 5 ? '#C9D9EF' : '#2C5282',
+                                        color: '#fff', cursor: cbBusy ? 'default' : 'pointer',
+                                      }}
+                                    >{cbBusy ? '⏳ Anruf wird gestartet…' : '📲 Jetzt zurückrufen lassen'}</button>
+                                  </div>
+                                )}
+                                {cbNote && cbFor !== c.id && (
+                                  <div style={{ fontSize: 12, color: '#2C5282', marginTop: 6 }}>{cbNote}</div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1528,6 +1597,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                           {istTest ? '🧪 NUR INTERN — NICHT AN DEN GAST GESENDET' : '📋 INTERNE NOTIZ — der Gast sieht das nicht'}
                         </div>
                         {body}
+                        {/* §246g: Rückrufnummer aus der Telefonnotiz direkt wählbar —
+                            die Anruf-Karte mit Transkript kommt erst nach dem Gespräch. */}
+                        {(() => {
+                          const m = body.match(/Rückruf:\s*(\+?[\d\s()/-]{6,})/)
+                          const num = m ? m[1].trim() : ''
+                          if (!num || /unterdrückt/i.test(num)) return null
+                          return (
+                            <a href={`tel:${num.replace(/[^\d+]/g, '')}`} style={{
+                              display: 'inline-block', marginTop: 8, textDecoration: 'none',
+                              background: '#2C5282', color: '#fff', borderRadius: 9,
+                              padding: '7px 12px', fontSize: 12.5, fontWeight: 700,
+                            }}>📞 {num} anrufen</a>
+                          )
+                        })()}
                         <div style={{ fontSize: 10, color: '#A8A292', marginTop: 5 }}>{fmtMsgT(msg.created_at, uiLang)}</div>
                       </div>
                     </div>
