@@ -72,7 +72,7 @@ export async function POST(request: Request) {
   const rlKey = `voice-verify:${normalizePhone(caller) || 'anon'}`
   const allowed = await checkRateLimit(rlKey, 12, 3600)
   if (!allowed) {
-    return Response.json({ verified: false, hint: 'Zu viele Versuche — der Anrufer soll es später erneut versuchen oder das Team ruft zurück.' })
+    return Response.json({ verified: false, hint: 'Zu viele Versuche — der Anrufer soll es später erneut versuchen oder das Team ruft zurück.' }, { status: 422 })
   }
 
   const today = new Date().toISOString().slice(0, 10)
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
     return Response.json({
       verified: false,
       hint: hint + ' WICHTIG: Steht der Anrufer ausgesperrt VOR DER TÜR, ist das ein NOTFALL — dann NICHT weiter suchen, sondern SOFORT nachricht_aufnehmen mit urgent=true; den Anrufer nie unverrichteter Dinge auflegen lassen.',
-    })
+    }, { status: 422 })
   }
 
   // ── Verifizieren (§180, Inhaber: „nicht so streng — wie ein Mensch") ──
@@ -208,7 +208,7 @@ export async function POST(request: Request) {
       hint: (nameOk || apartmentOk)
         ? 'Zeitraum passt nicht ganz zur gefundenen Buchung — Anreise- und Abreisedatum nochmal beiläufig klären (Gäste irren sich oft um einen Tag; im Zweifel kurz in die Buchungsbestätigung schauen lassen), dann erneut aufrufen.'
         : 'Eine Buchung zum Zeitraum existiert, aber der genannte NAME passt nicht. Drei Wege, je EINE Frage pro Runde: 1) Fehlt die WOHNUNG noch, frag danach — Wohnung + exakter Zeitraum reichen zur Verifizierung, ganz ohne Namens-Klärung. 2) Den Anrufer den Nachnamen langsam BUCHSTABIEREN lassen (die Spracherkennung verhört Namen oft) und mit dem buchstabierten Namen erneut aufrufen. 3) Vielleicht hat der Partner/die Familie/die Firma gebucht — nach dem Namen der buchenden Person fragen. Klappt nichts davon: NICHT weiter raten — nachricht_aufnehmen (ausgesperrter Gast vor der Tür = urgent=true), das Team meldet sich sofort.',
-    })
+    }, { status: 422 })
   }
 
   const firstName = (booking.guest_name ?? '').split(/\s+/)[0] ?? ''
