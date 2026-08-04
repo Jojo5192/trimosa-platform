@@ -211,6 +211,7 @@ export async function deliverToGuest(
 export interface VoiceBooking {
   id: string
   guestName: string
+  listingId: string | null
   listingTitle: string
   checkIn: string
   checkOut: string
@@ -222,6 +223,7 @@ export interface VoiceBooking {
 type BRow = {
   id: string
   guest_id: string | null
+  listing_id?: string | null
   guest_name: string | null
   check_in: string
   check_out: string
@@ -246,7 +248,7 @@ export async function findBookingByPhone(callerNumber: string): Promise<VoiceBoo
 
   const { data: bookings } = await supabaseAdmin
     .from('bookings')
-    .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title)')
+    .select('id, guest_id, guest_name, listing_id, check_in, check_out, adults, children, listings(title)')
     .eq('status', 'confirmed')
     .gte('check_out', cutoff)
     .order('check_in', { ascending: true })
@@ -310,6 +312,7 @@ function toVoiceBooking(b: BRow, today: string): VoiceBooking {
   return {
     id: b.id,
     guestName: String(b.guest_name ?? '').trim(),
+    listingId: b.listing_id ?? null,
     listingTitle: b.listings?.title ?? 'unbekannt',
     checkIn: b.check_in,
     checkOut: b.check_out,
@@ -352,7 +355,7 @@ export async function findBookingByDetails(opts: {
   const attempt = async (fuzzyDays: number): Promise<VoiceBooking | null> => {
     let q = supabaseAdmin
       .from('bookings')
-      .select('id, guest_id, guest_name, check_in, check_out, adults, children, listings(title, location_group)')
+      .select('id, guest_id, guest_name, listing_id, check_in, check_out, adults, children, listings(title, location_group)')
       .eq('status', 'confirmed')
     if (arrival) {
       q = fuzzyDays
