@@ -314,7 +314,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
 
               {/* Review text */}
               {review.review_text && (
-                <ReviewText text={review.review_text} />
+                <ReviewText text={review.review_text} lang={lang} />
               )}
 
               {/* Verified badge */}
@@ -347,7 +347,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
 }
 
 /* Helper: expandable review text */
-function ReviewText({ text }: { text: string }) {
+function ReviewText({ text, lang }: { text: string; lang: UiLang }) {
   const [expanded, setExpanded] = useState(false)
   const MAX = 200
   const needsTruncation = text.length > MAX
