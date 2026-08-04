@@ -108,6 +108,17 @@ export async function POST(request: Request) {
   const summary = String(info.zusammenfassung ?? '').trim() || 'Telefonat ohne auswertbare Zusammenfassung.'
   const guestInquiry = info.gast_anfrage === true
 
+  // Buchungs-Details einmal zentral: door_code für den Code-Wächter,
+  // listing_id für die Wohnungs-Zuordnung der Vorfall-Aufgabe (§246).
+  let bookingDoorCode: string | null = null
+  let bookingListingId: string | null = null
+  if (booking) {
+    const { data: b } = await supabaseAdmin
+      .from('bookings').select('door_code, listing_id').eq('id', booking.id).maybeSingle()
+    bookingDoorCode = (b?.door_code as string | null) ?? null
+    bookingListingId = (b?.listing_id as string | null) ?? null
+  }
+
   await supabaseAdmin.from('voice_calls').insert({
     conversation_id: convId,
     booking_id: booking?.id ?? null,
@@ -147,6 +158,8 @@ export async function POST(request: Request) {
   // können wir es: Jede von der ASSISTENTIN gesprochene 6er-Ziffernfolge
   // wird gegen den echten door_code der zugeordneten Buchung geprüft.
   // Abweichung → sofortiger Bereitschafts-Push mit dem RICHTIGEN Code.
+  // §246: Jeder Vorfall wandert zusätzlich in `vorfaelle` → echte ☎️-Aufgabe.
+  const vorfaelle: string[] = []
   try {
     const spoken = new Set<string>()
     for (const t of turns) {
@@ -157,15 +170,11 @@ export async function POST(request: Request) {
       }
     }
     if (spoken.size) {
-      let realCode: string | null = null
-      if (booking) {
-        const { data: b } = await supabaseAdmin
-          .from('bookings').select('door_code').eq('id', booking.id).maybeSingle()
-        realCode = (b?.door_code as string | null) ?? null
-      }
+      const realCode = bookingDoorCode
       const falsche = [...spoken].filter((c) => c !== realCode)
       if (falsche.length) {
         console.error('[call-log] 🚨 Bot nannte Code(s) ohne Deckung:', falsche.join(', '), 'echt:', realCode ?? '—', convId)
+        vorfaelle.push(`🚨 FALSCHER TÜRCODE am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig ist ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!`)
         await pushOncall(
           '🚨 Bot nannte FALSCHEN Türcode!',
           `Am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig wäre ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!${caller ? ` Rückruf: ${caller}` : ''}`,
@@ -201,6 +210,7 @@ export async function POST(request: Request) {
     if (!escalated) {
       safetyNet = true
       console.warn('[call-log] 🚨 Notfall OHNE take-message — Sicherheitsnetz-Push:', convId)
+      vorfaelle.push('🚨 NOTFALL im Gespräch erkannt, aber der Bot hat KEINE Meldung ans Team ausgelöst — Anrufer wartet vermutlich noch auf Hilfe.')
       await pushOncall(
         '🚨 NOTFALL-Anruf — Bot hat NICHT eskaliert!',
         `${summary.slice(0, 150)}${caller ? ` — Rückruf: ${caller}` : ''}`,
@@ -209,6 +219,35 @@ export async function POST(request: Request) {
     }
   }
 
-  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded, 'sicherheitsnetz:', safetyNet)
-  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded, safetyNet })
+  // 📋 §246 Schicht 2: Jeder Vorfall wird zusätzlich zum flüchtigen Push als
+  // ECHTE ☎️-Aufgabe angelegt (source 'anruf') — erst dadurch erscheint die
+  // Anruf-Karte mit 📞 Rückruf / 🤖 KI-Rückruf / ✨-Lösungsvorschlägen im
+  // Aufgaben-Tab. Beim Grünsfelder-Vorfall (4.8.) gab es nur Pushes und
+  // damit keine Rückruf-Werkstatt in der App.
+  let taskCreated = false
+  if (vorfaelle.length) {
+    const wer = [info.vorname, booking?.listingTitle].filter(Boolean).join(' · ')
+    const { error: taskErr } = await supabaseAdmin.from('tasks').insert({
+      title: `🚨 Anruf-Vorfall: ${wer || caller || 'unbekannter Anrufer'}`.slice(0, 120),
+      description: [
+        ...vorfaelle,
+        '',
+        `Zusammenfassung: ${summary}`,
+        caller ? `Rückrufnummer: ${caller}` : 'Rückrufnummer unbekannt (unterdrückt/Browser-Test)',
+        `Erkannt vom Anruf-Sicherheitsnetz am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} — Transkript unter Mehr → Telefonate.`,
+      ].join('\n').slice(0, 2000),
+      source: 'anruf',
+      source_ref: caller || null,
+      listing_id: bookingListingId,
+      is_general: !bookingListingId,
+      prio: 'hoch',
+      status: 'offen',
+      visibility: 'team',
+    })
+    taskCreated = !taskErr
+    if (taskErr) console.error('[call-log] vorfall-task:', taskErr.message)
+  }
+
+  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded, 'sicherheitsnetz:', safetyNet, 'vorfall-task:', taskCreated)
+  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded, safetyNet, taskCreated })
 }
