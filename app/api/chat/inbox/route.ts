@@ -268,7 +268,7 @@ export async function GET(request: Request) {
   }
 
   const directThreads = (conversations ?? []).map((c) => {
-    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string; adults?: number | null; children?: number | null; portal_token?: string | null } | null
+    const b = c.bookings as { check_in?: string; check_out?: string; channel?: string; listing_id?: string; status?: string; adults?: number | null; children?: number | null; portal_token?: string | null; door_code?: string | null } | null
     const gp = guestProfile.get(c.guest_id)
     const last = lastDirect[c.id]
     return {
