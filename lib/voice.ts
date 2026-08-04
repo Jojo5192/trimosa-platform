@@ -407,3 +407,21 @@ export async function findBookingByDetails(opts: {
   // führt dort zur gezielten Rückfrage („Zeitraum nochmal klären"), nie zur Auskunft.
   return (await attempt(0)) ?? ((arrival || departure) ? attempt(1) : null)
 }
+
+/**
+ * §5.10: Datum für die SPRACHAUSGABE — mit ausgeschriebenem Wochentag.
+ *
+ * Sprachmodelle rechnen Wochentage notorisch falsch aus (Fall Bosbach,
+ * 4.8.2026: Abreise Donnerstag 6.8. wurde als „Freitag" angesagt). Darum
+ * liefert der Server den fertigen Text, den der Bot nur noch vorliest.
+ * Ergebnis z. B.: „Donnerstag, 6. August 2026"
+ */
+export function dateText(iso: string | null | undefined): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(String(iso))) return null
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString('de-DE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    timeZone: 'Europe/Berlin',
+  })
+}
