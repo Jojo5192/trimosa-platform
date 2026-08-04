@@ -231,6 +231,7 @@ addTranslations({
   'Erlaubt': ['Allowed', 'Autorisé', 'Toegestaan'],
   'Nicht erlaubt': ['Not allowed', 'Non autorisé', 'Niet toegestaan'],
   'Bewertungen': ['Reviews', 'Avis', 'Beoordelingen'],
+  'Zu den Bewertungen': ['Go to reviews', 'Voir les avis', 'Naar de beoordelingen'],
   'Bewertung': ['review', 'avis', 'beoordeling'],
   'Plattform': ['platform', 'plateforme', 'platform'],
   'Plattformen': ['platforms', 'plateformes', 'platforms'],
