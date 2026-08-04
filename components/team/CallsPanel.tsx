@@ -23,6 +23,7 @@ interface Call {
   apartment: string | null
   zeitraum: string | null
   hasAudio: boolean
+  solution?: string | null   // §247: im Gast-Thread erfasste Lösung
 }
 
 function fmtWhen(iso: string): string {
@@ -133,6 +134,15 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                   )}
                   {c.summary && (
                     <div style={{ fontSize: 13, color: '#4A463E', lineHeight: 1.5, marginTop: 5 }}>{c.summary}</div>
+                  )}
+                  {/* §247: erfasste Lösung — erfassen/ändern läuft im Gast-Thread */}
+                  {c.solution && (
+                    <div style={{
+                      marginTop: 7, background: '#F0FDF4', border: '1px solid #BBF7D0',
+                      borderRadius: 9, padding: '7px 10px', fontSize: 12.5, lineHeight: 1.5, color: '#166534',
+                    }}>
+                      <span style={{ fontWeight: 800 }}>✅ Gelöst: </span>{c.solution}
+                    </div>
                   )}
                 </button>
 
