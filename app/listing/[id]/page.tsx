@@ -274,7 +274,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               {(() => {
                 const rating = buildCardRating(listing as Record<string, unknown>)
                 return rating ? (
-                  <a href="#reviews-section" style={{ textDecoration: 'none', display: 'inline-flex' }} title="Zu den Bewertungen">
+                  <a href="#reviews-section" style={{ textDecoration: 'none', display: 'inline-flex' }} title={t(lang, 'Zu den Bewertungen')}>
                     <ScoreBadge rating={rating} popDirection="down" />
                   </a>
                 ) : (
