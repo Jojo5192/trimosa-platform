@@ -125,6 +125,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // §248c: rohes Nuki-Schloss-PROTOKOLL (Kalibrierung des Reinigungs-Zeugen —
+  // „unbestätigt" trotz Keypad-Öffnungen: WAS liefert das Log wirklich?)
+  if (body.action === 'nuki-log-test' && body.smartlockId) {
+    const { nukiLogProbe } = await import('@/lib/locks')
+    try {
+      return NextResponse.json(await nukiLogProbe(Number(body.smartlockId)))
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action === 'team-code-test' && body.smartlockId && body.personId) {
     const { debugTeamCodePut, getStaffCodes } = await import('@/lib/locks')
     try {
