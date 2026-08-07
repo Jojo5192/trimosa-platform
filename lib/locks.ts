@@ -551,6 +551,42 @@ export async function tedeeActivityProbe(lockId: number): Promise<{ path: string
   return out
 }
 
+/** Diagnose (§248c): rohes Nuki-Schloss-Protokoll — kalibriert den
+ *  Reinigungs-Zeugen (staffCodeUsedToday). Liefert die jüngsten Einträge
+ *  kompakt (name/date/trigger/action/state) + eine Roh-Probe des ersten
+ *  Eintrags, damit unbekannte Feldnamen sichtbar werden. */
+export async function nukiLogProbe(smartlockId: number): Promise<{
+  status: number
+  count: number
+  todayBerlin: string
+  zeugeWuerdeMatchen: boolean
+  entries: { name: string; date: string; trigger?: number; action?: number; state?: number; source?: number }[]
+  rawFirst: string
+}> {
+  const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const res = await nukiFetch(`/smartlock/${smartlockId}/log?limit=50`)
+  const text = await res.text()
+  let entries: Record<string, unknown>[] = []
+  try { const j = JSON.parse(text); if (Array.isArray(j)) entries = j } catch { /* Rohtext unten */ }
+  return {
+    status: res.status,
+    count: entries.length,
+    todayBerlin,
+    // exakt die Zeugen-Logik aus staffCodeUsedToday
+    zeugeWuerdeMatchen: entries.some((e) =>
+      String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin),
+    entries: entries.slice(0, 25).map((e) => ({
+      name: String(e.name ?? ''),
+      date: String(e.date ?? ''),
+      trigger: typeof e.trigger === 'number' ? e.trigger : undefined,
+      action: typeof e.action === 'number' ? e.action : undefined,
+      state: typeof e.state === 'number' ? e.state : undefined,
+      source: typeof e.source === 'number' ? e.source : undefined,
+    })),
+    rawFirst: JSON.stringify(entries[0] ?? text.slice(0, 500)).slice(0, 800),
+  }
+}
+
 export interface LockSettings {
   /** Tage vor Anreise, ab denen der Code in der Gästemappe erscheint */
   revealDays: number
