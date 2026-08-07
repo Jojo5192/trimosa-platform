@@ -474,10 +474,24 @@ export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | nu
         const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
         if (!res.ok) continue
         checkedAny = true
-        const entries = await res.json() as { name?: string; date?: string }[]
-        const hit = (entries ?? []).some((e) =>
-          String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin)
-        if (hit) return true
+        const entries = await res.json() as { name?: string; date?: string; authId?: string; trigger?: number }[]
+        const heutige = (entries ?? []).filter((e) => String(e.date ?? '').slice(0, 10) === todayBerlin)
+        if (!heutige.length) continue
+        // §248c-ROOT-CAUSE: Bei KEYPAD-Öffnungen schreibt Nuki als name nur
+        // generisch „Zutrittscode" — der Auth-Name steckt NIE im Log-Eintrag,
+        // sondern hinter der authId. Darum: Auth-Liste laden und die heutigen
+        // Einträge über authId → Auth-Name auflösen. Der alte name-Match
+        // bleibt als Zusatz (deckt App-Öffnungen durch Team-Nutzer ab).
+        if (heutige.some((e) => String(e.name ?? '').startsWith('TRIMOSA-Team'))) return true
+        const teamAuthIds = new Set<string>()
+        const authRes = await nukiFetch(`/smartlock/${id}/auth`)
+        if (authRes.ok) {
+          const auths = await authRes.json() as { id?: string; name?: string }[]
+          for (const a of auths ?? []) {
+            if (String(a.name ?? '').startsWith('TRIMOSA-Team') && a.id) teamAuthIds.add(String(a.id))
+          }
+        }
+        if (heutige.some((e) => e.authId && teamAuthIds.has(String(e.authId)))) return true
       }
     } catch (e) {
       console.error('[cleaning-done] Nuki-Log-Prüfung fehlgeschlagen:', e)
@@ -560,7 +574,7 @@ export async function nukiLogProbe(smartlockId: number): Promise<{
   count: number
   todayBerlin: string
   zeugeWuerdeMatchen: boolean
-  entries: { name: string; date: string; trigger?: number; action?: number; state?: number; source?: number }[]
+  entries: { name: string; authName?: string; date: string; trigger?: number; action?: number; state?: number; source?: number }[]
   rawFirst: string
 }> {
   const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
@@ -568,21 +582,37 @@ export async function nukiLogProbe(smartlockId: number): Promise<{
   const text = await res.text()
   let entries: Record<string, unknown>[] = []
   try { const j = JSON.parse(text); if (Array.isArray(j)) entries = j } catch { /* Rohtext unten */ }
+
+  // §248c: authId → Auth-Name auflösen (Keypad-Öffnungen heißen im Log nur
+  // „Zutrittscode" — der wahre Nutzer steht hinter der authId)
+  const authName = new Map<string, string>()
+  try {
+    const ar = await nukiFetch(`/smartlock/${smartlockId}/auth`)
+    if (ar.ok) {
+      for (const a of (await ar.json()) as { id?: string; name?: string }[]) {
+        if (a.id) authName.set(String(a.id), String(a.name ?? ''))
+      }
+    }
+  } catch { /* Auflösung optional */ }
+  const resolved = entries.slice(0, 25).map((e) => ({
+    name: String(e.name ?? ''),
+    authName: e.authId ? authName.get(String(e.authId)) ?? '(Auth unbekannt/gelöscht)' : undefined,
+    date: String(e.date ?? ''),
+    trigger: typeof e.trigger === 'number' ? e.trigger : undefined,
+    action: typeof e.action === 'number' ? e.action : undefined,
+    state: typeof e.state === 'number' ? e.state : undefined,
+    source: typeof e.source === 'number' ? e.source : undefined,
+  }))
   return {
     status: res.status,
     count: entries.length,
     todayBerlin,
-    // exakt die Zeugen-Logik aus staffCodeUsedToday
-    zeugeWuerdeMatchen: entries.some((e) =>
-      String(e.name ?? '').startsWith('TRIMOSA-Team') && String(e.date ?? '').slice(0, 10) === todayBerlin),
-    entries: entries.slice(0, 25).map((e) => ({
-      name: String(e.name ?? ''),
-      date: String(e.date ?? ''),
-      trigger: typeof e.trigger === 'number' ? e.trigger : undefined,
-      action: typeof e.action === 'number' ? e.action : undefined,
-      state: typeof e.state === 'number' ? e.state : undefined,
-      source: typeof e.source === 'number' ? e.source : undefined,
-    })),
+    // NEUE Zeugen-Logik (name-Match ODER authId→Team-Auth) — wie staffCodeUsedToday
+    zeugeWuerdeMatchen: entries.some((e) => String(e.date ?? '').slice(0, 10) === todayBerlin && (
+      String(e.name ?? '').startsWith('TRIMOSA-Team') ||
+      (e.authId ? (authName.get(String(e.authId)) ?? '').startsWith('TRIMOSA-Team') : false)
+    )),
+    entries: resolved,
     rawFirst: JSON.stringify(entries[0] ?? text.slice(0, 500)).slice(0, 800),
   }
 }
