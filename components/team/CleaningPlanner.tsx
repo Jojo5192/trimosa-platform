@@ -731,9 +731,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     {conf ? (
                       <p style={{
                         fontSize: 12.5, fontWeight: 800, margin: '7px 0 0',
-                        color: conf.verify === 'unbestaetigt' ? '#B45309' : '#16A34A',
+                        color: '#16A34A',
                       }}>
-                        {conf.verify === 'unbestaetigt' ? '⚠️ Gereinigt gemeldet — ohne Schloss-Bestätigung' : '✅ Gereinigt gemeldet'}
+                        {'✅ Gereinigt gemeldet'}
                         {' · '}
                         {new Date(conf.at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}
                         {conf.person ? ` · ${conf.person}` : ''}
