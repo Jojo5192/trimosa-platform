@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { staffCodeUsedToday, getLockSettings, type LockRef } from '@/lib/locks'
+import { getLockSettings, type LockRef } from '@/lib/locks'
 import { resolvePlaceholders } from '@/lib/auto-messages'
 
 /**
@@ -179,9 +179,11 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
   const now = berlinNow()
   if (now.hour < HOUR_FROM || now.hour >= HOUR_UNTIL) return { ok: false, status: 'zeitfenster' }
 
-  // Nuki-Zeuge: Team-Code heute an der Tür benutzt?
-  const used = await staffCodeUsedToday((l.locks ?? []) as LockRef[])
-  const verify = used === true ? 'bestaetigt' : used === false ? 'unbestaetigt' : 'nicht_pruefbar'
+  // §248c/Inhaber-Entscheid 7.8.: Der Nuki-Zeuge ist RAUS — er produzierte
+  // nur „unbestätigt"-Rauschen (Reinigungsteam nutzt Alt-Dauercodes) und
+  // blockierte die Früh-Check-in-Automatik. Schutz gegen Fehlmeldungen
+  // bleibt: verstecktes Tag, Server-Zeitfenster, einmal je Slot, Team-Push.
+  const verify = 'nicht_pruefbar' as const
 
   // Person aus der Wohnungs-Zuordnung (Reinigungs-Management)
   let personName: string | null = null
@@ -203,16 +205,14 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     return { ok: false, status: 'fehler' }
   }
 
-  // 🔔 Team-Push — immer, damit Fehlmeldungen sofort auffallen (§135: awaited)
-  const verifyLabel = verify === 'bestaetigt' ? '✓ Schloss-Bestätigung'
-    : verify === 'unbestaetigt' ? '⚠️ OHNE Schloss-Bestätigung' : 'Schloss nicht prüfbar'
   let earlyCheckinSent = false
 
-  // 🎉 Früh-Check-in: nur bei BESTÄTIGTER Meldung, Anreise heute, vor der
-  // Check-in-Zeit — Text kommt aus der Auto-Nachrichten-Vorlage (Trigger
-  // „Reinigung gemeldet", im Editor an/aus & editierbar), Zustellung über
-  // den bewährten Gast-Kanal (§220). Respektiert den 🚦-Master-Schalter.
-  if (verify === 'bestaetigt') {
+  // 🎉 Früh-Check-in bei JEDER Fertigmeldung (Zeugen-Bedingung entfernt,
+  // Inhaber 7.8.): Anreise heute, vor der Check-in-Zeit — Text kommt aus
+  // der Auto-Nachrichten-Vorlage (Trigger „Reinigung gemeldet", im Editor
+  // an/aus & editierbar), Zustellung über den bewährten Gast-Kanal (§220).
+  // Respektiert den 🚦-Master-Schalter.
+  {
     try {
       const { data: arr } = await supabaseAdmin
         .from('bookings')
@@ -251,7 +251,7 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     const { sendPushToTeam } = await import('@/lib/push')
     await sendPushToTeam(
       `🧹 ${l.title ?? 'Wohnung'} als gereinigt gemeldet`,
-      `${personName ?? 'Vor Ort'} · ${now.hm} Uhr · ${verifyLabel}`
+      `${personName ?? 'Vor Ort'} · ${now.hm} Uhr`
         + (earlyCheckinSent ? ' · Früh-Check-in-Info an den Gast gesendet' : ''),
       '/team',
     )
