@@ -51,9 +51,18 @@ type Invoice = {
     differenz?: number | null; einschaetzung?: string; auffaelligkeiten?: string[]
     /** §257: Auto-Prüfung aus dem Mail-Import — gefundene sevdesk-Belege */
     lieferant?: string
-    belege?: { id: string; datum: string; betrag: number; text: string; wohnung?: string | null; zugeordnet: boolean; grund?: string; url: string }[]
+    belege?: {
+      id: string; datum: string; betrag: number; text: string; wohnung?: string | null
+      zugeordnet: boolean; grund?: string; url: string
+      /** §257c: aus dem PDF gelesene Einzelpositionen + Leistungszeitraum */
+      zeitraum?: { von: string | null; bis: string | null } | null
+      positionen?: { datum: string | null; wohnung: string; art: string; text: string; betrag: number | null }[]
+    }[]
     /** §257b: Wohnungs-Vergleich — erwartet vs. abgerechnet + Ursache */
     wohnungen?: { wohnung: string; erwartet: number | null; abgerechnet: number; differenz: number | null; ursache?: string }[]
+    /** §257c: Termin-Abgleich — geplante Wechsel vs. abgerechnete Reinigungstage */
+    abgleich?: { wohnung: string; erwartetTermine: number; abgerechnetTermine: number; fehlend: string[]; zusaetzlich: string[]; doppelt?: string[] }[]
+    hinweise?: string[]
   } | null
   status: string; created_at: string
 }
@@ -90,6 +99,8 @@ function fmtDur(min: number): string {
 }
 const eur = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const eurSigned = (n: number) => (n > 0 ? '+' : '') + eur(n)
+/** cent-genau — für PDF-Positionen (dort zählen die Cents) */
+const eur2 = (n: number) => n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 
 type Slot = {
   stay: Stay
@@ -562,6 +573,20 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               dauer_min: s.minutes, betrag: r2(slotCost(s)),
               zulage: r2(slotSurcharge(s)) || undefined,
             })),
+            // §257c: geplante Termine ±7 Tage um die Monatsgrenzen — der
+            // Termin-Abgleich neutralisiert damit Rechnungs-Positionen, deren
+            // Wechsel im Nachbarmonat geplant war (Monatsrand-Fehlalarme)
+            rand_termine: (() => {
+              const first = `${m.key}-01`
+              const [ry, rmo] = m.key.split('-').map(Number)
+              const last = `${m.key}-${String(new Date(Date.UTC(ry, rmo, 0)).getUTCDate()).padStart(2, '0')}`
+              const lo = addDays(first, -7)
+              const hi = addDays(last, 7)
+              return costSlots
+                .filter((s) => matchPerson(s.listingId)
+                  && ((s.effDay >= lo && s.effDay < first) || (s.effDay > last && s.effDay <= hi)))
+                .map((s) => ({ datum: s.effDay, wohnung: listings[s.listingId]?.title ?? '—' }))
+            })(),
             hinweis: m.partialStart
               ? (coveredFrom === today
                 ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.'
@@ -577,8 +602,14 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           const lastDiff = lastInv && lastInv.amount_invoiced != null && lastInv.amount_expected != null
             ? lastInv.amount_invoiced - lastInv.amount_expected : (lastInv?.analysis?.differenz ?? null)
           const lastOk = lastInv?.status === 'geprueft' && lastDiff != null && Math.abs(lastDiff) <= (lastInv.amount_expected ?? 0) * 0.1
-          const checkedInv = showInv ? (monthInvoices.find((iv) => iv.status === 'geprueft') ?? null) : null
+          // Bevorzugt die geprüfte Zeile MIT Wohnungs-/Termin-Daten (Auto-
+          // Check) — ein späterer manueller Upload ohne diese Felder darf
+          // Hero/Wohnungszeilen nicht leeren (Review §257c)
+          const geprueftInvs = showInv ? monthInvoices.filter((iv) => iv.status === 'geprueft') : []
+          const checkedInv = geprueftInvs.find((iv) => (iv.analysis?.wohnungen?.length ?? 0) > 0 || (iv.analysis?.abgleich?.length ?? 0) > 0)
+            ?? geprueftInvs[0] ?? null
           const wByName = new Map(((checkedInv?.analysis?.wohnungen) ?? []).map((w) => [w.wohnung, w] as const))
+          const abByName = new Map(((checkedInv?.analysis?.abgleich) ?? []).map((a) => [a.wohnung, a] as const))
           const expanded = kind === 'aktuell' || !!openKeys[`m|${m.key}`]
 
           if (!expanded) {
@@ -663,6 +694,21 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         {wa?.ursache && (
                           <span style={{ display: 'block', fontSize: 11, color: '#B45309', marginTop: 2, paddingLeft: 15, whiteSpace: 'normal', lineHeight: 1.4 }}>→ {wa.ursache}</span>
                         )}
+                        {/* §257c: Termin-Abgleich — abgerechnete Reinigungstage vs. geplante Wechsel */}
+                        {(() => {
+                          const ab = abByName.get(title)
+                          if (!ab) return null
+                          const sauber = !ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length)
+                          return (
+                            <span style={{ display: 'block', fontSize: 11, color: sauber ? '#15803D' : '#B91C1C', marginTop: 2, paddingLeft: 15, whiteSpace: 'normal', lineHeight: 1.4 }}>
+                              📅 {ab.abgerechnetTermine}/{ab.erwartetTermine} Termine abgerechnet
+                              {sauber ? ' — alle gedeckt' : ''}
+                              {ab.fehlend.length ? ` · fehlt: ${ab.fehlend.map(fmtShort).join(', ')}` : ''}
+                              {ab.zusaetzlich.length ? ` · zusätzlich: ${ab.zusaetzlich.map(fmtShort).join(', ')}` : ''}
+                              {ab.doppelt?.length ? ` · doppelt: ${ab.doppelt.map(fmtShort).join(', ')}` : ''}
+                            </span>
+                          )
+                        })()}
                       </span>
                       <span style={{ textAlign: 'right', flexShrink: 0 }}>
                         <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>{eur(row.total)}</span>
@@ -690,7 +736,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               {/* Sammel-/Standort-Belege ohne eindeutige Wohnung — NEUTRAL zeigen
                   (Review §257b: sie stecken in der Gesamtsumme, kein Alarm) */}
               {checkedInv && (checkedInv.analysis?.wohnungen ?? [])
-                .filter((w) => w.wohnung === 'Ohne Wohnungs-Zuordnung' && w.abgerechnet > 0.005)
+                .filter((w) => w.wohnung === 'Ohne Wohnungs-Zuordnung' && Math.abs(w.abgerechnet) > 0.005)
                 .map((w) => (
                   <div key="ohne-zu" style={{ ...rowStyle, alignItems: 'center' }}>
                     <span style={{ minWidth: 0, flex: 1 }}>
@@ -703,7 +749,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 ))}
               {/* Abgerechnet, aber gar nicht erwartet (z. B. Wohnung ohne geplante Reinigung) */}
               {checkedInv && (checkedInv.analysis?.wohnungen ?? [])
-                .filter((w) => w.wohnung !== 'Ohne Wohnungs-Zuordnung' && w.abgerechnet > 0.005 && ![...m.perListing.keys()].some((id) => (listings[id]?.title ?? '') === w.wohnung))
+                .filter((w) => w.wohnung !== 'Ohne Wohnungs-Zuordnung' && Math.abs(w.abgerechnet) > 0.005 && ![...m.perListing.keys()].some((id) => (listings[id]?.title ?? '') === w.wohnung))
                 .map((w) => (
                   <div key={`x-${w.wohnung}`} style={{ ...rowStyle, alignItems: 'center' }}>
                     <span style={{ minWidth: 0, flex: 1 }}>
@@ -807,6 +853,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     const ok = inv.status === 'geprueft' && diff != null && Math.abs(diff) <= (inv.amount_expected ?? 0) * 0.1
                     const personName = inv.person_id ? (persons.find((p) => p.id === inv.person_id)?.name ?? 'Person') : null
                     const open = invOpen === inv.id
+                    const abInv = new Map(((inv.analysis?.abgleich) ?? []).map((a) => [a.wohnung, a] as const))
                     return (
                       <div key={inv.id} style={{ marginBottom: 8 }}>
                         <button onClick={() => setInvOpen(open ? null : inv.id)} style={{
@@ -844,6 +891,20 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                       <span style={{ width: 56, display: 'flex', justifyContent: 'flex-end' }}>{deltaChip(w.differenz, true)}</span>
                                     </div>
                                     {w.ursache && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#B45309', lineHeight: 1.4 }}>→ {w.ursache}</p>}
+                                    {(() => {
+                                      const ab = abInv.get(w.wohnung)
+                                      if (!ab) return null
+                                      const sauber = !ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length)
+                                      return (
+                                        <p style={{ margin: '3px 0 0', fontSize: 11, color: sauber ? '#15803D' : '#B91C1C', lineHeight: 1.4 }}>
+                                          📅 {ab.abgerechnetTermine}/{ab.erwartetTermine} Termine
+                                          {sauber ? ' — alle gedeckt' : ''}
+                                          {ab.fehlend.length ? ` · fehlt: ${ab.fehlend.map(fmtShort).join(', ')}` : ''}
+                                          {ab.zusaetzlich.length ? ` · zusätzlich: ${ab.zusaetzlich.map(fmtShort).join(', ')}` : ''}
+                                          {ab.doppelt?.length ? ` · doppelt: ${ab.doppelt.map(fmtShort).join(', ')}` : ''}
+                                        </p>
+                                      )
+                                    })()}
                                   </div>
                                 ))}
                               </div>
@@ -865,17 +926,60 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                 ))}
                               </div>
                             )}
-                            {/* §257: gefundene Belege aus dem Mail-Import — antippen öffnet das PDF */}
+                            {(inv.analysis?.hinweise ?? []).length > 0 && (
+                              <div style={{ margin: '0 0 8px' }}>
+                                {(inv.analysis!.hinweise!).map((h, i) => (
+                                  <p key={i} style={{ margin: '0 0 3px', fontSize: 11.5, color: '#9CA3AF' }}>ℹ️ {h}</p>
+                                ))}
+                              </div>
+                            )}
+                            {/* §257c: Belege als Karten — 📄-PDF-Button + Einzelpositionen aus dem PDF */}
                             {(inv.analysis?.belege ?? []).length > 0 && (
                               <div style={{ margin: '0 0 8px' }}>
-                                {(inv.analysis!.belege!).map((b, i) => (
-                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', opacity: b.zugeordnet ? 1 : 0.55 }}>
-                                    <a href={b.url} target="_blank" rel="noreferrer" style={{ color: '#8A7020', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      📎 {fmtShort(b.datum)} · {b.wohnung ? `${b.wohnung} · ` : ''}{b.text}{b.zugeordnet ? '' : ` — nicht mitgezählt${b.grund ? ` (${b.grund})` : ''}`}
-                                    </a>
-                                    <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(b.betrag)}</span>
-                                  </div>
-                                ))}
+                                <p style={{ margin: '0 0 5px', fontSize: 10, fontWeight: 700, color: '#8A8578', letterSpacing: '0.04em' }}>BELEGE AUS DEM MAIL-IMPORT</p>
+                                {(inv.analysis!.belege!).map((b) => {
+                                  const pk = `inv|${inv.id}|b|${b.id}`
+                                  const pOpen = !!openKeys[pk]
+                                  const posn = b.positionen ?? []
+                                  return (
+                                    <div key={b.id} style={{ borderRadius: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.18)', padding: '8px 10px', marginBottom: 6, background: '#fff', opacity: b.zugeordnet ? 1 : 0.55 }}>
+                                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                        <span style={{ minWidth: 0, flex: 1 }}>
+                                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {fmtShort(b.datum)} · {b.text}
+                                          </span>
+                                          <span style={{ display: 'block', fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>
+                                            {b.zeitraum && (b.zeitraum.von || b.zeitraum.bis)
+                                              ? `Leistungszeitraum ${b.zeitraum.von ? fmtShort(b.zeitraum.von) : '?'}–${b.zeitraum.bis ? fmtShort(b.zeitraum.bis) : '?'} · ` : ''}
+                                            {b.wohnung ? `${b.wohnung} · ` : ''}
+                                            {b.zugeordnet ? 'mitgezählt' : `nicht mitgezählt${b.grund ? ` (${b.grund})` : ''}`}
+                                          </span>
+                                        </span>
+                                        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#111', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur2(b.betrag)}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 8, marginTop: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <a href={b.url} target="_blank" rel="noreferrer" style={{
+                                          padding: '5px 13px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#fff',
+                                          background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', textDecoration: 'none',
+                                        }}>📄 PDF öffnen</a>
+                                        {posn.length > 0 && (
+                                          <button onClick={() => toggle(pk)} style={{
+                                            border: 'none', background: 'rgba(120,120,128,0.10)', borderRadius: 999,
+                                            padding: '5px 13px', fontSize: 11.5, fontWeight: 700, color: '#3C3C43', cursor: 'pointer',
+                                          }}>{pOpen ? '▾' : '▸'} {posn.length} Positionen</button>
+                                        )}
+                                      </div>
+                                      {pOpen && posn.map((p, pi) => (
+                                        <div key={pi} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: '#6B7280', marginTop: pi === 0 ? 6 : 0, boxShadow: pi ? 'inset 0 0.5px 0 rgba(60,60,67,0.08)' : 'none' }}>
+                                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {p.datum ? `${fmtShort(p.datum)} · ` : ''}{p.wohnung && p.wohnung !== 'unbekannt' ? `${p.wohnung} · ` : ''}{p.text}
+                                          </span>
+                                          <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{p.betrag != null ? eur2(p.betrag) : '—'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })}
                               </div>
                             )}
                             <span style={{ display: 'inline-flex', gap: 12 }}>
