@@ -13,7 +13,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
  * PIN-Name = „TRIMOSA <Buchungs-Kurz-ID>" — datensparsam, kein Gastname.
  */
 
-export interface LockRef { provider: 'nuki' | 'tedee'; id: string; label: string }
+export interface LockRef { provider: 'nuki' | 'tedee' | 'ttlock'; id: string; label: string }
 
 const NUKI_BASE = 'https://api.nuki.io'
 
@@ -188,6 +188,123 @@ async function removeTedeePinsByAlias(lockId: number, alias: string): Promise<vo
   }
 }
 
+/* ── TTLock-Adapter (§250, Pilot C20-TB → Minden UG) ──────────────────
+ * Cloud-API api.sciener.com v3 (euopen.ttlock.com-Doku). Auth: OAuth2
+ * password-grant mit dem NORMALEN TTLock-App-Konto (Passwort als
+ * MD5-lowercase — Env hält den Klartext, gehasht wird hier). Alle Calls
+ * sind POST x-www-form-urlencoded mit clientId + accessToken + date (ms).
+ * Fehler kommen als { errcode, errmsg } — errcode 0/fehlend = Erfolg.
+ * Code-Anlage remote via Gateway G2: keyboardPwd/add mit addType 2
+ * („only V4 locks" — Firmware-Frage am lebenden Schloss geklärt beim
+ * Schreibtisch-Test). PIN-Regeln: 4–9 Ziffern; unsere 6-stelligen Codes
+ * (generateDoorCode) passen. */
+
+export function ttlockConfigured(): boolean {
+  return !!(process.env.TTLOCK_CLIENT_ID && process.env.TTLOCK_CLIENT_SECRET
+    && process.env.TTLOCK_USERNAME && process.env.TTLOCK_PASSWORD)
+}
+
+const TTLOCK_BASE = 'https://api.sciener.com'
+
+type TTGlobal = typeof globalThis & { __ttlockTok?: { token: string; exp: number } }
+
+async function ttlockToken(): Promise<string> {
+  const g = globalThis as TTGlobal
+  if (g.__ttlockTok && g.__ttlockTok.exp > Date.now()) return g.__ttlockTok.token
+  const { createHash } = await import('crypto')
+  const md5 = createHash('md5').update(process.env.TTLOCK_PASSWORD ?? '').digest('hex').toLowerCase()
+  const res = await fetch(`${TTLOCK_BASE}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.TTLOCK_CLIENT_ID ?? '',
+      client_secret: process.env.TTLOCK_CLIENT_SECRET ?? '',
+      username: process.env.TTLOCK_USERNAME ?? '',
+      password: md5,
+    }),
+    cache: 'no-store',
+  })
+  const j = await res.json().catch(() => ({})) as { access_token?: string; errcode?: number; errmsg?: string }
+  if (!res.ok || !j.access_token) {
+    throw new Error(`TTLock oauth2/token HTTP ${res.status}: ${j.errmsg ?? JSON.stringify(j).slice(0, 200)}`)
+  }
+  // Token gilt ~90 Tage — 24h-Cache reicht und schont den Token-Endpoint
+  g.__ttlockTok = { token: j.access_token, exp: Date.now() + 24 * 3600_000 }
+  return j.access_token
+}
+
+/** POST-Call mit Pflicht-Parametern; wirft bei errcode ≠ 0 mit errmsg. */
+async function ttlockCall<T>(path: string, params: Record<string, string | number>): Promise<T> {
+  const token = await ttlockToken()
+  const body = new URLSearchParams()
+  body.set('clientId', process.env.TTLOCK_CLIENT_ID ?? '')
+  body.set('accessToken', token)
+  body.set('date', String(Date.now()))
+  for (const [k, v] of Object.entries(params)) body.set(k, String(v))
+  const res = await fetch(`${TTLOCK_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    cache: 'no-store',
+  })
+  const j = await res.json().catch(() => ({})) as T & { errcode?: number; errmsg?: string }
+  if (!res.ok) throw new Error(`TTLock ${path} HTTP ${res.status}: ${JSON.stringify(j).slice(0, 200)}`)
+  if (typeof j.errcode === 'number' && j.errcode !== 0) {
+    throw new Error(`TTLock ${path} errcode ${j.errcode}: ${j.errmsg ?? '—'}`)
+  }
+  return j
+}
+
+/** Alle TTLock-Schlösser des Kontos (für die Zuordnung in der Admin-Karte). */
+export async function listTTLocks(): Promise<{ id: string; name: string }[]> {
+  const j = await ttlockCall<{ list?: { lockId: number; lockAlias?: string; lockName?: string }[] }>(
+    '/v3/lock/list', { pageNo: 1, pageSize: 100 })
+  return (j.list ?? []).map((l) => ({ id: String(l.lockId), name: l.lockAlias ?? l.lockName ?? `TTLock ${l.lockId}` }))
+}
+
+async function listTTLockPins(lockId: number): Promise<{ id: number; name?: string; pwd?: string; endMs?: number }[]> {
+  const j = await ttlockCall<{ list?: { keyboardPwdId: number; keyboardPwdName?: string; keyboardPwd?: string; endDate?: number }[] }>(
+    '/v3/lock/listKeyboardPwd', { lockId, pageNo: 1, pageSize: 100 })
+  return (j.list ?? []).map((p) => ({ id: p.keyboardPwdId, name: p.keyboardPwdName, pwd: p.keyboardPwd, endMs: p.endDate }))
+}
+
+/** Wunsch-PIN remote via Gateway anlegen (addType 2). Dauercode = end weit in der Zukunft. */
+async function setTTLockCode(lockId: number, name: string, pin: string, startMs: number, endMs: number): Promise<void> {
+  await ttlockCall('/v3/keyboardPwd/add', {
+    lockId, keyboardPwd: pin, keyboardPwdName: name,
+    startDate: startMs, endDate: endMs, addType: 2,
+  })
+}
+
+async function removeTTLockCodesByName(lockId: number, name: string): Promise<void> {
+  for (const p of await listTTLockPins(lockId)) {
+    if (p.name === name) {
+      await ttlockCall('/v3/keyboardPwd/delete', { lockId, keyboardPwdId: p.id, deleteType: 2 })
+    }
+  }
+}
+
+/** Diagnose (§250, Schreibtisch-Test): PIN-Liste des Schlosses; optional
+ *  Test-PIN „TRIMOSA-Test" anlegen (24h gültig, addType 2 = via Gateway —
+ *  beweist zugleich die V4-Firmware-Frage) bzw. wieder entfernen. */
+export async function ttlockTestProbe(lockId: number, testPin?: string, removeTestPin?: boolean): Promise<{
+  pins: { id: number; name?: string; endMs?: number }[]
+  testPinAngelegt?: boolean
+  testPinEntfernt?: boolean
+}> {
+  const out: { pins: { id: number; name?: string; endMs?: number }[]; testPinAngelegt?: boolean; testPinEntfernt?: boolean } = { pins: [] }
+  if (removeTestPin) {
+    await removeTTLockCodesByName(lockId, 'TRIMOSA-Test')
+    out.testPinEntfernt = true
+  }
+  if (testPin) {
+    await setTTLockCode(lockId, 'TRIMOSA-Test', testPin, Date.now() - 3600_000, Date.now() + 24 * 3600_000)
+    out.testPinAngelegt = true
+  }
+  out.pins = (await listTTLockPins(lockId)).map((p) => ({ id: p.id, name: p.name, endMs: p.endMs }))
+  return out
+}
+
 /** Abgelaufene TRIMOSA-Codes eines Schlosses löschen (200er-Auth-Limit). */
 export async function cleanupNukiAuths(smartlockId: number): Promise<number> {
   const res = await nukiFetch(`/smartlock/${smartlockId}/auth`)
@@ -230,18 +347,20 @@ async function saveStaffCodes(codes: Record<string, StaffCode>): Promise<void> {
 }
 
 /** Schloss-IDs der Wohnungen je Provider (dedupe — die Sirzenich-Haustür hängt an dreien). */
-async function lockIdsFor(listingIds: string[]): Promise<{ nuki: number[]; tedee: number[] }> {
-  if (!listingIds.length) return { nuki: [], tedee: [] }
+async function lockIdsFor(listingIds: string[]): Promise<{ nuki: number[]; tedee: number[]; ttlock: number[] }> {
+  if (!listingIds.length) return { nuki: [], tedee: [], ttlock: [] }
   const { data } = await supabaseAdmin.from('listings').select('id, locks').in('id', listingIds)
   const nuki = new Set<number>()
   const tedee = new Set<number>()
+  const ttlock = new Set<number>()
   for (const l of data ?? []) {
     for (const lock of ((l.locks as LockRef[] | null) ?? [])) {
       if (lock.provider === 'nuki') nuki.add(Number(lock.id))
       if (lock.provider === 'tedee') tedee.add(Number(lock.id))
+      if (lock.provider === 'ttlock') ttlock.add(Number(lock.id))
     }
   }
-  return { nuki: [...nuki], tedee: [...tedee] }
+  return { nuki: [...nuki], tedee: [...tedee], ttlock: [...ttlock] }
 }
 
 /** DAUER-Code (ohne Zeitfenster) auf mehrere Schlösser legen — ein API-Call. */
@@ -376,8 +495,10 @@ export async function syncStaffCode(personId: string, firstName: string, listing
 
   const nukiToClean = codeChanged ? [...new Set([...oldIds.nuki, ...newIds.nuki])] : oldIds.nuki.filter((id) => !newIds.nuki.includes(id))
   const tedeeToClean = codeChanged ? [...new Set([...oldIds.tedee, ...newIds.tedee])] : oldIds.tedee.filter((t) => !newIds.tedee.includes(t))
+  const ttlockToClean = codeChanged ? [...new Set([...oldIds.ttlock, ...newIds.ttlock])] : oldIds.ttlock.filter((t) => !newIds.ttlock.includes(t))
   await removeNukiAuthsByName(nukiToClean, label)
   for (const id of tedeeToClean) await removeTedeePinsByAlias(id, label)
+  for (const id of ttlockToClean) await removeTTLockCodesByName(id, label)
 
   const problems: string[] = []
   for (const id of newIds.nuki) {
@@ -403,6 +524,16 @@ export async function syncStaffCode(personId: string, firstName: string, listing
       const m = err instanceof Error ? err.message : String(err)
       if (/exists already/i.test(m)) continue // tedee 406 = PIN liegt schon drauf
       problems.push(`tedee ${id}: ${m.slice(0, 160)}`)
+    }
+  }
+  for (const id of newIds.ttlock) {
+    try {
+      // TTLock verlangt IMMER ein Zeitfenster — Dauercode = +10 Jahre
+      if (!codeChanged && (await listTTLockPins(id)).some((p) => p.name === label)) continue
+      await setTTLockCode(id, label, code, Date.now() - 3600_000, Date.now() + 10 * 365 * 86400_000)
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err)
+      problems.push(`ttlock ${id}: ${m.slice(0, 160)}`)
     }
   }
 
@@ -675,9 +806,11 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   const allLocks = (listing?.locks ?? []) as LockRef[]
   const nukiIds = allLocks.filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
   const tedeeIds = allLocks.filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
-  if (!nukiIds.length && !tedeeIds.length) return skip('keine schlösser zugeordnet')
+  const ttlockIds = allLocks.filter((l) => l.provider === 'ttlock').map((l) => Number(l.id)).filter(Number.isFinite)
+  if (!nukiIds.length && !tedeeIds.length && !ttlockIds.length) return skip('keine schlösser zugeordnet')
   if (nukiIds.length && !nukiConfigured()) return skip('kein NUKI_API_TOKEN')
   if (tedeeIds.length && !tedeeConfigured()) return skip('kein TEDEE_API_KEY')
+  if (ttlockIds.length && !ttlockConfigured()) return skip('TTLOCK-Envs fehlen')
 
   const code = generateDoorCode()
   // Gültigkeitsfenster aus den Admin-Einstellungen (lokale Stunden am
@@ -690,8 +823,10 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
   if (nukiIds.length) await setNukiCode(nukiIds, alias, code, from, until)
   // tedee: PINs mit endDate räumt tedee nach Ablauf selbst ab
   for (const id of tedeeIds) await setTedeePin(id, alias, code, from, until)
+  // TTLock: Zeitfenster als ms-Timestamps (gleiche ISO-Basis wie oben)
+  for (const id of ttlockIds) await setTTLockCode(id, alias, code, Date.parse(from), Date.parse(until))
   await supabaseAdmin.from('bookings').update({ door_code: code }).eq('id', b.id)
-  console.log('[locks] Code gesetzt:', { booking: b.id, nuki: nukiIds.length, tedee: tedeeIds.length })
+  console.log('[locks] Code gesetzt:', { booking: b.id, nuki: nukiIds.length, tedee: tedeeIds.length, ttlock: ttlockIds.length })
   return code
 }
 
@@ -770,6 +905,10 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
           await removeTedeePinsByAlias(id, alias)
           await setTedeePin(id, alias, newCode, from, until)
         }
+        for (const l of locks.filter((x) => x.provider === 'ttlock')) {
+          await removeTTLockCodesByName(Number(l.id), alias)
+          await setTTLockCode(Number(l.id), alias, newCode, Date.parse(from), Date.parse(until))
+        }
         await supabaseAdmin.from('bookings').update({ door_code: newCode }).eq('id', r.id)
         rotated++
         console.log('[locks] verify: Code ROTIERT (Fenster fehlte)', { booking: r.id.slice(0, 8), listing: listing?.title })
@@ -800,6 +939,18 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
           const m = err instanceof Error ? err.message : String(err)
           if (/exists already/i.test(m)) { fixed++; continue }
           console.error('[locks] verify: tedee', listing?.title, lockId, m.slice(0, 120))
+        }
+      }
+      // TTLock (§250): fehlende Buchungs-Codes mit Original-Fenster nachlegen
+      const ttlockLocks = locks.filter((l) => l.provider === 'ttlock').map((l) => Number(l.id)).filter(Number.isFinite)
+      for (const lockId of ttlockLocks) {
+        try {
+          if ((await listTTLockPins(lockId)).some((p) => p.name === alias)) continue
+          missing++
+          await setTTLockCode(lockId, alias, r.door_code as string, Date.parse(from), Date.parse(until))
+          fixed++
+        } catch (err) {
+          console.error('[locks] verify: ttlock', listing?.title, lockId, (err instanceof Error ? err.message : String(err)).slice(0, 120))
         }
       }
       if (missing === 0) ok++

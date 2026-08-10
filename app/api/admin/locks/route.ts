@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { listNukiLocks, nukiConfigured, listTedeeLocks, tedeeConfigured, getLockSettings, getStaffCodes, syncStaffCode, validateDoorCode, type LockRef } from '@/lib/locks'
+import { listNukiLocks, nukiConfigured, listTedeeLocks, tedeeConfigured, listTTLocks, ttlockConfigured, getLockSettings, getStaffCodes, syncStaffCode, validateDoorCode, type LockRef } from '@/lib/locks'
 
 /**
  * 🔑 Admin: Türschloss-Zuordnung je Wohnung + Service-PINs + Einstellungen.
@@ -58,12 +58,23 @@ export async function GET() {
     tedeeError = 'TEDEE_API_KEY fehlt (Vercel-Env) — Personal Access Key im tedee-Portal (Scope Device.ReadWrite) erstellen.'
   }
 
+  // TTLock (§250, Pilot Minden UG) — fail-soft wie Nuki/tedee
+  let ttlock: { id: string; name: string }[] | null = null
+  let ttlockError: string | null = null
+  if (ttlockConfigured()) {
+    try { ttlock = await listTTLocks() } catch (err) { ttlockError = err instanceof Error ? err.message : String(err) }
+  } else {
+    ttlockError = 'TTLOCK-Envs fehlen (CLIENT_ID/CLIENT_SECRET/USERNAME/PASSWORD in Vercel).'
+  }
+
   return NextResponse.json({
     listings: listings ?? [],
     nuki,
     nukiError,
     tedee,
     tedeeError,
+    ttlock,
+    ttlockError,
     servicePins: (pinRow?.value as Record<string, string> | null) ?? {},
     staffCodes,
     people: (teamProfiles ?? []).map((p) => ({
@@ -120,6 +131,26 @@ export async function POST(req: NextRequest) {
     const { tedeeActivityProbe } = await import('@/lib/locks')
     try {
       return NextResponse.json({ probes: await tedeeActivityProbe(Number(body.lockId) || 200799) })
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
+  // §250: TTLock-Schreibtisch-Test — Token + Schloss-Liste + PIN-Liste in
+  // einem Rutsch; mit { testPin: '456789' } zusätzlich Anlage (24h gültig)
+  // und mit { removeTestPin: true } Aufräumen des Test-Codes.
+  if (body.action === 'ttlock-test') {
+    const { listTTLocks, ttlockConfigured } = await import('@/lib/locks')
+    if (!ttlockConfigured()) return NextResponse.json({ error: 'TTLOCK-Envs fehlen.' }, { status: 400 })
+    try {
+      const { ttlockTestProbe } = await import('@/lib/locks')
+      const locks = await listTTLocks()
+      const out: Record<string, unknown> = { locks }
+      const lockId = Number(body.lockId ?? locks[0]?.id)
+      if (Number.isFinite(lockId)) {
+        Object.assign(out, await ttlockTestProbe(lockId, typeof body.testPin === 'string' ? body.testPin : undefined, body.removeTestPin === true))
+      }
+      return NextResponse.json(out)
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }

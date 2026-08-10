@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 
-type LockRef = { provider: 'nuki' | 'tedee'; id: string; label: string }
+type LockRef = { provider: 'nuki' | 'tedee' | 'ttlock'; id: string; label: string }
 type Row = { id: string; title: string; locks: LockRef[] | null }
 type NukiLock = { id: string; name: string }
 type Person = { id: string; name: string; role: string }
@@ -21,6 +21,8 @@ export default function LocksCard() {
   const [nukiError, setNukiError] = useState<string | null>(null)
   const [tedee, setTedee] = useState<NukiLock[] | null>(null)
   const [tedeeError, setTedeeError] = useState<string | null>(null)
+  const [ttlock, setTtlock] = useState<NukiLock[] | null>(null)
+  const [ttlockError, setTtlockError] = useState<string | null>(null)
   const [pins, setPins] = useState<Record<string, string>>({})
   const [people, setPeople] = useState<Person[]>([])
   const [staffCodes, setStaffCodes] = useState<Record<string, StaffCode>>({})
@@ -45,6 +47,8 @@ export default function LocksCard() {
         setNukiError(d.nukiError ?? null)
         setTedee(d.tedee ?? null)
         setTedeeError(d.tedeeError ?? null)
+        setTtlock(d.ttlock ?? null)
+        setTtlockError(d.ttlockError ?? null)
         setPins(d.servicePins ?? {})
         setPeople(d.people ?? [])
         setStaffCodes(d.staffCodes ?? {})
@@ -95,7 +99,7 @@ export default function LocksCard() {
     return true
   }
 
-  function toggleLock(row: Row, lock: NukiLock, provider: 'nuki' | 'tedee') {
+  function toggleLock(row: Row, lock: NukiLock, provider: 'nuki' | 'tedee' | 'ttlock') {
     const has = (row.locks ?? []).some((l) => l.provider === provider && l.id === lock.id)
     const next: LockRef[] = has
       ? (row.locks ?? []).filter((l) => !(l.provider === provider && l.id === lock.id))
@@ -116,7 +120,7 @@ export default function LocksCard() {
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
       >
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: '0 0 4px' }}>🔑 Türcodes (Nuki + tedee)</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: '0 0 4px' }}>🔑 Türcodes (Nuki + tedee + TTLock)</h2>
           <p style={{ fontSize: 12.5, color: '#888', margin: 0, lineHeight: 1.55 }}>
             Schlösser je Wohnung zuordnen — Gäste-Codes entstehen dann automatisch je Buchung
             (Gästemappe), Service-PINs erscheinen im Team-Kalender.
@@ -138,6 +142,11 @@ export default function LocksCard() {
           {tedeeError && (
             <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FDF3E7', border: '1px solid #EAD9B8', fontSize: 12.5, color: '#8A6216', lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ tedee: {tedeeError}
+            </div>
+          )}
+          {ttlockError && (
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#FDF3E7', border: '1px solid #EAD9B8', fontSize: 12.5, color: '#8A6216', lineHeight: 1.5, marginBottom: 14 }}>
+              ⚠️ TTLock: {ttlockError}
             </div>
           )}
 
@@ -290,7 +299,7 @@ export default function LocksCard() {
             return (
               <div key={row.id} style={{ borderTop: '1px solid #F0EDE5', padding: '12px 0' }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: '#222', marginBottom: 8 }}>{row.title}</div>
-                {(nuki || tedee) ? (
+                {(nuki || tedee || ttlock) ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                     {(nuki ?? []).map((l) => {
                       const on = assigned.some((a) => a.provider === 'nuki' && a.id === l.id)
@@ -323,6 +332,23 @@ export default function LocksCard() {
                           }}
                         >
                           {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>tedee</span>
+                        </button>
+                      )
+                    })}
+                    {(ttlock ?? []).map((l) => {
+                      const on = assigned.some((a) => a.provider === 'ttlock' && a.id === l.id)
+                      return (
+                        <button
+                          key={'tt' + l.id}
+                          onClick={() => toggleLock(row, l, 'ttlock')}
+                          style={{
+                            padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+                            border: on ? '1.5px solid #7A44B8' : '1.5px solid #E0DDD6',
+                            background: on ? 'rgba(122,68,184,0.08)' : '#fff',
+                            color: on ? '#7A44B8' : '#666',
+                          }}
+                        >
+                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>TTLock</span>
                         </button>
                       )
                     })}
