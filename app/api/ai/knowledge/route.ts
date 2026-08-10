@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  const { action, page, key, content, instruction, historic, bookingId, guestName, pastDays, syncOnly, q: scanQ } = await request.json()
+  const { action, page, key, content, instruction, historic, bookingId, guestName, pastDays, syncOnly, q: scanQ, confirm } = await request.json()
 
   // 🎯 Property-Reviews den richtigen Wohnungen zuordnen (§124):
   // { action: 'review-match', dryRun?: true }
@@ -376,6 +376,66 @@ export async function POST(request: Request) {
       if (!hasMore) break
     }
     return NextResponse.json({ fenster: `${from}…${to}`, geprueft: total, treffer: hits })
+  }
+  if (action === 'booking-uncancel') {
+    // §251 REPARATUR: Der Storno-Abgleich hat am 8.8. bei einem
+    // Smoobu-API-Aussetzer aktive Buchungen massenhaft fälschlich
+    // storniert. Diese Action kehrt das um: cancelled-Buchungen, die
+    // Smoobu als AKTIV listet (nicht cancelled, nicht blocked), gehen
+    // zurück auf confirmed. dryRun (Default) zeigt nur die Liste.
+    const { listReservations } = await import('@/lib/smoobu')
+    const scharf = confirm === 'REPAIR'
+    const from = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
+    const to = new Date(Date.now() + 540 * 86400_000).toISOString().slice(0, 10)
+    const seen = new Map<number, { cancelled: boolean; blocked: boolean; guestName: string | null }>()
+    let apiFehler = false
+    for (let p = 1; p <= 20; p++) {
+      const { reservations, hasMore, ok } = await listReservations(from, to, p, 100)
+      if (!ok) { apiFehler = true; break }
+      for (const r of reservations) seen.set(r.id, { cancelled: r.cancelled, blocked: r.blocked, guestName: r.guestName })
+      if (!hasMore) break
+    }
+    if (apiFehler) {
+      return NextResponse.json({ error: 'Smoobu-API liefert gerade Fehler — Reparatur abgebrochen (nichts geändert). Später erneut versuchen.' }, { status: 502 })
+    }
+    const { data: cancelledRows } = await supabaseAdmin
+      .from('bookings')
+      .select('id, smoobu_reservation_id, guest_name, check_in, check_out, channel, listings(title)')
+      .eq('status', 'cancelled')
+      .not('smoobu_reservation_id', 'is', null)
+      .gte('check_out', from)
+      .limit(1000)
+    const kandidaten = (cancelledRows ?? []).filter((b) => {
+      const r = seen.get(Number(b.smoobu_reservation_id))
+      return r && !r.cancelled && !r.blocked
+    })
+    let repariert = 0
+    if (scharf) {
+      for (const b of kandidaten) {
+        const { error } = await supabaseAdmin.from('bookings').update({ status: 'confirmed' }).eq('id', b.id)
+        if (!error) repariert++
+        else console.error('[booking-uncancel]', b.id, error.message)
+      }
+      if (repariert > 0) {
+        const { sendPushToTeam } = await import('@/lib/push')
+        await sendPushToTeam(
+          '✅ Buchungen wiederhergestellt',
+          `${repariert} fälschlich stornierte Buchungen sind wieder bestätigt — die Storno-Pushes von heute früh waren ein Abgleich-Fehler.`,
+          '/team',
+        ).catch(() => {})
+      }
+    }
+    return NextResponse.json({
+      dryRun: !scharf,
+      inSmoobuAktiv: kandidaten.length,
+      repariert,
+      liste: kandidaten.map((b) => ({
+        gast: b.guest_name,
+        wohnung: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title?: string } | null)?.title ?? null,
+        zeitraum: `${b.check_in}–${b.check_out}`,
+        kanal: b.channel,
+      })),
+    })
   }
   if (action === 'booking-sync') {
     // §139: kompletter Kalender-Abgleich mit Smoobu — fehlende Buchungen
