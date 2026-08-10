@@ -15,7 +15,7 @@ type RuleSet = {
   sundaySurchargePct: number; holidaySurchargePct: number
   specialSurchargePct?: number; vatPct?: number
 }
-type Settings = RuleSet & { perPerson?: Record<string, RuleSet> }
+type Settings = RuleSet & { perPerson?: Record<string, RuleSet>; supplierByPerson?: Record<string, string> }
 
 export default function CleaningCard() {
   const [rows, setRows] = useState<Row[]>([])
@@ -256,6 +256,27 @@ export default function CleaningCard() {
                         />
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{person?.name ?? '—'}</span>
                         <span style={{ fontSize: 11.5, color: '#999' }}>{own ? 'eigene Regeln & Sätze' : 'nutzt den Standard'}</span>
+                      </label>
+                      {/* §257: Rechnungs-Absender für die automatische Rechnungs-Prüfung
+                          aus dem Mail-Import — unabhängig vom Sätze-Override */}
+                      <label style={{ display: 'block', marginTop: 9 }}>
+                        <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#8A8578', marginBottom: 3 }}>
+                          📧 Rechnungs-Absender in der Buchhaltung (automatische Rechnungs-Prüfung)
+                        </span>
+                        <input
+                          type="text"
+                          defaultValue={settings.supplierByPerson?.[pid as string] ?? ''}
+                          placeholder={`z. B. VP Glanzteam — leer = Profilname (${person?.name ?? '—'})`}
+                          onBlur={async (e) => {
+                            const v = e.target.value.trim()
+                            if (v === (settings.supplierByPerson?.[pid as string] ?? '')) return
+                            const ok = await patch({ personSupplier: { personId: pid, name: v } })
+                            if (ok) setSettings((s) => s
+                              ? { ...s, supplierByPerson: { ...(s.supplierByPerson ?? {}), [pid as string]: v } }
+                              : s)
+                          }}
+                          style={{ ...inputStyle, width: '100%' }}
+                        />
                       </label>
                       {own && (
                         <div style={{ marginTop: 10 }}>

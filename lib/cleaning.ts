@@ -31,6 +31,11 @@ export interface CleaningSettings extends CleaningRuleSet {
       z. B. Vanessa mit Sonntags-Zulage, Tip-Top ohne. Fehlt der Eintrag,
       gilt der Standard. */
   perPerson?: Record<string, CleaningRuleSet>
+  /** §257: Rechnungs-Absendername in sevdesk je Reinigungskraft — für die
+      automatische Rechnungs-Suche im Mail-Import (Firmenname weicht oft
+      vom Profilnamen ab, z. B. Profil „Vanessa Wagner" ↔ Rechnungen
+      „VP Glanzteam"). Fehlt der Eintrag, wird der Profilname probiert. */
+  supplierByPerson?: Record<string, string>
 }
 export const CLEANING_DEFAULTS: CleaningSettings = {
   avoidSundays: true, avoidHolidays: true,
@@ -115,8 +120,11 @@ export function holidaysRLP(year: number): string[] {
 export function holidaysInRange(fromIso: string, days: number): string[] {
   const from = new Date(fromIso + 'T00:00:00Z')
   const to = offset(from, days)
-  const years = new Set([from.getUTCFullYear(), to.getUTCFullYear()])
-  const all = [...years].flatMap((y) => holidaysRLP(y))
+  // ALLE Jahre des Fensters — bei >1 Jahr Spanne fehlte sonst das
+  // mittlere Jahr komplett (Review §257: Rückblick-Fenster bis 400 Tage)
+  const years: number[] = []
+  for (let y = from.getUTCFullYear(); y <= to.getUTCFullYear(); y++) years.push(y)
+  const all = years.flatMap((y) => holidaysRLP(y))
   const toIso = iso(to)
   return all.filter((h) => h >= fromIso && h <= toIso).sort()
 }

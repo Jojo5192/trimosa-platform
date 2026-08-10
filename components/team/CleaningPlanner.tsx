@@ -46,7 +46,13 @@ type Invoice = {
   id: string; month: string; person_id: string | null
   file_url: string; file_name: string | null
   amount_expected: number | null; amount_invoiced: number | null
-  analysis: { betrag_rechnung?: number | null; positionen?: { text: string; betrag: number | null }[]; differenz?: number | null; einschaetzung?: string; auffaelligkeiten?: string[] } | null
+  analysis: {
+    betrag_rechnung?: number | null; positionen?: { text: string; betrag: number | null }[]
+    differenz?: number | null; einschaetzung?: string; auffaelligkeiten?: string[]
+    /** §257: Auto-Prüfung aus dem Mail-Import — gefundene sevdesk-Belege */
+    lieferant?: string
+    belege?: { id: string; datum: string; betrag: number; text: string; zugeordnet: boolean; grund?: string; url: string }[]
+  } | null
   status: string; created_at: string
 }
 
@@ -149,26 +155,37 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   // Ansicht rechnet damit echte KALENDERMONATE; Liste/Touren zeigen 4 Wochen.
   const horizon = isoOffset(56)
   const listHorizon = isoOffset(28)
+  // §257: Rückblick-Fenster für die 💶-Kosten — die vergangenen Monate
+  // kommen aus einem eigenen Kalender-Fetch (?cleaningPast), inkl. der
+  // Feiertage des Rückblicks (Zulagen!)
+  const PAST_DAYS = 240
+  const [pastData, setPastData] = useState<{ stays: Stay[]; holidays: string[] } | null>(null)
+  const holidaySet = useMemo(
+    () => new Set([...cleaning.holidays, ...(pastData?.holidays ?? [])]),
+    [cleaning.holidays, pastData])
+
   const isBlockedFor = (iso: string, lid: string) => {
     const rules = rulesFor(lid)
     const dow = new Date(iso + 'T00:00:00Z').getUTCDay()
     return (rules.avoidSundays && dow === 0)
-      || (rules.avoidHolidays && (cleaning.holidays.includes(iso) || isSpecialDay(iso)))
+      || (rules.avoidHolidays && (holidaySet.has(iso) || isSpecialDay(iso)))
   }
   /** Kalender-Fakt (unabhängig von Meidungs-Regeln) — Basis der Zulagen.
       'besonders' (Weihnachten/Silvester/1. Mai) schlägt 'feiertag'. */
   const dayKind = (iso: string): 'besonders' | 'sonntag' | 'feiertag' | null =>
     isSpecialDay(iso) ? 'besonders'
-      : cleaning.holidays.includes(iso) ? 'feiertag'
+      : holidaySet.has(iso) ? 'feiertag'
         : new Date(iso + 'T00:00:00Z').getUTCDay() === 0 ? 'sonntag' : null
 
-  const slots: Slot[] = useMemo(() => {
-    const base = stays.filter((s) => s.checkOut >= today && s.checkOut <= horizon && listings[s.listingId])
+  /** Slot-Berechnung über eine beliebige Aufenthalts-Menge ab fromIso —
+      genutzt für die normale Planung (heute →) UND den Kosten-Rückblick. */
+  const buildSlots = (source: Stay[], fromIso: string): Slot[] => {
+    const base = source.filter((s) => s.checkOut >= fromIso && s.checkOut <= horizon && listings[s.listingId])
     // Pflicht-Tage je Standort × Reinigungskraft (Wechseltage) — Bündelungs-
     // Anker: gebündelt wird nur, wenn DIESELBE Kraft am selben Ort putzt
     const anchorDays = new Set<string>()
     for (const s of base) {
-      if (stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)) {
+      if (source.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)) {
         const g = listings[s.listingId]?.group ?? s.listingId
         anchorDays.add(`${s.checkOut}|${g}|${personOf(s.listingId) ?? '-'}`)
       }
@@ -177,8 +194,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       const group = listings[s.listingId]?.group ?? s.listingId
       const personId = personOf(s.listingId) ?? '-'
       const anchorKey = (day: string) => `${day}|${group}|${personId}`
-      const sameDayArrival = stays.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)
-      const nextIn = stays
+      const sameDayArrival = source.some((x) => x.listingId === s.listingId && x.checkIn === s.checkOut)
+      const nextIn = source
         .filter((x) => x.listingId === s.listingId && x.checkIn >= s.checkOut)
         .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]?.checkIn ?? null
 
@@ -217,7 +234,26 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         minutes: cleaning.minutes[s.listingId] ?? FALLBACK_MINUTES, hasMinutes, group, personId,
       }
     }).sort((a, b) => a.effDay.localeCompare(b.effDay) || a.group.localeCompare(b.group))
-  }, [stays, listings, cleaning, today, horizon]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
+
+  const slots: Slot[] = useMemo(() => buildSlots(stays, today),
+    [stays, listings, cleaning, today, horizon]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* §257: Kosten-Slots inkl. Vergangenheit — sobald der Rückblick-Fetch da
+     ist, decken sie −240 Tage bis +56; bis dahin (und bei Fetch-Fehler)
+     rechnet die Kosten-Ansicht wie bisher nur ab heute.
+     WICHTIG (Review-Fund): Gegenwart/Zukunft kommen IMMER aus dem frischen
+     stays-Prop — der Rückblick-Snapshot liefert NUR die Vergangenheit.
+     Pull-to-Refresh/Resume des Kalenders wirken so auch auf die Kosten und
+     der auto-check schickt nie eine veraltete Erwartung an die KI. */
+  const pastFrom = isoOffset(-PAST_DAYS)
+  const coveredFrom = pastData && pastData.stays.length ? pastFrom : today
+  const costSlots: Slot[] = useMemo(() => {
+    if (!pastData || !pastData.stays.length) return slots
+    const seen = new Set(stays.map((s) => s.id))
+    const merged = [...stays, ...pastData.stays.filter((s) => !seen.has(s.id) && s.checkOut < today)]
+    return buildSlots(merged, pastFrom)
+  }, [pastData, stays, slots, listings, cleaning, pastFrom, horizon, today]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = slots.filter((s) => s.effDay <= listHorizon && matchPerson(s.listingId))
 
@@ -232,10 +268,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
   }
   const vatPctFor = (lid: string) => ratesFor(lid)?.vatPct ?? 0
 
-  /* ── Kosten — echte KALENDERMONATE, Sätze je Kraft, gefiltert ── */
+  /* ── Kosten — echte KALENDERMONATE (inkl. Rückblick §257), Sätze je Kraft ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
-    const filtered = slots.filter((s) => matchPerson(s.listingId))
+    const filtered = costSlots.filter((s) => matchPerson(s.listingId))
 
     type Trip = { day: string; group: string; personId: string; listingId: string; count: number; fee: number; vatPct: number }
     type MonthRow = {
@@ -254,7 +290,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         const lastDay = `${key}-${String(new Date(Date.UTC(y, mo, 0)).getUTCDate()).padStart(2, '0')}`
         m = {
           key, label: `${DE_MONTHS[mo - 1]} ${y}`,
-          partialStart: `${key}-01` < today,
+          partialStart: `${key}-01` < coveredFrom,
           partialEnd: lastDay > horizon,
           perListing: new Map(), surcharge: 0, vat: 0, trips: new Map(), slots: [],
         }
@@ -281,15 +317,23 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       t.count++
       m.trips.set(tKey, t)
     }
-    const list = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).map((m) => {
+    // Reihenfolge: laufender Monat zuerst, dann Zukunft aufsteigend,
+    // dann Vergangenheit absteigend (jüngste zuerst) — §257
+    const curKey = today.slice(0, 7)
+    const rank = (k: string) => (k === curKey ? 0 : k > curKey ? 1 : 2)
+    const list = [...months.values()].map((m) => {
       const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
       const travel = [...m.trips.values()].reduce((a, t) => a + t.fee, 0)
       const vat = m.vat + [...m.trips.values()].reduce((a, t) => a + t.fee * (t.vatPct / 100), 0)
       const net = baseSum + m.surcharge + travel
-      return { ...m, baseSum, travel, tripCount: m.trips.size, net, vat, total: net + vat }
+      return { ...m, baseSum, travel, tripCount: m.trips.size, net, vat, total: net + vat, isPast: m.key < curKey }
+    }).sort((a, b) => {
+      const ra = rank(a.key), rb = rank(b.key)
+      if (ra !== rb) return ra - rb
+      return ra === 2 ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key)
     })
     return { months: list, missingMinutes }
-  }, [slots, cleaning.rates, cleaning.ratesByPerson, cleaning.responsible, personFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [costSlots, cleaning.rates, cleaning.ratesByPerson, cleaning.responsible, personFilter, coveredFrom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Rechnungen laden (nur Kosten-Ansicht) ── */
   useEffect(() => {
@@ -299,6 +343,44 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       .then((d) => setInvoices(d.invoices ?? []))
       .catch(() => { /* fail-soft */ })
   }, [mode, isAdmin])
+
+  /* ── §257: Rückblick-Aufenthalte für die vergangenen Monate laden ── */
+  useEffect(() => {
+    if (mode !== 'kosten' || !isAdmin || pastData !== null) return
+    fetch(`/api/team/calendar?cleaningPast=${PAST_DAYS}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setPastData({
+        stays: Array.isArray(d.stays) ? d.stays : [],
+        holidays: Array.isArray(d.cleaning?.holidays) ? d.cleaning.holidays : [],
+      }))
+      .catch(() => setPastData({ stays: [], holidays: [] }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isAdmin, pastData])
+
+  /* ── §257: Rechnung automatisch aus dem Mail-Import suchen & prüfen ── */
+  async function autoCheck(month: string, expected: Record<string, unknown>) {
+    if (!personFilter || personFilter === 'none') return
+    setInvError(null)
+    setInvBusy(month)
+    try {
+      const res = await fetch('/api/cleaning-invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auto-check', month, personId: personFilter,
+          personName: persons.find((p) => p.id === personFilter)?.name ?? '',
+          expected,
+        }),
+      }).then((r) => r.json())
+      if (res.error) throw new Error(res.error)
+      const d = await fetch('/api/cleaning-invoices', { cache: 'no-store' }).then((r) => r.json())
+      setInvoices(d.invoices ?? [])
+      if (res.id) setInvOpen(res.id)
+    } catch (err) {
+      setInvError(err instanceof Error ? err.message : 'Automatische Prüfung fehlgeschlagen.')
+    } finally {
+      setInvBusy(null)
+    }
+  }
 
   function startUpload(month: string, expected: Record<string, unknown>) {
     pendingRef.current = {
@@ -417,6 +499,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
             </p>
           )}
+          {pastData === null && (
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#9CA3AF' }}>⏳ Lade zurückliegende Monate…</p>
+          )}
 
           {costs.months.map((m) => {
             const expectedPayload = {
@@ -443,15 +528,61 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 dauer_min: s.minutes, betrag: Math.round(slotCost(s) * 100) / 100,
                 zulage: Math.round(slotSurcharge(s) * 100) / 100 || undefined,
               })),
-              hinweis: m.partialStart ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.' : undefined,
+              hinweis: m.partialStart
+                ? (coveredFrom === today
+                  ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.'
+                  : `Monat nur teilweise im Datenfenster (ab ${fmtShort(coveredFrom)}).`)
+                : undefined,
             }
             const monthInvoices = invoices.filter((inv) => inv.month === m.key
               && (personFilter === '' || (personFilter === 'none' ? inv.person_id === null : inv.person_id === personFilter)))
+            // §257: Vergangenheits-Monate starten eingeklappt — kompakte
+            // Zeile mit Erwartung + Prüf-Status, Tipp klappt auf
+            const expanded = !m.isPast || !!openKeys[`m|${m.key}`]
+            const lastInv = monthInvoices[0] ?? null
+            const lastDiff = lastInv && lastInv.amount_invoiced != null && lastInv.amount_expected != null
+              ? lastInv.amount_invoiced - lastInv.amount_expected : (lastInv?.analysis?.differenz ?? null)
+            const lastOk = lastInv?.status === 'geprueft' && lastDiff != null && Math.abs(lastDiff) <= (lastInv.amount_expected ?? 0) * 0.1
+            if (!expanded) {
+              // Review-Fund: Im Filter „Alle" wäre „Gesamt-Erwartung vs.
+              // Rechnung EINER Kraft + grüner Haken" irreführend — dort
+              // nur neutral die Anzahl der Prüfungen zeigen
+              const showInv = personFilter !== '' && personFilter !== 'none'
+              return (
+                <button key={m.key} onClick={() => toggle(`m|${m.key}`)} style={{
+                  display: 'flex', width: '100%', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
+                  background: '#fff', border: 'none', borderRadius: 16, padding: '13px 16px', marginBottom: 10,
+                  boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                }}>
+                  <span style={{ color: '#B0AA9C', fontSize: 11 }}>▸</span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: '#111' }}>{m.label}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: '#9CA3AF', marginTop: 1 }}>
+                      {m.slots.length} Reinigungen · erwartet {eur(m.total)}
+                      {showInv && lastInv ? ` · Rechnung ${lastInv.amount_invoiced != null ? eur(lastInv.amount_invoiced) : '?'}` : ''}
+                    </span>
+                  </span>
+                  {showInv
+                    ? (lastInv
+                      ? chip(lastInv.status === 'fehler' ? '#FEF2F2' : lastOk ? '#DCFCE7' : '#FEF3C7',
+                          lastInv.status === 'fehler' ? '#B91C1C' : lastOk ? '#15803D' : '#B45309',
+                          lastInv.status === 'fehler' ? '⚠️ Fehler' : lastOk ? '✓ geprüft' : (lastDiff != null ? eurSigned(lastDiff) : 'prüfen'))
+                      : chip('rgba(120,120,128,0.10)', '#8E8E93', 'ungeprüft'))
+                    : chip('rgba(120,120,128,0.10)', '#8E8E93',
+                        monthInvoices.length ? `${monthInvoices.length} Prüfung${monthInvoices.length === 1 ? '' : 'en'}` : 'je Kraft prüfen')}
+                </button>
+              )
+            }
             return (
               <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
-                <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>ERWARTETE RECHNUNG</p>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>{m.isPast ? 'RÜCKBLICK — ERWARTET vs. RECHNUNG' : 'ERWARTETE RECHNUNG'}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                  <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{m.label}</span>
+                  <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>
+                    {m.isPast && (
+                      <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: '#B0AA9C', fontSize: 12, cursor: 'pointer', padding: '0 6px 0 0' }}>▾</button>
+                    )}
+                    {m.label}
+                  </span>
                   <span style={{ fontSize: 12, color: '#9CA3AF' }}>{m.slots.length} Reinigungen · {personLabel}</span>
                 </div>
 
@@ -555,7 +686,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 {(m.partialStart || m.partialEnd) && (
                   <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
                     {m.partialStart
-                      ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
+                      ? (coveredFrom === today
+                        ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
+                        : `teilweise erfasst (Datenfenster ab ${fmtShort(coveredFrom)})`)
                       : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
                   </p>
                 )}
@@ -604,8 +737,23 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                 ))}
                               </div>
                             )}
+                            {/* §257: gefundene Belege aus dem Mail-Import — antippen öffnet das PDF */}
+                            {(inv.analysis?.belege ?? []).length > 0 && (
+                              <div style={{ margin: '0 0 8px' }}>
+                                {(inv.analysis!.belege!).map((b, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', opacity: b.zugeordnet ? 1 : 0.55 }}>
+                                    <a href={b.url} target="_blank" rel="noreferrer" style={{ color: '#8A7020', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      📎 {fmtShort(b.datum)} · {b.text}{b.zugeordnet ? '' : ` — nicht mitgezählt${b.grund ? ` (${b.grund})` : ''}`}
+                                    </a>
+                                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(b.betrag)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <span style={{ display: 'inline-flex', gap: 12 }}>
-                              <a href={inv.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#8A7020' }}>Datei öffnen ↗</a>
+                              {inv.file_url && inv.file_url !== 'auto' && (
+                                <a href={inv.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#8A7020' }}>Datei öffnen ↗</a>
+                              )}
                               <button onClick={() => deleteInvoice(inv.id)} style={{ border: 'none', background: 'none', fontSize: 12, fontWeight: 700, color: '#B91C1C', cursor: 'pointer', padding: 0 }}>🗑 Löschen</button>
                             </span>
                           </div>
@@ -614,20 +762,31 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     )
                   })}
                   {invBusy === m.key ? (
-                    <p style={{ fontSize: 12.5, color: '#8A7020', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude liest die Rechnung und gleicht sie ab…</p>
+                    <p style={{ fontSize: 12.5, color: '#8A7020', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude sucht die Belege im Mail-Import und gleicht ab…</p>
                   ) : (
-                    <button onClick={() => startUpload(m.key, expectedPayload)} disabled={!!invBusy} style={{
-                      marginTop: 2, padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                      fontSize: 12.5, fontWeight: 700, color: '#fff',
-                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', opacity: invBusy ? 0.5 : 1,
-                    }}>📄 Rechnung hochladen & prüfen{personFilter && personFilter !== 'none' ? ` (${personLabel})` : ''}</button>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
+                      {personFilter && personFilter !== 'none' ? (
+                        <button onClick={() => autoCheck(m.key, expectedPayload)} disabled={!!invBusy} style={{
+                          padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                          fontSize: 12.5, fontWeight: 700, color: '#fff',
+                          background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', opacity: invBusy ? 0.5 : 1,
+                        }}>🔍 Rechnung aus Mail-Import prüfen ({personLabel})</button>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: '#9CA3AF' }}>Für die automatische Prüfung oben eine 👤 Reinigungskraft wählen.</span>
+                      )}
+                      <button onClick={() => startUpload(m.key, expectedPayload)} disabled={!!invBusy} style={{
+                        padding: '8px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                        fontSize: 12, fontWeight: 700, color: '#6B7280',
+                        background: 'rgba(120,120,128,0.10)', opacity: invBusy ? 0.5 : 1,
+                      }}>📄 Selbst hochladen</button>
+                    </div>
                   )}
                 </div>
               </div>
             )
           })}
           {costs.months.length === 0 && (
-            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine anstehenden Reinigungen für {personLabel} im Datenfenster.</p>
+            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
           )}
           {costs.missingMinutes > 0 && (
             <p style={{ fontSize: 11.5, color: '#B45309', margin: '2px 4px 0', lineHeight: 1.5 }}>

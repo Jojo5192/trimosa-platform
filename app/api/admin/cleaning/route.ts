@@ -83,8 +83,13 @@ export async function PATCH(req: NextRequest) {
 
   if (body.settings && typeof body.settings === 'object') {
     const current = await getCleaningSettings()
-    // perPerson MITNEHMEN — sonst löscht ein Standard-Save alle Overrides
-    const value = { ...cleanRuleSet(body.settings, current), perPerson: current.perPerson ?? {} }
+    // perPerson + supplierByPerson MITNEHMEN — sonst löscht ein
+    // Standard-Save die Overrides bzw. die Lieferanten-Zuordnung (§243o!)
+    const value = {
+      ...cleanRuleSet(body.settings, current),
+      perPerson: current.perPerson ?? {},
+      supplierByPerson: current.supplierByPerson ?? {},
+    }
     const { error } = await supabaseAdmin
       .from('app_settings')
       .upsert({ key: 'cleaning_settings', value, updated_at: new Date().toISOString() })
@@ -106,7 +111,35 @@ export async function PATCH(req: NextRequest) {
     } else {
       return NextResponse.json({ error: 'values fehlt.' }, { status: 400 })
     }
-    const value = { ...cleanRuleSet(current as unknown as Record<string, unknown>, current), perPerson }
+    const value = {
+      ...cleanRuleSet(current as unknown as Record<string, unknown>, current),
+      perPerson,
+      supplierByPerson: current.supplierByPerson ?? {},
+    }
+    const { error } = await supabaseAdmin
+      .from('app_settings')
+      .upsert({ key: 'cleaning_settings', value, updated_at: new Date().toISOString() })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, settings: { ...CLEANING_DEFAULTS, ...value } }, NO_STORE)
+  }
+
+  // 📧 §257: Rechnungs-Absender (sevdesk-Lieferant) je Reinigungskraft —
+  // { personSupplier: { personId, name } }; leerer Name löscht den Eintrag
+  if (body.personSupplier && typeof body.personSupplier === 'object') {
+    const { personId, name } = body.personSupplier
+    if (typeof personId !== 'string' || !personId) {
+      return NextResponse.json({ error: 'personId fehlt.' }, { status: 400 })
+    }
+    const current = await getCleaningSettings()
+    const supplierByPerson = { ...(current.supplierByPerson ?? {}) }
+    const clean = typeof name === 'string' ? name.trim().slice(0, 120) : ''
+    if (clean) supplierByPerson[personId] = clean
+    else delete supplierByPerson[personId]
+    const value = {
+      ...cleanRuleSet(current as unknown as Record<string, unknown>, current),
+      perPerson: current.perPerson ?? {},
+      supplierByPerson,
+    }
     const { error } = await supabaseAdmin
       .from('app_settings')
       .upsert({ key: 'cleaning_settings', value, updated_at: new Date().toISOString() })

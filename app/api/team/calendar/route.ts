@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
 import { getCleaningSettings, holidaysInRange, resolveCleaningFor, type CleaningRuleSet } from '@/lib/cleaning'
@@ -29,12 +29,17 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const auth = await getTaskAuth()
   if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
 
-  // −7 Tage Rückblick fürs Belegungs-Grid (Agenda zeigt weiter nur ab heute)
-  const start = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
+  // −7 Tage Rückblick fürs Belegungs-Grid (Agenda zeigt weiter nur ab heute).
+  // §257: Die 💶-Kosten-Ansicht des Reinigungsplaners fordert per
+  // ?cleaningPast=N ein erweitertes Vergangenheits-Fenster an (rückwirkende
+  // Monats-Prüfung) — alles andere bleibt identisch.
+  const pastParam = Number(req.nextUrl.searchParams.get('cleaningPast') ?? 0)
+  const pastDays = Number.isFinite(pastParam) ? Math.min(400, Math.max(0, Math.floor(pastParam))) : 0
+  const start = new Date(Date.now() - (pastDays > 0 ? pastDays : 7) * 86400_000).toISOString().slice(0, 10)
   const end = new Date(Date.now() + 56 * 86400_000).toISOString().slice(0, 10)
 
   const [{ data: bookings }, listingsRes] = await Promise.all([
@@ -44,7 +49,10 @@ export async function GET() {
       .eq('status', 'confirmed')
       .lte('check_in', end)
       .gte('check_out', start)
-      .limit(500),
+      // Neueste zuerst — bei Limit-Überschreitung fällt so deterministisch
+      // das ÄLTESTE Ende weg statt willkürlicher Lücken (Review §257)
+      .order('check_out', { ascending: false })
+      .limit(pastDays > 0 ? 900 : 500),
     // Reinigungs-Spalten mit Deploy-Retry (Migration 20260719_cleaning evtl. offen)
     (async () => {
       const withCleaning = await supabaseAdmin
@@ -208,7 +216,9 @@ export async function GET() {
       ratesByPerson: auth.role === 'admin' ? Object.fromEntries(Object.keys(cleaningSettings.perPerson ?? {}).map((id) => [
         id, pickRates(resolveCleaningFor(cleaningSettings, id)),
       ])) : null,
-      holidays: holidaysInRange(start, 70),
+      // Feiertage müssen das GANZE Fenster decken — sonst fehlen bei der
+      // rückwirkenden Kosten-Prüfung die Feiertags-Zulagen still (§257)
+      holidays: holidaysInRange(start, (pastDays > 0 ? pastDays : 7) + 70),
       responsible: Object.fromEntries(listings
         .filter((l) => l.cleaning_responsible && (!visibleIds || visibleIds.has(l.id)))
         .map((l) => [l.id, { id: l.cleaning_responsible, name: respName.get(l.cleaning_responsible!) ?? '—' }])),
