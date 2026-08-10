@@ -67,6 +67,10 @@
     {
       "path": "/api/voice/kb-sync",
       "schedule": "50 4 * * *"
+    },
+    {
+      "path": "/api/tv-bridge/health-check",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

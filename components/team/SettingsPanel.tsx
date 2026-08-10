@@ -216,11 +216,25 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                 <button onClick={() => setShowWallbox(true)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
                   background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: belegeOk ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
                 }}>
                   <span style={{ fontSize: 19 }}>⚡</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Wallbox</span>
                     <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Ladehistorie — kWh, Umsatz & Gewinn</span>
+                  </span>
+                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                </button>
+              )}
+              {belegeOk && (
+                <button onClick={() => { window.location.href = '/api/tv-bridge/sso' }} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                }}>
+                  <span style={{ fontSize: 19 }}>📺</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>TV-Steuerung</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Ferienwohnungs-TVs — Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
                   </span>
                   <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
                 </button>
