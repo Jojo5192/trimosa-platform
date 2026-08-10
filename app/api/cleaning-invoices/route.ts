@@ -629,7 +629,9 @@ NACHBAR-Monats stehen — fehlende Rand-Termine vorsichtig bewerten.
 Nennen Positionen STUNDEN (z. B. „31,10 Std."): den impliziten Stundensatz
 (Betrag ÷ Stunden, ggf. netto) gegen den Satz in der Erwartung (saetze.
 hourlyRate) prüfen — ein abweichender Satz ist ein WICHTIGER Prüfpunkt
-(Vertragssatz vs. Listenpreis).`
+(Vertragssatz vs. Listenpreis).
+WICHTIG fürs JSON: In String-Werten KEINE doppelten Anführungszeichen —
+Wohnungsnamen und Zitate OHNE "…" schreiben, sonst ist das JSON ungültig.`
         const bUser = `PRÜFMONAT: ${month}${personName ? ` · Reinigungskraft: ${personName}` : ''} · Lieferant: ${supplier}
 
 ERWARTUNG (geplante Reinigungen):
@@ -647,8 +649,17 @@ ${JSON.stringify({
     return { belegdatum: c.datum, betrag: c.betrag, zeitraum: pv?.zeitraum, positionen: pv?.positionen }
   }),
 }, null, 1).slice(0, 14000)}`
-        const bRaw = await askClaude(bSystem, bUser, 12000)
-        const bj = parseJsonLoose(bRaw)
+        // Live-Fund Tip-Top: die KI schrieb Wohnungsnamen mit "…"-Zitaten →
+        // ungültiges JSON. Ein Retry mit explizitem Hinweis, wenn Zeit bleibt.
+        let bj: Record<string, unknown>
+        try {
+          bj = parseJsonLoose(await askClaude(bSystem, bUser, 12000))
+        } catch (parseErr) {
+          if (Date.now() > deadline - 45_000) throw parseErr
+          bj = parseJsonLoose(await askClaude(
+            bSystem + '\n\nACHTUNG: Der vorige Versuch war KEIN gültiges JSON (vermutlich doppelte Anführungszeichen in String-Werten). Antworte erneut — Strings strikt ohne "-Zeichen.',
+            bUser, 12000))
+        }
         einschaetzung = typeof bj.einschaetzung === 'string' ? bj.einschaetzung : undefined
         auffaellig = Array.isArray(bj.auffaelligkeiten) ? (bj.auffaelligkeiten as unknown[]).map(String).slice(0, 10) : []
         ursachen = new Map(
