@@ -251,7 +251,11 @@ Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Markdown, keine Fences):
   "nicht_zugeordnet": [{ "id": "<beleg-id>", "grund": "<kurz>" }]
 }
 Regeln: Nur aus Belegliste + Erwartung argumentieren, NICHTS erfinden.
-Im Zweifel (Betrag passt zum Muster der Reinigungs-Pauschalen) eher zuordnen.`
+Im Zweifel (Betrag passt zum Muster der Reinigungs-Pauschalen) eher zuordnen —
+der Leistungszeitraum wird danach automatisch aus den Rechnungs-PDFs geprüft
+(Lieferanten fakturieren oft NACHLAUFEND: eine Rechnung von Anfang des
+Folgemonats kann die Monats-Abrechnung sein, eine Rechnung MITTEN im Monat
+kann noch den Vormonat abrechnen).`
 
     const user = `PRÜFMONAT: ${month}${personName ? ` · Reinigungskraft: ${personName}` : ''} · Lieferant in der Buchhaltung: ${supplier}
 
@@ -280,7 +284,8 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | $
       (Array.isArray(ki.nicht_zugeordnet) ? (ki.nicht_zugeordnet as { id?: unknown; grund?: unknown }[]) : [])
         .map((x) => [String(x.id ?? ''), String(x.grund ?? '')] as [string, string]))
     const r2 = (x: number) => Math.round(x * 100) / 100
-    const sum = r2(cands.filter((c) => matched.has(c.id)).reduce((a, c) => a + c.betrag, 0))
+    const dayDiff = (a: string, b: string) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400_000)
+    const fmtDm = (iso: string) => `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
     const expectedTotal = typeof expected?.total === 'number' ? expected.total : null
 
     /* ── Phase 2 (§257c): TIEFENANALYSE — die Rechnungs-PDFs der zugeordneten
@@ -298,8 +303,8 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | $
     const posByBeleg = new Map<string, BelegDetail>()
     const hinweise: string[] = []
     const assigned = cands.filter((c) => matched.has(c.id))
-    if (status === 'geprueft' && assigned.length > 6) {
-      hinweise.push(`Positions-Tiefenanalyse auf die ersten 6 von ${assigned.length} Belegen begrenzt.`)
+    if (status === 'geprueft' && assigned.length > 9) {
+      hinweise.push(`Positions-Tiefenanalyse auf die ersten 9 von ${assigned.length} Belegen begrenzt.`)
     }
     if (status === 'geprueft' && assigned.length) {
       const vSystem = `Du liest die RECHNUNG einer Reinigungsfirma für TRIMOSA Apartments & Homes
@@ -330,15 +335,15 @@ Regeln:
 - KEINE Summen-, Zwischensummen-, Gesamtbetrags-, Übertrags- oder Steuer-/
   USt-Zeilen als Positionen aufnehmen — NUR echte Leistungszeilen.
 - Beträge und Daten NUR aus der Rechnung — NICHTS erfinden oder schätzen.`
-      // Wellen à 2 — Vision dominiert die Laufzeit, sevdesk (PDF-Abruf) wird
-      // nicht mit 6 parallelen Downloads geflutet
-      const queue = assigned.slice(0, 6)
-      for (let i = 0; i < queue.length; i += 2) {
+      // Wellen à 3 — Vision dominiert die Laufzeit, sevdesk (PDF-Abruf) wird
+      // nicht mit allen Downloads parallel geflutet
+      const queue = assigned.slice(0, 9)
+      for (let i = 0; i < queue.length; i += 3) {
         if (Date.now() > deadline - 70_000) {
           hinweise.push(`Zeitbudget erreicht — ${queue.length - i} Beleg(e) ohne Positions-Analyse geprüft.`)
           break
         }
-        await Promise.all(queue.slice(i, i + 2).map(async (c) => {
+        await Promise.all(queue.slice(i, i + 3).map(async (c) => {
           try {
             const pdf = await pdfForVoucher(c.id)
             if (!pdf) {
@@ -383,6 +388,38 @@ Regeln:
         }))
       }
     }
+
+    /* ── Phase 2.5 (deterministisch): PERIODEN-Filter — Belege, deren
+       LEISTUNGSTAGE klar außerhalb des Prüfmonats liegen, fliegen aus der
+       Zuordnung, egal was Phase 1 dachte. Live-Beweis Juni/VP: Rechnungen
+       vom 12.06. decken die MAI-Leistungen (nachlaufende Fakturierung),
+       die Juni-Abrechnung kam erst am 05.07. — ohne diesen Filter würden
+       beide Batches addiert und die Prüfsumme verdoppelt. ── */
+    const rangeLo = new Date(Date.parse(`${month}-01T00:00:00Z`) - 6 * 86400_000).toISOString().slice(0, 10)
+    const rangeHi = new Date(Date.parse(monthEnd + 'T00:00:00Z') + 6 * 86400_000).toISOString().slice(0, 10)
+    for (const c of cands) {
+      if (!matched.has(c.id)) continue
+      const pv = posByBeleg.get(c.id)
+      if (!pv) continue
+      let anteil: number | null = null
+      let spanne: [string, string] | null = null
+      const tage = pv.positionen.map((p) => p.datum).filter((d): d is string => !!d)
+      if (tage.length >= 3) {
+        anteil = tage.filter((d) => d >= rangeLo && d <= rangeHi).length / tage.length
+        spanne = [tage.reduce((a, b) => (a < b ? a : b)), tage.reduce((a, b) => (a > b ? a : b))]
+      } else if (pv.zeitraum?.von && pv.zeitraum?.bis) {
+        const { von, bis } = pv.zeitraum
+        const lo = von > rangeLo ? von : rangeLo
+        const hi = bis < rangeHi ? bis : rangeHi
+        anteil = Math.max(0, dayDiff(hi, lo) + 1) / Math.max(1, dayDiff(bis, von) + 1)
+        spanne = [von, bis]
+      }
+      if (anteil != null && anteil < 0.3 && spanne) {
+        matched.delete(c.id)
+        grund.set(c.id, `Leistungszeitraum ${fmtDm(spanne[0])}–${fmtDm(spanne[1])} — andere Abrechnungs-Periode`)
+      }
+    }
+    const sum = r2(cands.filter((c) => matched.has(c.id)).reduce((a, c) => a + c.betrag, 0))
 
     /* ── Phase 3 (deterministisch): Wohnungs-Split + Termin-Abgleich ── */
     const expWohnungen = Array.isArray(expected?.wohnungen)
@@ -455,7 +492,12 @@ Regeln:
     // abgerechnete Leistungstage je Wohnung MIT Zähler — zweimal derselbe
     // Tag = Doppel-Abrechnungs-Verdacht (Review §257c: Set verschluckte das)
     const gotTermine = new Map<string, Map<string, number>>()
-    for (const pv of posByBeleg.values()) {
+    for (const c of cands) {
+      // nur noch ZUGEORDNETE Belege — die vom Perioden-Filter aussortierten
+      // Mai-Rechnungen dürfen keine „zusätzlich"-Termine erzeugen
+      if (!matched.has(c.id)) continue
+      const pv = posByBeleg.get(c.id)
+      if (!pv) continue
       for (const p of pv.positionen) {
         if (p.art !== 'reinigung' || !p.datum || !titleSet.has(p.wohnung)) continue
         const m2 = gotTermine.get(p.wohnung) ?? new Map<string, number>()
@@ -463,7 +505,6 @@ Regeln:
         gotTermine.set(p.wohnung, m2)
       }
     }
-    const dayDiff = (a: string, b: string) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400_000)
     type Abgleich = { wohnung: string; erwartetTermine: number; abgerechnetTermine: number; fehlend: string[]; zusaetzlich: string[]; doppelt: string[] }
     let abgleichOut: Abgleich[] | undefined
     if ([...gotTermine.values()].some((m2) => m2.size)) {
@@ -557,7 +598,7 @@ ${JSON.stringify({
   differenz: expectedTotal != null ? r2(sum - expectedTotal) : null,
   wohnungs_vergleich: wohnungenBase,
   termin_abgleich: abgleichOut ?? 'keine Leistungstage in den PDFs gefunden',
-  belege: assigned.map((c) => {
+  belege: cands.filter((c) => matched.has(c.id)).map((c) => {
     const pv = posByBeleg.get(c.id)
     return { belegdatum: c.datum, betrag: c.betrag, zeitraum: pv?.zeitraum, positionen: pv?.positionen }
   }),
@@ -576,13 +617,12 @@ ${JSON.stringify({
     if (status === 'geprueft' && phase4Err) {
       // Zahlen sind exakt berechnet — nur die Prosa fällt aus; Ursachen
       // entstehen deterministisch aus dem Termin-Abgleich (inkl. Doppelte)
-      const fmtD = (iso: string) => `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
       for (const a of abgleichOut ?? []) {
         if (!a.fehlend.length && !a.zusaetzlich.length && !a.doppelt.length) continue
         ursachen.set(a.wohnung, [
-          a.fehlend.length ? `${a.fehlend.length} geplante Termine ohne abgerechnete Reinigung (${a.fehlend.map(fmtD).join(', ')})` : '',
-          a.zusaetzlich.length ? `${a.zusaetzlich.length} abgerechnete Termine ohne geplanten Wechsel (${a.zusaetzlich.map(fmtD).join(', ')})` : '',
-          a.doppelt.length ? `doppelt abgerechnet: ${a.doppelt.map(fmtD).join(', ')}` : '',
+          a.fehlend.length ? `${a.fehlend.length} geplante Termine ohne abgerechnete Reinigung (${a.fehlend.map(fmtDm).join(', ')})` : '',
+          a.zusaetzlich.length ? `${a.zusaetzlich.length} abgerechnete Termine ohne geplanten Wechsel (${a.zusaetzlich.map(fmtDm).join(', ')})` : '',
+          a.doppelt.length ? `doppelt abgerechnet: ${a.doppelt.map(fmtDm).join(', ')}` : '',
         ].filter(Boolean).join(' · '))
       }
       einschaetzung = `Summe der zugeordneten Belege ${sum} € gegenüber erwarteten ${expectedTotal ?? '?'} €. Automatische Bewertung ausgefallen — die Zahlen unten sind exakt berechnet (${phase4Err}).`
