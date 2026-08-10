@@ -128,6 +128,12 @@ export default async function MappePage({ params, searchParams }: {
       if (!doorCode) {
         try { doorCode = await ensureDoorCode(String(booking.id)) } catch (e) { console.error('[mappe] door-code:', e) }
       }
+      // §250: TTLock-Keypads (Minden UG) verlangen die Raute als Abschluss —
+      // fürs Gast-Auge direkt an den Code hängen (nur ANZEIGE; der
+      // gespeicherte door_code bleibt reine Ziffern).
+      if (doorCode && locksArr.some((l) => l.provider === 'ttlock')) {
+        doorCode = `${doorCode} #`
+      }
     } else {
       doorNoteDe = `Dein Türcode erscheint hier ${revealDays} Tage vor Anreise.`
     }
