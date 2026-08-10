@@ -414,14 +414,16 @@ Regeln:
         }
         await Promise.all(queue.slice(i, i + 3).map(visionBeleg))
       }
-      /* ── ERKUNDUNG (Live-Fund Tip-Top): hat Phase 1 NICHTS zugeordnet
-         (Beträge passen zu keiner Monats-Erwartung — typisch bei Sammel-/
-         Mehrmonats-Rechnungen), werden die monatsnächsten Kandidaten
-         TROTZDEM gelesen: Belege mit überwiegend Monats-Leistungen kommen
-         nachträglich in die Prüfung, Mehrmonats-Belege bleiben draußen,
-         zeigen aber ihre Positionen — der PDF-Inhalt wird nie verschluckt. ── */
-      if (!assigned.length) {
-        const explor = [...cands]
+      /* ── ERKUNDUNG (Live-Funde Tip-Top): von Phase 1 ABGELEHNTE Kandidaten
+         mit Belegdatum ab Monatsanfang werden TROTZDEM gelesen — die KI
+         lehnt Sammel-/Mehrmonats-Rechnungen mangels Zeitraum-Wissen oft
+         falsch ab (Lauf 3: nur 1 der 2 Juni-Belege zugeordnet). Belege mit
+         überwiegend Monats-Leistungen kommen nachträglich in die Prüfung,
+         Fremd-Perioden bekommen einen PRÄZISEN Grund aus dem PDF — der
+         Inhalt wird nie verschluckt. ── */
+      {
+        const explor = cands
+          .filter((c) => !matched.has(c.id) && !posByBeleg.has(c.id) && c.datum >= `${month}-01`)
           .sort((a, b) => Math.abs(dayDiff(a.datum, monthEnd)) - Math.abs(dayDiff(b.datum, monthEnd)))
           .slice(0, 4)
         for (let i = 0; i < explor.length; i += 2) {
@@ -436,7 +438,9 @@ Regeln:
           if (ma.anteil >= 0.5) {
             matched.add(c.id)
             grund.delete(c.id)
-          } else if (ma.anteil > 0) {
+          } else if (ma.anteil < 0.3) {
+            grund.set(c.id, `Leistungszeitraum ${fmtDm(ma.spanne[0])}–${fmtDm(ma.spanne[1])} — andere Abrechnungs-Periode`)
+          } else {
             hinweise.push(`Beleg vom ${c.datum} (${c.betrag} €): nur ein Teil der Leistungstage (${fmtDm(ma.spanne[0])}–${fmtDm(ma.spanne[1])}) liegt in ${month} — Mehrmonats-/Sammelrechnung, bitte per 📄-PDF prüfen.`)
           }
         }
