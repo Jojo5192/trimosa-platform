@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { haptic } from '@/components/team/ux'
+import DocScanner from '@/components/DocScanner'
 
 /**
  * 🧾 BELEG EINREICHEN (§243ad) — Vollbild-Bereich im Mehr-Tab für ALLE
@@ -27,6 +28,9 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [fertig, setFertig] = useState(false)
   const [err, setErr] = useState('')
+  // §256: Fotos laufen erst durch den Dokumentenscanner (Zuschnitt/Aufhellung)
+  const [scanBilder, setScanBilder] = useState<File[] | null>(null)
+  const pdfHold = useRef<File[]>([])
 
   useEffect(() => {
     fetch('/api/belege/einreichen', { cache: 'no-store' })
@@ -36,6 +40,8 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
   }, [])
 
   const bildZuJpeg = async (file: File): Promise<Uint8Array> => {
+    // Scanner-Seiten sind schon JPEG ≤2000px — nicht erneut encodieren (§256)
+    if (file.type === 'image/jpeg' && /^beleg-scan-/.test(file.name)) return new Uint8Array(await file.arrayBuffer())
     const bmp = await createImageBitmap(file)
     const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height))
     const canvas = document.createElement('canvas')
@@ -126,7 +132,16 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                 </div>
                 <input type="file" accept="image/*,application/pdf" multiple disabled={busy}
                   style={{ display: 'none' }}
-                  onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) { setFiles(fs); setErr('') } }} />
+                  onChange={(e) => {
+                    const fs = Array.from(e.target.files ?? []); e.target.value = ''
+                    if (!fs.length) return
+                    setErr('')
+                    // §256: Bilder → Dokumentenscanner, PDFs bleiben wie sie sind
+                    const pdfs = fs.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+                    const bilder = fs.filter((f) => !pdfs.includes(f))
+                    if (bilder.length) { pdfHold.current = pdfs; setScanBilder(bilder) }
+                    else setFiles(pdfs)
+                  }} />
               </label>
 
               <div style={{ background: '#fff', borderRadius: 14, padding: 16, display: 'grid', gap: 13, boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
@@ -167,6 +182,12 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
+
+      {scanBilder && (
+        <DocScanner files={scanBilder}
+          onCancel={() => setScanBilder(null)}
+          onDone={(jpegs) => { setFiles([...pdfHold.current, ...jpegs]); setScanBilder(null) }} />
+      )}
     </div>,
     document.body,
   )

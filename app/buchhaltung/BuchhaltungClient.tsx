@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { haptic, SkeletonRows } from '@/components/team/ux'
+import DocScanner from '@/components/DocScanner'
 
 /**
  * 💶 BUCHHALTUNG v2 (§242) — Vollbild-Oberfläche (nur Admins), iOS-Look:
@@ -482,7 +483,12 @@ export default function BuchhaltungClient() {
   // Mehrere Fotos in EINER Auswahl = EIN mehrseitiger Beleg → Client-PDF.
   const [fotoBusy, setFotoBusy] = useState(false)
   const [fotoErgebnis, setFotoErgebnis] = useState('')
+  // §256: Fotos laufen erst durch den Dokumentenscanner (Zuschnitt/Aufhellung)
+  const [scanBilder, setScanBilder] = useState<File[] | null>(null)
+  const scanPdfs = useRef<File[]>([])
   const bildZuJpeg = async (file: File): Promise<Uint8Array> => {
+    // Scanner-Seiten sind schon JPEG ≤2000px — nicht erneut encodieren
+    if (file.type === 'image/jpeg' && /^beleg-scan-/.test(file.name)) return new Uint8Array(await file.arrayBuffer())
     const bmp = await createImageBitmap(file)
     const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height))
     const canvas = document.createElement('canvas')
@@ -989,13 +995,26 @@ export default function BuchhaltungClient() {
                   {fotoBusy ? '⏳ Claude liest den Beleg…' : 'Beleg hochladen — Foto, Scan oder Datei'}
                 </span>
                 <span style={{ display: 'block', fontSize: 12.5, color: SUB, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {fotoErgebnis || 'Mehrere Fotos = ein mehrseitiger Beleg · KI liest, kategorisiert & verbucht'}
+                  {fotoErgebnis || 'Fotos werden automatisch zugeschnitten · mehrere Fotos = ein Beleg · KI verbucht'}
                 </span>
               </span>
               <input type="file" accept="image/*,application/pdf" multiple disabled={fotoBusy}
                 style={{ display: 'none' }}
-                onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) fotoUpload(fs) }} />
+                onChange={(e) => {
+                  const fs = Array.from(e.target.files ?? []); e.target.value = ''
+                  if (!fs.length) return
+                  // §256: Bilder → Dokumentenscanner, PDFs direkt hochladen
+                  const pdfs = fs.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+                  const bilder = fs.filter((f) => !pdfs.includes(f))
+                  if (bilder.length) { scanPdfs.current = pdfs; setScanBilder(bilder) }
+                  else fotoUpload(pdfs)
+                }} />
             </label>
+          )}
+          {scanBilder && (
+            <DocScanner files={scanBilder}
+              onCancel={() => setScanBilder(null)}
+              onDone={(jpegs) => { setScanBilder(null); fotoUpload([...scanPdfs.current, ...jpegs]) }} />
           )}
           {loading && <div style={CARD}><SkeletonRows kind="chat" count={7} /></div>}
           {!loading && !rows.length && (
