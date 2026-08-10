@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { firstCleaningOpenAt, type LockRef } from '@/lib/locks'
 
 /**
  * ⏱ §255: Reinigungs-Dauer-Auswertung — NUR für Chefs (is_admin).
@@ -21,6 +22,16 @@ async function requireChef(): Promise<string | null> {
 export async function GET(req: NextRequest) {
   if (!(await requireChef())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   if (req.nextUrl.searchParams.get('probe') === '1') return NextResponse.json({ ok: true }, NO_STORE)
+
+  // Diagnose: ALLE Meldungen (auch ohne gemessene Dauer) — zeigt, ob/wann
+  // überhaupt gemeldet wurde und ob die Dauer-Messung griff.
+  if (req.nextUrl.searchParams.get('debug') === '1') {
+    const { data } = await supabaseAdmin
+      .from('cleaning_confirmations')
+      .select('listing_id, slot_date, person_name, verify_status, duration_min, started_at, confirmed_at')
+      .order('confirmed_at', { ascending: false }).limit(30)
+    return NextResponse.json({ meldungen: data ?? [] }, NO_STORE)
+  }
 
   // Letzte 180 Tage, nur gemessene Reinigungen
   const since = new Date(Date.now() - 180 * 86400_000).toISOString().slice(0, 10)
@@ -73,4 +84,51 @@ export async function GET(req: NextRequest) {
       startedAt: r.started_at, confirmedAt: r.confirmed_at,
     })),
   }, NO_STORE)
+}
+
+/**
+ * POST { action: 'backfill' } — misst kürzliche Fertigmeldungen OHNE Dauer
+ * nachträglich (Start aus dem Schloss-Protokoll). Nur was im Log-Fenster
+ * liegt (Nuki ~letzte Tage) bekommt eine Dauer; ältere bleiben leer.
+ */
+export async function POST(req: NextRequest) {
+  if (!(await requireChef())) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  const body = await req.json().catch(() => ({}))
+  if (body.action !== 'backfill') return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
+
+  // Ungemessene Meldungen der letzten 5 Tage (weiter zurück reicht das Log nicht)
+  const since = new Date(Date.now() - 5 * 86400_000).toISOString()
+  const { data: conf } = await supabaseAdmin
+    .from('cleaning_confirmations')
+    .select('listing_id, slot_date, confirmed_at')
+    .is('duration_min', null)
+    .gte('confirmed_at', since)
+    .order('confirmed_at', { ascending: false })
+  const rows = (conf ?? []) as { listing_id: string; slot_date: string; confirmed_at: string }[]
+  if (!rows.length) return NextResponse.json({ gemessen: 0, geprueft: 0 }, NO_STORE)
+
+  // Schlösser + Check-out-Zeit je Wohnung
+  const ids = [...new Set(rows.map((r) => r.listing_id))]
+  const { data: ls } = await supabaseAdmin.from('listings').select('id, locks, check_out_time').in('id', ids)
+  const cfg = new Map((ls ?? []).map((l) => [l.id as string, l as { locks: LockRef[] | null; check_out_time: string | null }]))
+  const dayOf = (iso: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date(iso))
+
+  let gemessen = 0
+  for (const r of rows) {
+    const c = cfg.get(r.listing_id)
+    if (!c?.locks?.length) continue
+    const cleaningDay = dayOf(r.confirmed_at)            // Tag der Meldung = Reinigungstag
+    const afterHm = cleaningDay === r.slot_date ? (c.check_out_time ?? '10:00').slice(0, 5) : '06:00'
+    try {
+      const startedAt = await firstCleaningOpenAt(c.locks, afterHm, cleaningDay)
+      if (!startedAt) continue
+      const mins = Math.round((Date.parse(r.confirmed_at) - Date.parse(startedAt)) / 60000)
+      if (mins < 1 || mins > 12 * 60) continue
+      await supabaseAdmin.from('cleaning_confirmations')
+        .update({ started_at: startedAt, duration_min: mins })
+        .eq('listing_id', r.listing_id).eq('slot_date', r.slot_date)
+      gemessen++
+    } catch { /* Schloss nicht erreichbar → überspringen */ }
+  }
+  return NextResponse.json({ gemessen, geprueft: rows.length }, NO_STORE)
 }
