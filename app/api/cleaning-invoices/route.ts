@@ -165,7 +165,7 @@ Oben angehängt: die eingereichte Rechnung („${String(fileName ?? 'Rechnung')}
     const monthEnd = `${month}-${String(new Date(Date.UTC(y, mo, 0)).getUTCDate()).padStart(2, '0')}`
     const winFrom = new Date(Date.parse(`${month}-01T00:00:00Z`) - 10 * 86400_000).toISOString().slice(0, 10)
     const winTo = new Date(Date.parse(monthEnd + 'T00:00:00Z') + 25 * 86400_000).toISOString().slice(0, 10)
-    type Cand = { id: string; datum: string; betrag: number; text: string }
+    type Cand = { id: string; datum: string; betrag: number; text: string; wohnung: string | null }
     const byId = new Map<string, Cand>()
     try {
       for (const st of [50, 100, 750, 1000]) {
@@ -179,6 +179,7 @@ Oben angehängt: die eingereichte Rechnung („${String(fileName ?? 'Rechnung')}
               id: String(v.id), datum: d,
               betrag: Math.round(Number(v.sumGross ?? 0) * 100) / 100,
               text: String(v.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 140),
+              wohnung: null,
             })
           }
           if (!list || list.length < 100) break
@@ -187,6 +188,41 @@ Oben angehängt: die eingereichte Rechnung („${String(fileName ?? 'Rechnung')}
     } catch (e) {
       return NextResponse.json({ error: 'Buchhaltung (sevdesk) nicht erreichbar: ' + (e instanceof Error ? e.message : String(e)) }, { status: 502 })
     }
+
+    // §257b: Wohnungs-Zuordnung je Beleg aus der Beleg-Inbox — die wurde
+    // beim Verbuchen per Vision aus den Rechnungs-PDFs gelesen (§243c).
+    // Fail-soft: ohne Zuordnung läuft die Prüfung ohne Wohnungs-Vergleich.
+    try {
+      const ids = [...byId.keys()]
+      if (ids.length) {
+        const { data: ib } = await supabaseAdmin
+          .from('beleg_inbox')
+          .select('sevdesk_voucher_id, zuordnung')
+          .in('sevdesk_voucher_id', ids)
+        type Zu = { modus?: string; listingIds?: string[]; standort?: string } | null
+        const lids = new Set<string>()
+        for (const r of ib ?? []) {
+          const z = r.zuordnung as Zu
+          for (const x of z?.listingIds ?? []) lids.add(x)
+        }
+        const titles = new Map<string, string>()
+        if (lids.size) {
+          const { data: ls } = await supabaseAdmin.from('listings').select('id, title').in('id', [...lids])
+          for (const l of ls ?? []) titles.set(String(l.id), String(l.title ?? ''))
+        }
+        for (const r of ib ?? []) {
+          const cand = byId.get(String(r.sevdesk_voucher_id))
+          if (!cand) continue
+          const z = r.zuordnung as Zu
+          if (!z) continue
+          if (z.modus === 'wohnung' && z.listingIds?.length === 1) cand.wohnung = titles.get(z.listingIds[0]) ?? null
+          else if ((z.listingIds?.length ?? 0) > 1 || z.modus === 'split') cand.wohnung = 'mehrere Wohnungen'
+          else if (z.modus === 'standort' && z.standort) cand.wohnung = `Standort ${z.standort}`
+          else if (z.modus === 'allgemein') cand.wohnung = 'allgemein'
+        }
+      }
+    } catch { /* Zuordnung optional */ }
+
     const cands = [...byId.values()].sort((a, b) => a.datum.localeCompare(b.datum))
     if (!cands.length) {
       return NextResponse.json({
@@ -208,11 +244,17 @@ Aufgaben:
 2. Vergleiche die Summe der zugeordneten Belege mit der Erwartung und
    erkläre Abweichungen konkret (mehr/weniger Reinigungen, Zulagen,
    Anfahrten, Sätze).
+3. Je WOHNUNG mit nennenswerter Abweichung zwischen erwartetem und
+   abgerechnetem Betrag (die Erwartung listet je Wohnung anzahl/basis/
+   zulagen/anfahrten/gesamt): nenne die plausible URSACHE in EINEM kurzen
+   Satz — z. B. eine Reinigung mehr/weniger als geplant (≈ Pauschale der
+   Wohnung), Zulagen, Anfahrten, abweichender Satz.
 
 Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Markdown, keine Fences):
 {
   "zugeordnet": ["<beleg-id>", ...],
   "nicht_zugeordnet": [{ "id": "<beleg-id>", "grund": "<kurz>" }],
+  "wohnungs_ursachen": [{ "wohnung": "<Name exakt wie in der Erwartung>", "ursache": "<1 kurzer Satz>" }],
   "einschaetzung": "<2-4 Sätze auf Deutsch>",
   "auffaelligkeiten": ["<konkrete Prüfpunkte — leer wenn nichts auffällt>"]
 }
@@ -224,10 +266,10 @@ passt zum Muster der Reinigungs-Pauschalen) eher zuordnen.`
     const user = `PRÜFMONAT: ${month}${personName ? ` · Reinigungskraft: ${personName}` : ''} · Lieferant in der Buchhaltung: ${supplier}
 
 ERWARTETE KOSTEN:
-${JSON.stringify(expected ?? {}, null, 1).slice(0, 4000)}
+${JSON.stringify(expected ?? {}, null, 1).slice(0, 12000)}
 
-BELEGE AUS DEM MAIL-IMPORT (id | belegdatum | betrag EUR | beschreibung):
-${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.text || '—'}`).join('\n').slice(0, 6000)}`
+BELEGE AUS DEM MAIL-IMPORT (id | belegdatum | betrag EUR | wohnung | beschreibung):
+${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | ${c.text || '—'}`).join('\n').slice(0, 6000)}`
 
     let status = 'geprueft'
     let ki: Record<string, unknown> = {}
@@ -248,26 +290,56 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.text || '—'}`).jo
     const grund = new Map<string, string>(
       (Array.isArray(ki.nicht_zugeordnet) ? (ki.nicht_zugeordnet as { id?: unknown; grund?: unknown }[]) : [])
         .map((x) => [String(x.id ?? ''), String(x.grund ?? '')] as [string, string]))
-    const sum = Math.round(cands.filter((c) => matched.has(c.id)).reduce((a, c) => a + c.betrag, 0) * 100) / 100
+    const r2 = (x: number) => Math.round(x * 100) / 100
+    const sum = r2(cands.filter((c) => matched.has(c.id)).reduce((a, c) => a + c.betrag, 0))
     const expectedTotal = typeof expected?.total === 'number' ? expected.total : null
+
+    // §257b: Wohnungs-Vergleich — Server rechnet DETERMINISTISCH:
+    // erwartet je Wohnung aus dem expected-Payload (Vollkosten „gesamt"),
+    // abgerechnet = Summe der zugeordneten Belege je Wohnungs-Zuordnung;
+    // die KI liefert nur die URSACHEN-Texte dazu.
+    const expWohnungen = Array.isArray(expected?.wohnungen)
+      ? (expected.wohnungen as { wohnung?: unknown; gesamt?: unknown }[]) : []
+    const erwartetBy = new Map<string, number>()
+    for (const w of expWohnungen) {
+      if (typeof w.wohnung === 'string' && typeof w.gesamt === 'number') erwartetBy.set(w.wohnung, w.gesamt)
+    }
+    const abgerBy = new Map<string, number>()
+    for (const c of cands) {
+      if (!matched.has(c.id)) continue
+      const key = c.wohnung && !/^(mehrere|allgemein|Standort )/.test(c.wohnung) ? c.wohnung : 'Ohne Wohnungs-Zuordnung'
+      abgerBy.set(key, (abgerBy.get(key) ?? 0) + c.betrag)
+    }
+    const ursachen = new Map<string, string>(
+      (Array.isArray(ki.wohnungs_ursachen) ? (ki.wohnungs_ursachen as { wohnung?: unknown; ursache?: unknown }[]) : [])
+        .map((x) => [String(x.wohnung ?? ''), String(x.ursache ?? '')] as [string, string]))
+    const alleWohnungen = new Set([...erwartetBy.keys(), ...abgerBy.keys()])
+    alleWohnungen.delete('Ohne Wohnungs-Zuordnung')
+    const wohnungenOut = [...alleWohnungen].map((w) => {
+      const e = erwartetBy.get(w) ?? null
+      const a = r2(abgerBy.get(w) ?? 0)
+      return { wohnung: w, erwartet: e, abgerechnet: a, differenz: e != null ? r2(a - e) : null, ursache: ursachen.get(w) || undefined }
+    }).sort((x, y) => Math.abs(y.differenz ?? y.abgerechnet) - Math.abs(x.differenz ?? x.abgerechnet))
+    const ohneZu = abgerBy.get('Ohne Wohnungs-Zuordnung')
+    if (ohneZu && ohneZu > 0.005) {
+      wohnungenOut.push({ wohnung: 'Ohne Wohnungs-Zuordnung', erwartet: null, abgerechnet: r2(ohneZu), differenz: null, ursache: ursachen.get('Ohne Wohnungs-Zuordnung') || undefined })
+    }
+
     const analysis: Record<string, unknown> = {
       betrag_rechnung: sum,
-      differenz: expectedTotal != null ? Math.round((sum - expectedTotal) * 100) / 100 : null,
+      differenz: expectedTotal != null ? r2(sum - expectedTotal) : null,
       einschaetzung: typeof ki.einschaetzung === 'string' ? ki.einschaetzung : undefined,
       auffaelligkeiten: Array.isArray(ki.auffaelligkeiten) ? (ki.auffaelligkeiten as unknown[]).map(String).slice(0, 10) : [],
       lieferant: supplier,
+      wohnungen: status === 'geprueft' && wohnungenOut.length ? wohnungenOut : undefined,
       belege: cands.map((c) => ({
         id: c.id, datum: c.datum, betrag: c.betrag,
-        text: c.text || 'Beleg', zugeordnet: matched.has(c.id),
+        text: c.text || 'Beleg', wohnung: c.wohnung,
+        zugeordnet: matched.has(c.id),
         grund: grund.get(c.id) || undefined,
         url: `/api/buchhaltung/beleg-pdf?voucherId=${c.id}`,
       })),
     }
-
-    // Ersetzen statt stapeln: vorherige Auto-Prüfungen desselben Monats +
-    // derselben Person räumen (manuelle Uploads bleiben unberührt)
-    await supabaseAdmin.from('cleaning_invoices').delete()
-      .eq('month', month).eq('person_id', personId).eq('file_url', 'auto')
 
     const row = {
       month, person_id: personId, file_url: 'auto',
@@ -284,6 +356,11 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.text || '—'}`).jo
         analysis,
       }, { status: 500 })
     }
+    // Ersetzen statt stapeln — ERST einfügen, DANN ältere Auto-Prüfungen
+    // räumen (Review §257b: delete-before-insert hätte bei Insert-Fehlern
+    // die letzte gültige Analyse verloren); manuelle Uploads bleiben.
+    await supabaseAdmin.from('cleaning_invoices').delete()
+      .eq('month', month).eq('person_id', personId).eq('file_url', 'auto').neq('id', saved.id)
     return NextResponse.json({ ok: true, id: saved.id, analysis, status }, NO_STORE)
   }
 

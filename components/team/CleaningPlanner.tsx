@@ -51,7 +51,9 @@ type Invoice = {
     differenz?: number | null; einschaetzung?: string; auffaelligkeiten?: string[]
     /** §257: Auto-Prüfung aus dem Mail-Import — gefundene sevdesk-Belege */
     lieferant?: string
-    belege?: { id: string; datum: string; betrag: number; text: string; zugeordnet: boolean; grund?: string; url: string }[]
+    belege?: { id: string; datum: string; betrag: number; text: string; wohnung?: string | null; zugeordnet: boolean; grund?: string; url: string }[]
+    /** §257b: Wohnungs-Vergleich — erwartet vs. abgerechnet + Ursache */
+    wohnungen?: { wohnung: string; erwartet: number | null; abgerechnet: number; differenz: number | null; ursache?: string }[]
   } | null
   status: string; created_at: string
 }
@@ -266,18 +268,18 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       : kind === 'feiertag' ? r.holidaySurchargePct : r.sundaySurchargePct
     return slotCost(s) * (pct / 100)
   }
-  const vatPctFor = (lid: string) => ratesFor(lid)?.vatPct ?? 0
 
   /* ── Kosten — echte KALENDERMONATE (inkl. Rückblick §257), Sätze je Kraft ── */
   const costs = useMemo(() => {
     if (!cleaning.rates) return null
     const filtered = costSlots.filter((s) => matchPerson(s.listingId))
 
-    type Trip = { day: string; group: string; personId: string; listingId: string; count: number; fee: number; vatPct: number }
+    type Trip = { day: string; group: string; personId: string; listingId: string; count: number; fee: number }
+    type PerListing = { count: number; minutes: number; base: number; surcharge: number; travel: number; vat: number; total: number }
     type MonthRow = {
       key: string; label: string; partialStart: boolean; partialEnd: boolean
-      perListing: Map<string, { count: number; minutes: number; base: number }>
-      surcharge: number; vat: number; trips: Map<string, Trip>
+      perListing: Map<string, PerListing>
+      trips: Map<string, Trip>
       slots: Slot[]
     }
     const months = new Map<string, MonthRow>()
@@ -292,19 +294,12 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           key, label: `${DE_MONTHS[mo - 1]} ${y}`,
           partialStart: `${key}-01` < coveredFrom,
           partialEnd: lastDay > horizon,
-          perListing: new Map(), surcharge: 0, vat: 0, trips: new Map(), slots: [],
+          perListing: new Map(), trips: new Map(), slots: [],
         }
         months.set(key, m)
       }
       m.slots.push(s)
-      const row = m.perListing.get(s.listingId) ?? { count: 0, minutes: 0, base: 0 }
-      row.count++
-      row.minutes += s.minutes
-      row.base += slotCost(s)
-      m.perListing.set(s.listingId, row)
       if (!s.hasMinutes) missingMinutes++
-      m.surcharge += slotSurcharge(s)
-      m.vat += (slotCost(s) + slotSurcharge(s)) * (vatPctFor(s.listingId) / 100)
       // Anfahrt: je nach Vertragsmodell der Kraft — je EINZELNER Reinigung
       // (travelPerCleaning, z. B. VP Glanzteam) oder gebündelt je
       // Einsatztag × Standort × Kraft; jeweils zum Satz DIESER Kraft
@@ -312,27 +307,54 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       const tKey = r?.travelPerCleaning ? `${s.effDay}|${s.stay.id}` : `${s.effDay}|${s.group}|${s.personId}`
       const t = m.trips.get(tKey) ?? {
         day: s.effDay, group: s.group, personId: s.personId, listingId: s.listingId,
-        count: 0, fee: r?.travelFee ?? 0, vatPct: r?.vatPct ?? 0,
+        count: 0, fee: r?.travelFee ?? 0,
       }
       t.count++
       m.trips.set(tKey, t)
     }
-    // Reihenfolge: laufender Monat zuerst, dann Zukunft aufsteigend,
-    // dann Vergangenheit absteigend (jüngste zuerst) — §257
+    // Pass 2 (§257b): VOLLKOSTEN je Wohnung — Basis + Zulagen + Anfahrt-
+    // Anteil (Trip-Gebühr auf die Reinigungen des Trips verteilt) + USt.
+    // So ist die Wohnungs-Erwartung direkt mit den Rechnungs-Belegen je
+    // Wohnung vergleichbar, und die Monats-Summe = Summe der Wohnungen.
+    for (const m of months.values()) {
+      for (const s of m.slots) {
+        const r = ratesFor(s.listingId)
+        const tKey = r?.travelPerCleaning ? `${s.effDay}|${s.stay.id}` : `${s.effDay}|${s.group}|${s.personId}`
+        const trip = m.trips.get(tKey)
+        const anfahrt = trip ? trip.fee / trip.count : 0
+        const basis = slotCost(s)
+        const zulage = slotSurcharge(s)
+        const ust = (basis + zulage + anfahrt) * ((r?.vatPct ?? 0) / 100)
+        const row = m.perListing.get(s.listingId)
+          ?? { count: 0, minutes: 0, base: 0, surcharge: 0, travel: 0, vat: 0, total: 0 }
+        row.count++
+        row.minutes += s.minutes
+        row.base += basis
+        row.surcharge += zulage
+        row.travel += anfahrt
+        row.vat += ust
+        row.total += basis + zulage + anfahrt + ust
+        m.perListing.set(s.listingId, row)
+      }
+    }
+    // §257b LOGISCHE Reihenfolge (Inhaber): EINE Zeitachse — aktueller
+    // Monat oben, darunter die Vergangenheit absteigend (= Prüf-Arbeit);
+    // die ZUKUNFT ist reine Prognose und wandert als eigener Block ans Ende.
     const curKey = today.slice(0, 7)
-    const rank = (k: string) => (k === curKey ? 0 : k > curKey ? 1 : 2)
     const list = [...months.values()].map((m) => {
-      const baseSum = [...m.perListing.values()].reduce((a, x) => a + x.base, 0)
-      const travel = [...m.trips.values()].reduce((a, t) => a + t.fee, 0)
-      const vat = m.vat + [...m.trips.values()].reduce((a, t) => a + t.fee * (t.vatPct / 100), 0)
-      const net = baseSum + m.surcharge + travel
-      return { ...m, baseSum, travel, tripCount: m.trips.size, net, vat, total: net + vat, isPast: m.key < curKey }
-    }).sort((a, b) => {
-      const ra = rank(a.key), rb = rank(b.key)
-      if (ra !== rb) return ra - rb
-      return ra === 2 ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key)
-    })
-    return { months: list, missingMinutes }
+      const rows = [...m.perListing.values()]
+      const baseSum = rows.reduce((a, x) => a + x.base, 0)
+      const surcharge = rows.reduce((a, x) => a + x.surcharge, 0)
+      const travel = rows.reduce((a, x) => a + x.travel, 0)
+      const vat = rows.reduce((a, x) => a + x.vat, 0)
+      const net = baseSum + surcharge + travel
+      return { ...m, baseSum, surcharge, travel, tripCount: m.trips.size, net, vat, total: net + vat, isPast: m.key < curKey, isFuture: m.key > curKey }
+    }).sort((a, b) => b.key.localeCompare(a.key))
+    return {
+      months: list.filter((m) => !m.isFuture),          // aktuell + Vergangenheit, absteigend
+      future: list.filter((m) => m.isFuture).reverse(), // Ausblick, aufsteigend
+      missingMinutes,
+    }
   }, [costSlots, cleaning.rates, cleaning.ratesByPerson, cleaning.responsible, personFilter, coveredFrom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Rechnungen laden (nur Kosten-Ansicht) ── */
@@ -491,78 +513,93 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       {/* 👤 Filter nach Reinigungskraft — gilt für ALLE drei Ansichten */}
       {personChips}
 
-      {/* ═══ 💶 KOSTEN (Admins) — Rechnung je KALENDERMONAT + Kraft ═══ */}
-      {mode === 'kosten' && costs && (
-        <div>
-          {invError && (
-            <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 12.5 }}>
-              {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
-            </p>
-          )}
-          {pastData === null && (
-            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#9CA3AF' }}>⏳ Lade zurückliegende Monate…</p>
-          )}
+      {/* ═══ 💶 KOSTEN (Admins) — §257b: EINE Zeitachse (aktueller Monat →
+          Vergangenheit absteigend), Ausblick als Prognose am Ende; je Wohnung
+          ERWARTET vs. ABGERECHNET mit Ursache der Abweichung ═══ */}
+      {mode === 'kosten' && costs && (() => {
+        type MonthOut = NonNullable<typeof costs>['months'][number]
+        const r2 = (x: number) => Math.round(x * 100) / 100
+        const HAIR = 'inset 0 0 0 0.5px rgba(60,60,67,0.14)'
+        const eyebrowStyle = { fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '16px 4px 8px' } as const
+        const deltaChip = (diff: number | null, small = false) => {
+          if (diff == null) return null
+          const neutral = Math.abs(diff) < 1
+          return (
+            <span style={{
+              fontSize: small ? 10.5 : 11.5, fontWeight: 700, padding: small ? '1px 7px' : '3px 9px',
+              borderRadius: 999, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+              background: neutral ? 'rgba(120,120,128,0.10)' : diff > 0 ? '#FEE2E2' : '#DCFCE7',
+              color: neutral ? '#8E8E93' : diff > 0 ? '#B91C1C' : '#15803D',
+            }}>{neutral ? '±0 €' : eurSigned(r2(diff))}</span>
+          )
+        }
 
-          {costs.months.map((m) => {
-            const expectedPayload = {
-              monat: m.label,
-              reinigungskraft: personLabel,
-              saetze: personFilter && personFilter !== 'none'
-                ? (cleaning.ratesByPerson?.[personFilter] ?? cleaning.rates)
-                : cleaning.rates,
-              total: Math.round(m.total * 100) / 100,
-              summe_netto: Math.round(m.net * 100) / 100,
-              umsatzsteuer: Math.round(m.vat * 100) / 100,
-              basis: Math.round(m.baseSum * 100) / 100,
-              zulagen: Math.round(m.surcharge * 100) / 100,
-              anfahrten: { anzahl: m.tripCount, betrag: Math.round(m.travel * 100) / 100 },
-              hinweis_anfahrt: m.slots.some((s) => ratesFor(s.listingId)?.travelPerCleaning)
-                ? 'Anfahrtspauschale gilt je Einsatz UND pro eingesetztem Mitarbeiter — die Erwartung rechnet mit 1 Mitarbeiter je Einsatz; mehr Mitarbeiter erhöhen die Anfahrten legitim.'
-                : undefined,
-              wohnungen: [...m.perListing.entries()].map(([id, row]) => ({
-                wohnung: listings[id]?.title ?? 'Wohnung', anzahl: row.count,
-                minuten: row.minutes, betrag: Math.round(row.base * 100) / 100,
-              })),
-              einzelne_reinigungen: m.slots.map((s) => ({
-                datum: s.effDay, wohnung: listings[s.listingId]?.title ?? '—',
-                dauer_min: s.minutes, betrag: Math.round(slotCost(s) * 100) / 100,
-                zulage: Math.round(slotSurcharge(s) * 100) / 100 || undefined,
-              })),
-              hinweis: m.partialStart
-                ? (coveredFrom === today
-                  ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.'
-                  : `Monat nur teilweise im Datenfenster (ab ${fmtShort(coveredFrom)}).`)
-                : undefined,
-            }
-            const monthInvoices = invoices.filter((inv) => inv.month === m.key
-              && (personFilter === '' || (personFilter === 'none' ? inv.person_id === null : inv.person_id === personFilter)))
-            // §257: Vergangenheits-Monate starten eingeklappt — kompakte
-            // Zeile mit Erwartung + Prüf-Status, Tipp klappt auf
-            const expanded = !m.isPast || !!openKeys[`m|${m.key}`]
-            const lastInv = monthInvoices[0] ?? null
-            const lastDiff = lastInv && lastInv.amount_invoiced != null && lastInv.amount_expected != null
-              ? lastInv.amount_invoiced - lastInv.amount_expected : (lastInv?.analysis?.differenz ?? null)
-            const lastOk = lastInv?.status === 'geprueft' && lastDiff != null && Math.abs(lastDiff) <= (lastInv.amount_expected ?? 0) * 0.1
-            if (!expanded) {
-              // Review-Fund: Im Filter „Alle" wäre „Gesamt-Erwartung vs.
-              // Rechnung EINER Kraft + grüner Haken" irreführend — dort
-              // nur neutral die Anzahl der Prüfungen zeigen
-              const showInv = personFilter !== '' && personFilter !== 'none'
-              return (
-                <button key={m.key} onClick={() => toggle(`m|${m.key}`)} style={{
-                  display: 'flex', width: '100%', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
-                  background: '#fff', border: 'none', borderRadius: 16, padding: '13px 16px', marginBottom: 10,
-                  boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
-                }}>
-                  <span style={{ color: '#B0AA9C', fontSize: 11 }}>▸</span>
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: '#111' }}>{m.label}</span>
-                    <span style={{ display: 'block', fontSize: 11.5, color: '#9CA3AF', marginTop: 1 }}>
-                      {m.slots.length} Reinigungen · erwartet {eur(m.total)}
-                      {showInv && lastInv ? ` · Rechnung ${lastInv.amount_invoiced != null ? eur(lastInv.amount_invoiced) : '?'}` : ''}
-                    </span>
+        const renderMonth = (m: MonthOut, kind: 'aktuell' | 'rueck' | 'aus') => {
+          const expectedPayload = {
+            monat: m.label,
+            reinigungskraft: personLabel,
+            saetze: personFilter && personFilter !== 'none'
+              ? (cleaning.ratesByPerson?.[personFilter] ?? cleaning.rates)
+              : cleaning.rates,
+            total: r2(m.total),
+            summe_netto: r2(m.net),
+            umsatzsteuer: r2(m.vat),
+            basis: r2(m.baseSum),
+            zulagen: r2(m.surcharge),
+            anfahrten: { anzahl: m.tripCount, betrag: r2(m.travel) },
+            hinweis_anfahrt: m.slots.some((s) => ratesFor(s.listingId)?.travelPerCleaning)
+              ? 'Anfahrtspauschale gilt je Einsatz UND pro eingesetztem Mitarbeiter — die Erwartung rechnet mit 1 Mitarbeiter je Einsatz; mehr Mitarbeiter erhöhen die Anfahrten legitim.'
+              : undefined,
+            // §257b: VOLLKOSTEN je Wohnung (Basis + Zulagen + Anfahrt-Anteil
+            // + USt) — direkt vergleichbar mit den Rechnungs-Belegen je Wohnung
+            wohnungen: [...m.perListing.entries()].map(([id, row]) => ({
+              wohnung: listings[id]?.title ?? 'Wohnung', anzahl: row.count, minuten: row.minutes,
+              basis: r2(row.base), zulagen: r2(row.surcharge), anfahrten: r2(row.travel),
+              ust: r2(row.vat), gesamt: r2(row.total),
+            })),
+            einzelne_reinigungen: m.slots.map((s) => ({
+              datum: s.effDay, wohnung: listings[s.listingId]?.title ?? '—',
+              dauer_min: s.minutes, betrag: r2(slotCost(s)),
+              zulage: r2(slotSurcharge(s)) || undefined,
+            })),
+            hinweis: m.partialStart
+              ? (coveredFrom === today
+                ? 'Laufender Monat ab heute — frühere Reinigungen des Monats fehlen in der Erwartung.'
+                : `Monat nur teilweise im Datenfenster (ab ${fmtShort(coveredFrom)}).`)
+              : undefined,
+          }
+          const monthInvoices = invoices.filter((inv) => inv.month === m.key
+            && (personFilter === '' || (personFilter === 'none' ? inv.person_id === null : inv.person_id === personFilter)))
+          // Review-Fund §257: Im Filter „Alle" keine Einzel-Rechnung gegen die
+          // Gesamt-Erwartung stellen — dort nur neutrale Anzeige
+          const showInv = personFilter !== '' && personFilter !== 'none'
+          const lastInv = monthInvoices[0] ?? null
+          const lastDiff = lastInv && lastInv.amount_invoiced != null && lastInv.amount_expected != null
+            ? lastInv.amount_invoiced - lastInv.amount_expected : (lastInv?.analysis?.differenz ?? null)
+          const lastOk = lastInv?.status === 'geprueft' && lastDiff != null && Math.abs(lastDiff) <= (lastInv.amount_expected ?? 0) * 0.1
+          const checkedInv = showInv ? (monthInvoices.find((iv) => iv.status === 'geprueft') ?? null) : null
+          const wByName = new Map(((checkedInv?.analysis?.wohnungen) ?? []).map((w) => [w.wohnung, w] as const))
+          const expanded = kind === 'aktuell' || !!openKeys[`m|${m.key}`]
+
+          if (!expanded) {
+            return (
+              <button key={m.key} onClick={() => toggle(`m|${m.key}`)} style={{
+                display: 'flex', width: '100%', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
+                background: '#fff', border: 'none', borderRadius: 18, padding: '13px 16px', marginBottom: 8,
+                boxShadow: HAIR, WebkitTapHighlightColor: 'transparent',
+              }}>
+                <span style={{ color: '#C7C2B8', fontSize: 11 }}>▸</span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#111', letterSpacing: -0.2 }}>{m.label}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: '#9CA3AF', marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                    {kind === 'aus'
+                      ? `${m.slots.length} Reinigungen geplant${m.partialEnd ? ' · teilweise erfasst' : ''}`
+                      : `${m.slots.length} Reinigungen · erwartet ${m.partialStart ? '~' : ''}${eur(m.total)}${showInv && lastInv ? ` · Rechnung ${lastInv.amount_invoiced != null ? eur(lastInv.amount_invoiced) : '?'}` : ''}`}
                   </span>
-                  {showInv
+                </span>
+                {kind === 'aus'
+                  ? <span style={{ fontSize: 14.5, fontWeight: 700, color: '#8A7020', fontVariantNumeric: 'tabular-nums' }}>{m.partialEnd ? '~' : ''}{eur(m.total)}</span>
+                  : showInv
                     ? (lastInv
                       ? chip(lastInv.status === 'fehler' ? '#FEF2F2' : lastOk ? '#DCFCE7' : '#FEF3C7',
                           lastInv.status === 'fehler' ? '#B91C1C' : lastOk ? '#15803D' : '#B45309',
@@ -570,130 +607,199 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       : chip('rgba(120,120,128,0.10)', '#8E8E93', 'ungeprüft'))
                     : chip('rgba(120,120,128,0.10)', '#8E8E93',
                         monthInvoices.length ? `${monthInvoices.length} Prüfung${monthInvoices.length === 1 ? '' : 'en'}` : 'je Kraft prüfen')}
-                </button>
-              )
-            }
-            return (
-              <div key={m.key} style={{ background: '#fff', borderRadius: 16, padding: '16px 16px 14px', marginBottom: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
-                <p style={{ fontSize: 11.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '0 0 2px' }}>{m.isPast ? 'RÜCKBLICK — ERWARTET vs. RECHNUNG' : 'ERWARTETE RECHNUNG'}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                  <span style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>
-                    {m.isPast && (
-                      <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: '#B0AA9C', fontSize: 12, cursor: 'pointer', padding: '0 6px 0 0' }}>▾</button>
-                    )}
-                    {m.label}
-                  </span>
-                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>{m.slots.length} Reinigungen · {personLabel}</span>
-                </div>
+              </button>
+            )
+          }
 
-                {/* Wohnungen — Tap fächert die einzelnen Reinigungen auf */}
-                {[...m.perListing.entries()].sort((a, b) => b[1].base - a[1].base).map(([id, row]) => {
-                  const k = `${m.key}|l|${id}`
-                  const open = !!openKeys[k]
-                  return (
-                    <div key={id}>
-                      <button onClick={() => toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, color: '#111', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{open ? '▾' : '▸'}</span>
-                          {listings[id]?.title ?? 'Wohnung'} <span style={{ color: '#9CA3AF', fontSize: 12 }}>· {row.count}× · {fmtDur(row.minutes)}</span>
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(row.base)}</span>
-                      </button>
-                      {open && m.slots.filter((s) => s.listingId === id).map((s) => (
-                        <div key={s.stay.id} style={subRowStyle}>
-                          <span>
-                            {wdShort(s.effDay)} {fmtShort(s.effDay)} · {fmtDur(s.minutes)}
-                            {s.sameDayArrival ? ' · Wechseltag' : s.reason === 'buendel' ? ` · gebündelt (Abreise ${fmtShort(s.stay.checkOut)})` : ''}
-                            {slotSurcharge(s) > 0 ? ` · zzgl. ${eur(slotSurcharge(s))} Zulage` : ''}
-                          </span>
-                          <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(slotCost(s))}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
+          return (
+            <div key={m.key} style={{ background: '#fff', borderRadius: 18, padding: '15px 16px 13px', marginBottom: 10, boxShadow: HAIR }}>
+              {/* Kopf */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {kind !== 'aktuell' && (
+                  <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: '#C7C2B8', fontSize: 12, cursor: 'pointer', padding: 0 }}>▾</button>
+                )}
+                <span style={{ fontSize: 18, fontWeight: 800, color: '#111', letterSpacing: -0.3, flex: 1 }}>{m.label}</span>
+                <span style={{ fontSize: 12, color: '#9CA3AF' }}>{m.slots.length} Reinigungen · {personLabel}</span>
+              </div>
 
-                {/* Zulagen — aufklappbar */}
-                {(() => {
-                  const k = `${m.key}|z`
-                  const zSlots = m.slots.filter((s) => slotSurcharge(s) > 0)
-                  return (
-                    <div>
-                      <button onClick={() => zSlots.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: zSlots.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, color: '#6B7280' }}>
-                          {zSlots.length > 0 && <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
-                          Sonn-/Feiertags-Zulagen
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge ? '#B45309' : '#9CA3AF', flexShrink: 0 }}>{eur(m.surcharge)}</span>
-                      </button>
-                      {openKeys[k] && zSlots.map((s) => {
-                        const zk = dayKind(s.effDay)
-                        return (
-                          <div key={s.stay.id} style={subRowStyle}>
-                            <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {zk === 'besonders' ? 'bes. Feiertag' : zk === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
-                            <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0 }}>{eurSigned(slotSurcharge(s))}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-
-                {/* Anfahrten — aufklappbar (Satz der jeweiligen Kraft) */}
-                {(() => {
-                  const k = `${m.key}|a`
-                  const trips = [...m.trips.values()].sort((a, b) => a.day.localeCompare(b.day))
-                  return (
-                    <div>
-                      <button onClick={() => trips.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: trips.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
-                        <span style={{ fontSize: 13, color: '#6B7280' }}>
-                          {trips.length > 0 && <span style={{ color: '#B0AA9C', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
-                          Anfahrten ({m.tripCount}×)
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{eur(m.travel)}</span>
-                      </button>
-                      {openKeys[k] && trips.map((t, ti) => {
-                        const info = listings[t.listingId]
-                        const perCleaning = t.count === 1 && cleaning.ratesByPerson?.[t.personId]?.travelPerCleaning
-                        const pName = t.personId !== '-' ? (persons.find((p) => p.id === t.personId)?.name ?? null) : null
-                        return (
-                          <div key={ti} style={subRowStyle}>
-                            <span>{wdShort(t.day)} {fmtShort(t.day)} · {perCleaning ? info?.title ?? '—' : info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · ${pName}` : ''} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
-                            <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(t.fee)}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-
-                {m.vat > 0.005 && (
+              {/* Hero: ERWARTET · ABGERECHNET · Δ */}
+              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap', margin: '10px 0 6px' }}>
+                <span>
+                  <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em' }}>ERWARTET</span>
+                  <span style={{ fontSize: 26, fontWeight: 800, color: '#8A7020', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
+                </span>
+                {checkedInv && checkedInv.amount_invoiced != null && (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0' }}>
-                      <span style={{ fontSize: 13, color: '#6B7280' }}>Zwischensumme (netto)</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.net)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 0' }}>
-                      <span style={{ fontSize: 13, color: '#6B7280' }}>zzgl. Umsatzsteuer</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{eur(m.vat)}</span>
-                    </div>
+                    <span>
+                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em' }}>ABGERECHNET</span>
+                      <span style={{ fontSize: 26, fontWeight: 800, color: '#12222E', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(checkedInv.amount_invoiced)}</span>
+                    </span>
+                    <span style={{ paddingBottom: 6 }}>{deltaChip(checkedInv.amount_invoiced - m.total)}</span>
                   </>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}{m.vat > 0.005 ? ' (brutto)' : ''}</span>
-                  <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020' }}>{eur(m.total)}</span>
-                </div>
-                {(m.partialStart || m.partialEnd) && (
-                  <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
-                    {m.partialStart
-                      ? (coveredFrom === today
-                        ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
-                        : `teilweise erfasst (Datenfenster ab ${fmtShort(coveredFrom)})`)
-                      : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
-                  </p>
-                )}
+              </div>
 
-                {/* ── Rechnungs-Abgleich ── */}
+              {/* Je Wohnung — erwartet vs. abgerechnet, Tap fächert Reinigungen auf */}
+              <p style={{ fontSize: 10.5, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em', margin: '8px 0 0' }}>
+                JE WOHNUNG{checkedInv ? ' — ERWARTET · ABGERECHNET' : ''}
+              </p>
+              {[...m.perListing.entries()].sort((a, b) => b[1].total - a[1].total).map(([id, row]) => {
+                const k = `${m.key}|l|${id}`
+                const open = !!openKeys[k]
+                const title = listings[id]?.title ?? 'Wohnung'
+                const wa = wByName.get(title)
+                return (
+                  <div key={id}>
+                    <button onClick={() => toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', alignItems: 'center' }}>
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ color: '#C7C2B8', fontSize: 10, marginRight: 5 }}>{open ? '▾' : '▸'}</span>{title}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 11, color: '#9CA3AF', marginTop: 1, paddingLeft: 15 }}>
+                          {row.count}× · {fmtDur(row.minutes)}
+                          {row.surcharge > 0.005 ? ` · Zulagen ${eur(row.surcharge)}` : ''}
+                          {row.travel > 0.005 ? ` · Anfahrten ${eur(row.travel)}` : ''}
+                        </span>
+                        {wa?.ursache && (
+                          <span style={{ display: 'block', fontSize: 11, color: '#B45309', marginTop: 2, paddingLeft: 15, whiteSpace: 'normal', lineHeight: 1.4 }}>→ {wa.ursache}</span>
+                        )}
+                      </span>
+                      <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>{eur(row.total)}</span>
+                        {wa && (
+                          <span style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', marginTop: 2 }}>
+                            <span style={{ fontSize: 11, color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>abger. {eur(wa.abgerechnet)}</span>
+                            {deltaChip(wa.abgerechnet - row.total, true)}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    {open && m.slots.filter((s) => s.listingId === id).map((s) => (
+                      <div key={s.stay.id} style={subRowStyle}>
+                        <span>
+                          {wdShort(s.effDay)} {fmtShort(s.effDay)} · {fmtDur(s.minutes)}
+                          {s.sameDayArrival ? ' · Wechseltag' : s.reason === 'buendel' ? ` · gebündelt (Abreise ${fmtShort(s.stay.checkOut)})` : ''}
+                          {slotSurcharge(s) > 0 ? ` · zzgl. ${eur(slotSurcharge(s))} Zulage` : ''}
+                        </span>
+                        <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(slotCost(s))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+              {/* Sammel-/Standort-Belege ohne eindeutige Wohnung — NEUTRAL zeigen
+                  (Review §257b: sie stecken in der Gesamtsumme, kein Alarm) */}
+              {checkedInv && (checkedInv.analysis?.wohnungen ?? [])
+                .filter((w) => w.wohnung === 'Ohne Wohnungs-Zuordnung' && w.abgerechnet > 0.005)
+                .map((w) => (
+                  <div key="ohne-zu" style={{ ...rowStyle, alignItems: 'center' }}>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: '#6B7280' }}>Sammel-Belege ohne Wohnungs-Zuordnung</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>in der Gesamtsumme enthalten — Aufteilung siehe Beleg-PDFs</span>
+                      {w.ursache && <span style={{ display: 'block', fontSize: 11, color: '#B45309', marginTop: 2, whiteSpace: 'normal' }}>→ {w.ursache}</span>}
+                    </span>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: '#6B7280', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(w.abgerechnet)}</span>
+                  </div>
+                ))}
+              {/* Abgerechnet, aber gar nicht erwartet (z. B. Wohnung ohne geplante Reinigung) */}
+              {checkedInv && (checkedInv.analysis?.wohnungen ?? [])
+                .filter((w) => w.wohnung !== 'Ohne Wohnungs-Zuordnung' && w.abgerechnet > 0.005 && ![...m.perListing.keys()].some((id) => (listings[id]?.title ?? '') === w.wohnung))
+                .map((w) => (
+                  <div key={`x-${w.wohnung}`} style={{ ...rowStyle, alignItems: 'center' }}>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: '#B91C1C' }}>{w.wohnung}</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>abgerechnet, aber nicht in der Erwartung</span>
+                      {w.ursache && <span style={{ display: 'block', fontSize: 11, color: '#B45309', marginTop: 2, whiteSpace: 'normal' }}>→ {w.ursache}</span>}
+                    </span>
+                    <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#B91C1C', fontVariantNumeric: 'tabular-nums' }}>{eur(w.abgerechnet)}</span>
+                      {deltaChip(w.abgerechnet, true)}
+                    </span>
+                  </div>
+                ))}
+
+              {/* Zulagen — aufklappbar */}
+              {(() => {
+                const k = `${m.key}|z`
+                const zSlots = m.slots.filter((s) => slotSurcharge(s) > 0)
+                return (
+                  <div>
+                    <button onClick={() => zSlots.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: zSlots.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: '#6B7280' }}>
+                        {zSlots.length > 0 && <span style={{ color: '#C7C2B8', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
+                        Sonn-/Feiertags-Zulagen
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: m.surcharge > 0.005 ? '#B45309' : '#9CA3AF', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(m.surcharge)}</span>
+                    </button>
+                    {openKeys[k] && zSlots.map((s) => {
+                      const zk = dayKind(s.effDay)
+                      return (
+                        <div key={s.stay.id} style={subRowStyle}>
+                          <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {zk === 'besonders' ? 'bes. Feiertag' : zk === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
+                          <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eurSigned(slotSurcharge(s))}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {/* Anfahrten — aufklappbar (Satz der jeweiligen Kraft) */}
+              {(() => {
+                const k = `${m.key}|a`
+                const trips = [...m.trips.values()].sort((a, b) => a.day.localeCompare(b.day))
+                return (
+                  <div>
+                    <button onClick={() => trips.length && toggle(k)} style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', cursor: trips.length ? 'pointer' : 'default', textAlign: 'left', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: '#6B7280' }}>
+                        {trips.length > 0 && <span style={{ color: '#C7C2B8', fontSize: 10, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>}
+                        Anfahrten ({m.tripCount}×)
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(m.travel)}</span>
+                    </button>
+                    {openKeys[k] && trips.map((t, ti) => {
+                      const info = listings[t.listingId]
+                      const perCleaning = t.count === 1 && cleaning.ratesByPerson?.[t.personId]?.travelPerCleaning
+                      const pName = t.personId !== '-' ? (persons.find((p) => p.id === t.personId)?.name ?? null) : null
+                      return (
+                        <div key={ti} style={subRowStyle}>
+                          <span>{wdShort(t.day)} {fmtShort(t.day)} · {perCleaning ? info?.title ?? '—' : info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · ${pName}` : ''} · {t.count} Reinigung{t.count === 1 ? '' : 'en'}</span>
+                          <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(t.fee)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {m.vat > 0.005 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0' }}>
+                    <span style={{ fontSize: 13, color: '#6B7280' }}>Zwischensumme (netto)</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>{eur(m.net)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0 0' }}>
+                    <span style={{ fontSize: 13, color: '#6B7280' }}>zzgl. Umsatzsteuer</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>{eur(m.vat)}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 2px' }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}{m.vat > 0.005 ? ' (brutto)' : ''}</span>
+                <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020', fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
+              </div>
+              {(m.partialStart || m.partialEnd) && (
+                <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', textAlign: 'right' }}>
+                  {m.partialStart
+                    ? (coveredFrom === today
+                      ? 'ab heute gerechnet — Reinigungen vor heute fehlen in dieser Summe'
+                      : `teilweise erfasst (Datenfenster ab ${fmtShort(coveredFrom)})`)
+                    : `teilweise erfasst (Buchungsdaten bis ${fmtShort(horizon)})`}
+                </p>
+              )}
+
+              {/* ── Rechnungs-Prüfung (nicht im Ausblick — dort gibt es noch keine Rechnung) ── */}
+              {kind !== 'aus' && (
                 <div style={{ marginTop: 12, paddingTop: 10, boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.15)' }}>
                   {monthInvoices.map((inv) => {
                     const diff = inv.amount_invoiced != null && inv.amount_expected != null
@@ -710,9 +816,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                           boxShadow: `inset 0 0 0 1px ${inv.status === 'fehler' ? '#FECACA' : ok ? '#BBF7D0' : '#FDE68A'}`,
                         }}>
                           <span style={{ fontSize: 12.5, fontWeight: 700, color: '#111', display: 'block' }}>
-                            📄 {inv.file_name ?? 'Rechnung'}{personName ? ` · ${personName}` : ''}
+                            {inv.file_url === 'auto' ? '🔍' : '📄'} {inv.file_name ?? 'Rechnung'}{personName ? ` · ${personName}` : ''}
                           </span>
-                          <span style={{ fontSize: 12, color: '#6B7280' }}>
+                          <span style={{ fontSize: 12, color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>
                             {inv.status === 'fehler' ? 'Analyse fehlgeschlagen — antippen für Details'
                               : `Rechnung ${inv.amount_invoiced != null ? eur(inv.amount_invoiced) : '?'} · erwartet ${inv.amount_expected != null ? eur(inv.amount_expected) : '?'}${diff != null ? ` · ${eurSigned(diff)}` : ''}`}
                           </span>
@@ -720,6 +826,28 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         {open && (
                           <div style={{ padding: '10px 12px', fontSize: 12.5, color: '#374151', lineHeight: 1.55 }}>
                             {inv.analysis?.einschaetzung && <p style={{ margin: '0 0 8px' }}>{inv.analysis.einschaetzung}</p>}
+                            {/* §257b: Wohnungs-Vergleich — erwartet vs. abgerechnet + Ursache */}
+                            {(inv.analysis?.wohnungen ?? []).length > 0 && (
+                              <div style={{ margin: '0 0 10px', borderRadius: 12, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.18)', overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', gap: 8, padding: '6px 10px', background: '#FAFAF8', fontSize: 10, fontWeight: 700, color: '#8A8578', letterSpacing: '0.04em' }}>
+                                  <span style={{ flex: 1 }}>WOHNUNG</span>
+                                  <span style={{ width: 62, textAlign: 'right' }}>ERWARTET</span>
+                                  <span style={{ width: 62, textAlign: 'right' }}>ABGER.</span>
+                                  <span style={{ width: 56, textAlign: 'right' }}>Δ</span>
+                                </div>
+                                {(inv.analysis!.wohnungen!).map((w, i) => (
+                                  <div key={i} style={{ padding: '6px 10px', boxShadow: i ? 'inset 0 0.5px 0 rgba(60,60,67,0.1)' : 'none' }}>
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.wohnung}</span>
+                                      <span style={{ width: 62, textAlign: 'right', fontSize: 12, color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>{w.erwartet != null ? eur(w.erwartet) : '—'}</span>
+                                      <span style={{ width: 62, textAlign: 'right', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{eur(w.abgerechnet)}</span>
+                                      <span style={{ width: 56, display: 'flex', justifyContent: 'flex-end' }}>{deltaChip(w.differenz, true)}</span>
+                                    </div>
+                                    {w.ursache && <p style={{ margin: '3px 0 0', fontSize: 11, color: '#B45309', lineHeight: 1.4 }}>→ {w.ursache}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {(inv.analysis?.auffaelligkeiten ?? []).length > 0 && (
                               <div style={{ margin: '0 0 8px' }}>
                                 {(inv.analysis!.auffaelligkeiten!).map((a, i) => (
@@ -743,9 +871,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                 {(inv.analysis!.belege!).map((b, i) => (
                                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', opacity: b.zugeordnet ? 1 : 0.55 }}>
                                     <a href={b.url} target="_blank" rel="noreferrer" style={{ color: '#8A7020', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      📎 {fmtShort(b.datum)} · {b.text}{b.zugeordnet ? '' : ` — nicht mitgezählt${b.grund ? ` (${b.grund})` : ''}`}
+                                      📎 {fmtShort(b.datum)} · {b.wohnung ? `${b.wohnung} · ` : ''}{b.text}{b.zugeordnet ? '' : ` — nicht mitgezählt${b.grund ? ` (${b.grund})` : ''}`}
                                     </a>
-                                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{eur(b.betrag)}</span>
+                                    <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(b.betrag)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -782,19 +910,58 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     </div>
                   )}
                 </div>
-              </div>
-            )
-          })}
-          {costs.months.length === 0 && (
-            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
-          )}
-          {costs.missingMinutes > 0 && (
-            <p style={{ fontSize: 11.5, color: '#B45309', margin: '2px 4px 0', lineHeight: 1.5 }}>
-              ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung — gerechnet mit {FALLBACK_MINUTES} Min. (Admin → 🧹 Reinigung pflegen).
-            </p>
-          )}
-        </div>
-      )}
+              )}
+            </div>
+          )
+        }
+
+        const aktuell = costs.months.find((m) => !m.isPast) ?? null
+        const rueck = costs.months.filter((m) => m.isPast)
+        return (
+          <div>
+            {invError && (
+              <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 12.5 }}>
+                {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+              </p>
+            )}
+            {pastData === null && (
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#9CA3AF' }}>⏳ Lade zurückliegende Monate…</p>
+            )}
+
+            {aktuell && (
+              <>
+                <p style={{ ...eyebrowStyle, marginTop: 4 }}>AKTUELLER MONAT</p>
+                {renderMonth(aktuell, 'aktuell')}
+              </>
+            )}
+            {rueck.length > 0 && (
+              <>
+                <p style={eyebrowStyle}>ZURÜCKLIEGEND — RECHNUNGS-PRÜFUNG</p>
+                {rueck.map((m) => renderMonth(m, 'rueck'))}
+                <p style={{ fontSize: 10.5, color: '#B0AA9C', margin: '2px 4px 0', lineHeight: 1.5 }}>
+                  Rückblick-Erwartungen rechnen mit den heutigen Zuordnungen & Sätzen — vor einem
+                  Zuständigkeits-Wechsel (z. B. Sweet/Cozy bis Juni bei Tip-Top) weichen sie ab.
+                </p>
+              </>
+            )}
+            {costs.future.length > 0 && (
+              <>
+                <p style={eyebrowStyle}>AUSBLICK — PROGNOSE</p>
+                {costs.future.map((m) => renderMonth(m, 'aus'))}
+              </>
+            )}
+
+            {!aktuell && rueck.length === 0 && costs.future.length === 0 && (
+              <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
+            )}
+            {costs.missingMinutes > 0 && (
+              <p style={{ fontSize: 11.5, color: '#B45309', margin: '10px 4px 0', lineHeight: 1.5 }}>
+                ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung — gerechnet mit {FALLBACK_MINUTES} Min. (Admin → 🧹 Reinigung pflegen).
+              </p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ═══ 🗺 TOUREN ═══ */}
       {mode === 'touren' && (tours.length === 0 ? (
