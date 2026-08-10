@@ -58,25 +58,53 @@ export async function GET(req: NextRequest) {
   }
 
   const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0)
+  const median = (xs: number[]) => {
+    if (!xs.length) return 0
+    const s = [...xs].sort((a, b) => a - b)
+    const m = Math.floor(s.length / 2)
+    return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2)
+  }
+  // Trend: Median der NEUEREN Hälfte vs. der ÄLTEREN Hälfte (chronologisch).
+  // deltaMin>0 = langsamer geworden, <0 = schneller. Erst ab 4 Messungen.
+  // `chrono` = Dauern in zeitlicher Reihenfolge (alt → neu).
+  const trend = (chrono: number[]): { deltaMin: number; olderMed: number; newerMed: number } | null => {
+    if (chrono.length < 4) return null
+    const half = Math.floor(chrono.length / 2)
+    const olderMed = median(chrono.slice(0, half))
+    const newerMed = median(chrono.slice(half))
+    return { deltaMin: newerMed - olderMed, olderMed, newerMed }
+  }
 
-  // Aggregat je Wohnung / je Person
+  // Aggregat je Wohnung / je Person — Werte NACH DATUM sortiert (alt → neu)
+  // sammeln, damit Trend + Verlauf chronologisch stimmen.
+  const asc = [...rows].sort((a, b) => (a.confirmed_at ?? '').localeCompare(b.confirmed_at ?? ''))
   const byListing = new Map<string, number[]>()
   const byPerson = new Map<string, number[]>()
   const push = (m: Map<string, number[]>, key: string, v: number) => {
     const arr = m.get(key); if (arr) arr.push(v); else m.set(key, [v])
   }
-  for (const r of rows) {
+  for (const r of asc) {
     push(byListing, r.listing_id, r.duration_min)
     push(byPerson, (r.person_name ?? 'Unbekannt').trim() || 'Unbekannt', r.duration_min)
   }
+  const allChrono = asc.map((r) => r.duration_min)
 
   return NextResponse.json({
-    gesamt: { count: rows.length, avgMin: avg(rows.map((r) => r.duration_min)) },
+    gesamt: {
+      count: rows.length, avgMin: avg(allChrono), medMin: median(allChrono),
+      trend: trend(allChrono),
+      // Verlauf für die Sparkline: chronologische Einzelwerte (max. letzte 40)
+      verlauf: allChrono.slice(-40),
+    },
     wohnungen: [...byListing.entries()]
-      .map(([id, xs]) => ({ title: titles.get(id) ?? 'Wohnung', count: xs.length, avgMin: avg(xs), minMin: Math.min(...xs), maxMin: Math.max(...xs) }))
-      .sort((a, b) => b.avgMin - a.avgMin),
+      .map(([id, xs]) => ({
+        title: titles.get(id) ?? 'Wohnung', count: xs.length,
+        avgMin: avg(xs), medMin: median(xs), minMin: Math.min(...xs), maxMin: Math.max(...xs),
+        trend: trend(xs),
+      }))
+      .sort((a, b) => b.medMin - a.medMin),
     personen: [...byPerson.entries()]
-      .map(([name, xs]) => ({ name, count: xs.length, avgMin: avg(xs) }))
+      .map(([name, xs]) => ({ name, count: xs.length, avgMin: avg(xs), medMin: median(xs) }))
       .sort((a, b) => b.count - a.count),
     letzte: rows.slice(0, 40).map((r) => ({
       title: titles.get(r.listing_id) ?? 'Wohnung',
