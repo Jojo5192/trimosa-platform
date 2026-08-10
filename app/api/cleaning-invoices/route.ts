@@ -288,13 +288,13 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | $
     const fmtDm = (iso: string) => `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
     const expectedTotal = typeof expected?.total === 'number' ? expected.total : null
 
-    /* ── Phase 2 (§257c): TIEFENANALYSE — die Rechnungs-PDFs der zugeordneten
-       Belege werden per Vision gelesen: einzelne Positionen mit LEISTUNGS-
-       Datum, Wohnung, Art und Betrag. Damit (a) werden Sammel-Rechnungen
-       (Tip-Top rechnet mehrere Wohnungen je Rechnung ab) exakt auf die
-       Wohnungen GESPLITTET und (b) jeder abgerechnete Reinigungstag gegen
-       die geplanten Wechsel abgeglichen. Fail-soft je Beleg — ohne lesbares
-       PDF bleibt die bisherige Ganz-Beleg-Zuordnung. ── */
+    /* ── Phase 2 (§257c): TIEFENANALYSE — die Rechnungs-PDFs werden per
+       Vision gelesen: einzelne Positionen mit LEISTUNGS-Datum, Wohnung, Art
+       und Betrag. Damit (a) werden Sammel-Rechnungen (Tip-Top rechnet
+       mehrere Wohnungen je Rechnung ab) exakt auf die Wohnungen GESPLITTET
+       und (b) jeder abgerechnete Reinigungstag gegen die geplanten Wechsel
+       abgeglichen. Fail-soft je Beleg — ohne lesbares PDF bleibt die
+       bisherige Ganz-Beleg-Zuordnung. ── */
     const { data: allLs } = await supabaseAdmin.from('listings').select('title').eq('is_active', true)
     const titleList = (allLs ?? []).map((l) => String(l.title ?? '')).filter(Boolean)
     const titleSet = new Set(titleList)
@@ -306,7 +306,27 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | $
     if (status === 'geprueft' && assigned.length > 9) {
       hinweise.push(`Positions-Tiefenanalyse auf die ersten 9 von ${assigned.length} Belegen begrenzt.`)
     }
-    if (status === 'geprueft' && assigned.length) {
+    // Monats-Fenster (±6 Tage) + Leistungs-Anteil eines Belegs darin —
+    // Grundlage für Perioden-Filter UND Erkundungs-Aufnahme
+    const rangeLo = new Date(Date.parse(`${month}-01T00:00:00Z`) - 6 * 86400_000).toISOString().slice(0, 10)
+    const rangeHi = new Date(Date.parse(monthEnd + 'T00:00:00Z') + 6 * 86400_000).toISOString().slice(0, 10)
+    const monatsAnteil = (pv: BelegDetail): { anteil: number; spanne: [string, string] } | null => {
+      const tage = pv.positionen.map((p) => p.datum).filter((d): d is string => !!d)
+      if (tage.length >= 2) {
+        return {
+          anteil: tage.filter((d) => d >= rangeLo && d <= rangeHi).length / tage.length,
+          spanne: [tage.reduce((a, b) => (a < b ? a : b)), tage.reduce((a, b) => (a > b ? a : b))],
+        }
+      }
+      if (pv.zeitraum?.von && pv.zeitraum?.bis) {
+        const { von, bis } = pv.zeitraum
+        const lo = von > rangeLo ? von : rangeLo
+        const hi = bis < rangeHi ? bis : rangeHi
+        return { anteil: Math.max(0, dayDiff(hi, lo) + 1) / Math.max(1, dayDiff(bis, von) + 1), spanne: [von, bis] }
+      }
+      return null
+    }
+    if (status === 'geprueft' && cands.length) {
       const vSystem = `Du liest die RECHNUNG einer Reinigungsfirma für TRIMOSA Apartments & Homes
 (Ferienwohnungen) und extrahierst die einzelnen Positionen.
 
@@ -335,6 +355,49 @@ Regeln:
 - KEINE Summen-, Zwischensummen-, Gesamtbetrags-, Übertrags- oder Steuer-/
   USt-Zeilen als Positionen aufnehmen — NUR echte Leistungszeilen.
 - Beträge und Daten NUR aus der Rechnung — NICHTS erfinden oder schätzen.`
+      const visionBeleg = async (c: Cand) => {
+        try {
+          const pdf = await pdfForVoucher(c.id)
+          if (!pdf) {
+            hinweise.push(`Beleg vom ${c.datum}: kein PDF abrufbar — ohne Positions-Analyse geprüft.`)
+            return
+          }
+          const vRaw = await askClaudeWithFile(vSystem,
+            `Rechnung von ${supplier}, Belegdatum ${c.datum}, Gesamtbetrag laut Buchhaltung ${c.betrag} € (brutto).`,
+            pdf, 9000)
+          const vj = parseJsonLoose(vRaw)
+          const isoOk = (x: unknown) => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null)
+          const positionen: Pos[] = (Array.isArray(vj.positionen) ? (vj.positionen as Record<string, unknown>[]) : [])
+            .map((p) => ({
+              datum: isoOk(p?.datum),
+              wohnung: typeof p?.wohnung === 'string' ? p.wohnung : 'unbekannt',
+              art: ['reinigung', 'anfahrt', 'zulage', 'sonstiges'].includes(String(p?.art)) ? String(p?.art) : 'sonstiges',
+              text: String(p?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+              betrag: typeof p?.betrag === 'number' && isFinite(p.betrag) ? r2(p.betrag) : null,
+            })).slice(0, 60)
+          const z = vj.leistungszeitraum as { von?: unknown; bis?: unknown } | undefined
+          // Review §257c: Summen-/USt-/Übertrags-Zeilen, die trotz Prompt-
+          // Regel durchrutschen, vergiften die Faktor-Normalisierung —
+          // deterministisch rausfiltern (nur Zeilen OHNE Wohnungs-Treffer)
+          const SUMMEN_RE = /summe|gesamt|übertrag|zahlbetrag|endbetrag|mwst|mehrwertsteuer|umsatzsteuer|\bust\b|netto|brutto/i
+          const leistungen = positionen.filter((p) => titleSet.has(p.wohnung) || p.art !== 'sonstiges' || !SUMMEN_RE.test(p.text))
+          // Positions-Beträge sind meist NETTO, der Beleg-Betrag BRUTTO —
+          // proportional normalisieren, damit die Wohnungs-Anteile in Summe
+          // EXAKT den Beleg-Betrag ergeben. Plausibel sind nur Faktoren um
+          // 1,0 (Brutto-Zeilen) bis ~1,19 (Netto + USt) — alles andere
+          // (Vision hat Zeilen verpasst/erfunden/Summen mitgezählt) →
+          // keine Geld-Splittung über Positionen, Termine bleiben nutzbar.
+          const rawSum = leistungen.reduce((a, p) => a + (p.betrag ?? 0), 0)
+          const f = rawSum > 0 && c.betrag > 0 ? c.betrag / rawSum : null
+          posByBeleg.set(c.id, {
+            zeitraum: z ? { von: isoOk(z.von), bis: isoOk(z.bis) } : null,
+            positionen: leistungen,
+            factor: f != null && f >= 0.9 && f <= 1.3 ? f : null,
+          })
+        } catch (e) {
+          hinweise.push(`Beleg vom ${c.datum}: Positions-Analyse fehlgeschlagen (${(e instanceof Error ? e.message : String(e)).slice(0, 120)}).`)
+        }
+      }
       // Wellen à 3 — Vision dominiert die Laufzeit, sevdesk (PDF-Abruf) wird
       // nicht mit allen Downloads parallel geflutet
       const queue = assigned.slice(0, 9)
@@ -343,49 +406,34 @@ Regeln:
           hinweise.push(`Zeitbudget erreicht — ${queue.length - i} Beleg(e) ohne Positions-Analyse geprüft.`)
           break
         }
-        await Promise.all(queue.slice(i, i + 3).map(async (c) => {
-          try {
-            const pdf = await pdfForVoucher(c.id)
-            if (!pdf) {
-              hinweise.push(`Beleg vom ${c.datum}: kein PDF abrufbar — ohne Positions-Analyse geprüft.`)
-              return
-            }
-            const vRaw = await askClaudeWithFile(vSystem,
-              `Rechnung von ${supplier}, Belegdatum ${c.datum}, Gesamtbetrag laut Buchhaltung ${c.betrag} € (brutto).`,
-              pdf, 9000)
-            const vj = parseJsonLoose(vRaw)
-            const isoOk = (x: unknown) => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null)
-            const positionen: Pos[] = (Array.isArray(vj.positionen) ? (vj.positionen as Record<string, unknown>[]) : [])
-              .map((p) => ({
-                datum: isoOk(p?.datum),
-                wohnung: typeof p?.wohnung === 'string' ? p.wohnung : 'unbekannt',
-                art: ['reinigung', 'anfahrt', 'zulage', 'sonstiges'].includes(String(p?.art)) ? String(p?.art) : 'sonstiges',
-                text: String(p?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
-                betrag: typeof p?.betrag === 'number' && isFinite(p.betrag) ? r2(p.betrag) : null,
-              })).slice(0, 60)
-            const z = vj.leistungszeitraum as { von?: unknown; bis?: unknown } | undefined
-            // Review §257c: Summen-/USt-/Übertrags-Zeilen, die trotz Prompt-
-            // Regel durchrutschen, vergiften die Faktor-Normalisierung —
-            // deterministisch rausfiltern (nur Zeilen OHNE Wohnungs-Treffer)
-            const SUMMEN_RE = /summe|gesamt|übertrag|zahlbetrag|endbetrag|mwst|mehrwertsteuer|umsatzsteuer|\bust\b|netto|brutto/i
-            const leistungen = positionen.filter((p) => titleSet.has(p.wohnung) || p.art !== 'sonstiges' || !SUMMEN_RE.test(p.text))
-            // Positions-Beträge sind meist NETTO, der Beleg-Betrag BRUTTO —
-            // proportional normalisieren, damit die Wohnungs-Anteile in Summe
-            // EXAKT den Beleg-Betrag ergeben. Plausibel sind nur Faktoren um
-            // 1,0 (Brutto-Zeilen) bis ~1,19 (Netto + USt) — alles andere
-            // (Vision hat Zeilen verpasst/erfunden/Summen mitgezählt) →
-            // keine Geld-Splittung über Positionen, Termine bleiben nutzbar.
-            const rawSum = leistungen.reduce((a, p) => a + (p.betrag ?? 0), 0)
-            const f = rawSum > 0 && c.betrag > 0 ? c.betrag / rawSum : null
-            posByBeleg.set(c.id, {
-              zeitraum: z ? { von: isoOk(z.von), bis: isoOk(z.bis) } : null,
-              positionen: leistungen,
-              factor: f != null && f >= 0.9 && f <= 1.3 ? f : null,
-            })
-          } catch (e) {
-            hinweise.push(`Beleg vom ${c.datum}: Positions-Analyse fehlgeschlagen (${(e instanceof Error ? e.message : String(e)).slice(0, 120)}).`)
+        await Promise.all(queue.slice(i, i + 3).map(visionBeleg))
+      }
+      /* ── ERKUNDUNG (Live-Fund Tip-Top): hat Phase 1 NICHTS zugeordnet
+         (Beträge passen zu keiner Monats-Erwartung — typisch bei Sammel-/
+         Mehrmonats-Rechnungen), werden die monatsnächsten Kandidaten
+         TROTZDEM gelesen: Belege mit überwiegend Monats-Leistungen kommen
+         nachträglich in die Prüfung, Mehrmonats-Belege bleiben draußen,
+         zeigen aber ihre Positionen — der PDF-Inhalt wird nie verschluckt. ── */
+      if (!assigned.length) {
+        const explor = [...cands]
+          .sort((a, b) => Math.abs(dayDiff(a.datum, monthEnd)) - Math.abs(dayDiff(b.datum, monthEnd)))
+          .slice(0, 4)
+        for (let i = 0; i < explor.length; i += 2) {
+          if (Date.now() > deadline - 70_000) break
+          await Promise.all(explor.slice(i, i + 2).map(visionBeleg))
+        }
+        for (const c of explor) {
+          const pv = posByBeleg.get(c.id)
+          if (!pv) continue
+          const ma = monatsAnteil(pv)
+          if (!ma) continue
+          if (ma.anteil >= 0.5) {
+            matched.add(c.id)
+            grund.delete(c.id)
+          } else if (ma.anteil > 0) {
+            hinweise.push(`Beleg vom ${c.datum} (${c.betrag} €): nur ein Teil der Leistungstage (${fmtDm(ma.spanne[0])}–${fmtDm(ma.spanne[1])}) liegt in ${month} — Mehrmonats-/Sammelrechnung, bitte per 📄-PDF prüfen.`)
           }
-        }))
+        }
       }
     }
 
@@ -395,28 +443,14 @@ Regeln:
        vom 12.06. decken die MAI-Leistungen (nachlaufende Fakturierung),
        die Juni-Abrechnung kam erst am 05.07. — ohne diesen Filter würden
        beide Batches addiert und die Prüfsumme verdoppelt. ── */
-    const rangeLo = new Date(Date.parse(`${month}-01T00:00:00Z`) - 6 * 86400_000).toISOString().slice(0, 10)
-    const rangeHi = new Date(Date.parse(monthEnd + 'T00:00:00Z') + 6 * 86400_000).toISOString().slice(0, 10)
     for (const c of cands) {
       if (!matched.has(c.id)) continue
       const pv = posByBeleg.get(c.id)
       if (!pv) continue
-      let anteil: number | null = null
-      let spanne: [string, string] | null = null
-      const tage = pv.positionen.map((p) => p.datum).filter((d): d is string => !!d)
-      if (tage.length >= 3) {
-        anteil = tage.filter((d) => d >= rangeLo && d <= rangeHi).length / tage.length
-        spanne = [tage.reduce((a, b) => (a < b ? a : b)), tage.reduce((a, b) => (a > b ? a : b))]
-      } else if (pv.zeitraum?.von && pv.zeitraum?.bis) {
-        const { von, bis } = pv.zeitraum
-        const lo = von > rangeLo ? von : rangeLo
-        const hi = bis < rangeHi ? bis : rangeHi
-        anteil = Math.max(0, dayDiff(hi, lo) + 1) / Math.max(1, dayDiff(bis, von) + 1)
-        spanne = [von, bis]
-      }
-      if (anteil != null && anteil < 0.3 && spanne) {
+      const ma = monatsAnteil(pv)
+      if (ma && ma.anteil < 0.3) {
         matched.delete(c.id)
-        grund.set(c.id, `Leistungszeitraum ${fmtDm(spanne[0])}–${fmtDm(spanne[1])} — andere Abrechnungs-Periode`)
+        grund.set(c.id, `Leistungszeitraum ${fmtDm(ma.spanne[0])}–${fmtDm(ma.spanne[1])} — andere Abrechnungs-Periode`)
       }
     }
     const sum = r2(cands.filter((c) => matched.has(c.id)).reduce((a, c) => a + c.betrag, 0))
