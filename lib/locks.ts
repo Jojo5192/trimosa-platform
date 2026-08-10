@@ -691,8 +691,10 @@ export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | nu
  */
 const GUEST_AUTH_RE = /^TRIMOSA [0-9a-f]{6,10}$/i
 
-export async function firstCleaningOpenAt(locks: LockRef[], afterHm: string): Promise<string | null> {
-  const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
+/** Beginn der Reinigung. `onDay` = Berlin-Datum der Reinigung (Default heute).
+ *  Nur für Tage im Log-Fenster (Nuki ~letzte 50 Einträge). */
+export async function firstCleaningOpenAt(locks: LockRef[], afterHm: string, onDay?: string): Promise<string | null> {
+  const targetDay = onDay ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
   const hmBerlin = (iso: string): string => new Intl.DateTimeFormat('de-DE', {
     timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date(iso))
@@ -701,7 +703,7 @@ export async function firstCleaningOpenAt(locks: LockRef[], afterHm: string): Pr
   let earliest: string | null = null
   const consider = (iso: string | undefined) => {
     if (!iso || Number.isNaN(Date.parse(iso))) return
-    if (dayBerlin(iso) !== todayBerlin) return
+    if (dayBerlin(iso) !== targetDay) return
     if (hmBerlin(iso) < afterHm) return
     if (!earliest || Date.parse(iso) < Date.parse(earliest)) earliest = iso
   }
