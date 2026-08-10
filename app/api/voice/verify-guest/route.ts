@@ -287,9 +287,12 @@ export async function POST(request: Request) {
     // §227: tedee-Keypads brauchen die ✓-Taste, Nuki-Keypads NICHT — auch das
     // aus den echten Schloss-Daten statt aus dem Wohnungsnamen.
     const tedee = locks.some((l) => String(l?.provider ?? '').toLowerCase() === 'tedee')
-    const keypadStep = tedee
-      ? '2) Beim tedee-Keypad muss die Eingabe mit der ✓-Taste bestätigt werden — wurde das gemacht?'
-      : '2) WICHTIG: Unser Nuki-Keypad hat KEIN Häkchen und keine Bestätigen-Taste — nach der 6. Ziffer entriegelt die Tür AUTOMATISCH. Bei Vertippen kurz warten und die 6 Ziffern neu eingeben. Erzähle dem Gast NIE etwas von einem Häkchen.'
+    const ttlock = locks.some((l) => String(l?.provider ?? '').toLowerCase() === 'ttlock')
+    const keypadStep = ttlock
+      ? '2) Bei diesem Keypad muss die Eingabe mit der RAUTE-Taste (#) abgeschlossen werden — Code eintippen, dann #. Wurde die Raute gedrückt?'
+      : tedee
+        ? '2) Beim tedee-Keypad muss die Eingabe mit der ✓-Taste bestätigt werden — wurde das gemacht?'
+        : '2) WICHTIG: Unser Nuki-Keypad hat KEIN Häkchen und keine Bestätigen-Taste — nach der 6. Ziffer entriegelt die Tür AUTOMATISCH. Bei Vertippen kurz warten und die 6 Ziffern neu eingeben. Erzähle dem Gast NIE etwas von einem Häkchen.'
     // §190: Anruf am Anreisetag VOR der Check-in-Zeit → Code ja, aber mit
     // klarem Hinweis (außer im Chat wurde ein früherer Check-in vereinbart)
     const nowHM = new Intl.DateTimeFormat('de-DE', {
