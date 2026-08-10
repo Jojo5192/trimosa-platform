@@ -679,6 +679,89 @@ export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | nu
 }
 
 /**
+ * ⏱ §255: Beginn der Reinigung = erste TÜRÖFFNUNG am heutigen Berlin-Tag
+ * ab `afterHm`, die NICHT von einem GAST-Code stammt (Gast-Auths heißen
+ * „TRIMOSA <hex8>" — Team-Codes, Alt-Dauercodes („Zutrittscode") und
+ * App-Öffnungen zählen). Liefert den frühesten Zeitstempel (ISO) oder null.
+ *
+ * Nuki-Log-Semantik (§248c-kalibriert): Einträge tragen name/date/authId/
+ * action/state — Keypad-Öffnungen heißen im `name` nur wie ihre Auth
+ * („Zutrittscode"), der echte Nutzer steckt hinter der authId. action
+ * 1 = unlock / 3 = unlatch; state 0 = Erfolg.
+ */
+const GUEST_AUTH_RE = /^TRIMOSA [0-9a-f]{6,10}$/i
+
+export async function firstCleaningOpenAt(locks: LockRef[], afterHm: string): Promise<string | null> {
+  const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
+  const hmBerlin = (iso: string): string => new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(iso))
+  const dayBerlin = (iso: string): string => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date(iso))
+
+  let earliest: string | null = null
+  const consider = (iso: string | undefined) => {
+    if (!iso || Number.isNaN(Date.parse(iso))) return
+    if (dayBerlin(iso) !== todayBerlin) return
+    if (hmBerlin(iso) < afterHm) return
+    if (!earliest || Date.parse(iso) < Date.parse(earliest)) earliest = iso
+  }
+
+  const nukiIds = (locks ?? []).filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
+  if (nukiIds.length && nukiConfigured()) {
+    for (const id of nukiIds) {
+      try {
+        const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
+        if (!res.ok) continue
+        const entries = await res.json() as { name?: string; date?: string; authId?: string; action?: number; state?: number }[]
+        // authId → Auth-Name auflösen (Gast-Code-Erkennung, §248c)
+        const authName = new Map<string, string>()
+        try {
+          const ar = await nukiFetch(`/smartlock/${id}/auth`)
+          if (ar.ok) {
+            for (const a of (await ar.json()) as { id?: string; name?: string }[]) {
+              if (a.id) authName.set(String(a.id), String(a.name ?? ''))
+            }
+          }
+        } catch { /* ohne Auflösung entscheidet der Log-name */ }
+        for (const e of entries ?? []) {
+          if (e.action !== 1 && e.action !== 3) continue          // nur Öffnungen
+          if (e.state !== undefined && e.state !== 0) continue     // nur erfolgreiche
+          const who = (e.authId && authName.get(String(e.authId))) || String(e.name ?? '')
+          if (GUEST_AUTH_RE.test(who.trim())) continue             // Gast-Codes zählen nicht
+          consider(e.date)
+        }
+      } catch (e) {
+        console.error('[cleaning-duration] Nuki-Log fehlgeschlagen:', e)
+      }
+    }
+  }
+
+  // tedee (River): Events des Tages, Gast-PINs (Alias „TRIMOSA <hex>") raus.
+  // Öffnungs-Eventtyp ist nicht sicher dokumentiert → jedes Ereignis mit
+  // Zeitstempel zählt (best effort; Kalibrierung am lebenden Schloss).
+  const tedeeIds = (locks ?? []).filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
+  if (tedeeIds.length && tedeeConfigured()) {
+    for (const id of tedeeIds) {
+      for (const path of TEDEE_ACTIVITY_PATHS(id)) {
+        try {
+          const res = await tedeeFetch(path)
+          if (!res.ok) continue
+          const events = tedeeEventsOf(tedeeResult<unknown>(await res.json()))
+          for (const ev of events) {
+            const o = ev as { date?: string; pinAlias?: string }
+            if (o.pinAlias && GUEST_AUTH_RE.test(String(o.pinAlias).trim())) continue
+            consider(o.date)
+          }
+          break
+        } catch { /* nächster Pfad-Kandidat */ }
+      }
+    }
+  }
+
+  return earliest
+}
+
+/**
  * tedee-Activity-Prüfung (§231-Nachtrag): Die exakte Endpoint-/Feld-Form ist
  * nicht sicher dokumentiert — deshalb werden beide Pfad-Kandidaten probiert
  * und die Ereignisse als GANZES auf heutiges Datum + Team-Alias geprüft

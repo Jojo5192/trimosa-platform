@@ -94,6 +94,7 @@ interface ListingRow {
   cleaning_token?: string
   cleaning_responsible?: string | null
   check_in_time?: string | null
+  check_out_time?: string | null
   locks?: LockRef[] | null
 }
 
@@ -111,7 +112,7 @@ async function listingByToken(token: string): Promise<ListingRow | null> {
   if (!/^[0-9a-f-]{36}$/i.test(token)) return null
   const { data, error } = await supabaseAdmin
     .from('listings')
-    .select('id, title, cleaning_token, cleaning_responsible, check_in_time, locks')
+    .select('id, title, cleaning_token, cleaning_responsible, check_in_time, check_out_time, locks')
     .eq('cleaning_token', token)
     .maybeSingle()
   if (error) {
@@ -167,6 +168,8 @@ export interface ConfirmResult {
   status: 'gemeldet' | 'schon_gemeldet' | 'kein_slot' | 'zeitfenster' | 'unbekannt' | 'fehler'
   verify?: 'bestaetigt' | 'unbestaetigt' | 'nicht_pruefbar'
   earlyCheckinSent?: boolean
+  /** §255: gemessene Reinigungsdauer (erste Türöffnung → Meldung), wenn ermittelbar */
+  durationMin?: number | null
 }
 
 export async function confirmCleaning(token: string): Promise<ConfirmResult> {
@@ -203,6 +206,35 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     if (/duplicate|unique/i.test(insErr.message)) return { ok: true, status: 'schon_gemeldet' }
     console.error('[cleaning-done] Insert fehlgeschlagen:', insErr.message)
     return { ok: false, status: 'fehler' }
+  }
+
+  // ⏱ §255: Reinigungs-DAUER — Start = erste Türöffnung ohne Gast-Codes am
+  // heutigen Tag (Schloss-Protokoll), Ende = diese Fertigmeldung. Grenze:
+  // am Abreisetag selbst zählt erst ab Check-out-Zeit (der Gast öffnet
+  // morgens ja noch selbst); an späteren Tagen ab 06:00.
+  let durationLabel = ''
+  let durationMin: number | null = null
+  try {
+    const afterHm = state.slotDate === now.date
+      ? ((l.check_out_time ?? '10:00').slice(0, 5))
+      : '06:00'
+    const { firstCleaningOpenAt } = await import('@/lib/locks')
+    const startedAt = await firstCleaningOpenAt((l.locks as LockRef[] | null) ?? [], afterHm)
+    if (startedAt) {
+      const mins = Math.round((Date.now() - Date.parse(startedAt)) / 60000)
+      if (mins >= 1 && mins <= 12 * 60) {
+        durationMin = mins
+        await supabaseAdmin.from('cleaning_confirmations')
+          .update({ started_at: startedAt, duration_min: mins })
+          .eq('listing_id', l.id).eq('slot_date', state.slotDate)
+        const h = Math.floor(mins / 60)
+        durationLabel = ` · Dauer ${h ? `${h} h ` : ''}${mins % 60} min`
+      }
+    }
+  } catch (e) {
+    // Migration 20260811_cleaning_duration.sql offen oder Schloss nicht
+    // erreichbar → Meldung läuft normal weiter, nur ohne Dauer
+    console.error('[cleaning-done] Dauer-Messung fehlgeschlagen:', e)
   }
 
   let earlyCheckinSent = false
@@ -251,7 +283,7 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     const { sendPushToTeam } = await import('@/lib/push')
     await sendPushToTeam(
       `🧹 ${l.title ?? 'Wohnung'} als gereinigt gemeldet`,
-      `${personName ?? 'Vor Ort'} · ${now.hm} Uhr`
+      `${personName ?? 'Vor Ort'} · ${now.hm} Uhr${durationLabel}`
         + (earlyCheckinSent ? ' · Früh-Check-in-Info an den Gast gesendet' : ''),
       '/team', { category: 'tasks' },
     )
@@ -259,5 +291,5 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     console.error('[cleaning-done] Team-Push fehlgeschlagen:', e)
   }
 
-  return { ok: true, status: 'gemeldet', verify, earlyCheckinSent }
+  return { ok: true, status: 'gemeldet', verify, earlyCheckinSent, durationMin }
 }
