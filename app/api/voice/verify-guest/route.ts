@@ -289,7 +289,7 @@ export async function POST(request: Request) {
     const tedee = locks.some((l) => String(l?.provider ?? '').toLowerCase() === 'tedee')
     const ttlock = locks.some((l) => String(l?.provider ?? '').toLowerCase() === 'ttlock')
     const keypadStep = ttlock
-      ? '2) Bei diesem Keypad muss die Eingabe mit der RAUTE-Taste (#) abgeschlossen werden — Code eintippen, dann #. Wurde die Raute gedrückt?'
+      ? '2) Dieses Keypad ist im Ruhezustand DUNKEL — erst das Tastenfeld kurz berühren, dann leuchten die Ziffern auf. Danach Code eintippen und mit der RAUTE-Taste (#) abschließen. Wurde berührt + die Raute gedrückt?'
       : tedee
         ? '2) Beim tedee-Keypad muss die Eingabe mit der ✓-Taste bestätigt werden — wurde das gemacht?'
         : '2) WICHTIG: Unser Nuki-Keypad hat KEIN Häkchen und keine Bestätigen-Taste — nach der 6. Ziffer entriegelt die Tür AUTOMATISCH. Bei Vertippen kurz warten und die 6 Ziffern neu eingeben. Erzähle dem Gast NIE etwas von einem Häkchen.'
