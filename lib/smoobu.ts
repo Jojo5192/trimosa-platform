@@ -405,7 +405,7 @@ export async function listReservations(
   page: number,
   pageSize = 25,
   apiKey?: string,
-): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; adults: number | null; children: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean }> {
+): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; adults: number | null; children: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean; ok: boolean }> {
   const params = new URLSearchParams({
     from: fromIso,
     to: toIso,
@@ -418,8 +418,12 @@ export async function listReservations(
     cache: 'no-store',
   })
   if (!res.ok) {
+    // ⚠️ §251: ok:false MUSS vom Aufrufer beachtet werden — ein leeres
+    // Ergebnis wegen API-Fehler ist NICHT „das Fenster ist leer". Der
+    // Storno-Abgleich hat am 8.8. GENAU deshalb Dutzende aktive Buchungen
+    // fälschlich storniert (leere Antwort → „alle in Smoobu gelöscht").
     console.error('[Smoobu] listReservations failed', res.status)
-    return { reservations: [], hasMore: false }
+    return { reservations: [], hasMore: false, ok: false }
   }
   const data = await res.json()
   const rows: unknown[] = Array.isArray(data?.bookings) ? data.bookings
@@ -445,7 +449,7 @@ export async function listReservations(
       blocked: obj['is-blocked-booking'] === true,
     }
   }).filter((r) => Number.isFinite(r.id))
-  return { reservations, hasMore: pageCount > page }
+  return { reservations, hasMore: pageCount > page, ok: true }
 }
 
 /**
