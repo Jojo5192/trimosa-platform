@@ -232,9 +232,13 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.text || '—'}`).jo
     let status = 'geprueft'
     let ki: Record<string, unknown> = {}
     try {
-      const raw = await askClaude(system, user, 4000)
-      const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
-      ki = JSON.parse(clean)
+      // §45-Lektion: das Denkbudget frisst max_tokens — 4000 führte zu
+      // abgeschnittenem JSON („Unterminated string"); 12000 lässt Denk- UND
+      // Antwort-Anteil sicher Platz, parseJsonLoose fängt Prosa-Reste ab
+      const raw = await askClaude(system, user, 12000)
+      const { parseJsonLoose } = await import('@/lib/beleg-ki')
+      ki = parseJsonLoose(raw)
+      if (!Array.isArray(ki.zugeordnet)) throw new Error('Antwort ohne zugeordnet-Liste')
     } catch (e) {
       status = 'fehler'
       ki = { einschaetzung: 'Automatische Zuordnung fehlgeschlagen — unten alle gefundenen Belege des Lieferanten. Fehler: ' + (e instanceof Error ? e.message : String(e)) }
