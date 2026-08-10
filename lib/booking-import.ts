@@ -39,7 +39,12 @@ export async function importMissingReservations(
   let windowComplete = true
   const maxPages = (futureDays + (opts.pastDays ?? 7)) > 200 ? 20 : 5
   for (let p = 1; p <= maxPages; p++) {
-    const { reservations, hasMore } = await listReservations(from, to, p, 100)
+    const { reservations, hasMore, ok } = await listReservations(from, to, p, 100)
+    // §251: API-Fehler ≠ leeres Fenster! Ohne diesen Guard hat der
+    // Storno-Abgleich am 8.8. bei einem Smoobu-Aussetzer ALLE Buchungen
+    // im Fenster für „gelöscht" gehalten und massenhaft fälschlich
+    // storniert. Fehler → Fenster gilt als UNVOLLSTÄNDIG, Abgleich pausiert.
+    if (!ok) { windowComplete = false; break }
     for (const r of reservations) {
       seen.set(r.id, r)
       if (r.cancelled || r.blocked || !r.arrival || !r.departure || existing.has(r.id) || opts.syncOnly) { skipped++; continue }
@@ -148,11 +153,29 @@ export async function importMissingReservations(
     .gte('check_in', from)
     .lte('check_out', to)
     .limit(1000)
+  // §251 Sanity-BREMSE (zweites Netz neben dem ok-Guard): Verschwinden
+  // plötzlich VIELE Buchungen aus dem Smoobu-Fenster, ist das praktisch nie
+  // Realität, sondern ein API-/Parse-Problem — dann NICHT stornieren,
+  // sondern das Team alarmieren. Explizite cancelled-Flags (die Reservierung
+  // wurde ja GELIEFERT) bleiben davon unberührt.
+  const missingCandidates = (ours ?? []).filter((b) => {
+    const sid = Number(b.smoobu_reservation_id)
+    return windowComplete && !seen.has(sid) && seen.get(sid)?.cancelled !== true
+  }).length
+  const missingSane = missingCandidates <= 5
+  if (!missingSane) {
+    console.error(`[booking-import] 🚨 Storno-Abgleich AUSGESETZT: ${missingCandidates} Buchungen fehlen plötzlich im Smoobu-Fenster — vermutlich API-Fehler.`)
+    await sendPushToTeam(
+      '⚠️ Buchungs-Abgleich ausgesetzt',
+      `${missingCandidates} Buchungen fehlen plötzlich in der Smoobu-Antwort — Massen-Storno verhindert, bitte Smoobu prüfen.`,
+      '/team',
+    ).catch(() => {})
+  }
   for (const b of ours ?? []) {
     const sid = Number(b.smoobu_reservation_id)
     const r = seen.get(sid)
     const smoobuCancelled = r?.cancelled === true
-    const missingInSmoobu = windowComplete && !seen.has(sid)
+    const missingInSmoobu = windowComplete && missingSane && !seen.has(sid)
     if (smoobuCancelled || missingInSmoobu) {
       const { error } = await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', b.id)
       if (!error) {
