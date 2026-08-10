@@ -204,6 +204,40 @@ export async function GET(request: Request) {
     if (!m.read_at && !bAnswered.has(m.booking_id)) bUnread[m.booking_id] = (bUnread[m.booking_id] ?? 0) + 1
   }
 
+  // §252b: Markierungen (✓ „keine Antwort nötig" / 📞) GEZIELT laden.
+  // Die großen Nachrichten-Queries oben sind auf die 800/400 NEUESTEN
+  // Nachrichten ALLER Threads begrenzt — bei alten Threads liegt die markierte
+  // letzte Nachricht außerhalb des Fensters, das Flag war dadurch unsichtbar
+  // (PATCH lieferte ok, die Anzeige blieb ewig „unbeantwortet").
+  // Semantik bleibt: eine Nachricht, die NEUER als die Markierung ist,
+  // reaktiviert den Thread (Vergleich Markierungs-Nachricht vs. letzte).
+  const flaggedAt: Record<string, { noReply?: number; phone?: number }> = {}
+  try {
+    const { data: fRows } = await supabaseAdmin
+      .from('messages')
+      .select('booking_id, conversation_id, created_at, no_reply_needed, phone_resolved')
+      .or('no_reply_needed.eq.true,phone_resolved.eq.true')
+      .limit(1000)
+    for (const f of (fRows ?? []) as Array<{
+      booking_id: string | null; conversation_id: string | null; created_at: string
+      no_reply_needed: boolean | null; phone_resolved: boolean | null
+    }>) {
+      const key = f.booking_id || f.conversation_id
+      const t = Date.parse(f.created_at)
+      if (!key || !Number.isFinite(t)) continue
+      const e = (flaggedAt[key] ??= {})
+      if (f.no_reply_needed) e.noReply = Math.max(e.noReply ?? 0, t)
+      if (f.phone_resolved) e.phone = Math.max(e.phone ?? 0, t)
+    }
+  } catch { /* fail-soft: dann zählt nur das Fenster wie bisher */ }
+  function isFlagged(key: string, lastAt: string | null | undefined, which: 'noReply' | 'phone'): boolean {
+    const at = flaggedAt[key]?.[which]
+    if (!at) return false
+    if (!lastAt) return true
+    const last = Date.parse(lastAt)
+    return !Number.isFinite(last) || at >= last
+  }
+
   const lastArchive: Record<number, Last> = {}
   const { data: aMsgs } = smoobuIds.length
     ? await supabaseAdmin
@@ -291,8 +325,8 @@ export async function GET(request: Request) {
       lastPreview: last?.preview ?? null,
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
       guestLang: dLang[c.id] ?? null,
-      noReplyNeeded: last?.noReply ?? false,
-      phoneResolved: last?.phone ?? false,
+      noReplyNeeded: isFlagged(c.id, c.last_message_at as string | null, 'noReply'),
+      phoneResolved: isFlagged(c.id, c.last_message_at as string | null, 'phone'),
       adults: b?.adults ?? null,
       children: b?.children ?? null,
       // §247: Türcode fürs Team direkt in der Gast-Karte (Route ist team-gated)
@@ -327,8 +361,8 @@ export async function GET(request: Request) {
         lastPreview: last?.preview ?? null,
         lastSender: last?.sender ?? null,
         guestLang: bLang[b.id] ?? null,
-        noReplyNeeded: last && 'noReply' in last ? !!last.noReply : false,
-        phoneResolved: last && 'phone' in last ? !!last.phone : false,
+        noReplyNeeded: isFlagged(b.id, last?.at, 'noReply'),
+        phoneResolved: isFlagged(b.id, last?.at, 'phone'),
         adults: b.adults ?? null,
         children: b.children ?? null,
         doorCode: (b.door_code as string | null) ?? null,   // §247
@@ -380,13 +414,52 @@ export async function PATCH(req: Request) {
   // field: 'no_reply' (Default, ✓) oder 'phone' (📞 per Telefonat geklärt)
   const column = field === 'phone' ? 'phone_resolved' : 'no_reply_needed'
   const col = kind === 'booking' ? 'booking_id' : 'conversation_id'
-  const { data: last } = await supabaseAdmin
+  type LastRow = { id: string; created_at: string | null }
+  const lastRes = await supabaseAdmin
     .from('messages')
-    .select('id')
+    .select('id, created_at')
     .eq(col, id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
+  let last = (lastRes.data ?? null) as LastRow | null
+
+  // §252b: Bei nie geöffneten ALT-Threads liegt die letzte Nachricht nur im
+  // Smoobu-ARCHIV (keine bzw. eine ältere messages-Zeile) — dann würde das
+  // Flag auf einer veralteten Nachricht landen und die Inbox-Semantik
+  // (Markierung >= letzte Nachricht) nie greifen. Fix: die neueste
+  // Archiv-Nachricht als messages-Zeile MATERIALISIEREN — mit derselben
+  // smoobu_message_id + Original-Zeit, exakt wie der Sync es beim
+  // Thread-Öffnen täte (kein Duplikat-Risiko, der Sync dedupliziert darüber).
+  if (kind === 'booking') {
+    try {
+      const { data: bk } = await supabaseAdmin
+        .from('bookings').select('smoobu_reservation_id').eq('id', id).maybeSingle()
+      const sid = Number(bk?.smoobu_reservation_id)
+      if (Number.isFinite(sid)) {
+        const { data: arch } = await supabaseAdmin
+          .from('smoobu_message_archive')
+          .select('smoobu_message_id, sent_at, sender_type, content')
+          .eq('smoobu_reservation_id', sid)
+          .order('sent_at', { ascending: false })
+          .limit(1).maybeSingle()
+        const archNewer = arch?.sent_at && (!last?.created_at || Date.parse(arch.sent_at) > Date.parse(last.created_at))
+        if (arch && archNewer && arch.content) {
+          // Archiv-ID ist "<resId>_<msgId>" — messages speichert nur die msgId
+          const msgId = String(arch.smoobu_message_id ?? '').split('_').pop() || null
+          const { data: created } = await supabaseAdmin.from('messages').insert({
+            booking_id: id,
+            smoobu_message_id: msgId,
+            sender_type: arch.sender_type === 'guest' ? 'guest' : 'host',
+            content: arch.content,
+            created_at: arch.sent_at,
+          }).select('id, created_at').single()
+          if (created) last = created as unknown as LastRow
+        }
+      }
+    } catch { /* fail-soft: dann wird wie bisher die neueste vorhandene Zeile geflaggt */ }
+  }
+
   if (!last) return NextResponse.json({ error: 'Keine Nachricht im Thread.' }, { status: 404 })
   const { error } = await supabaseAdmin.from('messages').update({ [column]: value }).eq('id', last.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
