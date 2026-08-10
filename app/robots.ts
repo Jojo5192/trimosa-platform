@@ -7,7 +7,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/dashboard/', '/guest/', '/booking/', '/api/', '/login', '/register', '/passwort-vergessen', '/passwort-zuruecksetzen', '/auth/', '/team', '/mappe/', '/reinigung/', '/buchhaltung/'],
+      // Auth-Seiten (/login, /register, /passwort-*) sind bewusst NICHT mehr
+      // disallowed: Sie tragen ein noindex im jeweiligen layout.tsx — Google muss
+      // sie crawlen DÜRFEN, um das noindex zu sehen (GSC-Warnung „Indexiert,
+      // obwohl durch robots.txt blockiert", §252).
+      disallow: ['/dashboard/', '/guest/', '/booking/', '/api/', '/auth/', '/team', '/mappe/', '/reinigung/', '/buchhaltung/'],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   }
