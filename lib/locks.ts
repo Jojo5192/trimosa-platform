@@ -305,6 +305,43 @@ export async function ttlockTestProbe(lockId: number, testPin?: string, removeTe
   return out
 }
 
+/* ── 🔓 Fern-Öffnen (§253): entriegelt den Zylinder wie ein Keypad-Code ── */
+
+/** Nuki „unlock" (action 1 = aufschließen, NICHT unlatch — passt zu den
+ *  Zylinder-Schlössern; ein Türöffner-Motor ist nicht vorhanden). */
+async function openNukiLock(smartlockId: number): Promise<void> {
+  const res = await nukiFetch(`/smartlock/${smartlockId}/action`, {
+    method: 'POST',
+    body: JSON.stringify({ action: 1, option: 0 }),
+  })
+  if (!res.ok && res.status !== 202 && res.status !== 204) {
+    throw new Error(`Nuki action HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  }
+}
+
+/** tedee „unlock" (River Retreat). Endpoint aus der v37-Doku; die Operation
+ *  läuft asynchron, der POST reicht fürs Auslösen. */
+async function openTedeeLock(lockId: number): Promise<void> {
+  const res = await tedeeFetch(`/api/v37/my/lock/${lockId}/operation/unlock`, { method: 'POST' })
+  if (!res.ok && res.status !== 202 && res.status !== 204) {
+    throw new Error(`tedee unlock HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  }
+}
+
+/** TTLock „unlock" via Gateway (Minden UG). Braucht Bridge-Verbindung. */
+async function openTTLock(lockId: number): Promise<void> {
+  await ttlockCall('/v3/lock/unlock', { lockId, date: Date.now() })
+}
+
+/** Ein einzelnes Schloss fernöffnen (Provider-Dispatch). */
+export async function openLock(ref: LockRef): Promise<void> {
+  const id = Number(ref.id)
+  if (ref.provider === 'nuki') return openNukiLock(id)
+  if (ref.provider === 'tedee') return openTedeeLock(id)
+  if (ref.provider === 'ttlock') return openTTLock(id)
+  throw new Error(`Unbekannter Provider: ${ref.provider}`)
+}
+
 /** Abgelaufene TRIMOSA-Codes eines Schlosses löschen (200er-Auth-Limit). */
 export async function cleanupNukiAuths(smartlockId: number): Promise<number> {
   const res = await nukiFetch(`/smartlock/${smartlockId}/auth`)
@@ -746,6 +783,87 @@ export async function nukiLogProbe(smartlockId: number): Promise<{
     entries: resolved,
     rawFirst: JSON.stringify(entries[0] ?? text.slice(0, 500)).slice(0, 800),
   }
+}
+
+/* ── 📋 Übersicht + Öffnungs-Protokoll für die Team-App (§253) ── */
+
+export interface LockDoorInfo {
+  listingId: string
+  title: string
+  /** Schlösser dieser Wohnung — provider bestimmt, ob Fernöffnen geht */
+  locks: LockRef[]
+  /** Türcode der laufenden bzw. nächsten Buchung (wenn schon erzeugt) */
+  guestCode: string | null
+  guestName: string | null
+  guestFrom: string | null
+  guestTo: string | null
+  /** current | upcoming | null */
+  guestStatus: 'current' | 'upcoming' | null
+}
+
+/** Alle aktiven Wohnungen mit Schlössern + aktuellem Gäste-Türcode. */
+export async function getLocksOverview(): Promise<LockDoorInfo[]> {
+  const { data: listings } = await supabaseAdmin
+    .from('listings').select('id, title, locks').eq('is_active', true).order('title')
+  const withLocks = (listings ?? []).filter((l) => Array.isArray(l.locks) && (l.locks as unknown[]).length > 0)
+  if (!withLocks.length) return []
+  const ids = withLocks.map((l) => l.id as string)
+  const today = new Date().toISOString().slice(0, 10)
+  // Laufende + kommende bestätigte Buchungen mit Türcode (nächste zuerst)
+  const { data: bookings } = await supabaseAdmin
+    .from('bookings')
+    .select('listing_id, guest_name, check_in, check_out, door_code, status')
+    .in('listing_id', ids)
+    .eq('status', 'confirmed')
+    .gte('check_out', today)
+    .order('check_in', { ascending: true })
+  const byListing = new Map<string, { guest_name: string | null; check_in: string; check_out: string; door_code: string | null }>()
+  for (const b of bookings ?? []) {
+    const lid = b.listing_id as string
+    if (!byListing.has(lid)) byListing.set(lid, b as { guest_name: string | null; check_in: string; check_out: string; door_code: string | null })
+  }
+  return withLocks.map((l) => {
+    const lid = l.id as string
+    const bk = byListing.get(lid) ?? null
+    const status: 'current' | 'upcoming' | null = bk
+      ? (bk.check_in <= today && bk.check_out >= today ? 'current' : 'upcoming')
+      : null
+    return {
+      listingId: lid,
+      title: (l.title as string) ?? 'Wohnung',
+      locks: (l.locks as LockRef[]) ?? [],
+      guestCode: bk?.door_code ?? null,
+      guestName: bk?.guest_name ?? null,
+      guestFrom: bk?.check_in ?? null,
+      guestTo: bk?.check_out ?? null,
+      guestStatus: status,
+    }
+  })
+}
+
+export interface LockOpenLogEntry {
+  at: string
+  byId: string
+  byName: string
+  listingId: string
+  title: string
+  lockLabel: string
+  ok: boolean
+}
+
+/** Öffnungs-Protokoll (app_settings 'lock_open_log', letzte 200). */
+export async function getLockOpenLog(): Promise<LockOpenLogEntry[]> {
+  try {
+    const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'lock_open_log').maybeSingle()
+    const arr = (data?.value as { entries?: LockOpenLogEntry[] } | null)?.entries
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
+export async function logLockOpen(e: LockOpenLogEntry): Promise<void> {
+  const cur = await getLockOpenLog()
+  const next = [e, ...cur].slice(0, 200)
+  await supabaseAdmin.from('app_settings').upsert({ key: 'lock_open_log', value: { entries: next } }, { onConflict: 'key' })
 }
 
 export interface LockSettings {

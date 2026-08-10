@@ -16,6 +16,7 @@ import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
 import CallsPanel from '@/components/team/CallsPanel'
 import BelegEinreichen from '@/components/team/BelegEinreichen'
+import LocksPanel from '@/components/team/LocksPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -68,6 +69,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [showWallbox, setShowWallbox] = useState(false)
   const [showCalls, setShowCalls] = useState(false)
   const [showBeleg, setShowBeleg] = useState(false)
+  // 🔑 Türschlösser (§253) — Admins/Hosts/Staff (probe 403 → Eintrag bleibt aus)
+  const [locksOk, setLocksOk] = useState(false)
+  const [showLocks, setShowLocks] = useState(false)
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
   const [belegeOk, setBelegeOk] = useState(false)
@@ -92,6 +96,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       .catch(() => {})
     fetch('/api/belege?probe=1', { cache: 'no-store' })
       .then((r) => { if (r.ok) setBelegeOk(true) })
+      .catch(() => {})
+    fetch('/api/locks/control?probe=1', { cache: 'no-store' })
+      .then((r) => { if (r.ok) setLocksOk(true) })
       .catch(() => {})
   }, [])
 
@@ -186,6 +193,20 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                 </span>
                 <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
               </button>
+              {locksOk && (
+                <button onClick={() => setShowLocks(true)} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                }}>
+                  <span style={{ fontSize: 19 }}>🔑</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Türschlösser</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Fernöffnen & Codes einsehen je Wohnung</span>
+                  </span>
+                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                </button>
+              )}
               <button onClick={() => setShowQs(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
                 background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -335,6 +356,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
       {showBeleg && <BelegEinreichen onClose={() => setShowBeleg(false)} />}
+      {showLocks && <LocksPanel onClose={() => setShowLocks(false)} />}
     </div>
   )
 }
