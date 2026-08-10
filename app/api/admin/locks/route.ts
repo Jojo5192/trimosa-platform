@@ -259,7 +259,7 @@ export async function PATCH(req: NextRequest) {
 
   if (Array.isArray(body.locks)) {
     const locks: LockRef[] = body.locks
-      .filter((l: Record<string, unknown>) => (l.provider === 'nuki' || l.provider === 'tedee') && l.id)
+      .filter((l: Record<string, unknown>) => (l.provider === 'nuki' || l.provider === 'tedee' || l.provider === 'ttlock') && l.id)
       .map((l: Record<string, unknown>) => ({ provider: l.provider, id: String(l.id), label: String(l.label ?? '').slice(0, 80) }))
     const { error } = await supabaseAdmin.from('listings').update({ locks }).eq('id', listingId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
