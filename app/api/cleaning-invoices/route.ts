@@ -324,6 +324,12 @@ ${cands.map((c) => `${c.id} | ${c.datum} | ${c.betrag} | ${c.wohnung ?? '?'} | $
         const hi = bis < rangeHi ? bis : rangeHi
         return { anteil: Math.max(0, dayDiff(hi, lo) + 1) / Math.max(1, dayDiff(bis, von) + 1), spanne: [von, bis] }
       }
+      // Tip-Top-Realität: Rechnungen tragen oft nur EIN Leistungs-Startdatum
+      // („Leistungszeitraum ab 01.06.") — dann entscheidet dieses Datum
+      const einzel = pv.zeitraum?.von ?? pv.zeitraum?.bis
+      if (einzel) {
+        return { anteil: einzel >= rangeLo && einzel <= rangeHi ? 1 : 0, spanne: [einzel, einzel] }
+      }
       return null
     }
     if (status === 'geprueft' && cands.length) {
@@ -619,7 +625,11 @@ können auch heißen, dass eine ANDERE Reinigungskraft sie übernommen hat
 abgerechnete Termine ohne geplanten Wechsel sind ein echter Prüfpunkt (Datum
 nennen). Doppelt abgerechnete Tage oder doppelte Beträge immer anmerken.
 Termine in den ersten/letzten Tagen des Monats können auf der Rechnung des
-NACHBAR-Monats stehen — fehlende Rand-Termine vorsichtig bewerten.`
+NACHBAR-Monats stehen — fehlende Rand-Termine vorsichtig bewerten.
+Nennen Positionen STUNDEN (z. B. „31,10 Std."): den impliziten Stundensatz
+(Betrag ÷ Stunden, ggf. netto) gegen den Satz in der Erwartung (saetze.
+hourlyRate) prüfen — ein abweichender Satz ist ein WICHTIGER Prüfpunkt
+(Vertragssatz vs. Listenpreis).`
         const bUser = `PRÜFMONAT: ${month}${personName ? ` · Reinigungskraft: ${personName}` : ''} · Lieferant: ${supplier}
 
 ERWARTUNG (geplante Reinigungen):
