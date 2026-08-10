@@ -687,6 +687,9 @@ export default async function Home({
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
+            {/* 📺 Interner Absprung ins TV-Admin (tv.trimosa.de) — bewusst dezent.
+                Als eingeloggter Admin/Gastgeber: SSO, direkt drin. Sonst: Login. */}
+            <a href="/api/tv-bridge/sso" style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }} title="TV-Steuerung (intern)">📺 TV</a>
           </div>
         </div>
       </footer>
