@@ -52,15 +52,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Push an den Autor (nur beim HINZUFÜGEN, nicht an sich selbst)
   if (!hadThis && msg.sender_id && msg.sender_id !== auth.userId) {
     ;(async () => {
-      const [{ data: chat }, { data: me }, { data: author }] = await Promise.all([
+      const [{ data: chat }, { data: me }] = await Promise.all([
         supabaseAdmin.from('team_chats').select('name, emoji').eq('id', id).maybeSingle(),
         supabaseAdmin.from('profiles').select('display_name').eq('id', auth.userId).maybeSingle(),
-        supabaseAdmin.from('profiles').select('*').eq('id', msg.sender_id).maybeSingle(),
       ])
-      if (author && (author as Record<string, unknown>).push_team_chats === false) return
       const sender = (me?.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
       const target = (msg.content || '').slice(0, 40) || (msg.attachment_type === 'audio' ? 'Sprachnachricht' : msg.attachment_type === 'image' ? 'Foto' : 'Anhang')
-      await sendPushToUser(msg.sender_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'}`, `${sender} hat mit ${emoji} auf „${target}“ reagiert`, '/team?tab=intern')
+      // §254: Präferenz-Gate via category 'teamChats'
+      await sendPushToUser(msg.sender_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'}`, `${sender} hat mit ${emoji} auf „${target}“ reagiert`, '/team?tab=intern', undefined, 'teamChats')
     })().catch(() => {})
   }
 

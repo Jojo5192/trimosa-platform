@@ -59,7 +59,7 @@ function Row({ title, subtitle, last, children }: {
 export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; buchhaltung: boolean } | null>(null)
+  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; calls: boolean; buchhaltung: boolean; system: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
@@ -84,7 +84,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats, teamChats: d.teamChats, bookings: d.bookings !== false, buchhaltung: d.buchhaltung !== false }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, system: d.system !== false }) })
       .catch(() => {})
     fetch('/api/admin/oncall', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -148,7 +148,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     } finally { setBusy(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'buchhaltung') {
+  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'tasks' | 'calls' | 'buchhaltung' | 'system') {
     if (!prefs) return
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
@@ -306,6 +306,21 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last={false}>
             <Switch on={prefs?.teamChats ?? true} disabled={!prefs} onChange={() => togglePref('teamChats')} />
           </Row>
+          {role === 'team' && (
+            <Row title="✅ Aufgaben & QS" subtitle="Zuweisungen, Kommentare, Vorschläge, QS-Termine">
+              <Switch on={prefs?.tasks ?? true} disabled={!prefs} onChange={() => togglePref('tasks')} />
+            </Row>
+          )}
+          {role === 'team' && (
+            <Row title="☎️ Anrufe" subtitle="Meldungen der Telefon-Assistentin (Bereitschaft)">
+              <Switch on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />
+            </Row>
+          )}
+          {role === 'team' && (
+            <Row title="🔧 System & Betrieb" subtitle="TV, Türschlösser, Überbuchungen, Buchungs-Abgleich" last={!belegeOk && !wb}>
+              <Switch on={prefs?.system ?? true} disabled={!prefs} onChange={() => togglePref('system')} />
+            </Row>
+          )}
           {belegeOk && (
             <Row title="💶 Buchhaltung" subtitle="Neue Belege aus dem Mail-Scan (nur Admins)" last={!wb}>
               <Switch on={prefs?.buchhaltung ?? true} disabled={!prefs} onChange={() => togglePref('buchhaltung')} />
@@ -323,7 +338,8 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           )}
         </div>
         <div style={{ fontSize: 12, color: '#8A8578', lineHeight: 1.55, margin: '9px 16px 0' }}>
-          Die Kategorien gelten für alle deine Geräte. Aufgaben-Zuweisungen und wichtige Systemmeldungen werden immer zugestellt.
+          Jede Kategorie einzeln schaltbar — die Einstellung gilt für alle deine Geräte.
+          „Push auf diesem Gerät" ist die oberste Ebene: ist die aus, kommt gar nichts.
         </div>
         {pushState === 'unsupported' && (
           <div style={{

@@ -6,6 +6,48 @@
 import webpush from 'web-push'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+/**
+ * 🔔 §254: Alle steuerbaren Benachrichtigungs-Kategorien. Präferenzen liegen
+ * in profiles.push_prefs (jsonb) — je Kategorie wird NUR der AUS-Zustand
+ * gespeichert (Default = an). Eine neue Kategorie hier ergänzen genügt;
+ * keine Migration nötig.
+ */
+export type PushCategory =
+  | 'guestChats'   // 💬 Gäste-Nachrichten
+  | 'teamChats'    // 💼 Interne Chats
+  | 'bookings'     // 🎉 Neue Buchungen & Stornos
+  | 'tasks'        // ✅ Aufgaben & QS (Zuweisungen, Kommentare, Vorschläge, Termine)
+  | 'calls'        // ☎️ Anrufe (Bereitschaft)
+  | 'buchhaltung'  // 💶 Buchhaltung (Belege) — ohnehin nur Admins
+  | 'wallbox'      // ⚡ Wallbox (Ladevorgänge)
+  | 'system'       // 🔧 System & Betrieb (TV, Boxen, Türschlösser, Überbuchung, Import)
+
+const LEGACY_COLS: Partial<Record<PushCategory, string>> = {
+  guestChats: 'push_guest_chats',
+  teamChats: 'push_team_chats',
+  bookings: 'push_bookings',
+  buchhaltung: 'push_buchhaltung',
+}
+
+/** Präferenz-Map je Nutzer für EINE Kategorie: erlaubt der Nutzer den Push? */
+async function prefAllows(userIds: string[], category: PushCategory): Promise<Set<string>> {
+  const allowed = new Set(userIds)
+  if (!userIds.length) return allowed
+  try {
+    const { data } = await supabaseAdmin
+      .from('profiles').select('*').in('id', userIds)
+    const legacy = LEGACY_COLS[category]
+    for (const p of (data ?? []) as Record<string, unknown>[]) {
+      const id = p.id as string
+      const prefs = (p.push_prefs as Record<string, unknown> | null) ?? {}
+      // push_prefs gewinnt; Fallback auf die Alt-Spalte; Default = an
+      const v = category in prefs ? prefs[category] : (legacy ? p[legacy] : undefined)
+      if (v === false) allowed.delete(id)
+    }
+  } catch { /* Spalte fehlt (Migration ausstehend) → nichts filtern */ }
+  return allowed
+}
+
 let configured = false
 function ensureConfigured(): boolean {
   const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -44,42 +86,57 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
 /** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — DIENSTLEISTER
  *  (is_provider, kein Gäste-Chat-Zugang) bekommen ihn NIE; Nutzer mit
  *  push_guest_chats=false (Pascal-Präferenz §97.5) werden übersprungen. */
-export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean } = {}): Promise<void> {
+export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean; category?: PushCategory } = {}): Promise<void> {
   if (!ensureConfigured()) return
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth, user_id')
   if (!subs?.length) return
   let filtered = subs as (Sub & { user_id: string | null })[]
+  // §254: generisches Kategorie-Gate (Präferenz je Nutzer) — für die einfachen
+  // Team-Broadcasts (System, Aufgaben …). guestChat/buchhaltung behalten ihre
+  // Zusatz-Rollenlogik unten.
+  if (opts.category) {
+    const ids = filtered.map((s) => s.user_id).filter((x): x is string => !!x)
+    const ok = await prefAllows(ids, opts.category)
+    filtered = filtered.filter((s) => !s.user_id || ok.has(s.user_id))
+  }
   if (opts.guestChat) {
+    // Rollen-Gate: Dienstleister sehen keine Gäste-Chats → kategorisch raus
     try {
-      // Dienstleister KATEGORISCH ausschließen (sehen keine Gäste-Chats) +
-      // alle mit push_guest_chats=false stummgeschalteten Nutzer (§143)
-      const { data: excl } = await supabaseAdmin
-        .from('profiles').select('id').or('is_provider.eq.true,push_guest_chats.eq.false')
-      const exclIds = new Set((excl ?? []).map((p) => p.id))
-      if (exclIds.size) filtered = filtered.filter((s) => !s.user_id || !exclIds.has(s.user_id))
-    } catch { /* Spalte fehlt (Migration ausstehend) → ungefiltert senden */ }
+      const { data: prov } = await supabaseAdmin.from('profiles').select('id').eq('is_provider', true)
+      const provIds = new Set((prov ?? []).map((p) => p.id))
+      if (provIds.size) filtered = filtered.filter((s) => !s.user_id || !provIds.has(s.user_id))
+    } catch { /* fail-soft */ }
+    // Präferenz-Gate (§254): stummgeschaltete Gäste-Chats
+    const ids = filtered.map((s) => s.user_id).filter((x): x is string => !!x)
+    const ok = await prefAllows(ids, 'guestChats')
+    filtered = filtered.filter((s) => !s.user_id || ok.has(s.user_id))
   }
   if (opts.buchhaltung) {
+    // Rollen-Gate: AUSSCHLIESSLICH Admins (§242)
     try {
-      // §242: Buchhaltungs-Pushes gehen AUSSCHLIESSLICH an Admins — und nur
-      // an die, die die Kategorie nicht abgeschaltet haben
-      const { data: admins } = await supabaseAdmin
-        .from('profiles').select('*').eq('is_admin', true)
-      const okIds = new Set((admins ?? [])
-        .filter((p) => (p as Record<string, unknown>).push_buchhaltung !== false)
-        .map((p) => (p as { id: string }).id))
-      filtered = filtered.filter((s) => s.user_id && okIds.has(s.user_id))
-    } catch { return /* im Zweifel lieber KEIN Push an Nicht-Admins */ }
+      const { data: admins } = await supabaseAdmin.from('profiles').select('id').eq('is_admin', true)
+      const adminIds = new Set((admins ?? []).map((p) => p.id))
+      filtered = filtered.filter((s) => s.user_id && adminIds.has(s.user_id))
+    } catch { return /* im Zweifel KEIN Push an Nicht-Admins */ }
+    // Präferenz-Gate
+    const ids = filtered.map((s) => s.user_id).filter((x): x is string => !!x)
+    const ok = await prefAllows(ids, 'buchhaltung')
+    filtered = filtered.filter((s) => !s.user_id || ok.has(s.user_id))
   }
   if (!filtered.length) return
   await sendToSubs(filtered, title, body, url)
 }
 
-/** Push to ONE user's devices (e.g. task assignment to a provider). */
-export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben', tag?: string): Promise<void> {
+/** Push to ONE user's devices (e.g. task assignment to a provider).
+ *  category (§254): respektiert die Push-Präferenz des Empfängers. */
+export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben', tag?: string, category?: PushCategory): Promise<void> {
   if (!ensureConfigured()) return
+  if (category) {
+    const ok = await prefAllows([userId], category)
+    if (!ok.has(userId)) return
+  }
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
@@ -135,7 +192,10 @@ export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cance
     for (const s of subs as (Sub & { user_id: string | null })[]) {
       const p = s.user_id ? info.get(s.user_id) : undefined
       if (!p) continue
-      if (p.push_bookings === false) continue
+      // §254: push_prefs.bookings gewinnt, Fallback push_bookings
+      const prefs = (p.push_prefs as Record<string, unknown> | null) ?? {}
+      const wantsBooking = 'bookings' in prefs ? prefs.bookings !== false : p.push_bookings !== false
+      if (!wantsBooking) continue
       if (p.is_admin || p.is_host) chefSubs.push(s)
       else if (p.is_staff) staffSubs.push(s)
     }

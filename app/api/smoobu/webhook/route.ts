@@ -267,7 +267,7 @@ export async function POST(request: Request) {
           await sendPushToTeam(
             `🚨 ÜBERBUCHUNG · ${lst?.title ?? 'Wohnung'}`,
             `${guestName} (${checkIn}–${checkOut}) kollidiert mit ${c.guest_name} (${c.check_in}–${c.check_out}) — sofort klären!`,
-            '/team?tab=kalender',
+            '/team?tab=kalender', { category: 'system' },
           ).catch((e) => console.error('[Smoobu Webhook] overbooking push:', e))
         } else {
           console.warn('[Smoobu Webhook] Blocked-Booking MIT Gastname (Überbuchung?) ohne DB-Kollision:', reservationId, guestName)
@@ -346,7 +346,7 @@ export async function POST(request: Request) {
         await sendPushToTeam(
           `🚨 ÜBERBUCHUNG · ${lst?.title ?? 'Wohnung'}`,
           `Neue Reservierung ${guestName ?? reservationId} (${checkIn}–${checkOut}) kollidiert mit einer bestehenden Buchung — sofort klären!`,
-          '/team?tab=kalender',
+          '/team?tab=kalender', { category: 'system' },
         ).catch((e) => console.error('[Smoobu Webhook] overbooking push:', e))
       }
       // Still return 200 to prevent Smoobu from retrying indefinitely

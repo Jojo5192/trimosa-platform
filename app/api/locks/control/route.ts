@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
         .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
       for (const p of team ?? []) {
         if (p.id === a.userId) continue
-        await sendPushToUser(p.id, '🔓 Tür geöffnet', `${a.name} hat ${lock.label} (${wohnung.title}) aus der Ferne aufgeschlossen.`, '/team?tab=einstellungen')
+        await sendPushToUser(p.id, '🔓 Tür geöffnet', `${a.name} hat ${lock.label} (${wohnung.title}) aus der Ferne aufgeschlossen.`, '/team?tab=einstellungen', undefined, 'system')
           .catch(() => {})
       }
     } catch { /* fail-soft */ }

@@ -53,9 +53,8 @@ export async function POST(req: NextRequest) {
     // Ziel-URL: interne /team-URLs erlaubt, sonst neutral auf /team.
     const url = p.url && p.url.startsWith('/') ? p.url : '/team'
     try {
-      // Ohne opts → an alle Team-Geräte (Admins/Hosts/Staff). TV-Ausfälle sind
-      // selten und wichtig; keine Filterung über Gäste-Chat-Präferenzen.
-      await sendPushToTeam(title, alertBody || title, url)
+      // §254: Kategorie 'system' (TV & Betrieb) — abschaltbar im ⚙️-Center.
+      await sendPushToTeam(title, alertBody || title, url, { category: 'system' })
       return NextResponse.json({ ok: true })
     } catch (e) {
       return NextResponse.json({ ok: false, error: `Push-Fehler: ${e}` }, { status: 502 })

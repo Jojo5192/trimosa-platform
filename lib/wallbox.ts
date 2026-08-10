@@ -236,7 +236,7 @@ export async function pollWallboxCharges(): Promise<{ checked: number; startPush
   for (const c of newStarts) {
     const targets = adminIds.filter((id) => settings.pushStart[id] !== false)
     await Promise.all(targets.map((id) =>
-      sendPushToUser(id, '⚡ Ladevorgang gestartet', `${cpName(c)} — ein Gast lädt gerade.`, '/team', `wallbox-${c.id}`).catch(() => {}),
+      sendPushToUser(id, '⚡ Ladevorgang gestartet', `${cpName(c)} — ein Gast lädt gerade.`, '/team', `wallbox-${c.id}`, 'wallbox').catch(() => {}),
     ))
     startDone.add(c.id)
     startPushed++
@@ -250,7 +250,7 @@ export async function pollWallboxCharges(): Promise<{ checked: number; startPush
     ].filter(Boolean)
     const targets = adminIds.filter((id) => settings.pushEnd[id] !== false)
     await Promise.all(targets.map((id) =>
-      sendPushToUser(id, `⚡ Ladung beendet · ${cpName(c)}`, bits.join(' · ') || 'Details in der App', '/team', `wallbox-${c.id}`).catch(() => {}),
+      sendPushToUser(id, `⚡ Ladung beendet · ${cpName(c)}`, bits.join(' · ') || 'Details in der App', '/team', `wallbox-${c.id}`, 'wallbox').catch(() => {}),
     ))
     endDone.add(c.id)
     endPushed++

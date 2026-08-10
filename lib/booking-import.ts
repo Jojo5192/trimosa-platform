@@ -126,7 +126,7 @@ export async function importMissingReservations(
         await sendPushToTeam(
           `🚨 ÜBERBUCHUNG · ${title}`,
           `${c.text} — sofort klären (Smoobu/Portal)!`,
-          '/team?tab=kalender',
+          '/team?tab=kalender', { category: 'system' },
         ).catch((e) => console.error('[booking-import] overbooking push:', e))
         alerted.add(c.key)
         overbookings++
@@ -168,7 +168,7 @@ export async function importMissingReservations(
     await sendPushToTeam(
       '⚠️ Buchungs-Abgleich ausgesetzt',
       `${missingCandidates} Buchungen fehlen plötzlich in der Smoobu-Antwort — Massen-Storno verhindert, bitte Smoobu prüfen.`,
-      '/team',
+      '/team', { category: 'system' },
     ).catch(() => {})
   }
   for (const b of ours ?? []) {

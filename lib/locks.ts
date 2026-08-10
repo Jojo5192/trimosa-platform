@@ -1167,7 +1167,7 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   if (errors.length) {
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam('⚠️ Türcode konnte nicht angelegt werden', errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} weitere)` : ''), '/team?tab=aufgaben')
+      await sendPushToTeam('⚠️ Türcode konnte nicht angelegt werden', errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} weitere)` : ''), '/team?tab=aufgaben', { category: 'system' })
     } catch { /* best effort */ }
     console.error('[locks] Fehler:', errors)
   }

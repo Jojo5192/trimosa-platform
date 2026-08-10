@@ -22,7 +22,7 @@ export async function pushOncall(title: string, body: string, url: string): Prom
       .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
     ids = (data ?? []).map((p) => String(p.id))
   }
-  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url).catch(() => {})))
+  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url, undefined, 'calls').catch(() => {})))
 }
 
 export function requireVoiceAuth(request: Request): Response | null {

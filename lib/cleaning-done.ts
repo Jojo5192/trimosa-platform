@@ -253,7 +253,7 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
       `🧹 ${l.title ?? 'Wohnung'} als gereinigt gemeldet`,
       `${personName ?? 'Vor Ort'} · ${now.hm} Uhr`
         + (earlyCheckinSent ? ' · Früh-Check-in-Info an den Gast gesendet' : ''),
-      '/team',
+      '/team', { category: 'tasks' },
     )
   } catch (e) {
     console.error('[cleaning-done] Team-Push fehlgeschlagen:', e)

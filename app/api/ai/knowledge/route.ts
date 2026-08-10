@@ -421,7 +421,7 @@ export async function POST(request: Request) {
         await sendPushToTeam(
           '✅ Buchungen wiederhergestellt',
           `${repariert} fälschlich stornierte Buchungen sind wieder bestätigt — die Storno-Pushes von heute früh waren ein Abgleich-Fehler.`,
-          '/team',
+          '/team', { category: 'system' },
         ).catch(() => {})
       }
     }

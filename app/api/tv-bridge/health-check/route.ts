@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   let pushed: string | null = null
   if (ok && wasDown) {
     // Wieder online → Entwarnung
-    await sendPushToTeam('📺 TV-Server wieder online', 'tv.trimosa.de ist wieder erreichbar.', '/team')
+    await sendPushToTeam('📺 TV-Server wieder online', 'tv.trimosa.de ist wieder erreichbar.', '/team', { category: 'system' })
     pushed = 'recovered'
     await supabaseAdmin.from('app_settings').upsert({ key: 'tv_server_state', value: { down: false, fails: 0 } })
   } else if (!ok && !wasDown && fails >= 2) {
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     await sendPushToTeam(
       '📺 TV-Server offline',
       'tv.trimosa.de antwortet nicht mehr. Die TV-Oberflächen der Gäste könnten betroffen sein — Hetzner-Server prüfen.',
-      '/team',
+      '/team', { category: 'system' },
     )
     pushed = 'offline_alert'
     await supabaseAdmin.from('app_settings').upsert({ key: 'tv_server_state', value: { down: true, since: new Date().toISOString(), fails } })

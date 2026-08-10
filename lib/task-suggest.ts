@@ -225,7 +225,7 @@ export async function runTaskSuggest(sinceDaysOverride?: number): Promise<Sugges
     const { data: admins } = await supabaseAdmin
       .from('profiles').select('id').or('is_admin.eq.true,is_host.eq.true')
     await Promise.all((admins ?? []).map((a) =>
-      sendPushToUser(a.id, '🤖 Neue Aufgaben-Vorschläge', `${created} Vorschläge aus Gastnachrichten & Bewertungen`, '/team?tab=aufgaben')
+      sendPushToUser(a.id, '🤖 Neue Aufgaben-Vorschläge', `${created} Vorschläge aus Gastnachrichten & Bewertungen`, '/team?tab=aufgaben', undefined, 'tasks')
         .catch(() => {})
     ))
   }
