@@ -235,7 +235,10 @@ export async function GET(request: Request) {
     if (!at) return false
     if (!lastAt) return true
     const last = Date.parse(lastAt)
-    return !Number.isFinite(last) || at >= last
+    // 1,5s-Toleranz: conversations.last_message_at wird separat von der
+    // Nachricht gestempelt (eigene now()-Uhr, ms später) — ohne Toleranz
+    // verlöre die Markierung diesen Vergleich für immer.
+    return !Number.isFinite(last) || at >= last - 1500
   }
 
   const lastArchive: Record<number, Last> = {}
@@ -287,16 +290,17 @@ export async function GET(request: Request) {
     content: string | null; content_de: string | null; lang: string | null
     no_reply_needed?: boolean; phone_resolved?: boolean
   }>
-  const lastDirect: Record<string, { preview: string; senderId: string | null; noReply?: boolean; phone?: boolean }> = {}
+  const lastDirect: Record<string, { at: string; preview: string; senderId: string | null }> = {}
   const dLang: Record<string, string> = {}
   for (const m of dMsgs) {
     if (m.conversation_id && m.lang && !dLang[m.conversation_id]) dLang[m.conversation_id] = m.lang
     if (m.conversation_id && !lastDirect[m.conversation_id]) {
       lastDirect[m.conversation_id] = {
+        // §252b: echte Nachrichtenzeit als Flag-Referenz (gleiche Uhr wie die
+        // markierte Zeile) — c.last_message_at ist nur der Fallback
+        at: m.created_at,
         preview: (m.content_de || m.content || '').replace(/\s+/g, ' ').slice(0, 90),
         senderId: m.sender_id ?? null,
-        noReply: !!m.no_reply_needed,
-        phone: !!m.phone_resolved,
       }
     }
   }
@@ -325,8 +329,8 @@ export async function GET(request: Request) {
       lastPreview: last?.preview ?? null,
       lastSender: last ? (last.senderId === c.guest_id ? 'guest' as const : 'host' as const) : null,
       guestLang: dLang[c.id] ?? null,
-      noReplyNeeded: isFlagged(c.id, c.last_message_at as string | null, 'noReply'),
-      phoneResolved: isFlagged(c.id, c.last_message_at as string | null, 'phone'),
+      noReplyNeeded: isFlagged(c.id, last?.at ?? (c.last_message_at as string | null), 'noReply'),
+      phoneResolved: isFlagged(c.id, last?.at ?? (c.last_message_at as string | null), 'phone'),
       adults: b?.adults ?? null,
       children: b?.children ?? null,
       // §247: Türcode fürs Team direkt in der Gast-Karte (Route ist team-gated)
