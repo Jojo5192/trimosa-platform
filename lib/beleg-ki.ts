@@ -433,7 +433,7 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
             id: String(t.id), accountId: bank.id,
             datum: String(t.valueDate ?? t.entryDate ?? '').slice(0, 10),
             eur: Math.round(Math.abs(amt) * 100) / 100,
-            name: String((t as Record<string, unknown>).payeePayerName ?? ''),
+            name: String(t.payeePayerName ?? ''),
           })
         }
       }
