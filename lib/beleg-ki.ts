@@ -416,7 +416,7 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
     // Lieferanten-Token im Bank-Namen + enges Band + Datumsfenster.
     // v4: Kandidaten nach DATUMS-NÄHE zum Rechnungsdatum wählen (die alte
     // Neueste-zuerst-Wahl verheiratete Abo-Ketten mit der falschen Rate).
-    let tx: { id: string; accountId: string; datum: string; eur: number } | null = null
+    let tx: { id: string; accountId: string; datum: string; eur: number; name: string } | null = null
     let txNameOk = false
     let txDatumOk = false
     let txEindeutig = false

@@ -758,9 +758,9 @@ export default function BuchhaltungClient() {
                 // v4: leeres Betragsfeld bzw. Fremdwährungs-Rechnung → der
                 // Bank-EUR-Betrag der gewählten Zahlung IST der Buchungsbetrag
                 const kiV = ki[v.id]
-                const fremd = typeof kiV === 'object' && kiV?.waehrung && kiV.waehrung !== 'EUR'
-                const uebernehmen = t && (fremd || !parseFloat(f.betrag.replace(',', '.')))
-                setF(v.id, { txId, ...(uebernehmen ? { betrag: String(Math.abs(t.betrag)) } : {}) })
+                const fremd = typeof kiV === 'object' && !!kiV.waehrung && kiV.waehrung !== 'EUR'
+                const leer = !parseFloat(f.betrag.replace(',', '.'))
+                setF(v.id, { txId, ...(t && (fremd || leer) ? { betrag: String(Math.abs(t.betrag)) } : {}) })
               }} style={SELECT}>
                 <option value="">— keine · später über den Bankabgleich —</option>
                 {txKandidaten(Number.isFinite(betragNum) ? betragNum : null).map((t) => (

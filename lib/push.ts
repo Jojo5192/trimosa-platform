@@ -17,6 +17,7 @@ export type PushCategory =
   | 'teamChats'    // 💼 Interne Chats
   | 'bookings'     // 🎉 Neue Buchungen & Stornos
   | 'tasks'        // ✅ Aufgaben & QS (Zuweisungen, Kommentare, Vorschläge, Termine)
+  | 'reinigung'    // 🧹 Reinigungs-Fertigmeldungen (v4 — eigener Schalter, Patrick §259)
   | 'calls'        // ☎️ Anrufe (Bereitschaft)
   | 'buchhaltung'  // 💶 Buchhaltung (Belege) — ohnehin nur Admins
   | 'wallbox'      // ⚡ Wallbox (Ladevorgänge)
