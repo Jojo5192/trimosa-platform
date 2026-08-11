@@ -539,7 +539,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               borderRadius: 999, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
               background: neutral ? 'rgba(120,120,128,0.10)' : diff > 0 ? '#FEE2E2' : '#DCFCE7',
               color: neutral ? '#8E8E93' : diff > 0 ? '#B91C1C' : '#15803D',
-            }}>{neutral ? '±0 €' : eurSigned(r2(diff))}</span>
+            }}>{Math.abs(diff) < 1 ? '±0 €' : eurSigned(r2(diff))}</span>
           )
         }
 
