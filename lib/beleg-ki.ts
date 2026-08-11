@@ -231,6 +231,10 @@ export interface KiErgebnis {
   waehrung?: string | null
   /** echtes RECHNUNGSDATUM aus dem Beleg (Mail-Scan-Belege trugen sonst das Scan-Datum — UStVA-Periode!) */
   datum?: string | null
+  /** v4: LEISTUNGSMONAT 'JJJJ-MM' (Reinigungs-/Energierechnungen kommen im
+   *  Folgemonat) — die Auswertung periodisiert damit verursachungsgerecht;
+   *  die sevdesk-Buchung bleibt beim Rechnungsdatum (UStVA). */
+  leistungsmonat?: string | null
   begruendung?: string
   steuerHinweis?: string
   anlagegut?: boolean
@@ -311,17 +315,19 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
     let gBetrag: number | null = null
     let gWaehrung: string | null = null
     let gDatum: string | null = null
+    let gLeistung: string | null = null
     let kategoriePasst = true
     if (pdf) {
       try {
         const raw = await askClaudeWithFile(
-          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG + DATUM: Lies Rechnungs-GESAMTBETRAG (brutto) und RECHNUNGSDATUM. 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "datum": "<JJJJ-MM-TT oder null>", "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
+          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG + DATUM: Lies Rechnungs-GESAMTBETRAG (brutto) und RECHNUNGSDATUM. 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "datum": "<JJJJ-MM-TT oder null>", "leistungsmonat": "<JJJJ-MM des LEISTUNGSZEITRAUMS, falls die Rechnung einen nennt (z. B. Reinigungen im Juni, Strom-Abrechnungsmonat) — sonst null>", "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
           `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
           { mediaType: pdf.mediaType, base64: pdf.base64 }, 1800)
         const oj = parseJsonLoose(raw)
         if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
         if (typeof oj.waehrung === 'string' && /^[A-Z]{3}$/.test(oj.waehrung.toUpperCase())) gWaehrung = oj.waehrung.toUpperCase()
         if (typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum)) gDatum = oj.datum
+        if (typeof oj.leistungsmonat === 'string' && /^\d{4}-\d{2}$/.test(oj.leistungsmonat)) gLeistung = oj.leistungsmonat
         if (oj.kategorie_passt === false) kategoriePasst = false
         ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
         if (ort && typeof oj.indiz === 'string') ortText = ` · Standort erkannt: ${String(oj.indiz).slice(0, 100)}`
@@ -331,7 +337,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
       ok: true, weg: 'gelernt', gelernt: true,
       accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
       taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
-      betrag: gBetrag, waehrung: gWaehrung, datum: gDatum,
+      betrag: gBetrag, waehrung: gWaehrung, datum: gDatum, leistungsmonat: gLeistung,
       begruendung: '\u{1F9E0} Kategorie aus deiner letzten Buchung für diesen Lieferanten' + ortText,
       steuerHinweis: '',
       anlagegut: g.anlagegut === true, nutzungsdauer: null,
@@ -341,7 +347,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
 
   const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
   const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
-{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "belegdatum": "<Rechnungsdatum JJJJ-MM-TT oder null>", "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
+{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "belegdatum": "<Rechnungsdatum JJJJ-MM-TT oder null>", "leistungsmonat": "<JJJJ-MM des LEISTUNGSZEITRAUMS, falls die Rechnung einen nennt (Reinigungen/Strom/Abos werden oft im Folgemonat berechnet) — sonst null>", "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
 Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/Umsatzkonten (4xxx) wählen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ansässigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erwähnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur ermäßigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erwähnen). Bei anlagegut=true wähle als Kategorie IMMER 6220 Abschreibungen auf Sachanlagen (sevdesk-Konvention: die Position wird als Anlagegut markiert, sevdesk aktiviert das Gut im Anlagenmodul) — nie ein Betriebsbedarf-Konto für Anlagegüter. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
   const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
   const raw = pdf
@@ -358,6 +364,7 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/
     betrag: typeof j.betrag_brutto === 'number' && j.betrag_brutto > 0 ? Math.round(j.betrag_brutto * 100) / 100 : null,
     waehrung: typeof j.waehrung === 'string' && /^[A-Z]{3}$/i.test(j.waehrung) ? j.waehrung.toUpperCase() : null,
     datum: typeof j.belegdatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.belegdatum) ? j.belegdatum : null,
+    leistungsmonat: typeof j.leistungsmonat === 'string' && /^\d{4}-\d{2}$/.test(j.leistungsmonat) ? j.leistungsmonat : null,
     begruendung: String(j.begruendung ?? '').slice(0, 200),
     steuerHinweis: String(j.steuer_hinweis ?? '').slice(0, 400),
     anlagegut: j.anlagegut === true,

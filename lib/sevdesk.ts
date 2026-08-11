@@ -844,6 +844,9 @@ export interface AuditBelegRow {
   lief: string | null
   gross: number | null
   kst: string | null
+  /** v4: Beschreibung — bei ENTWÜRFEN steht der Betrag nur hier (die haben
+   *  noch keine Positionen, sumGross ist 0) */
+  desc: string | null
   /** Positionen: Konto-Nr (via Guidance bzw. embed), Steuersatz, Brutto */
   pos: { nr: string; name: string; tax: number; g: number }[]
 }
@@ -883,6 +886,7 @@ export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: 
           lief: (v.supplierName as string | null) ?? null,
           gross: v.sumGross != null ? Number(v.sumGross) : null,
           kst: cc?.name ?? null,
+          desc: (v.description as string | null) ?? null,
           pos: [],
         })
       }
@@ -892,8 +896,14 @@ export async function vollAudit(): Promise<{ belege: AuditBelegRow[]; invoices: 
   // §243ae: sevdesks status-Filter liefert Belege teils in ZWEI Schleifen
   // doppelt — VOR dem Positions-Zuordnen dedupen, sonst hängen die pos an
   // der einen Instanz und Auswerter erwischen die andere (leere)
+  // v4-Review: HÖCHSTER Status gewinnt — first-wins ließ einen gebuchten
+  // Beleg, den sevdesk auch in der 50er-Schleife liefert, als „Entwurf"
+  // durchgehen (Positionen fielen aus den Ausgaben UND er zählte als offen)
   const dedupe = new Map<string, AuditBelegRow>()
-  for (const b of belege) if (!dedupe.has(b.id)) dedupe.set(b.id, b)
+  for (const b of belege) {
+    const alt = dedupe.get(b.id)
+    if (!alt || b.st > alt.st) dedupe.set(b.id, b)
+  }
   belege.length = 0
   belege.push(...dedupe.values())
   const byId = new Map(belege.map((b) => [b.id, b]))

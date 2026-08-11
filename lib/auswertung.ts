@@ -30,6 +30,16 @@ export interface AuswertungDaten {
    * k = Kanal (booking|airbnb|fewo|hometogo|direkt)
    */
   buchungen: { l: number; ci: string; co: string; p: number; k: string }[]
+  /**
+   * v4 EHRLICHKEIT: was in den Ausgaben oben NICHT drinsteckt —
+   * sevdesk-Entwürfe (St. 50, noch nicht gebucht) + unentschiedene
+   * Inbox-Belege. Ohne diesen Ausweis wirkte die Auswertung „zu billig".
+   */
+  offen: { entwuerfe: number; entwuerfeSumme: number; inbox: number; inboxSumme: number; aeltestes: string | null }
+  /** v4: Einnahmen-Gegenprobe aus den sevdesk-RECHNUNGEN je Monat */
+  rechnungen: { m: string; g: number }[]
+  /** v4: Jahre, für die Daten geladen wurden (neuestes zuerst) */
+  jahre: string[]
 }
 
 const KANZEM = 'Kanzem'
@@ -91,7 +101,27 @@ function anteileFuer(
   return gleichAlle()
 }
 
+/** v4: „1.234,56 €" aus einer Beleg-Beschreibung fischen (Entwürfe haben
+ *  sumGross 0 — der Betrag steht dort nur im Text). */
+function betragAusText(s: string | null): number | null {
+  if (!s) return null
+  const m = s.match(/(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{2}))?\s*(?:€|EUR)/i)
+  if (!m) return null
+  const v = Number(m[1].replace(/\./g, '') + '.' + (m[2] ?? '00'))
+  return Number.isFinite(v) && v > 0 ? v : null
+}
+
+/** Abstand zweier 'JJJJ-MM' in Monaten (für den Leistungsmonats-Plausicheck). */
+function monatsAbstand(a: string, b: string): number {
+  const p = (s: string) => Number(s.slice(0, 4)) * 12 + Number(s.slice(5, 7))
+  return Math.abs(p(a) - p(b))
+}
+
 export async function buildAuswertung(): Promise<AuswertungDaten> {
+  // v4: Jahre dynamisch (laufendes + Vorjahr) statt hartkodiert 2026
+  const jetzt = new Date()
+  const jahre = [String(jetzt.getFullYear()), String(jetzt.getFullYear() - 1)]
+
   // 1) Einheiten: aktive Wohnungen + Kanzem (Aufbau-Standort ohne Listings)
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, title, location_group').eq('is_active', true).order('title')
@@ -100,29 +130,62 @@ export async function buildAuswertung(): Promise<AuswertungDaten> {
     { id: 'kanzem', titel: 'Kanzem (Aufbau)', gruppe: KANZEM },
   ]
 
-  // 2) interne Zuordnungen je sevdesk-Beleg (range-paginiert — §129!)
+  // 2) Protokollzeilen je sevdesk-Beleg (range-paginiert — §129; .order()
+  //    v4: sonst ist die Seiten-Aufteilung bei >1000 Zeilen undefiniert).
+  //    Liefert Zuordnung, Mail-Betrag (für Entwürfe) und die KI-Analyse
+  //    (v4: enthält den LEISTUNGSMONAT, falls die Vision ihn gelesen hat).
   const zuoMap = new Map<string, Zuordnung>()
-  for (let from = 0; from < 5000; from += 1000) {
-    const { data: rows } = await supabaseAdmin
-      .from('beleg_inbox').select('sevdesk_voucher_id, zuordnung')
-      .not('sevdesk_voucher_id', 'is', null).not('zuordnung', 'is', null)
+  const betragMap = new Map<string, number>()
+  const leistungMap = new Map<string, string>()
+  for (let from = 0; from < 8000; from += 1000) {
+    const { data: rows, error } = await supabaseAdmin
+      .from('beleg_inbox').select('sevdesk_voucher_id, zuordnung, betrag, ki_analyse')
+      .not('sevdesk_voucher_id', 'is', null)
+      .order('id') // v4-Review: PK ist eindeutig — voucher_id ist es nicht
       .range(from, from + 999)
-    for (const r of rows ?? []) zuoMap.set(String(r.sevdesk_voucher_id), r.zuordnung as Zuordnung)
+    // v4-Review: OHNE diese Prüfung fiel bei einem Query-Fehler JEDE Ausgabe
+    // still auf die Gleichverteilung zurück — und das 6 h in den Cache
+    if (error) throw new Error(`Zuordnungen konnten nicht geladen werden: ${error.message}`)
+    for (const r of rows ?? []) {
+      const id = String(r.sevdesk_voucher_id)
+      if (r.zuordnung) zuoMap.set(id, r.zuordnung as Zuordnung)
+      const b = Number(r.betrag)
+      if (Number.isFinite(b) && b > 0) betragMap.set(id, b)
+      const lm = (r.ki_analyse as { leistungsmonat?: unknown } | null)?.leistungsmonat
+      if (typeof lm === 'string' && /^\d{4}-\d{2}$/.test(lm)) leistungMap.set(id, lm)
+    }
     if (!rows || rows.length < 1000) break
   }
 
   // 3) alle sevdesk-Belege + Positionen (vollAudit §243ac; nach id dedupen —
   //    sevdesks status-Filter liefert Belege teils doppelt)
-  const { belege } = await vollAudit()
+  const { belege, invoices } = await vollAudit()
   const seen = new Set<string>()
   const ausgaben: AuswertungDaten['ausgaben'] = []
+  // v4: Entwürfe (St. 50) fließen NICHT in die Ausgaben — aber sie werden
+  // jetzt GEZÄHLT und ausgewiesen, statt still zu verschwinden
+  const offen = { entwuerfe: 0, entwuerfeSumme: 0, inbox: 0, inboxSumme: 0, aeltestes: null as string | null }
   for (const b of belege) {
     if (seen.has(b.id)) continue
     seen.add(b.id)
+    if (b.st === 50) {
+      offen.entwuerfe++
+      // v4-Review: Entwürfe haben KEINE Positionen (sumGross 0) — der Betrag
+      // steht nur im Beschreibungstext; Mail-Betrag > Beschreibung > sumGross
+      offen.entwuerfeSumme += betragMap.get(b.id) ?? betragAusText(b.desc) ?? (b.gross ? Math.abs(b.gross) : 0)
+      if (b.datum && (!offen.aeltestes || b.datum < offen.aeltestes)) offen.aeltestes = b.datum
+      continue
+    }
     if (!b.datum || !b.pos.length) continue
-    if (b.st === 50) continue // Entwürfe sind noch nicht gebucht
-    const m = b.datum.slice(0, 7)
-    if (!m.startsWith('2026') && !m.startsWith('2025')) continue
+    // v4: LEISTUNGSMONAT schlägt das Belegdatum (Reinigungsrechnungen kommen
+    // im Folgemonat — die Kosten gehören in den Monat der Leistung).
+    // v4-Review: NUR bei plausibler Nähe (±3 Monate) übernehmen — sonst
+    // könnte eine KI-Fehllesung den Beleg aus dem geladenen Jahresfenster
+    // kippen und er verschwände KOMPLETT aus der Auswertung.
+    const belegM = b.datum.slice(0, 7)
+    const lm = leistungMap.get(b.id)
+    const m = lm && monatsAbstand(lm, belegM) <= 3 ? lm : belegM
+    if (!jahre.some((j) => m.startsWith(j))) continue
     const vz = b.cd === 'D' ? -1 : 1
     // §243ae: Positions-Leichen-Schutz — die Reset-Zyklen können alte
     // VoucherPos hinterlassen haben; der Beleg-sumGross ist autoritativ →
@@ -138,15 +201,51 @@ export async function buildAuswertung(): Promise<AuswertungDaten> {
     }
   }
 
-  // 4) Buchungen 2026 (Einnahmen + Auslastung): confirmed, Website nur
-  //    bezahlt (§234-Filter); Periodisierung = Anreisetag (wie die Rechnungen)
+  // 3b) v4: unentschiedene Inbox-Belege (Drei-Firmen-Entscheidung offen) —
+  //     auch die fehlen in den Ausgaben, solange sie niemand zuordnet
+  try {
+    const { data: inboxOffen } = await supabaseAdmin
+      .from('beleg_inbox').select('betrag, beleg_datum').eq('status', 'offen').limit(500)
+    for (const r of inboxOffen ?? []) {
+      offen.inbox++
+      const b = Number(r.betrag)
+      if (Number.isFinite(b) && b > 0) offen.inboxSumme += b
+      const d = r.beleg_datum ? String(r.beleg_datum).slice(0, 10) : null
+      if (d && (!offen.aeltestes || d < offen.aeltestes)) offen.aeltestes = d
+    }
+  } catch { /* fail-soft */ }
+  offen.entwuerfeSumme = Math.round(offen.entwuerfeSumme * 100) / 100
+  offen.inboxSumme = Math.round(offen.inboxSumme * 100) / 100
+
+  // 3c) v4: Einnahmen-GEGENPROBE aus den sevdesk-Rechnungen (Belegdatum =
+  //     Anreisetag, §160) — Entwürfe zählen nicht
+  const rechnMap = new Map<string, number>()
+  const invSeen = new Set<string>()
+  for (const inv of invoices) {
+    if (invSeen.has(inv.id)) continue
+    invSeen.add(inv.id)
+    // v4-Review: bei INVOICES ist 100 der ENTWURF (erst sendBy hebt auf 200) —
+    // die Voucher-Schwelle 50 gilt hier nicht. Entwürfe dürfen nicht als
+    // „ausgestellte Rechnung" zählen, sonst verdecken sie genau die Lücke.
+    if (!inv.datum || inv.st < 200 || inv.gross == null) continue
+    const m = inv.datum.slice(0, 7)
+    if (!jahre.some((j) => m.startsWith(j))) continue
+    rechnMap.set(m, Math.round(((rechnMap.get(m) ?? 0) + Number(inv.gross)) * 100) / 100)
+  }
+  const rechnungen = [...rechnMap.entries()].map(([m, g]) => ({ m, g })).sort((a, b) => a.m.localeCompare(b.m))
+
+  // 4) Buchungen (Einnahmen + Auslastung): confirmed, Website nur bezahlt
+  //    (§234-Filter); Periodisierung = Anreisetag (wie die Rechnungen)
   const buchungen: AuswertungDaten['buchungen'] = []
-  for (let from = 0; from < 5000; from += 1000) {
+  const vonJahr = jahre[jahre.length - 1]
+  const bisJahr = jahre[0]
+  for (let from = 0; from < 8000; from += 1000) {
     const { data: rows } = await supabaseAdmin
       .from('bookings')
-      .select('listing_id, total_price, check_in, check_out, channel, source, payment_status, status')
+      .select('id, listing_id, total_price, check_in, check_out, channel, source, payment_status, status')
       .eq('status', 'confirmed')
-      .gte('check_in', '2026-01-01').lte('check_in', '2026-12-31')
+      .gte('check_in', `${vonJahr}-01-01`).lte('check_in', `${bisJahr}-12-31`)
+      .order('id')
       .range(from, from + 999)
     for (const r of rows ?? []) {
       if (r.source === 'trimosa' && r.payment_status !== 'paid') continue
@@ -162,7 +261,7 @@ export async function buildAuswertung(): Promise<AuswertungDaten> {
     if (!rows || rows.length < 1000) break
   }
 
-  return { stand: new Date().toISOString(), einheiten, ausgaben, buchungen }
+  return { stand: new Date().toISOString(), einheiten, ausgaben, buchungen, offen, rechnungen, jahre }
 }
 
 const CACHE_KEY = 'auswertung_cache'
@@ -183,7 +282,9 @@ export async function getAuswertung(refresh = false): Promise<AuswertungDaten> {
       const { data: row } = await supabaseAdmin
         .from('app_settings').select('value').eq('key', CACHE_KEY).maybeSingle()
       const c = row?.value as AuswertungDaten | null
-      if (c?.stand && Date.now() - Date.parse(c.stand) < TTL_MS && c.ausgaben && c.buchungen) return c
+      // v4: Alt-Cache ohne die neuen Felder (offen/rechnungen/jahre) wird
+      // verworfen — sonst zeigte die Oberfläche bis zu 6 h leere Karten
+      if (c?.stand && Date.now() - Date.parse(c.stand) < TTL_MS && c.ausgaben && c.buchungen && c.offen && c.jahre) return c
     } catch { /* Cache-Miss → frisch bauen */ }
   }
   const daten = await buildAuswertung()

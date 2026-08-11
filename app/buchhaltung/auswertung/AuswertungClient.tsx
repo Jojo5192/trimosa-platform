@@ -20,6 +20,12 @@ interface Daten {
   einheiten: { id: string; titel: string; gruppe: string | null }[]
   ausgaben: { m: string; nr: string; name: string; g: number; e: Record<string, number>; lief: string }[]
   buchungen: { l: number; ci: string; co: string; p: number; k: string }[]
+  /** v4: was NICHT in den Ausgaben steckt (Entwürfe + offene Inbox) */
+  offen?: { entwuerfe: number; entwuerfeSumme: number; inbox: number; inboxSumme: number; aeltestes: string | null }
+  /** v4: Einnahmen-Gegenprobe aus den sevdesk-Rechnungen je Monat */
+  rechnungen?: { m: string; g: number }[]
+  /** v4: geladene Jahre (neuestes zuerst) */
+  jahre?: string[]
 }
 
 const NAVY = '#12222E'
@@ -36,7 +42,6 @@ const CARD: CSSProperties = { background: '#fff', borderRadius: 14, boxShadow: '
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const eur0 = (n: number) => Math.round(n).toLocaleString('de-DE') + ' €'
 const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
-const JAHR = '2026'
 
 /** Nächte einer Buchung innerhalb eines Monats (UTC-Parse — §74). */
 function naechteImMonat(ci: string, co: string, m: string): number {
@@ -65,12 +70,17 @@ export default function AuswertungClient() {
   const [daten, setDaten] = useState<Daten | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const heuteM = new Date().toISOString().slice(0, 7)
+  // v4-Review: BERLIN-Datum (die Rechnungs-Engine rechnet auch so) — mit
+  // UTC galten zwischen 0 und 2 Uhr alle heutigen Anreisen als „künftig"
+  const heuteISO = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+  const heuteM = heuteISO.slice(0, 7)
 
   // Filter
   const [zeitraum, setZeitraum] = useState<string>('ytd') // ytd | jahr | q1..q4 | 'JJJJ-MM'
   const [einheit, setEinheit] = useState<number | 'alle'>('alle')
   const [offeneGruppe, setOffeneGruppe] = useState<string | null>(null)
+  // v4: Jahr wählbar (vorher hartkodiert 2026 — 2025er Belege waren unsichtbar)
+  const [jahr, setJahr] = useState<string>(String(new Date().getFullYear()))
 
   const load = async (refresh = false) => {
     setBusy(true); setErr('')
@@ -84,7 +94,7 @@ export default function AuswertungClient() {
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Zeitraum → Monatsliste
-  const alleMonate = useMemo(() => Array.from({ length: 12 }, (_, i) => `${JAHR}-${String(i + 1).padStart(2, '0')}`), [])
+  const alleMonate = useMemo(() => Array.from({ length: 12 }, (_, i) => `${jahr}-${String(i + 1).padStart(2, '0')}`), [jahr])
   const zeitraumMonate = useMemo(() => {
     if (zeitraum === 'jahr') return alleMonate
     if (zeitraum === 'ytd') return alleMonate.filter((m) => m <= heuteM)
@@ -111,12 +121,16 @@ export default function AuswertungClient() {
 
   interface Summen {
     einnahmen: number; ausgaben: number; naechte: number; verfuegbar: number
+    /** v4: davon Anreise noch in der ZUKUNFT (gebucht, aber nicht gelaufen) */
+    einnahmenZukunft: number
+    /** v4: Gegenprobe — Summe der sevdesk-Rechnungen im Zeitraum */
+    rechnungen: number
     kanaele: Map<string, number>
     gruppen: Map<string, { label: string; emoji: string; sum: number; konten: Map<string, { name: string; sum: number }>; liefs: Map<string, number> }>
     neutral: Map<string, { label: string; sum: number }>
   }
   const rechne = (monate: string[]): Summen => {
-    const s: Summen = { einnahmen: 0, ausgaben: 0, naechte: 0, verfuegbar: 0, kanaele: new Map(), gruppen: new Map(), neutral: new Map() }
+    const s: Summen = { einnahmen: 0, ausgaben: 0, naechte: 0, verfuegbar: 0, einnahmenZukunft: 0, rechnungen: 0, kanaele: new Map(), gruppen: new Map(), neutral: new Map() }
     if (!daten) return s
     const mSet = new Set(monate)
     for (const a of daten.ausgaben) {
@@ -153,14 +167,32 @@ export default function AuswertungClient() {
       if (mSet.has(b.ci.slice(0, 7))) {
         s.einnahmen += b.p
         s.kanaele.set(b.k, (s.kanaele.get(b.k) ?? 0) + b.p)
+        // v4: Anreise liegt noch vor uns → gebucht, aber noch nicht verdient
+        if (b.ci > heuteISO) s.einnahmenZukunft += b.p
       }
       for (const m of monate) s.naechte += naechteImMonat(b.ci, b.co, m)
+    }
+    // v4: Rechnungs-Gegenprobe (nur sinnvoll über ALLE Wohnungen — die
+    // sevdesk-Rechnung kennt keine interne Wohnungs-Aufteilung)
+    if (einheit === 'alle') {
+      for (const r of daten.rechnungen ?? []) if (mSet.has(r.m)) s.rechnungen += r.g
     }
     return s
   }
 
   const S = useMemo(() => rechne(zeitraumMonate), [daten, zeitraumMonate, einheit]) // eslint-disable-line react-hooks/exhaustive-deps
   const V = useMemo(() => (vorMonate ? rechne(vorMonate) : null), [daten, vorMonate, einheit]) // eslint-disable-line react-hooks/exhaustive-deps
+  // v4: Δ zwischen Buchungs-Einnahmen und ausgestellten sevdesk-Rechnungen.
+  // v4-Review: Basis sind NUR die bereits angereisten Buchungen — die Engine
+  // stellt Rechnungen erst AM Anreisetag aus, künftige Anreisen hätten sonst
+  // dauerhaft einen roten Fehlalarm erzeugt.
+  const einnahmenGelaufen = S.einnahmen - S.einnahmenZukunft
+  const rechnungsDelta = S.rechnungen > 0 ? einnahmenGelaufen - S.rechnungen : null
+  const deltaAuffaellig = rechnungsDelta != null
+    && Math.abs(rechnungsDelta) > Math.max(100, einnahmenGelaufen * 0.01)
+  // v4-Review: Vorjahr ohne Buchhaltungsdaten (sevdesk startet 2026) würde
+  // sonst einen frei erfundenen „Überschuss" zeigen
+  const keineAusgabenDaten = S.einnahmen > 0 && S.ausgaben === 0
 
   // Monats-Chart-Daten (immer ganzes Jahr, gefiltert nach Einheit)
   const chart = useMemo(() => alleMonate.map((m) => {
@@ -175,7 +207,9 @@ export default function AuswertungClient() {
       }
     }
     return { m, einn, ausg }
-  }), [daten, einheit]) // eslint-disable-line react-hooks/exhaustive-deps
+    // v4-Review: alleMonate MUSS in den Dependencies stehen — sonst zeigte
+    // das Chart nach dem Jahr-Wechsel weiter die Monate des Vorjahres
+  }), [daten, einheit, alleMonate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wohnungs-Tabelle (nur bei „Alle")
   const tabelle = useMemo(() => {
@@ -213,12 +247,13 @@ export default function AuswertungClient() {
     )
   }
 
-  const zeitraumLabel = zeitraum === 'ytd' ? 'Jahr bis heute'
-    : zeitraum === 'jahr' ? 'Ganzes Jahr (inkl. gebucht)'
-    : /^q\d$/.test(zeitraum) ? zeitraum.toUpperCase() + ' ' + JAHR
-    : MONATE[Number(zeitraum.slice(5)) - 1] + ' ' + JAHR
+  const zeitraumLabel = zeitraum === 'ytd' ? `Jahr ${jahr} bis heute`
+    : zeitraum === 'jahr' ? `Ganzes Jahr ${jahr} (inkl. gebucht)`
+    : /^q\d$/.test(zeitraum) ? zeitraum.toUpperCase() + ' ' + jahr
+    : MONATE[Number(zeitraum.slice(5)) - 1] + ' ' + jahr
 
   const maxChart = Math.max(1, ...chart.map((c) => Math.max(c.einn, c.ausg)))
+  const maxUeber = Math.max(0, ...tabelle.map((z) => Math.abs(z.ueber)))
 
   return (
     <div style={{ minHeight: '100dvh', background: GROUP_BG, WebkitFontSmoothing: 'antialiased', overflowX: 'hidden' }}>
@@ -252,8 +287,18 @@ export default function AuswertungClient() {
         {daten && (
           <>
             {/* ── Filter ── */}
+            {(daten.jahre ?? []).length > 1 && (
+              <div style={{ display: 'flex', gap: 7, margin: '0 -2px', paddingLeft: 2 }}>
+                {(daten.jahre ?? []).map((j) => (
+                  <Chip key={j} active={jahr === j} onClick={() => { setJahr(j); setZeitraum(j === String(new Date().getFullYear()) ? 'ytd' : 'jahr') }}>{j}</Chip>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 7, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2, margin: '0 -2px', paddingLeft: 2 }}>
-              <Chip active={zeitraum === 'ytd'} onClick={() => setZeitraum('ytd')}>Jahr bis heute</Chip>
+              {/* v4-Review: „bis heute" ergibt nur im laufenden Jahr Sinn */}
+              {jahr === String(new Date().getFullYear()) && (
+                <Chip active={zeitraum === 'ytd'} onClick={() => setZeitraum('ytd')}>Jahr bis heute</Chip>
+              )}
               {(['q1', 'q2', 'q3', 'q4'] as const).map((q) => (
                 <Chip key={q} active={zeitraum === q} onClick={() => setZeitraum(q)}>{q.toUpperCase()}</Chip>
               ))}
@@ -272,7 +317,18 @@ export default function AuswertungClient() {
             {/* ── KPI-Kacheln ── */}
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
               {[
-                { l: 'Einnahmen', v: eur0(S.einnahmen), d: <Delta curr={S.einnahmen} prev={V ? V.einnahmen : null} />, c: GREEN },
+                { l: 'Einnahmen', v: eur0(S.einnahmen), c: GREEN,
+                  // v4: „Jahr bis heute" enthält auch Anreisen, die erst noch
+                  // kommen — das erklärt die Differenz zur EÜR (§243ae).
+                  // v4-Review: Vorperioden-Delta bleibt trotzdem sichtbar.
+                  d: (
+                    <>
+                      <Delta curr={S.einnahmen} prev={V ? V.einnahmen : null} />
+                      {S.einnahmenZukunft > 0 && (
+                        <div style={{ fontSize: 11.5, color: SUB }}>davon {eur0(S.einnahmenZukunft)} noch nicht angereist</div>
+                      )}
+                    </>
+                  ) },
                 { l: 'Ausgaben', v: eur0(S.ausgaben), d: <Delta curr={S.ausgaben} prev={V ? V.ausgaben : null} invers />, c: INK },
                 { l: 'Überschuss', v: eur0(ueberschuss), d: <Delta curr={ueberschuss} prev={V ? V.einnahmen - V.ausgaben : null} />, c: ueberschuss >= 0 ? GOLD : RED },
                 { l: 'Auslastung', v: auslastung == null ? '—' : Math.round(auslastung * 100) + ' %', d: vAusl != null && auslastung != null
@@ -288,9 +344,55 @@ export default function AuswertungClient() {
             </div>
             <div style={{ fontSize: 12.5, color: SUB, margin: '-8px 4px 0' }}>{zeitraumLabel}{einheit !== 'alle' ? ` · ${daten.einheiten[einheit]?.titel}` : ''} — Bruttowerte; Einnahmen nach Anreisetag</div>
 
+            {/* ── v4 EHRLICHKEIT: was in den Zahlen NICHT drinsteckt ── */}
+            {(() => {
+              const of = daten.offen
+              const fehlt = (of?.entwuerfe ?? 0) + (of?.inbox ?? 0)
+              const fehltSum = (of?.entwuerfeSumme ?? 0) + (of?.inboxSumme ?? 0)
+              if (!fehlt && !deltaAuffaellig && !keineAusgabenDaten) return null
+              return (
+                <div style={{ ...CARD, padding: '13px 16px', display: 'grid', gap: 8, borderLeft: `3px solid ${GOLD}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>Vollständigkeit</div>
+                  {keineAusgabenDaten && (
+                    <div style={{ fontSize: 13.5, color: RED }}>
+                      ⚠️ Für {jahr} liegen KEINE Buchhaltungsdaten vor (sevdesk wurde erst 2026 aufgebaut) —
+                      Ausgaben und Überschuss sind hier ohne Aussage.
+                    </div>
+                  )}
+                  {fehlt > 0 && (
+                    <a href="/buchhaltung" style={{ display: 'flex', alignItems: 'baseline', gap: 8, textDecoration: 'none', color: 'inherit' }}>
+                      <span style={{ fontSize: 13.5, color: INK, flex: 1 }}>
+                        ⚠️ {fehlt} {fehlt === 1 ? 'Beleg ist' : 'Belege sind'} noch nicht gebucht — fehlt in den Ausgaben
+                        {of?.aeltestes && <span style={{ color: SUB }}> · ältester {of.aeltestes.split('-').reverse().join('.')}</span>}
+                      </span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: GOLD, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {fehltSum > 0 ? `~ ${eur0(fehltSum)}` : ''} ›
+                      </span>
+                    </a>
+                  )}
+                  {deltaAuffaellig && rechnungsDelta != null && (
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontSize: 13.5, color: INK, flex: 1 }}>
+                        🧾 Rechnungen in sevdesk: {eur0(S.rechnungen)} — {rechnungsDelta > 0 ? 'weniger als die gelaufenen Buchungen' : 'mehr als die gelaufenen Buchungen'}
+                        <span style={{ color: SUB }}> · Vorab- und Storno-Rechnungen verschieben sich um einen Monat</span>
+                      </span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: rechnungsDelta > 0 ? RED : SUB, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        Δ {eur0(Math.abs(rechnungsDelta))}
+                      </span>
+                    </div>
+                  )}
+                  {fehlt > 0 && (
+                    <div style={{ fontSize: 11.5, color: SUB }}>
+                      Offene Belege gelten insgesamt — unabhängig vom gewählten Zeitraum und der Wohnung.
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* ── Monats-Chart ── */}
             <div style={{ ...CARD, padding: '16px 16px 10px' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: INK, marginBottom: 10 }}>Entwicklung {JAHR} <span style={{ fontSize: 12, fontWeight: 600, color: SUB }}>— Monat antippen zum Filtern</span></div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: INK, marginBottom: 10 }}>Entwicklung {jahr} <span style={{ fontSize: 12, fontWeight: 600, color: SUB }}>— Monat antippen zum Filtern</span></div>
               <svg viewBox="0 0 744 190" style={{ width: '100%', height: 'auto', display: 'block' }}>
                 {chart.map((c, i) => {
                   const x = 8 + i * 61
@@ -402,7 +504,19 @@ export default function AuswertungClient() {
                           <td style={{ padding: '9px 16px', fontWeight: 600, color: INK, whiteSpace: 'nowrap' }}>{z.titel}</td>
                           <td style={{ padding: '9px 8px', textAlign: 'right', color: GREEN, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{z.kanzem ? '—' : eur0(z.einn)}</td>
                           <td style={{ padding: '9px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{eur0(z.ausg)}</td>
-                          <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: z.ueber >= 0 ? INK : RED, fontVariantNumeric: 'tabular-nums' }}>{eur0(z.ueber)}</td>
+                          <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: z.ueber >= 0 ? INK : RED, fontVariantNumeric: 'tabular-nums', minWidth: 96 }}>
+                            {eur0(z.ueber)}
+                            {/* v4: Mini-Balken — der Vergleich der Wohnungen
+                                soll auf einen Blick lesbar sein */}
+                            <div style={{ height: 3, borderRadius: 2, marginTop: 4, background: 'rgba(60,60,67,0.08)' }}>
+                              <div style={{
+                                height: '100%', borderRadius: 2,
+                                width: `${maxUeber ? Math.min(100, Math.abs(z.ueber) / maxUeber * 100) : 0}%`,
+                                marginLeft: z.ueber >= 0 ? 'auto' : undefined,
+                                background: z.ueber >= 0 ? GOLD : RED,
+                              }} />
+                            </div>
+                          </td>
                           <td style={{ padding: '9px 8px', textAlign: 'right', color: SUB, fontVariantNumeric: 'tabular-nums' }}>{z.kanzem ? '—' : z.naechte}</td>
                           <td style={{ padding: '9px 16px 9px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{z.ausl == null ? '—' : Math.round(z.ausl * 100) + ' %'}</td>
                         </tr>
