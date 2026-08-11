@@ -315,6 +315,13 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
     const banks = await findBankAccounts()
     let gebucht = 0
     const used = new Set<string>()
+    // v4: Duplikat-Schutz — eine Tx, deren Beleg zwar entstand, aber nicht
+    // verknüpft werden konnte, bleibt in sevdesk OFFEN; ohne Gedächtnis
+    // würde der nächste Tages-Lauf einen ZWEITEN Eigenbeleg anlegen.
+    const { data: failData } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'buchhaltung_eigen_failed').maybeSingle()
+    const failed = (failData?.value ?? {}) as Record<string, string>
+    let failedDirty = false
     for (const bank of banks) {
       for (const t of await listBankTransactions(bank.id, 60)) {
         if (Number(t.status) !== 100) continue
@@ -322,7 +329,14 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
         if (amt >= 0) continue
         const txName = nameTokens(String(t.payeePayerName ?? ''))
         const regel = regeln.find((rg) => {
-          if (Math.abs(Math.abs(amt) - Number(rg.key.split('|')[1])) > 0.005) return false
+          // v4: kleine Betrags-Toleranz max(2 €, 2 %) GEDECKELT auf 10 € —
+          // Abo-/Preisanpassungen um Cent-/Euro-Beträge killten die Regel
+          // sonst dauerhaft; der Deckel hält aber z. B. eine 990-€-Auslagen-
+          // erstattung aus dem 1000-€-Entnahme-Band (Review-Befund).
+          // Empfänger-Tokens (+ ggf. zweckMuss) bleiben PFLICHT, gebucht
+          // wird ohnehin der echte Tx-Betrag
+          const ref = Number(rg.key.split('|')[1])
+          if (Math.abs(Math.abs(amt) - ref) > Math.max(2, Math.min(ref * 0.02, 10))) return false
           const toks = nameTokens(rg.empfaenger)
           if (!(toks.length > 0 && toks.every((w) => txName.includes(w)))) return false
           // §243o: Zweck-Bedingung (MONTANA-Adresse) — ohne Treffer greift die Regel nicht
@@ -332,6 +346,7 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
         if (!regel) continue
         const txId = String(t.id)
         if (used.has(txId)) continue
+        if (failed[txId]) continue
         const datum = String(t.valueDate ?? t.entryDate ?? '').slice(0, 10) || new Date().toISOString().slice(0, 10)
         const d = new Date(datum + 'T12:00:00Z')
         const monat = MONATE_DE[d.getUTCMonth()] + ' ' + d.getUTCFullYear()
@@ -345,7 +360,7 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
           zuordnung: regel.zuordnung ?? null,
           txId, txAccountId: bank.id, txDate: datum,
         })
-        if (r.ok) {
+        if (r.ok && r.verknuepft !== false) {
           used.add(txId)
           gebucht++
           details.push(`${regel.zweckPrefix} \u00B7 ${monat} (${betrag.toFixed(2)} \u20AC)`)
@@ -353,10 +368,31 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
             const { sendPushToTeam } = await import('@/lib/push')
             await sendPushToTeam('\u{1F4D8} Automatisch gebucht', `${regel.zweckPrefix} \u00B7 ${monat} \u00B7 ${betrag.toFixed(2).replace('.', ',')} \u20AC`, '/buchhaltung', { buchhaltung: true })
           } catch { /* best effort */ }
+        } else if (r.ok) {
+          // v4: Beleg entstand, Zahlung NICHT verkn\u00FCpft (bookSevVoucher meldet
+          // das jetzt ehrlich) \u2014 Tx dauerhaft sperren + Warn-Push statt
+          // stillem Duplikat beim n\u00E4chsten Lauf
+          used.add(txId)
+          failed[txId] = new Date().toISOString()
+          failedDirty = true
+          details.push(`\u26A0\uFE0F ${regel.zweckPrefix} \u00B7 ${monat}: Beleg gebucht, Zahlung NICHT verkn\u00FCpft \u2014 im Bankabgleich zuordnen`)
+          try {
+            const { sendPushToTeam } = await import('@/lib/push')
+            await sendPushToTeam('\u26A0\uFE0F Eigenbeleg ohne Zahlungs-Verkn\u00FCpfung', `${regel.zweckPrefix} \u00B7 ${monat} \u2014 bitte im Bankabgleich zuordnen`, '/buchhaltung', { buchhaltung: true })
+          } catch { /* best effort */ }
         } else {
           details.push(`FEHLER ${regel.zweckPrefix}: ${(r.error ?? '?').slice(0, 100)}`)
         }
       }
+    }
+    if (failedDirty) {
+      const keys = Object.keys(failed)
+      if (keys.length > 100) {
+        keys.sort((a, b) => failed[a].localeCompare(failed[b]))
+        for (const k of keys.slice(0, keys.length - 100)) delete failed[k]
+      }
+      await supabaseAdmin.from('app_settings').upsert(
+        { key: 'buchhaltung_eigen_failed', value: failed }, { onConflict: 'key' }).then(() => {}, () => {})
     }
     return { gebucht, details }
   } catch (e) {

@@ -715,10 +715,19 @@ export async function bookSevVoucher(voucherId: string, opts: {
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e)
     // §242: Scheitert NUR der bookAmount (Beleg ist da schon kategorisiert +
-    // finalisiert), ist das kein Fehler — sevdesks eigene Bank-Automatik hat
-    // die Zahlung oft schon vergeben; der Bankabgleich erledigt den Rest
+    // finalisiert), ist das kein Fehler-Abbruch — aber v4: EHRLICH prüfen,
+    // ob sevdesks Bank-Automatik die Zahlung wirklich schon vergeben hat
+    // (Status 1000), statt es zu unterstellen. Sonst meldet der Aufrufer
+    // fälschlich Erfolg und Cron-Regeln buchen beim nächsten Lauf doppelt.
     if (/bookAmount/.test(msg)) {
-      return { ok: true, verknuepft: false, hinweis: 'Beleg verbucht — Zahlung war nicht verknüpfbar (vermutlich hat sevdesks Bank-Automatik sie schon vergeben).' }
+      try {
+        const cur = await sevJson<{ status?: string | number }[] | { status?: string | number }>(`/Voucher/${voucherId}`)
+        const st = Number(Array.isArray(cur) ? cur[0]?.status : (cur as { status?: string | number })?.status)
+        if (st === 1000) {
+          return { ok: true, verknuepft: true, hinweis: 'Zahlung war schon vergeben (sevdesk-Bank-Automatik).' }
+        }
+      } catch { /* Status nicht lesbar → konservativ unverknüpft melden */ }
+      return { ok: true, verknuepft: false, hinweis: `Beleg verbucht — Zahlung NICHT verknüpft (${msg.slice(0, 140)}).` }
     }
     return { ok: false, error: msg.slice(0, 300) }
   }

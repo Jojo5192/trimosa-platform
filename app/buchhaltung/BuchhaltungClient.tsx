@@ -40,6 +40,8 @@ interface KiVorschlag {
   anlagegut: boolean; nutzungsdauer: number | null
   /** §243h: echtes Rechnungsdatum aus dem Beleg (korrigiert Scan-Datum) */
   datum?: string | null
+  /** v4: Rechnungswährung — bei ≠ EUR wird der Bank-EUR-Betrag gebucht (§243u) */
+  waehrung?: string | null
   kst?: string; zuordnung?: Zuordnung | null; gelernt?: boolean
 }
 
@@ -281,6 +283,9 @@ export default function BuchhaltungClient() {
   const [transit, setTransit] = useState<Record<string, string>>({})
   // §243: „Ohne Beleg buchen" (Eigenbeleg) je Abbuchung
   const [eigen, setEigen] = useState<Record<string, EigenForm>>({})
+  // v4: ⚡-Automatik über die liegengebliebenen Entwürfe
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoErgebnis, setAutoErgebnis] = useState('')
 
   // Hydration-sicher: erst nach Mount messen (SSR kennt kein window)
   const [isMobile, setIsMobile] = useState(false)
@@ -698,6 +703,11 @@ export default function BuchhaltungClient() {
               <div style={{ background: '#FBF6E9', borderRadius: 14, padding: '12px 14px', display: 'grid', gap: 7 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#7A6520' }}>✨ {k.kategorie} ({k.nr}) · {k.taxRate} % USt{k.betrag ? ` · ${eur(k.betrag)}` : ''}</div>
                 {k.begruendung && <div style={{ fontSize: 13, color: '#7A6520', lineHeight: 1.45 }}>{k.begruendung}</div>}
+                {k.waehrung && k.waehrung !== 'EUR' && (
+                  <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.45, background: '#FEF3C7', borderRadius: 8, padding: '7px 9px' }}>
+                    ⚠️ {k.waehrung}-Rechnung — wähle unten die passende Bank-Abbuchung, gebucht wird deren EUR-Betrag (nie der {k.waehrung}-Betrag).
+                  </div>
+                )}
                 {k.steuerHinweis && <div style={{ fontSize: 13, color: '#5C4D18', lineHeight: 1.45, borderTop: '0.5px solid #E6D9AE', paddingTop: 7 }}>💡 {k.steuerHinweis}</div>}
                 {k.anlagegut && <div style={{ fontSize: 13, fontWeight: 700, color: '#9A3412' }}>🏗 Anlagegut — Abschreibung über {k.nutzungsdauer ?? '?'} Jahre. Der Schalter unten ist gesetzt; die Nutzungsdauer bestätigst du einmal in sevdesk.</div>}
               </div>
@@ -742,7 +752,16 @@ export default function BuchhaltungClient() {
               {match && f.txId === match.id && (
                 <div style={{ fontSize: 13, fontWeight: 700, color: GREEN, margin: '0 4px 6px' }}>✓ Vorschlag: Abbuchung {eur(match.betrag)} vom {fmtD(match.datum)} passt exakt</div>
               )}
-              <select value={f.txId} onChange={(e) => setF(v.id, { txId: e.target.value })} style={SELECT}>
+              <select value={f.txId} onChange={(e) => {
+                const txId = e.target.value
+                const t = openTx.find((x) => x.id === txId)
+                // v4: leeres Betragsfeld bzw. Fremdwährungs-Rechnung → der
+                // Bank-EUR-Betrag der gewählten Zahlung IST der Buchungsbetrag
+                const kiV = ki[v.id]
+                const fremd = typeof kiV === 'object' && kiV?.waehrung && kiV.waehrung !== 'EUR'
+                const uebernehmen = t && (fremd || !parseFloat(f.betrag.replace(',', '.')))
+                setF(v.id, { txId, ...(uebernehmen ? { betrag: String(Math.abs(t.betrag)) } : {}) })
+              }} style={SELECT}>
                 <option value="">— keine · später über den Bankabgleich —</option>
                 {txKandidaten(Number.isFinite(betragNum) ? betragNum : null).map((t) => (
                   <option key={t.id} value={t.id}>{fmtD(t.datum)} · {eur(t.betrag)} · {(t.von || t.zweck).slice(0, 40)}</option>
@@ -979,6 +998,29 @@ export default function BuchhaltungClient() {
                 // §243ad: bezahlte Belege on-demand nachladen (GET ?bezahlt=1)
                 if (!vouchers.some((v) => v.status === 1000)) load(txDays, true)
               }}>✓ Gebucht</Chip>
+              {belegFilter === 'todo' && vouchers.filter((v) => v.status === 50).length > 0 && (
+                <button
+                  disabled={autoBusy}
+                  onClick={async () => {
+                    setAutoBusy(true); setAutoErgebnis(''); setErr('')
+                    try {
+                      const j = await post({ action: 'auto-batch', limit: 15 })
+                      setAutoErgebnis(`⚡ ${j.auto} automatisch verbucht · ${j.brauchenDich} brauchen dich${j.uebrig > 0 ? ` · ${j.uebrig} übrig (nochmal tippen)` : ''}`)
+                      await load()
+                    } catch (e) {
+                      setErr(String(e instanceof Error ? e.message : e))
+                    } finally { setAutoBusy(false) }
+                  }}
+                  style={{
+                    border: 'none', borderRadius: 999, padding: '7px 13px', fontSize: 13, fontWeight: 600,
+                    background: autoBusy ? '#E5E5EA' : '#12222E', color: autoBusy ? '#8E8E93' : '#E3C878',
+                    cursor: autoBusy ? 'wait' : 'pointer', WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {autoBusy ? '⏳ Automatik läuft…' : `⚡ Automatik (${vouchers.filter((v) => v.status === 50).length})`}
+                </button>
+              )}
+              {autoErgebnis && <span style={{ flexBasis: '100%', fontSize: 12.5, color: '#166534', padding: '2px 4px' }}>{autoErgebnis}</span>}
             </div>
           )}
           {section === 'belege' && belegFilter === 'todo' && (

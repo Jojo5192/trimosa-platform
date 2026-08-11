@@ -8,7 +8,8 @@ import {
 import { findBankAccounts, listBankTransactions, bookMoneyTransit, payoutClearingFor } from '@/lib/sevdesk-payouts'
 import { askClaudeWithFile } from '@/lib/ai'
 import { bucheEigenbeleg, resolveTilgungKonto, saveEigenRegel } from '@/lib/eigenbeleg'
-import { analysiereBeleg, pdfForVoucher, parseJsonLoose, saveGelernt, saveZuordnung } from '@/lib/beleg-ki'
+import { analysiereBeleg, pdfForVoucher, parseJsonLoose, saveGelernt, saveZuordnung, normLieferant, getGelernt } from '@/lib/beleg-ki'
+import { invalidateAuswertungCache } from '@/lib/auswertung'
 
 /**
  * 💶 BUCHHALTUNGSMODUL (§239) — Admin/Gastgeber: sevdesk komplett aus der
@@ -441,6 +442,7 @@ export async function POST(req: NextRequest) {
           zuordnung: b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null,
         })
       }
+      if (r.ok) await invalidateAuswertungCache()
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
     }
 
@@ -508,7 +510,115 @@ export async function POST(req: NextRequest) {
           at: new Date().toISOString(),
         })
       }
+      if (r.ok) await invalidateAuswertungCache()
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
+    }
+
+    /**
+     * v4 GELERNT-REBUILD: Die Gelernt-Map deterministisch aus den BEREITS
+     * gebuchten sevdesk-Belegen rekonstruieren (der 2.8.-Settings-Wipe hat
+     * das komplette Lieferanten-Wissen gelöscht — dabei steckt es 1:1 in
+     * den ~500 Buchungen). Je Lieferant gewinnt die dominante Konto/Steuer-
+     * Kombi (Anteil ≥ 60 %); gelernt werden nur echte Aufwandskonten
+     * (5xxx–7xxx, ohne das deterministische 5923).
+     */
+    if (b.action === 'gelernt-rebuild') {
+      const dryRun = b.dryRun !== false
+      const { vollAudit } = await import('@/lib/sevdesk')
+      const { belege } = await vollAudit()
+      const gdAll = await getReceiptGuidance()
+      const byNr = new Map(gdAll.map((g) => [g.accountNumber, g]))
+      const agg = new Map<string, Map<string, { n: number; tax: number; nr: string }>>()
+      const anzeige = new Map<string, string>()
+      for (const be of belege) {
+        if (![100, 750, 1000].includes(be.st)) continue
+        if (be.cd === 'D') continue
+        if (!be.lief || !be.pos.length) continue
+        // v4-Review: POSITIONS-LEICHEN aus Reset-Zyklen (Σpos ≠ sumGross,
+        // §243ae) — solche Belege tragen die ALTE Fehl-Kategorie noch als
+        // Position und würden sie zurücklernen → überspringen
+        const posSumme = be.pos.reduce((a, c) => a + Math.abs(c.g), 0)
+        if (be.gross != null && Math.abs(posSumme - Math.abs(be.gross)) > 0.05) continue
+        const p = [...be.pos].sort((x, y) => Math.abs(y.g) - Math.abs(x.g))[0]
+        // nur echte Aufwandskonten; 5923 ist deterministisch, 6220
+        // (Abschreibungen/Anlagegüter) darf NIE ohne isAsset gelernt werden
+        if (!/^[567]/.test(p.nr) || p.nr === '5923' || p.nr === '6220') continue
+        if (![19, 7, 0].includes(Number(p.tax))) continue
+        const key = normLieferant(be.lief)
+        if (!key || key.length < 3) continue
+        anzeige.set(key, be.lief)
+        const m = agg.get(key) ?? new Map<string, { n: number; tax: number; nr: string }>()
+        const kk = `${p.nr}|${p.tax}`
+        const cur = m.get(kk) ?? { n: 0, tax: Number(p.tax), nr: p.nr }
+        cur.n++
+        m.set(kk, cur)
+        agg.set(key, m)
+      }
+      const eintraege: { lieferant: string; key: string; nr: string; kategorie: string; tax: number; n: number; von: number }[] = []
+      for (const [key, m] of agg) {
+        const total = [...m.values()].reduce((a, c) => a + c.n, 0)
+        const best = [...m.values()].sort((x, y) => y.n - x.n)[0]
+        // v4-Review: Mindestens 2 gleichlautende Buchungen — Einzelfälle
+        // lernt das normale Verbuchen ohnehin beim nächsten Mal
+        if (!best || best.n < 2 || best.n / total < 0.6) continue
+        const guide = byNr.get(best.nr)
+        if (!guide) continue
+        eintraege.push({ lieferant: anzeige.get(key) ?? key, key, nr: best.nr, kategorie: guide.accountName, tax: best.tax, n: best.n, von: total })
+      }
+      eintraege.sort((x, y) => y.n - x.n)
+      if (!dryRun && eintraege.length) {
+        const { readGelernt } = await import('@/lib/beleg-ki')
+        const cur = await readGelernt()
+        if (cur === null) return NextResponse.json({ error: 'Gelernt-Read fehlgeschlagen — nichts geschrieben (Wipe-Schutz).' }, { status: 502 })
+        for (const e of eintraege) {
+          cur[e.key] = { accountDatevId: byNr.get(e.nr)!.accountDatevId, taxRate: e.tax, anlagegut: false, at: new Date().toISOString() }
+        }
+        await supabaseAdmin.from('app_settings').upsert(
+          { key: 'buchhaltung_gelernt', value: cur }, { onConflict: 'key' })
+      }
+      return NextResponse.json({ ok: true, dryRun, belegeGeprueft: belege.length, gelernt: eintraege.length, eintraege }, NO_STORE)
+    }
+
+    /**
+     * v4 ⚡-BATCH: Voll-Automatik über die liegengebliebenen Entwürfe —
+     * sichere Belege (provision/gelernt bzw. Vision + exakter Bank-Beleg)
+     * verschwinden aus der Liste, der Rest bleibt ehrlich zur Prüfung.
+     */
+    if (b.action === 'auto-batch') {
+      const limit = Math.min(Math.max(Number(b.limit) || 10, 1), 25)
+      const { listSevVouchers } = await import('@/lib/sevdesk')
+      const { autoVerbucheBeleg } = await import('@/lib/beleg-ki')
+      const drafts = await listSevVouchers([50])
+      // v4-Review: gemeinsamer Dämpfungs-State mit dem Cron-Nachlauf —
+      // die zu verarbeitenden IDs werden VOR der Arbeit markiert, damit
+      // ein paralleler 10-Min-Cron dieselben Belege überspringt
+      const zuVerarbeiten = drafts.slice(0, limit).map((v) => ({ id: String(v.id), lief: v.supplierName }))
+      try {
+        const { data: nlData } = await supabaseAdmin
+          .from('app_settings').select('value').eq('key', 'buchhaltung_nachlauf').maybeSingle()
+        const st = (nlData?.value ?? {}) as Record<string, string>
+        for (const z of zuVerarbeiten) st[z.id] = new Date().toISOString()
+        await supabaseAdmin.from('app_settings').upsert(
+          { key: 'buchhaltung_nachlauf', value: st }, { onConflict: 'key' })
+      } catch { /* best effort */ }
+      // 80 s Budget + 25 s Mindest-Rest je Beleg — Vercel (maxDuration 120)
+      // darf nie mitten in saveVoucher/bookAmount killen (halbfertiger Beleg)
+      const deadline = Date.now() + 80_000
+      let auto = 0
+      let geprueft = 0
+      const pruefen: string[] = []
+      for (const v of zuVerarbeiten) {
+        if (Date.now() > deadline - 25_000) break
+        geprueft++
+        const r = await autoVerbucheBeleg(v.id)
+        if (r.auto) auto++
+        else pruefen.push(`${v.lief ?? v.id}: ${r.text}`.slice(0, 140))
+      }
+      if (auto > 0) await invalidateAuswertungCache()
+      return NextResponse.json({
+        ok: true, geprueft, auto, brauchenDich: pruefen.length,
+        uebrig: drafts.length - geprueft, details: pruefen.slice(0, 30),
+      }, NO_STORE)
     }
 
     // §243s: NETTING-Zahlung fuer einen FERTIG gebuchten Beleg — bookAmount
@@ -607,6 +717,7 @@ export async function POST(req: NextRequest) {
       if (b.confirm !== 'DELETE') return NextResponse.json({ error: "confirm: 'DELETE' noetig." }, { status: 400 })
       if (!/^\d{3,15}$/.test(String(b.voucherId ?? ''))) return NextResponse.json({ error: 'voucherId noetig.' }, { status: 400 })
       const r = await deleteSevVoucher(String(b.voucherId))
+      if (r.ok) await invalidateAuswertungCache()
       return NextResponse.json(r, r.ok ? NO_STORE : { status: 502 })
     }
 
@@ -617,12 +728,15 @@ export async function POST(req: NextRequest) {
         .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
       const val = (cur?.value ?? {}) as Record<string, unknown>
       const regeln = (val.eigenRegeln ?? {}) as Record<string, unknown>
-      const gelernt = (val.gelernt ?? {}) as Record<string, unknown>
+      const gelerntAlt = (val.gelernt ?? {}) as Record<string, unknown>
+      const gelerntNeu = await getGelernt()
       const ign = Array.isArray(val.ignoredTx) ? val.ignoredTx.length : 0
       return NextResponse.json({
         eigenRegeln: Object.keys(regeln).length,
         regelKeys: Object.keys(regeln),
-        gelernt: Object.keys(gelernt).length,
+        gelernt: Object.keys(gelerntNeu).length,
+        gelerntLieferanten: Object.keys(gelerntNeu).sort(),
+        gelerntAltKey: Object.keys(gelerntAlt).length,
         ignoredTx: ign,
         topLevelKeys: Object.keys(val),
       }, NO_STORE)

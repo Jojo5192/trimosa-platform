@@ -34,7 +34,20 @@ export async function GET(request: NextRequest) {
       const { vorabAnalyse } = await import('@/lib/beleg-ki')
       vorab = await vorabAnalyse(2)
     } catch { /* fail-soft */ }
-    return NextResponse.json({ ...report, ...(vorab ? { vorabAnalyse: vorab } : {}) })
+    // v4 RETRO-NACHLAUF: liegengebliebene Entwürfe erneut durch die
+    // Voll-Automatik (24-h-Dämpfung je Beleg) — nach Gelernt-Rebuild bzw.
+    // der ersten manuellen Buchung eines Lieferanten heilen sich seine
+    // Alt-Entwürfe von selbst
+    let nachlauf: { versucht: number; gebucht: number } | null = null
+    try {
+      const { autoNachlauf } = await import('@/lib/beleg-ki')
+      nachlauf = await autoNachlauf(2)
+    } catch { /* fail-soft */ }
+    return NextResponse.json({
+      ...report,
+      ...(vorab ? { vorabAnalyse: vorab } : {}),
+      ...(nachlauf ? { autoNachlauf: nachlauf } : {}),
+    })
   } catch (err) {
     console.error('[mail-scan] cron:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

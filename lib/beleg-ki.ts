@@ -42,17 +42,75 @@ export async function getBuchhaltungSettings(): Promise<{ ignoredTx?: string[]; 
     .from('app_settings').select('value').eq('key', 'buchhaltung').maybeSingle()
   return (data?.value ?? {}) as { ignoredTx?: string[]; gelernt?: Record<string, Gelernt> }
 }
+
+/**
+ * v4: Lieferanten-Namen für den Gelernt-Key NORMALISIEREN — „Zapier" und
+ * „Zapier Inc." bzw. „Vercel Inc." / „Vercel" müssen denselben Eintrag
+ * treffen. lowercase, Satzzeichen raus, Rechtsform-Suffixe gestrippt.
+ */
+// ⚠️ BEWUSST OHNE die deutschen Personengesellschafts-Suffixe gbr/ug/kg/ohg:
+// „TRIMOSA Immobilien GbR" (USt-frei) und „TRIMOSA Immobilien UG" (19 %)
+// sind ZWEI echte Lieferanten mit gegensätzlicher USt-Behandlung — das
+// Suffix ist dort das einzige Unterscheidungsmerkmal (Review-Befund v4).
+const RECHTSFORM = new Set([
+  'gmbh', 'ag', 'mbh', 'se', 'co', 'cokg',
+  'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited', 'llc', 'plc', 'pbc',
+  'bv', 'b', 'v', 'nv', 'uc', 'sarl', 'sa', 'srl', 'sro', 'aps', 'oy', 'ab',
+])
+export function normLieferant(name: string): string {
+  const toks = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, ' ').trim().split(/\s+/)
+  while (toks.length > 1 && RECHTSFORM.has(toks[toks.length - 1])) toks.pop()
+  const out = toks.filter((t) => !RECHTSFORM.has(t) || toks.length === 1).join(' ')
+  return out || name.toLowerCase().trim()
+}
+
+/**
+ * v4: Das Gelernte lebt jetzt in einem EIGENEN app_settings-Key
+ * ('buchhaltung_gelernt') — der 2.8.-Wipe entstand, weil tx-ignorieren &
+ * Co. das geteilte 'buchhaltung'-Objekt per read-modify-write überschrieben
+ * (§243o). Eigener Key = eigene Kollisionsdomäne. Lazy-Migration: liegt im
+ * neuen Key nichts, wird der Alt-Bestand einmalig normalisiert übernommen.
+ */
+/** null = READ-FEHLER (Netz/Timeout) — Schreiber MÜSSEN dann abbrechen,
+ *  sonst würde ein transienter Fehler die Map auf einen Eintrag
+ *  zusammenschießen (die Wipe-Klasse §243o, diesmal per Fehlerpfad). */
+export async function readGelernt(): Promise<Record<string, Gelernt> | null> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'buchhaltung_gelernt').maybeSingle()
+    if (error) return null
+    if (data?.value && Object.keys(data.value as object).length) return data.value as Record<string, Gelernt>
+    // leer → einmalige Migration des Alt-Bestands (normalisierte Keys;
+    // bei Key-Kollision gewinnt der NEUERE Eintrag)
+    const alt = await getBuchhaltungSettings()
+    const mig: Record<string, Gelernt> = {}
+    for (const [k, g] of Object.entries(alt.gelernt ?? {})) {
+      const key = normLieferant(k)
+      const prev = mig[key]
+      if (!prev || String(g.at) > String(prev.at)) mig[key] = g
+    }
+    if (Object.keys(mig).length) {
+      await supabaseAdmin.from('app_settings').upsert(
+        { key: 'buchhaltung_gelernt', value: mig }, { onConflict: 'key' })
+    }
+    return mig
+  } catch { return null }
+}
+export async function getGelernt(): Promise<Record<string, Gelernt>> {
+  return (await readGelernt()) ?? {}
+}
 export async function saveGelernt(lieferant: string, g: Gelernt): Promise<void> {
   try {
-    const cur = await getBuchhaltungSettings()
-    const gelernt = { ...(cur.gelernt ?? {}), [lieferant.trim()]: g }
+    const cur = await readGelernt()
+    if (cur === null) return // Read-Fehler → NICHT schreiben (Wipe-Schutz)
+    const gelernt = { ...cur, [normLieferant(lieferant)]: g }
     const keys = Object.keys(gelernt)
     if (keys.length > 300) {
       keys.sort((a, b) => String(gelernt[a].at).localeCompare(String(gelernt[b].at)))
       for (const k of keys.slice(0, keys.length - 300)) delete gelernt[k]
     }
     await supabaseAdmin.from('app_settings').upsert(
-      { key: 'buchhaltung', value: { ...cur, gelernt } }, { onConflict: 'key' })
+      { key: 'buchhaltung_gelernt', value: gelernt }, { onConflict: 'key' })
   } catch { /* best effort */ }
 }
 
@@ -168,6 +226,9 @@ export interface KiErgebnis {
   nr?: string
   taxRate?: number
   betrag?: number | null
+  /** v4: RECHNUNGSWÄHRUNG — USD-Abos (Vercel/Anthropic/PriceLabs) dürfen NIE
+   *  mit dem PDF-Betrag als EUR gebucht werden (§243u-Doktrin: Bank-EUR zählt) */
+  waehrung?: string | null
   /** echtes RECHNUNGSDATUM aus dem Beleg (Mail-Scan-Belege trugen sonst das Scan-Datum — UStVA-Periode!) */
   datum?: string | null
   begruendung?: string
@@ -241,23 +302,25 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
 
   // §242b/c: GELERNT — mit kategorie_passt-Check (§243c: VP Glanzteam
   // rechnet Reinigung UND Gästemanagement ab!)
-  const { gelernt } = await getBuchhaltungSettings()
-  const g = v.supplierName ? gelernt?.[v.supplierName.trim()] : undefined
+  const gelernt = await getGelernt()
+  const g = v.supplierName ? gelernt[normLieferant(v.supplierName)] : undefined
   const hitG = g ? guidance.find((x) => x.accountDatevId === Number(g.accountDatevId)) : null
   if (g && hitG) {
     let ort: { kst: string; zuordnung: Record<string, unknown> } | null = null
     let ortText = ''
     let gBetrag: number | null = null
+    let gWaehrung: string | null = null
     let gDatum: string | null = null
     let kategoriePasst = true
     if (pdf) {
       try {
         const raw = await askClaudeWithFile(
-          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG + DATUM: Lies Rechnungs-GESAMTBETRAG (brutto) und RECHNUNGSDATUM. 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "datum": "<JJJJ-MM-TT oder null>", "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
+          `Du prüfst einen Buchhaltungsbeleg einer Ferienwohnungs-Vermietung. 1) BETRAG + DATUM: Lies Rechnungs-GESAMTBETRAG (brutto) und RECHNUNGSDATUM. 2) KATEGORIE-CHECK: Die bisher für diesen Lieferanten gelernte Buchungskategorie ist „${hitG.accountName}" (Konto ${hitG.accountNumber}) — passt sie zur tatsächlich abgerechneten LEISTUNG dieser Rechnung? 3) STANDORT-Indizien: Für welches Objekt sind die Kosten? Achte auf Leistungs-/Lieferadresse, Objekt-/Wohnungsnamen, Ortsnamen. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Antworte NUR mit JSON: {"betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "datum": "<JJJJ-MM-TT oder null>", "kategorie_passt": true|false, "wohnung": "<exakter Wohnungsname oder null>", "standort": "<exakter Standortname oder null>", "indiz": "<kurzes Zitat/Begründung oder null>"} — Standort NUR bei echten Indizien setzen, sonst null.`,
           `Lieferant: ${v.supplierName ?? '?'} · Beschreibung: ${(v.description ?? '').slice(0, 200)}`,
           { mediaType: pdf.mediaType, base64: pdf.base64 }, 1800)
         const oj = parseJsonLoose(raw)
         if (typeof oj.betrag_brutto === 'number' && oj.betrag_brutto > 0) gBetrag = Math.round(oj.betrag_brutto * 100) / 100
+        if (typeof oj.waehrung === 'string' && /^[A-Z]{3}$/.test(oj.waehrung.toUpperCase())) gWaehrung = oj.waehrung.toUpperCase()
         if (typeof oj.datum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(oj.datum)) gDatum = oj.datum
         if (oj.kategorie_passt === false) kategoriePasst = false
         ort = standortZuKst(typeof oj.wohnung === 'string' ? oj.wohnung : null, typeof oj.standort === 'string' ? oj.standort : null, wohnungenListe)
@@ -268,7 +331,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
       ok: true, weg: 'gelernt', gelernt: true,
       accountDatevId: hitG.accountDatevId, kategorie: hitG.accountName, nr: hitG.accountNumber,
       taxRate: [19, 7, 0].includes(Number(g.taxRate)) ? Number(g.taxRate) : 19,
-      betrag: gBetrag, datum: gDatum,
+      betrag: gBetrag, waehrung: gWaehrung, datum: gDatum,
       begruendung: '\u{1F9E0} Kategorie aus deiner letzten Buchung für diesen Lieferanten' + ortText,
       steuerHinweis: '',
       anlagegut: g.anlagegut === true, nutzungsdauer: null,
@@ -278,7 +341,7 @@ export async function analysiereBeleg(voucherId: string): Promise<KiErgebnis> {
 
   const katalog = guidance.map((gg) => `${gg.accountDatevId}|${gg.accountNumber}|${gg.accountName}`).join('\n')
   const system = `Du bist Buchhaltungs-Assistent einer deutschen Ferienwohnungs-Vermietung (eGbR, EÜR, umsatzsteuerpflichtig, SKR-Kontenrahmen). Ordne den Beleg der passenden Buchungskategorie zu und gib eine kurze STEUERLICHE Einschätzung. Antworte NUR mit JSON:
-{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "belegdatum": "<Rechnungsdatum JJJJ-MM-TT oder null>", "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
+{"accountDatevId": <ID aus dem Katalog>, "kategorie": "<Name>", "taxRate": 19|7|0, "betrag_brutto": <Zahl oder null>, "waehrung": "<ISO-Code der Rechnungswährung, z. B. EUR oder USD>", "belegdatum": "<Rechnungsdatum JJJJ-MM-TT oder null>", "begruendung": "<max 1 Satz>", "steuer_hinweis": "<1-2 Sätze: wie hier steuerlich schlau gebucht wird — z. B. Vorsteuerabzug, Reverse-Charge Paragraf 13b bei EU-Portalen (taxRate 0), GWG-Sofortabzug, Bewirtung 70 Prozent>", "anlagegut": true|false, "nutzungsdauer_jahre": <Zahl oder null>, "wohnung": "<exakter Wohnungsname bei ECHTEN Standort-Indizien im Beleg (Adresse/Objektname), sonst null>", "standort": "<exakter Standortname oder null>"}
 Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/Umsatzkonten (4xxx) wählen, nur Aufwands-/Wareneingangs-Konten. Provisionsrechnungen von Booking.com/Airbnb (EU-Anbieter, Reverse-Charge Paragraf 13b): Kategorie 5923 (Sonstige Leistungen eines im anderen EU-Land ansässigen Unternehmers), taxRate 0, Betrag = Nettobetrag der Rechnung; im steuer_hinweis Paragraf 13b erwähnen. accountDatevId MUSS aus dem Katalog stammen. Steuersatz sonst: Standard 19; 7 nur ermäßigt; 0 bei steuerfrei/Reverse-Charge. ANLAGEGUT nur bei abnutzbaren Wirtschaftsgütern über 800 Euro netto je Einzelgut (Nutzungsdauer nach amtlicher AfA-Tabelle: Möbel 13 J., IT 3 J., Küchengeräte 5-10 J.); bis 800 Euro netto = GWG-Sofortabzug (im steuer_hinweis erwähnen). Bei anlagegut=true wähle als Kategorie IMMER 6220 Abschreibungen auf Sachanlagen (sevdesk-Konvention: die Position wird als Anlagegut markiert, sevdesk aktiviert das Gut im Anlagenmodul) — nie ein Betriebsbedarf-Konto für Anlagegüter. Bekannte Wohnungen: ${wohnNamen}. Bekannte Standorte: ${standorte}. Betrag aus dem Beleg.`
   const userMsg = `BELEG:\nLieferant: ${v.supplierName ?? '—'}\nBeschreibung: ${v.description ?? '—'}\nDatum: ${v.voucherDate ?? '—'}\n\nKATALOG (id|nr|name):\n${katalog.slice(0, 18000)}`
   const raw = pdf
@@ -293,6 +356,7 @@ Regeln: Es ist IMMER ein EINGANGSBELEG (Ausgabe an TRIMOSA) — NIEMALS Erlös-/
     accountDatevId: hit.accountDatevId, kategorie: hit.accountName, nr: hit.accountNumber,
     taxRate: [19, 7, 0].includes(Number(j.taxRate)) ? Number(j.taxRate) : 19,
     betrag: typeof j.betrag_brutto === 'number' && j.betrag_brutto > 0 ? Math.round(j.betrag_brutto * 100) / 100 : null,
+    waehrung: typeof j.waehrung === 'string' && /^[A-Z]{3}$/i.test(j.waehrung) ? j.waehrung.toUpperCase() : null,
     datum: typeof j.belegdatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.belegdatum) ? j.belegdatum : null,
     begruendung: String(j.begruendung ?? '').slice(0, 200),
     steuerHinweis: String(j.steuer_hinweis ?? '').slice(0, 400),
@@ -320,28 +384,138 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
     }
     if (!ki.ok || !ki.accountDatevId) return { auto: false, text: `zur Prüfung (${ki.error ?? 'keine Kategorie'})` }
     if (ki.anlagegut) return merken('zur Prüfung (Anlagegut — AfA bestätigen)')
-    if (ki.weg !== 'provision' && ki.weg !== 'gelernt') return merken(`zur Prüfung (neuer Lieferant — Vorschlag: ${ki.nr} ${ki.kategorie ?? ''})`)
-    const betrag = typeof ki.betrag === 'number' && ki.betrag > 0 ? ki.betrag : null
-    if (!betrag) return merken('zur Prüfung (Betrag nicht sicher lesbar)')
-    if (betrag > 5000) return merken(`zur Prüfung (${betrag.toFixed(2)} € über der Auto-Grenze)`)
+    const sicherKategorie = ki.weg === 'provision' || ki.weg === 'gelernt'
+    // v4: FREMDWÄHRUNG (§243u-Doktrin) — der PDF-Betrag ist dann USD/…, als
+    // EUR gebucht wäre er falsch. Gebucht wird NUR der Bank-EUR-Betrag der
+    // passenden Abbuchung; ohne die bleibt der Beleg zur Prüfung.
+    const fremd = !!ki.waehrung && ki.waehrung !== 'EUR'
+    // v4: Betrags-Fallback-Kette — Vision-Betrag, sonst der Mail-KI-Betrag
+    // aus der beleg_inbox (nur EUR; und nur mit exaktem Bank-Match buchen =
+    // doppelte Bestätigung)
+    let betrag = !fremd && typeof ki.betrag === 'number' && ki.betrag > 0 ? ki.betrag : null
+    let betragAusMail = false
+    if (!betrag && !fremd) {
+      try {
+        const { data: ib } = await supabaseAdmin
+          .from('beleg_inbox').select('betrag').eq('sevdesk_voucher_id', voucherId).maybeSingle()
+        const mb = Number(ib?.betrag)
+        if (Number.isFinite(mb) && mb > 0) { betrag = Math.round(mb * 100) / 100; betragAusMail = true }
+      } catch { /* best effort */ }
+    }
+    if (!fremd && !betrag) return merken('zur Prüfung (Betrag nicht sicher lesbar)')
+    if (betrag && betrag > 5000) return merken(`zur Prüfung (${betrag.toFixed(2)} € über der Auto-Grenze)`)
 
-    // passende offene Abbuchung suchen (exakter Betrag, ±45 Tage)
-    let tx: { id: string; accountId: string; datum: string } | null = null
+    // v4: Fremdwährung buchen NUR die sicheren Wege (provision/gelernt) —
+    // ein neuer Lieferant + Wechselkurs-Unschärfe ist zu viel Rateanteil
+    if (fremd && !sicherKategorie) return merken(`zur Prüfung (${ki.waehrung}-Rechnung von neuem Lieferanten)`)
+    // Fremdwährung ohne lesbares Rechnungsdatum: kein Datumsfenster möglich
+    // → nie automatisch (Review-Befund: sonst zählen 120 Tage)
+    if (fremd && !ki.datum) return merken(`zur Prüfung (${ki.waehrung}-Rechnung ohne lesbares Datum — Bank-Abgleich nötig)`)
+
+    // Passende offene Abbuchung suchen — EUR: exakter Betrag; Fremdwährung:
+    // Lieferanten-Token im Bank-Namen + enges Band + Datumsfenster.
+    // v4: Kandidaten nach DATUMS-NÄHE zum Rechnungsdatum wählen (die alte
+    // Neueste-zuerst-Wahl verheiratete Abo-Ketten mit der falschen Rate).
+    let tx: { id: string; accountId: string; datum: string; eur: number } | null = null
+    let txNameOk = false
+    let txDatumOk = false
+    let txEindeutig = false
     try {
       const { findBankAccounts, listBankTransactions } = await import('@/lib/sevdesk-payouts')
       const banks = await findBankAccounts()
-      const kand: { id: string; accountId: string; datum: string }[] = []
+      const kand: { id: string; accountId: string; datum: string; eur: number; name: string }[] = []
       for (const bank of banks) {
-        for (const t of await listBankTransactions(bank.id, 90)) {
+        for (const t of await listBankTransactions(bank.id, 120)) {
           if (Number(t.status) !== 100) continue
           const amt = Number(t.amount)
-          if (amt >= 0 || Math.abs(Math.abs(amt) - betrag) > 0.005) continue
-          kand.push({ id: String(t.id), accountId: bank.id, datum: String(t.valueDate ?? t.entryDate ?? '').slice(0, 10) })
+          if (amt >= 0) continue
+          kand.push({
+            id: String(t.id), accountId: bank.id,
+            datum: String(t.valueDate ?? t.entryDate ?? '').slice(0, 10),
+            eur: Math.round(Math.abs(amt) * 100) / 100,
+            name: String((t as Record<string, unknown>).payeePayerName ?? ''),
+          })
         }
       }
-      kand.sort((a, b) => b.datum.localeCompare(a.datum))
-      tx = kand[0] ?? null
-    } catch { /* ohne Zahlung buchen */ }
+      // Lieferanten-Tokens für den Namens-Abgleich (WORT-Gleichheit, kein
+      // Substring — 'web' darf nicht 'webflow' matchen, Review-Befund):
+      // das ERSTE (Markenname) oder das LÄNGSTE Token muss als eigenes Wort
+      // im Bank-Empfängernamen vorkommen
+      const supName = await kiSupplier(voucherId)
+      const supTokens = normLieferant(String(supName ?? '')).split(' ').filter((x) => x.length >= 3)
+      const kernTokens = supTokens.length
+        ? [...new Set([supTokens[0], [...supTokens].sort((a, b) => b.length - a.length)[0]])]
+        : []
+      const nameMatch = (bankName: string): boolean => {
+        if (!kernTokens.length) return false
+        const words = new Set(normLieferant(bankName).split(' '))
+        return kernTokens.some((tok) => words.has(tok))
+      }
+      const tage = (a: string, b: string): number =>
+        Math.abs(Date.parse(a + 'T12:00:00Z') - Date.parse(b + 'T12:00:00Z')) / 86400_000
+      const naehe = (datum: string): number => ki.datum
+        ? tage(datum, ki.datum)
+        : -Date.parse(datum + 'T12:00:00Z') / 86400_000
+      if (fremd) {
+        // Fremdwährung: Namens-Pflicht + enges Band (±12 % — EUR/USD schwankt
+        // real weit weniger als das alte ±25-%-Band, das benachbarte
+        // Anthropic-Abbuchungen einfing) + Datum ≤ 21 Tage; MEHRDEUTIG =
+        // nicht automatisch (Review-Befund kritisch #1)
+        const fw = typeof ki.betrag === 'number' && ki.betrag > 0 ? ki.betrag : null
+        if (!fw) return merken(`zur Prüfung (${ki.waehrung}-Betrag nicht lesbar)`)
+        const treffer = kand.filter((k) => {
+          if (!nameMatch(k.name)) return false
+          if (k.eur < fw * 0.88 || k.eur > fw * 1.12) return false
+          if (tage(k.datum, ki.datum as string) > 21) return false
+          return true
+        })
+        if (treffer.length !== 1) {
+          return merken(`zur Prüfung (${ki.waehrung}-Rechnung — ${treffer.length === 0 ? 'passende Bank-Abbuchung nicht gefunden' : 'mehrere Bank-Abbuchungen möglich'})`)
+        }
+        tx = treffer[0]
+        betrag = tx.eur
+        txNameOk = true
+        txDatumOk = true
+        txEindeutig = true
+      } else {
+        const exakt = kand.filter((k) => Math.abs(k.eur - (betrag as number)) <= 0.005)
+        exakt.sort((a, b) => naehe(a.datum) - naehe(b.datum))
+        const mitName = exakt.filter((k) => nameMatch(k.name))
+        tx = (mitName[0] ?? exakt[0]) ?? null
+        txNameOk = tx ? nameMatch(tx.name) : false
+        txDatumOk = tx && ki.datum ? tage(tx.datum, ki.datum) <= 30 : false
+        txEindeutig = mitName.length === 1 || exakt.length === 1
+      }
+    } catch { /* ohne Zahlung buchen (nur EUR-Pfad) */ }
+    if (fremd && !tx) return merken(`zur Prüfung (${ki.waehrung}-Rechnung — Bank-Abgleich nötig)`)
+    if (!betrag) return merken('zur Prüfung (Betrag nicht sicher lesbar)')
+    if (betrag > 5000) return merken(`zur Prüfung (${betrag.toFixed(2)} € über der Auto-Grenze)`)
+
+    // v4 AUTO-GATES (nach Review verschärft): provision/gelernt buchen wie
+    // bisher. Der Mail-Betrag und der VISION-Weg (neuer Lieferant!) brauchen
+    // einen Bank-Treffer, der WIRKLICH bestätigt — exakter Betrag reicht
+    // nicht (Nuki 69,00 ×3, M365 38,98 ×2 …): zusätzlich Lieferanten-Name
+    // als Wort im Bank-Empfänger, Datum ≤ 30 Tage und EINDEUTIGKEIT.
+    const txBestaetigt = !!tx && txNameOk && txEindeutig
+    if (betragAusMail && !txBestaetigt) {
+      return merken('zur Prüfung (Betrag nur aus der Mail — keine eindeutig passende Zahlung)')
+    }
+    if (!sicherKategorie) {
+      const visionOk = ki.weg === 'vision' && !fremd && txBestaetigt && txDatumOk && betrag <= 1000
+      if (!visionOk) return merken(`zur Prüfung (neuer Lieferant — Vorschlag: ${ki.nr} ${ki.kategorie ?? ''})`)
+    }
+
+    // v4-Review: Live-Status-Recheck — hat ein paralleler Lauf (⚡-Batch vs.
+    // Cron-Nachlauf) den Beleg inzwischen gebucht, NICHT erneut anfassen
+    // (bookSevVoucher würde per resetToOpen dessen frische Zahlung lösen)
+    try {
+      const { sevJson } = await import('@/lib/sevdesk')
+      const curRaw = await sevJson<{ status?: unknown }[] | { status?: unknown }>(`/Voucher/${voucherId}`)
+      const curSt = Number(Array.isArray(curRaw) ? curRaw[0]?.status : (curRaw as { status?: unknown })?.status)
+      if (Number.isFinite(curSt) && curSt !== 50) {
+        return { auto: false, text: 'zur Prüfung (inzwischen anderweitig gebucht)' }
+      }
+    } catch { /* best effort */ }
 
     const r = await bookSevVoucher(voucherId, {
       accountDatevId: ki.accountDatevId,
@@ -354,13 +528,77 @@ export async function autoVerbucheBeleg(voucherId: string): Promise<{ auto: bool
     })
     if (!r.ok) return merken(`zur Prüfung (Buchung fehlgeschlagen: ${(r.error ?? '').slice(0, 80)})`)
     await saveZuordnung(voucherId, null, ki.zuordnung ?? { modus: 'allgemein' })
+    try { const { invalidateAuswertungCache } = await import('@/lib/auswertung'); await invalidateAuswertungCache() } catch { /* best effort */ }
+    const wegLabel = ki.weg === 'vision' ? ' (Vision + Bank-Beleg)' : fremd ? ` (${ki.waehrung} → Bank-EUR)` : ''
     return {
       auto: true,
-      text: `automatisch verbucht: ${ki.nr} ${ki.kategorie ?? ''} · ${betrag.toFixed(2).replace('.', ',')} €`
+      text: `automatisch verbucht: ${ki.nr} ${ki.kategorie ?? ''} · ${betrag.toFixed(2).replace('.', ',')} €${wegLabel}`
         + (ki.kst ? ` · KSt ${ki.kst}` : '') + (tx ? ' · Zahlung verknüpft' : ''),
     }
   } catch (e) {
     return { auto: false, text: `zur Prüfung (${String(e instanceof Error ? e.message : e).slice(0, 80)})` }
+  }
+}
+
+/** v4: Lieferantenname für den Fremdwährungs-Bank-Match — aus dem Voucher
+ *  (analysiereBeleg hält ihn nicht im Ergebnis; ein kleiner Nach-Read). */
+async function kiSupplier(voucherId: string): Promise<string | null> {
+  try {
+    const { sevJson } = await import('@/lib/sevdesk')
+    const vRaw = await sevJson<{ supplierName?: string }[] | { supplierName?: string }>(`/Voucher/${voucherId}`)
+    const vObj = Array.isArray(vRaw) ? vRaw[0] : vRaw
+    return vObj?.supplierName ?? null
+  } catch { return null }
+}
+
+/**
+ * v4 RETRO-NACHLAUF: Liegengebliebene Entwürfe (St. 50) regelmäßig erneut
+ * durch die Voll-Automatik schicken — nach einem Gelernt-Rebuild oder der
+ * ersten manuellen Buchung eines Lieferanten werden seine Alt-Entwürfe so
+ * von selbst gebucht. 24-h-Dämpfung je Beleg (eigener Settings-Key), damit
+ * derselbe kaputte Beleg nicht jeden 10-Min-Lauf Vision-Calls frisst.
+ */
+export async function autoNachlauf(limit = 2): Promise<{ versucht: number; gebucht: number }> {
+  try {
+    const { listSevVouchers } = await import('@/lib/sevdesk')
+    const drafts = await listSevVouchers([50])
+    if (!drafts.length) return { versucht: 0, gebucht: 0 }
+    const { data } = await supabaseAdmin
+      .from('app_settings').select('value').eq('key', 'buchhaltung_nachlauf').maybeSingle()
+    const state = (data?.value ?? {}) as Record<string, string>
+    const cutoff = Date.now() - 24 * 3600_000
+    const faellig = drafts
+      .map((v) => String(v.id))
+      .filter((id) => !state[id] || Date.parse(state[id]) < cutoff)
+      .slice(0, Math.max(0, limit))
+    if (!faellig.length) return { versucht: 0, gebucht: 0 }
+    // v4-Review: State VOR der Verarbeitung persistieren — ein paralleler
+    // ⚡-Batch (UI) liest denselben Key und überspringt diese Belege
+    for (const id of faellig) state[id] = new Date().toISOString()
+    await supabaseAdmin.from('app_settings').upsert(
+      { key: 'buchhaltung_nachlauf', value: state }, { onConflict: 'key' })
+    let gebucht = 0
+    for (const id of faellig) {
+      const r = await autoVerbucheBeleg(id)
+      if (r.auto) {
+        gebucht++
+        delete state[id]
+        try {
+          const { sendPushToTeam } = await import('@/lib/push')
+          await sendPushToTeam('✅ Beleg automatisch verbucht (Nachlauf)', r.text, '/buchhaltung', { buchhaltung: true })
+        } catch { /* best effort */ }
+      }
+    }
+    const keys = Object.keys(state)
+    if (keys.length > 200) {
+      keys.sort((a, b) => state[a].localeCompare(state[b]))
+      for (const k of keys.slice(0, keys.length - 200)) delete state[k]
+    }
+    await supabaseAdmin.from('app_settings').upsert(
+      { key: 'buchhaltung_nachlauf', value: state }, { onConflict: 'key' })
+    return { versucht: faellig.length, gebucht }
+  } catch {
+    return { versucht: 0, gebucht: 0 }
   }
 }
 

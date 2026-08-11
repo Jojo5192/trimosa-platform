@@ -168,6 +168,15 @@ export async function buildAuswertung(): Promise<AuswertungDaten> {
 const CACHE_KEY = 'auswertung_cache'
 const TTL_MS = 6 * 3600_000
 
+/**
+ * v4: Ereignis-Invalidierung — nach jeder Buchung/Umbuchung/Löschung ist der
+ * 6-h-Cache veraltet (die FeWo-Brutto-Korrektur §243aj war einen halben Tag
+ * unsichtbar). DELETE statt Rebuild: der nächste Aufruf baut frisch.
+ */
+export async function invalidateAuswertungCache(): Promise<void> {
+  try { await supabaseAdmin.from('app_settings').delete().eq('key', CACHE_KEY) } catch { /* best effort */ }
+}
+
 export async function getAuswertung(refresh = false): Promise<AuswertungDaten> {
   if (!refresh) {
     try {
