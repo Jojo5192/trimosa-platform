@@ -91,6 +91,12 @@ export async function GET(req: NextRequest) {
     const viewer: Record<string, { links: { name: string; url: string }[]; zuordnung: unknown; rowId: string }> = {}
     // §243ad: VORAB gespeicherte KI-Analysen (Instant-Anzeige beim Öffnen)
     const kiAnalysen: Record<string, unknown> = {}
+    /* v4 Batch 3: Signierte Storage-URLs sind der teuerste Teil dieses GET —
+     * ein sequenzieller Roundtrip JE DATEI. Für längst gebuchte Belege (1000)
+     * brauchen wir sie nicht: dort greift im Client der PDF-Proxy
+     * (/api/buchhaltung/beleg-pdf). Die Zuordnung laden wir weiterhin für
+     * alle (kostet nichts, wird beim Umbuchen gebraucht). */
+    const braucherLinks = new Set(vouchers.filter((v) => v.status < 1000).map((v) => v.id))
     try {
       const vIds = vouchers.map((v) => v.id)
       if (vIds.length) {
@@ -99,9 +105,11 @@ export async function GET(req: NextRequest) {
           .in('sevdesk_voucher_id', vIds)
         for (const r of (prot ?? []) as { id: string; sevdesk_voucher_id: string; files: { path: string; name: string }[]; zuordnung: unknown; ki_analyse?: unknown }[]) {
           const links: { name: string; url: string }[] = []
-          for (const f of r.files ?? []) {
-            const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
-            if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+          if (braucherLinks.has(r.sevdesk_voucher_id)) {
+            for (const f of r.files ?? []) {
+              const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
+              if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+            }
           }
           viewer[r.sevdesk_voucher_id] = { links, zuordnung: r.zuordnung ?? null, rowId: r.id }
           // nur brauchbare Analysen (Fehlschlag-Cache trägt kein accountDatevId)
@@ -118,9 +126,11 @@ export async function GET(req: NextRequest) {
           .in('sevdesk_voucher_id', vIds)
         for (const r of (prot ?? []) as { id: string; sevdesk_voucher_id: string; files: { path: string; name: string }[]; zuordnung: unknown }[]) {
           const links: { name: string; url: string }[] = []
-          for (const f of r.files ?? []) {
-            const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
-            if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+          if (braucherLinks.has(r.sevdesk_voucher_id)) {
+            for (const f of r.files ?? []) {
+              const { data: signed } = await supabaseAdmin.storage.from('belege').createSignedUrl(f.path, 3600)
+              if (signed?.signedUrl) links.push({ name: f.name, url: signed.signedUrl })
+            }
           }
           viewer[r.sevdesk_voucher_id] = { links, zuordnung: r.zuordnung ?? null, rowId: r.id }
         }

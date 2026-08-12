@@ -51,8 +51,43 @@ const fmtD = (iso: string | null) => {
   const [y, m, d] = iso.slice(0, 10).split('-')
   return `${d}.${m}.${y}`
 }
+/** Nächster Eintrag der sichtbaren Liste (bzw. der vorherige am Ende). */
+const nachfolgerIn = (liste: { id: string }[], id: string): string | null => {
+  const i = liste.findIndex((r) => r.id === id)
+  if (i < 0) return null
+  return liste[i + 1]?.id ?? liste[i - 1]?.id ?? null
+}
+
+/* Beim Wechsel zum nächsten Beleg nach oben — sonst steht man weiter unten
+ * am alten Scroll-Punkt und sieht Lieferant, ✨-Vorschlag und Betrag des
+ * neuen Belegs gar nicht. */
+const nachObenScrollen = () => {
+  if (typeof window === 'undefined') return
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const KAT_RECENT_KEY = 'trimosa_buchhaltung_kat_recent'
+const ladeRecentKats = (): string[] => {
+  if (typeof window === 'undefined') return []
+  try { const r = JSON.parse(localStorage.getItem(KAT_RECENT_KEY) ?? '[]'); return Array.isArray(r) ? r.filter((x) => typeof x === 'string').slice(0, 8) : [] } catch { return [] }
+}
+
+const ZAHL = String.raw`\d{1,3}(?:\.\d{3})*,\d{2}|\d+[.,]\d{2}`
 const betragAusText = (s: string | null): number | null => {
-  const m = (s ?? '').match(/(\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})\s*€/)
+  const t = s ?? ''
+  /* Betrag steht mal hinter, mal vor dem Währungszeichen — und manche
+   * Lieferanten schreiben „EUR" statt „€". WICHTIG: der LETZTE Treffer zählt.
+   * Die Beschreibung hat die Form „Beleg (…): <Mail-Betreff> · <betrag> €" —
+   * der autoritative Betrag wird angehängt, während im Betreff Datums- und
+   * Kundennummern stehen („Zeitraum 01.06.-30.06 EUR" ergäbe sonst 30,06). */
+  const letzter = (re: RegExp) => { const a = [...t.matchAll(re)]; return a.length ? a[a.length - 1] : null }
+  const m =
+    // 1. „…12,34 €" / „€ 12,34" — das Zeichen € ist eindeutig
+    letzter(new RegExp(`(${ZAHL})\\s*€`, 'g')) ?? letzter(new RegExp(`€\\s*(${ZAHL})`, 'g'))
+    // 2. sonst „EUR": zuerst NACHgestellte Zahl („EUR 99,00"), denn vor dem
+    //    Wort stehen oft Kunden-/Belegnummern („Kd-Nr 12.34 EUR 99,00")
+    ?? letzter(new RegExp(`EURO?\\b\\s*(${ZAHL})`, 'g'))
+    ?? letzter(new RegExp(`(${ZAHL})\\s*EURO?\\b`, 'g'))
   if (!m) return null
   // Deutsch „1.234,56" vs. Punkt-Dezimal „55.00" — Punkte nur strippen,
   // wenn ein Komma da ist (sonst wurde 55.00 → 5500!)
@@ -70,7 +105,10 @@ const GROUP_BG = '#F2F2F7'
 const RED = '#D70015'
 const GREEN = '#248A3D'
 
-const CARD: CSSProperties = { background: '#fff', borderRadius: 16, overflow: 'hidden' }
+/* clip statt hidden: „hidden" macht das Element zum Scroll-Container und
+ * killt damit jedes position:sticky darin (der Verbuchen-Knopf klebte nicht).
+ * „clip" schneidet genauso ab, ohne Scroll-Container zu werden. */
+const CARD: CSSProperties = { background: '#fff', borderRadius: 16, overflow: 'clip' }
 const SELECT: CSSProperties = {
   fontSize: 16, padding: '10px 12px', borderRadius: 11, width: '100%',
   border: `0.5px solid ${HAIRLINE}`, background: '#fff', color: INK,
@@ -83,6 +121,51 @@ const LABEL: CSSProperties = {
 const BTN: CSSProperties = {
   fontSize: 16, fontWeight: 600, borderRadius: 12, padding: '13px 16px',
   border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+}
+
+/* Kategorie-Auswahl. Der sevdesk-Katalog hat >600 Einträge — als nacktes
+ * Select ist das am iPhone eine endlose Walze. Deshalb: Suchfeld darüber und
+ * die zuletzt benutzten Konten oben in einer eigenen Gruppe. */
+function KategorieWahl({ value, onChange, kategorien, recent }: {
+  value: string
+  onChange: (v: string) => void
+  kategorien: Kategorie[]
+  recent: string[]
+}) {
+  const [q, setQ] = useState('')
+  const such = q.trim().toLowerCase()
+  const treffer = useMemo(
+    () => (such ? kategorien.filter((k) => `${k.nr} ${k.name}`.toLowerCase().includes(such)) : kategorien),
+    [such, kategorien],
+  )
+  const zuletzt = useMemo(
+    () => recent.map((id) => kategorien.find((k) => String(k.id) === id)).filter((k): k is Kategorie => Boolean(k)),
+    [recent, kategorien],
+  )
+  // Die gewählte Kategorie muss immer im Select stehen — auch wenn die Suche
+  // sie gerade herausfiltert, sonst springt das Feld auf „— wählen —".
+  const gewaehlt = kategorien.find((k) => String(k.id) === value)
+  const fehltInTreffern = Boolean(gewaehlt && !treffer.some((k) => k.id === gewaehlt.id))
+  const opt = (k: Kategorie) => <option key={k.id} value={String(k.id)}>{k.nr} · {k.name}</option>
+
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <input
+        value={q} onChange={(e) => setQ(e.target.value)} inputMode="search"
+        placeholder={`Konto suchen … (${kategorien.length})`}
+        style={{ ...SELECT, padding: '9px 12px', background: '#F2F2F7' }}
+      />
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={SELECT}>
+        <option value="">— wählen —</option>
+        {gewaehlt && fehltInTreffern && <optgroup label="Gewählt">{opt(gewaehlt)}</optgroup>}
+        {!such && zuletzt.length > 0 && <optgroup label="Zuletzt verwendet">{zuletzt.map(opt)}</optgroup>}
+        <optgroup label={such ? `${treffer.length} Treffer` : 'Alle Kategorien'}>{treffer.map(opt)}</optgroup>
+      </select>
+      {such && treffer.length === 0 && (
+        <div style={{ fontSize: 12.5, color: SUB, margin: '0 4px' }}>Kein Konto gefunden — Suche leeren, um alle zu sehen.</div>
+      )}
+    </div>
+  )
 }
 
 /** iOS-Switch (Muster ⚙️-Tab) */
@@ -258,7 +341,10 @@ export default function BuchhaltungClient() {
   // §243ad: Inbox + Belege sind EIN Reiter (Drei-Firmen-Entscheidung als
   // Status im Belege-Reiter); 'gebucht' lädt zusätzlich bezahlte Belege
   const [section, setSection] = useState<'belege' | 'zahlungen'>('belege')
-  const [belegFilter, setBelegFilter] = useState<'todo' | 'gebucht'>('todo')
+  /* Drei Zustände statt zwei: „Zu erledigen" sind nur Belege, die WIRKLICH
+   * eine Entscheidung brauchen (Inbox + Entwürfe). Fertig kategorisierte
+   * Belege, die nur noch auf den Bankabgleich warten, sind kein To-do. */
+  const [belegFilter, setBelegFilter] = useState<'todo' | 'bank' | 'gebucht'>('todo')
   const [selId, setSelId] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -284,6 +370,35 @@ export default function BuchhaltungClient() {
   // §243: „Ohne Beleg buchen" (Eigenbeleg) je Abbuchung
   const [eigen, setEigen] = useState<Record<string, EigenForm>>({})
   // v4: ⚡-Automatik über die liegengebliebenen Entwürfe
+  // Zuletzt verwendete Kategorien — der Katalog hat >600 Einträge, aber im
+  // Alltag wiederholen sich dieselben zehn.
+  const [recentKats, setRecentKats] = useState<string[]>([])
+  useEffect(() => { setRecentKats(ladeRecentKats()) }, [])
+  const merkeKategorie = (id: string) => {
+    if (!id) return
+    setRecentKats((p) => {
+      const next = [id, ...p.filter((x) => x !== id)].slice(0, 8)
+      try { localStorage.setItem(KAT_RECENT_KEY, JSON.stringify(next)) } catch { /* Privatmodus */ }
+      return next
+    })
+  }
+
+  /* Race-Schutz für den stillen Nachlauf: Startet ein Refresh, BEVOR ein
+   * Beleg gebucht wird, und antwortet er danach, brächte er den Beleg als
+   * Entwurf zurück. Deshalb merken wir uns lokal erreichte Stände und
+   * stülpen sie über die Server-Antwort, bis der Server nachgezogen hat. */
+  const lokalGebucht = useRef<Record<string, { von: number; nach: number }>>({})
+  const lokalErledigt = useRef<Set<string>>(new Set())
+
+  // Erfolgsmeldungen verschwinden von selbst; Fehler bleiben stehen.
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(''), 6000)
+    return () => clearTimeout(t)
+  }, [notice])
+
+  const [bezahltGeladen, setBezahltGeladen] = useState(false)
+  const [autoDetails, setAutoDetails] = useState<string[]>([])
   const [autoBusy, setAutoBusy] = useState(false)
   const [autoErgebnis, setAutoErgebnis] = useState('')
 
@@ -296,15 +411,31 @@ export default function BuchhaltungClient() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const load = async (days = txDays, mitBezahlten = belegFilter === 'gebucht') => {
-    setLoading(true)
+  const load = async (days = txDays, mitBezahlten = belegFilter === 'gebucht', still = false) => {
+    if (!still) setLoading(true)
     try {
       const [bu, be] = await Promise.all([
         fetch(`/api/buchhaltung?days=${days}${mitBezahlten ? '&bezahlt=1' : ''}`, { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
         fetch('/api/belege', { cache: 'no-store' }).then((r) => r.json().then((j) => ({ ok: r.ok, j }))),
       ])
       if (!bu.ok) throw new Error(bu.j.error ?? 'Buchhaltung nicht ladbar')
-      setVouchers(bu.j.vouchers ?? [])
+      if (mitBezahlten) setBezahltGeladen(true)
+      const lok = lokalGebucht.current
+      const serverVouchers = (bu.j.vouchers ?? []) as Voucher[]
+      const gesehen = new Set(serverVouchers.map((v) => v.id))
+      // Belege, die der Server gar nicht mehr liefert (z. B. bezahlt und damit
+      // außerhalb des todo-Fensters), haben ihr Ziel erreicht → Merker weg.
+      for (const id of Object.keys(lok)) if (!gesehen.has(id)) delete lok[id]
+      setVouchers(serverVouchers.map((v) => {
+        const m = lok[v.id]
+        if (!m) return v
+        // Sobald der Server IRGENDETWAS anderes als den Ausgangszustand
+        // liefert, hat er nachgezogen — auch wenn es 750 (teilbezahlt) statt
+        // der erwarteten 1000 ist. Ein „größer"-Vergleich würde dort ewig
+        // kleben und den Beleg dauerhaft falsch anzeigen.
+        if (v.status !== m.von) { delete lok[v.id]; return v }
+        return { ...v, status: m.nach }
+      }))
       setViewer(bu.j.viewer ?? {})
       setOpenTx(bu.j.openTx ?? [])
       setKategorien(bu.j.kategorien ?? [])
@@ -319,15 +450,46 @@ export default function BuchhaltungClient() {
         for (const [id, a] of Object.entries(ka)) if (!next[id] && a?.accountDatevId) next[id] = a
         return next
       })
-      if (be.ok) setInbox(be.j.belege ?? [])
+      if (be.ok) {
+        // Gleicher Race-Schutz für die Inbox: eine gerade entschiedene Zeile
+        // darf ein langsamer Refresh nicht zurückbringen.
+        const erledigt = lokalErledigt.current
+        const liste = (be.j.belege ?? []) as InboxBeleg[]
+        const ids = new Set(liste.map((x) => x.id))
+        for (const id of erledigt) if (!ids.has(id)) erledigt.delete(id)
+        setInbox(liste.filter((x) => !erledigt.has(x.id)))
+      }
       setErr('')
     } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e))
+      // Ein stiller Nachlauf darf den Arbeitsfluss nie mit einer roten
+      // Fehlermeldung unterbrechen — der lokale Stand bleibt gültig.
+      if (!still) setErr(String(e instanceof Error ? e.message : e))
     } finally {
-      setLoading(false)
+      if (!still) setLoading(false)
     }
   }
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* v4 Batch 3: Nach dem Buchen wird die Liste NICHT mehr neu geladen (das
+   * kostet mehrere Sekunden sevdesk-Calls und reißt die Auswahl weg) — der
+   * Client pflegt den Stand lokal und holt sich den Server-Stand im Hinter-
+   * grund nach. Sichtbar wird das nur, wenn wirklich etwas abweicht.
+   * Entprellt, weil sevdesk nur 2 Requests/s verträgt und ein Refresh
+   * dutzende Calls auslöst — beim zügigen Abarbeiten liefe man sonst ins
+   * Rate-Limit. Der Lauf startet erst, wenn 8 s lang nichts mehr passiert. */
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Der Timer feuert verzögert — er muss den DANN gültigen Filter lesen,
+  // sonst wirft er z. B. gerade nachgeladene bezahlte Belege wieder weg.
+  const sichtRef = useRef({ days: txDays, gebucht: belegFilter === 'gebucht' })
+  useEffect(() => { sichtRef.current = { days: txDays, gebucht: belegFilter === 'gebucht' } }, [txDays, belegFilter])
+  const stillerRefresh = () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current)
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null
+      void load(sichtRef.current.days, sichtRef.current.gebucht, true)
+    }, 8000)
+  }
+  useEffect(() => () => { if (refreshTimer.current) clearTimeout(refreshTimer.current) }, [])
 
   const post = async (body: Record<string, unknown>) => {
     const r = await fetch('/api/buchhaltung', {
@@ -344,8 +506,9 @@ export default function BuchhaltungClient() {
     return [...debits].sort((a, b) =>
       Math.abs(Math.abs(a.betrag) - betrag) - Math.abs(Math.abs(b.betrag) - betrag)).slice(0, 30)
   }
-  const exaktesMatch = (betrag: number | null) =>
-    betrag ? openTx.find((t) => t.betrag < 0 && Math.abs(Math.abs(t.betrag) - betrag) < 0.01) ?? null : null
+  const alleExaktenMatches = (betrag: number | null) =>
+    betrag ? openTx.filter((t) => t.betrag < 0 && Math.abs(Math.abs(t.betrag) - betrag) < 0.01) : []
+  const exaktesMatch = (betrag: number | null) => alleExaktenMatches(betrag)[0] ?? null
 
   const fOf = (v: Voucher) => form[v.id] ?? {
     kat: '', tax: '19',
@@ -365,7 +528,10 @@ export default function BuchhaltungClient() {
     const v = vouchers.find((x) => x.id === selId)
     if (!v) return
     const uebernehmen = (j: KiVorschlag) => {
-      const match = exaktesMatch(j.betrag ?? betragAusText(v.description))
+      // Nur bei EINDEUTIGEM Betrags-Treffer vorbelegen — bei mehreren gleich
+      // hohen Abbuchungen wäre die Auswahl Zufall (Nuki 3× 69 €).
+      const kandidaten = alleExaktenMatches(j.betrag ?? betragAusText(v.description))
+      const match = kandidaten.length === 1 ? kandidaten[0] : null
       setF(selId, {
         kat: String(j.accountDatevId), tax: String(j.taxRate),
         ...(j.betrag ? { betrag: String(j.betrag) } : {}),
@@ -389,6 +555,25 @@ export default function BuchhaltungClient() {
     }).catch(() => setKi((p) => ({ ...p, [selId]: 'fehler' })))
   }, [section, selId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Fließband: Während ein Beleg bearbeitet wird, analysiert Claude im
+   * Hintergrund schon den nächsten. Ohne das wartet man bei jedem neuen
+   * Lieferanten bis zu 20 s auf den Vorschlag. Nur EINER im Voraus — die
+   * Analyse wird server-seitig gecacht, ist also nie verschwendet. */
+  useEffect(() => {
+    if (section !== 'belege' || belegFilter !== 'todo' || !selId) return
+    const aktuell = ki[selId]
+    if (!aktuell || typeof aktuell !== 'object') return // erst laden lassen
+    const naechsteId = nachfolgerIn(rows, selId)
+    if (!naechsteId || ki[naechsteId]) return
+    if (!vouchers.some((v) => v.id === naechsteId && v.status < 100)) return
+    setKi((p) => ({ ...p, [naechsteId]: 'laedt' }))
+    post({ action: 'ki-vorschlag', voucherId: naechsteId })
+      .then((j) => setKi((p) => ({ ...p, [naechsteId]: j as KiVorschlag })))
+      // Scheitert der VORLAUF, darf das den Beleg nicht verbrennen: Eintrag
+      // wieder entfernen, damit das Öffnen einen echten zweiten Versuch macht.
+      .catch(() => setKi((p) => { const n = { ...p }; delete n[naechsteId]; return n }))
+  }, [section, belegFilter, selId, ki]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const verbuchen = async (v: Voucher) => {
     const f = fOf(v)
     if (!f.kat) { setErr('Bitte eine Kategorie wählen (✨ schlägt vor).'); return }
@@ -404,15 +589,37 @@ export default function BuchhaltungClient() {
         // §243h: echtes Rechnungsdatum (aus der KI-Analyse) korrigiert das
         // Scan-Datum der Mail-Belege — UStVA-Periode!
         ...((() => { const k = ki[v.id]; return k && typeof k === 'object' && k.datum ? { belegDatum: k.datum } : {} })()),
-        ...(f.zuordnung ? { zuordnung: f.zuordnung } : {}),
+        /* Der Picker zeigt „Allgemein" als aktiv an, wenn nichts gesetzt ist —
+         * gespeichert wurde bisher aber NICHTS. Der Default muss allerdings
+         * aus der Kostenstelle folgen: „allgemein" verteilt in der Auswertung
+         * auf ALLE Wohnungen und würde eine gesetzte Standort-KSt still
+         * aushebeln (lib/auswertung prüft modus VOR der Kostenstelle). */
+        zuordnung: f.zuordnung ?? (f.kst && f.kst !== 'Allgemein'
+          ? { modus: 'standort' as const, standort: f.kst }
+          : { modus: 'allgemein' as const }),
         ...(tx ? { txId: tx.id, txAccountId: tx.bankAccountId, txDate: tx.datum } : {}),
       })
       haptic()
-      setNotice(res.hinweis
+      merkeKategorie(f.kat)
+      /* Statt „alles neu laden" (mehrere Sekunden sevdesk) den Stand lokal
+       * fortschreiben: der Beleg verlässt die To-do-Liste, eine verknüpfte
+       * Abbuchung verschwindet aus den offenen Zahlungen — und der nächste
+       * offene Beleg ist sofort da. Der Server-Stand kommt still hinterher. */
+      const naechster = nachfolgerIn(rows, v.id)
+      const neuerStatus = res.verknuepft ? 1000 : 100
+      lokalGebucht.current[v.id] = { von: v.status, nach: neuerStatus }
+      setVouchers((p) => p.map((x) => x.id === v.id
+        ? { ...x, status: neuerStatus, sumGross: betrag, costCentreName: f.kst }
+        : x))
+      if (tx && res.verknuepft) setOpenTx((p) => p.filter((x) => x.id !== tx.id))
+      const rest = Math.max(0, nTodo - (v.status < 100 ? 1 : 0))
+      const kern = res.hinweis
         ? `✓ ${v.supplierName ?? 'Beleg'}: ${res.hinweis}`
-        : `✓ ${v.supplierName ?? 'Beleg'} verbucht${res.verknuepft ? ' + Zahlung verknüpft' : ''}${f.anlagegut ? ' · als Anlagegut markiert' : ''}`)
-      setSelId(null)
-      await load()
+        : `✓ ${v.supplierName ?? 'Beleg'} verbucht${res.verknuepft ? ' + Zahlung verknüpft' : ' — wartet auf den Bankabgleich'}${f.anlagegut ? ' · als Anlagegut markiert' : ''}`
+      setNotice(rest === 0 ? `${kern} · 🎉 alles erledigt` : `${kern} · noch ${rest} zu erledigen`)
+      setSelId(isMobile ? null : naechster)
+      nachObenScrollen()
+      void stillerRefresh()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
@@ -431,12 +638,19 @@ export default function BuchhaltungClient() {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
       haptic()
+      const naechster = bulk ? null : nachfolgerIn(rows, b.id)
+      for (const x of inbox) {
+        if (bulk ? x.lieferant === b.lieferant : x.id === b.id) lokalErledigt.current.add(x.id)
+      }
       setInbox((p) => bulk ? p.filter((x) => x.lieferant !== b.lieferant) : p.filter((x) => x.id !== b.id))
-      setSelId(null)
+      setSelId(bulk || isMobile ? null : naechster)
+      nachObenScrollen()
       // §243ad: nach der Einzel-Übernahme läuft die Voll-Automatik mit —
       // Ergebnis („✅ automatisch verbucht" vs. „🧾 zur Prüfung") anzeigen
       if (!bulk && j.autoText) setNotice((j.auto ? '✅ ' : '🧾 ') + (b.lieferant ?? 'Beleg') + ': ' + j.autoText)
-      if (ziel === 'sevdesk') await load()
+      // Bei „→ sevdesk" entsteht ein neuer Beleg, den nur der Server kennt —
+      // der kommt still nach, ohne den Arbeitsfluss zu unterbrechen.
+      if (ziel === 'sevdesk') void stillerRefresh()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
@@ -559,34 +773,52 @@ export default function BuchhaltungClient() {
       haptic()
       setOpenTx((p) => p.filter((x) => x.id !== t.id))
       setSelId(null)
-      if (j?.hinweis) setErr(j.hinweis)
-      await load()
+      // Ein „hinweis" heißt: gebucht, aber die Zahlung hing quer (z. B. die
+      // Bank-Automatik war schneller) — das ist kein Fehler, also grün.
+      if (f.typ === 'sonstiges' && f.kat) merkeKategorie(f.kat)
+      setNotice(j?.hinweis ? `✓ Eigenbeleg gebucht — ${j.hinweis}` : `✓ Eigenbeleg gebucht · ${f.empfaenger.trim() || 'ohne Empfänger'}`)
+      void stillerRefresh()
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
   const gefilterteTx = useMemo(() => openTx.filter((t) =>
     txRichtung === 'alle' ? true : txRichtung === 'eingang' ? t.betrag > 0 : t.betrag < 0), [openTx, txRichtung])
 
-  interface Row { id: string; titel: string; sub: string; betrag: string | null; farbe: string; avatar: ReactNode }
+  interface Row { id: string; titel: string; sub: string; betrag: string | null; farbe: string; avatar: ReactNode; tags?: string[] }
   const rows: Row[] = useMemo(() => {
     // §243ad: EIN Belege-Reiter — Inbox-Zeilen (Gesellschaft entscheiden)
     // stehen gekennzeichnet VOR den sevdesk-Belegen; „Gebucht" zeigt St1000
     if (section === 'belege') {
-      const inboxRows: Row[] = belegFilter === 'gebucht' ? [] : inbox.map((b) => ({
+      const inboxRows: Row[] = belegFilter !== 'todo' ? [] : inbox.map((b) => ({
         id: b.id, titel: b.lieferant ?? '?',
         sub: `⚠️ Zuordnung offen · ${fmtD(b.datum) ?? '—'}${b.eingereichtOrt ? ` · 👤 ${b.eingereichtOrt}` : ''} · ${(b.subject ?? '').slice(0, 36)}`,
         betrag: b.betrag != null ? eur(b.betrag) : null, farbe: INK,
         avatar: <Avatar name={b.lieferant ?? '?'} />,
       }))
       const vRows: Row[] = vouchers
-        .filter((v) => belegFilter === 'gebucht' ? v.status === 1000 : v.status < 1000)
+        .filter((v) => belegFilter === 'gebucht' ? v.status === 1000
+          : belegFilter === 'bank' ? (v.status >= 100 && v.status < 1000)
+          : v.status < 100)
         .map((v) => {
-          const betrag = v.sumGross && v.sumGross > 0 ? v.sumGross : betragAusText(v.description)
+          const k = ki[v.id]
+          const kiObj = k && typeof k === 'object' ? k : null
+          // Betrag: sevdesk → aus der Beschreibung → aus der KI-Analyse.
+          // Ohne den dritten Schritt bleiben Entwurfs-Zeilen ohne jede Zahl.
+          const betrag = v.sumGross && v.sumGross > 0 ? v.sumGross : (betragAusText(v.description) ?? kiObj?.betrag ?? null)
+          const marke = v.status === 1000 ? '✓ Gebucht · ' : v.status >= 100 ? '🏦 Wartet auf Bank · ' : ''
+          // Signale, damit man den durchwinkbaren Beleg von der Denkarbeit
+          // unterscheidet, ohne ihn zu öffnen.
+          const tags: string[] = []
+          if (v.status < 100) {
+            if (kiObj?.accountDatevId) tags.push('✨')
+            if (betrag != null && alleExaktenMatches(betrag).length === 1) tags.push('💳')
+          }
           return {
             id: v.id, titel: v.supplierName ?? '?',
-            sub: `${v.status === 1000 ? '✓ Gebucht · ' : ''}${fmtD(v.voucherDate) ?? '—'} · ${(v.description ?? '').replace(/^(Beleg|Provisionsrechnung) \((automatisch aus E-Mail|aus Beleg-Inbox)\): /, '').slice(0, 48)}`,
+            sub: `${marke}${fmtD(v.voucherDate) ?? '—'} · ${(v.description ?? '').replace(/^(Beleg|Provisionsrechnung) \((automatisch aus E-Mail|aus Beleg-Inbox)\): /, '').slice(0, 48)}`,
             betrag: betrag != null ? eur(betrag) : null, farbe: INK,
             avatar: <Avatar name={v.supplierName ?? '?'} />,
+            tags,
           }
         })
       return [...inboxRows, ...vRows]
@@ -604,7 +836,8 @@ export default function BuchhaltungClient() {
         }}>{t.betrag < 0 ? '↑' : '↓'}</span>
       ),
     }))
-  }, [section, belegFilter, inbox, vouchers, gefilterteTx])
+    // ki + openTx gehören in die Abhängigkeiten: sie speisen die Signal-Chips
+  }, [section, belegFilter, inbox, vouchers, gefilterteTx, ki, openTx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sel = {
     inbox: inbox.find((b) => b.id === selId) ?? null,
@@ -613,17 +846,36 @@ export default function BuchhaltungClient() {
   }
   const detailOffen = Boolean(selId && (sel.inbox || sel.voucher || sel.tx))
 
-  const Banner = ({ text, tone, onClose }: { text: string; tone: 'rot' | 'gruen'; onClose: () => void }) => (
-    <div style={{ maxWidth: 1240, margin: '12px auto 0', padding: '0 16px', width: '100%', boxSizing: 'border-box' }}>
+  /* Die Erfolgsmeldung erscheint dort, wo der Blick beim Buchen ist: als
+   * schwebender Toast unten. Vorher hing sie oben über der Seite — beim
+   * Abarbeiten stand man unten am Button und sah sie schlicht nie. */
+  const Banner = ({ text, tone, onClose }: { text: string; tone: 'rot' | 'gruen'; onClose: () => void }) => {
+    const rot = tone === 'rot'
+    return (
       <div style={{
-        background: tone === 'rot' ? '#FFEBE9' : '#E9F8EE', color: tone === 'rot' ? RED : GREEN,
-        borderRadius: 12, padding: '11px 14px', fontSize: 14, display: 'flex', gap: 10, alignItems: 'center',
+        position: 'fixed', left: 0, right: 0, zIndex: rot ? 41 : 40,
+        // Über der sticky Aktionsleiste (Verbuchen + Überspringen ≈ 108 px),
+        // sonst verdeckt der Toast genau den Knopf, der als Nächstes kommt.
+        // Der Fehler-Toast sitzt noch eine Etage höher — er darf nie unter
+        // einer 6 s stehenden Erfolgsmeldung verschwinden.
+        bottom: `calc(${rot ? 196 : 124}px + env(safe-area-inset-bottom))`,
+        padding: '0 16px', pointerEvents: 'none',
       }}>
-        <span style={{ flex: 1 }}>{text}</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>✕</button>
+        <div style={{
+          maxWidth: 620, margin: '0 auto',
+          // Erfolg blockiert keine Klicks (verschwindet ohnehin von selbst),
+          // nur der Fehler-Toast ist bedienbar (✕).
+          pointerEvents: rot ? 'auto' : 'none',
+          background: rot ? '#FFEBE9' : '#E9F8EE', color: rot ? RED : GREEN,
+          borderRadius: 14, padding: '12px 15px', fontSize: 14, display: 'flex', gap: 10, alignItems: 'center',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.18)', border: `0.5px solid ${rot ? '#F5C6C2' : '#BDE5CB'}`,
+        }}>
+          <span style={{ flex: 1 }}>{text}</span>
+          {rot && <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>✕</button>}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // ── Detail-Inhalte ──
   const renderDetail = () => {
@@ -678,7 +930,12 @@ export default function BuchhaltungClient() {
       const f = fOf(v)
       const k = ki[v.id]
       const betragNum = parseFloat(f.betrag.replace(',', '.'))
-      const match = exaktesMatch(Number.isFinite(betragNum) ? betragNum : null)
+      const mehrfachMatch = alleExaktenMatches(Number.isFinite(betragNum) ? betragNum : null)
+      const match = mehrfachMatch[0] ?? null
+      // Zum Überspringen nur der ECHTE Nachfolger — nachfolgerIn fällt sonst
+      // auf den Vorgänger zurück und man tippt zwischen zwei Belegen hin und her.
+      const idx = rows.findIndex((r) => r.id === v.id)
+      const naechsterOffenerId = belegFilter === 'todo' ? (rows[idx + 1]?.id ?? null) : null
       return (
         <div style={{ display: 'grid', gap: 14 }}>
           <PdfViewer links={viewer[v.id]?.links?.length
@@ -689,7 +946,7 @@ export default function BuchhaltungClient() {
               <Avatar name={v.supplierName ?? '?'} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 19, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{v.supplierName ?? '?'}</div>
-                <div style={{ fontSize: 13, color: SUB, marginTop: 1 }}>{fmtD(v.voucherDate) ?? 'ohne Datum'} · {v.status === 50 ? 'Entwurf' : v.status === 750 ? 'teilbezahlt' : v.status === 1000 ? '✓ gebucht & bezahlt' : 'offen'}</div>
+                <div style={{ fontSize: 13, color: SUB, marginTop: 1 }}>{fmtD(v.voucherDate) ?? 'ohne Datum'} · {v.status === 50 ? 'Entwurf' : v.status === 750 ? 'teilbezahlt' : v.status === 1000 ? '✓ gebucht & bezahlt' : '🏦 kategorisiert — wartet auf den Bankabgleich'}</div>
               </div>
             </div>
 
@@ -713,13 +970,10 @@ export default function BuchhaltungClient() {
               </div>
             )}
 
-            <div style={{ display: 'grid', gap: 13, gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))' }}>
+            <div style={{ display: 'grid', gap: 13, gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', alignItems: 'end' }}>
               <div>
                 <div style={LABEL}>Kategorie</div>
-                <select value={f.kat} onChange={(e) => setF(v.id, { kat: e.target.value })} style={SELECT}>
-                  <option value="">— wählen —</option>
-                  {kategorien.map((kat) => <option key={kat.id} value={String(kat.id)}>{kat.nr} · {kat.name}</option>)}
-                </select>
+                <KategorieWahl key={v.id} value={f.kat} onChange={(x) => setF(v.id, { kat: x })} kategorien={kategorien} recent={recentKats} />
               </div>
               <div>
                 <div style={LABEL}>Steuersatz</div>
@@ -749,7 +1003,13 @@ export default function BuchhaltungClient() {
 
             <div>
               <div style={LABEL}>Zahlung zuordnen</div>
-              {match && f.txId === match.id && (
+              {/* Bei wiederkehrenden Beträgen (3× Nuki 69 €) ist „passt exakt"
+                  eine Falle — dann muss der Mensch die richtige auswählen. */}
+              {mehrfachMatch.length > 1 ? (
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', borderRadius: 9, padding: '7px 9px', margin: '0 0 7px' }}>
+                  ⚠️ {mehrfachMatch.length} Abbuchungen über {eur(mehrfachMatch[0].betrag)} passen — bitte die richtige auswählen ({mehrfachMatch.map((t) => fmtD(t.datum)).join(' · ')}).
+                </div>
+              ) : match && f.txId === match.id && (
                 <div style={{ fontSize: 13, fontWeight: 700, color: GREEN, margin: '0 4px 6px' }}>✓ Vorschlag: Abbuchung {eur(match.betrag)} vom {fmtD(match.datum)} passt exakt</div>
               )}
               <select value={f.txId} onChange={(e) => {
@@ -771,9 +1031,23 @@ export default function BuchhaltungClient() {
 
             <ZuordnungPicker value={f.zuordnung} onChange={(z) => setF(v.id, { zuordnung: z })} wohnungen={wohnungen} />
 
-            <button onClick={() => verbuchen(v)} disabled={busy === v.id} style={{ ...BTN, background: GOLD, color: '#fff', fontSize: 16.5 }}>
-              {busy === v.id ? '⏳ Verbuche…' : v.status === 1000 ? 'Umbuchen (Zahlung wird neu verknüpft)' : `Verbuchen${f.txId ? ' + Zahlung zuordnen' : ''}`}
-            </button>
+            {/* Der Verbuchen-Knopf klebt am unteren Rand — beim Abarbeiten
+                liegen sonst ~900 px Scrollstrecke zwischen Prüfen und Buchen. */}
+            <div style={{
+              position: 'sticky', bottom: 0, zIndex: 5, display: 'grid', gap: 9,
+              background: 'linear-gradient(to top, #fff 62%, rgba(255,255,255,0))',
+              padding: '12px 0 calc(4px + env(safe-area-inset-bottom))', margin: '-4px -2px 0',
+            }}>
+              <button onClick={() => verbuchen(v)} disabled={busy === v.id} style={{ ...BTN, background: GOLD, color: '#fff', fontSize: 16.5 }}>
+                {busy === v.id ? '⏳ Verbuche…' : v.status >= 100 ? 'Erneut buchen (Zahlung wird neu verknüpft)' : `Verbuchen${f.txId ? ' + Zahlung zuordnen' : ''}`}
+              </button>
+              {naechsterOffenerId && (
+                <button onClick={() => { haptic(); setSelId(naechsterOffenerId); nachObenScrollen() }} disabled={busy === v.id}
+                  style={{ ...BTN, background: '#F2F2F7', color: INK, fontSize: 15 }}>
+                  Überspringen → nächster Beleg
+                </button>
+              )}
+            </div>
             <button onClick={() => belegLoeschen(v)} disabled={busy === v.id}
               style={{ ...BTN, background: 'rgba(215,0,21,0.08)', color: RED }}>
               🗑 Beleg löschen{v.status === 1000 ? ' (löst die Zahlung)' : ''}
@@ -871,10 +1145,7 @@ export default function BuchhaltungClient() {
                       <>
                         <div>
                           <div style={LABEL}>Kategorie</div>
-                          <select value={f.kat} onChange={(e) => setEigenF(t.id, t, { kat: e.target.value })} style={SELECT}>
-                            <option value="">— wählen —</option>
-                            {kategorien.map((kat) => <option key={kat.id} value={String(kat.id)}>{kat.nr} · {kat.name}</option>)}
-                          </select>
+                          <KategorieWahl value={f.kat} onChange={(x) => setEigenF(t.id, t, { kat: x })} kategorien={kategorien} recent={recentKats} />
                         </div>
                         <div>
                           <div style={LABEL}>Steuersatz</div>
@@ -928,13 +1199,17 @@ export default function BuchhaltungClient() {
     )
   }
 
+  // Der Zähler zeigt nur echte To-dos — Belege im Bankabgleich verlangen
+  // nichts von uns und blähten die Zahl früher unnötig auf.
+  const nTodo = inbox.length + vouchers.filter((v) => v.status < 100).length
+  const nBank = vouchers.filter((v) => v.status >= 100 && v.status < 1000).length
   const SEG: [typeof section, string, number][] = [
-    ['belege', '🧾 Belege', inbox.length + vouchers.filter((v) => v.status < 1000).length],
+    ['belege', '🧾 Belege', nTodo],
     ['zahlungen', '💳 Zahlungen', openTx.length],
   ]
 
   return (
-    <div style={{ minHeight: '100dvh', background: GROUP_BG, display: 'flex', flexDirection: 'column', WebkitFontSmoothing: 'antialiased', overflowX: 'hidden' }}>
+    <div style={{ minHeight: '100dvh', background: GROUP_BG, display: 'flex', flexDirection: 'column', WebkitFontSmoothing: 'antialiased', overflowX: 'clip' }}>
       {/* ── Kopf ── */}
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', position: 'sticky', top: 0, zIndex: 20 }}>
         {/* §243af: iOS-Navigation-Muster — kleine Aktions-Zeile oben, Large
@@ -992,20 +1267,32 @@ export default function BuchhaltungClient() {
           )}
           {section === 'belege' && (
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', margin: '2px 2px 12px' }}>
-              <Chip active={belegFilter === 'todo'} onClick={() => { setBelegFilter('todo'); setSelId(null) }}>Zu erledigen</Chip>
+              <Chip active={belegFilter === 'todo'} onClick={() => { setBelegFilter('todo'); setSelId(null) }}>
+                {nTodo ? `Zu erledigen · ${nTodo}` : 'Zu erledigen'}
+              </Chip>
+              <Chip active={belegFilter === 'bank'} onClick={() => { setBelegFilter('bank'); setSelId(null) }}>
+                {nBank ? `🏦 Wartet auf Bank · ${nBank}` : '🏦 Wartet auf Bank'}
+              </Chip>
               <Chip active={belegFilter === 'gebucht'} onClick={() => {
                 setBelegFilter('gebucht'); setSelId(null)
-                // §243ad: bezahlte Belege on-demand nachladen (GET ?bezahlt=1)
-                if (!vouchers.some((v) => v.status === 1000)) load(txDays, true)
+                // §243ad: bezahlte Belege on-demand nachladen (GET ?bezahlt=1).
+                // Der Merker MUSS ein eigener State sein — aus den Daten
+                // abgeleitet („gibt es schon einen 1000er?") wäre er nach der
+                // ersten optimistischen Buchung fälschlich true und der
+                // Reiter bliebe leer.
+                if (!bezahltGeladen) load(txDays, true)
               }}>✓ Gebucht</Chip>
               {belegFilter === 'todo' && vouchers.filter((v) => v.status === 50).length > 0 && (
                 <button
                   disabled={autoBusy}
                   onClick={async () => {
-                    setAutoBusy(true); setAutoErgebnis(''); setErr('')
+                    setAutoBusy(true); setAutoErgebnis(''); setAutoDetails([]); setErr('')
                     try {
                       const j = await post({ action: 'auto-batch', limit: 15 })
                       setAutoErgebnis(`⚡ ${j.auto} automatisch verbucht · ${j.brauchenDich} brauchen dich${j.uebrig > 0 ? ` · ${j.uebrig} übrig (nochmal tippen)` : ''}`)
+                      // Der Server sagt je liegengebliebenem Beleg WARUM —
+                      // das ist die Arbeitsliste für die nächsten Minuten.
+                      setAutoDetails(Array.isArray(j.details) ? (j.details as string[]) : [])
                       await load()
                     } catch (e) {
                       setErr(String(e instanceof Error ? e.message : e))
@@ -1021,6 +1308,17 @@ export default function BuchhaltungClient() {
                 </button>
               )}
               {autoErgebnis && <span style={{ flexBasis: '100%', fontSize: 12.5, color: '#166534', padding: '2px 4px' }}>{autoErgebnis}</span>}
+              {belegFilter === 'bank' && (
+                <span style={{ flexBasis: '100%', fontSize: 12.5, color: SUB, padding: '2px 4px' }}>
+                  Diese Belege sind fertig kategorisiert — sie warten nur darauf, dass sevdesk die Zahlung zuordnet. Hier ist nichts zu tun.
+                </span>
+              )}
+              {autoDetails.length > 0 && (
+                <div style={{ flexBasis: '100%', fontSize: 12.5, color: SUB, lineHeight: 1.5, padding: '2px 4px' }}>
+                  {autoDetails.slice(0, 8).map((d, i) => <div key={i}>· {d}</div>)}
+                  {autoDetails.length > 8 && <div>· … und {autoDetails.length - 8} weitere</div>}
+                </div>
+              )}
             </div>
           )}
           {section === 'belege' && belegFilter === 'todo' && (
@@ -1060,7 +1358,12 @@ export default function BuchhaltungClient() {
           )}
           {loading && <div style={CARD}><SkeletonRows kind="chat" count={7} /></div>}
           {!loading && !rows.length && (
-            <div style={{ ...CARD, padding: '36px 24px', textAlign: 'center', color: SUB, fontSize: 15 }}>🎉 Hier ist alles erledigt.</div>
+            <div style={{ ...CARD, padding: '36px 24px', textAlign: 'center', color: SUB, fontSize: 15 }}>
+              {section !== 'belege' ? 'Keine offenen Zahlungen im Zeitraum.'
+                : belegFilter === 'bank' ? 'Nichts wartet auf den Bankabgleich.'
+                : belegFilter === 'gebucht' ? 'Noch keine gebuchten Belege im geladenen Zeitraum.'
+                : '🎉 Hier ist alles erledigt.'}
+            </div>
           )}
           {!loading && rows.length > 0 && (
             <div style={CARD}>
@@ -1075,7 +1378,11 @@ export default function BuchhaltungClient() {
                   {item.avatar}
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15.5, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: -0.2 }}>{item.titel}</span>
-                    <span style={{ display: 'block', fontSize: 13, color: SUB, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</span>
+                    <span style={{ display: 'block', fontSize: 13, color: SUB, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.tags && item.tags.length > 0 && (
+                        <span title="✨ Vorschlag liegt bereit · 💳 Zahlung passt exakt">{item.tags.join('')} </span>
+                      )}{item.sub}
+                    </span>
                   </span>
                   {item.betrag && <span style={{ fontSize: 15.5, fontWeight: 600, color: item.farbe, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: -0.2 }}>{item.betrag}</span>}
                   <span style={{ color: '#C7C7CC', fontSize: 16, flexShrink: 0 }}>›</span>
