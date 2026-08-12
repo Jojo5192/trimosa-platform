@@ -118,7 +118,13 @@ const APIFY_ACTORS: Record<string, string> = {
   vrbo: process.env.APIFY_ACTOR_VRBO_REVIEWS ?? 'powerai~vrbo-reviews-scraper',
 }
 
-const MAX_REVIEWS_PER_RUN = 200
+/* Diese Actors rechnen PRO BEWERTUNG ab — ein Lauf über 200 kostet je
+ * Wohnung ~0,50 $, und das für Zeilen, die längst in unserer DB liegen
+ * (upsert, nichts geht verloren). Pro Woche kommen je Wohnung eine Handvoll
+ * neue dazu; 40 neueste sind reichlich Puffer und senken die Kosten auf
+ * ~0,25 $. Für einen ERSTBESTAND (neue Wohnung, leere DB) lässt sich das
+ * über die Env hochsetzen, ohne den Alltag teuer zu machen. */
+const MAX_REVIEWS_PER_RUN = Number(process.env.REVIEWS_MAX_PER_RUN) || 40
 
 /**
  * Runs an Apify actor synchronously and returns its dataset items.
@@ -137,6 +143,16 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
     maxReviews: MAX_REVIEWS_PER_RUN,
     maxItems: MAX_REVIEWS_PER_RUN,
     maxReviewsPerListing: MAX_REVIEWS_PER_RUN,
+    /* NEUESTE ZUERST — kritisch, seit wir nur noch einen Ausschnitt holen:
+     * Bestehende Bewertungen liegen in unserer DB, geholt werden müssen nur
+     * die neu dazugekommenen. Lieferte der Actor die ÄLTESTEN zuerst, würden
+     * wir bei jedem Lauf dieselben alten Zeilen bezahlen und neue verpassen.
+     * Die Feldnamen unterscheiden sich je Actor; unbekannte ignoriert Apify. */
+    sortBy: 'newest',
+    sortOption: 'newest',
+    sort: 'newest',
+    reviewsSort: 'newest',
+    sortReviewsBy: 'newest',
   }
 
   const res = await fetch(

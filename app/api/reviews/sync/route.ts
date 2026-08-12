@@ -50,15 +50,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 401 })
   }
 
-  // §243ai-Kosten (2.8.): Apify-Scrape nur noch MONTAGS, 1 Inserat/Woche —
-  // jede Wohnung alle ~7 Wochen automatisch frisch. Die Bezahl-Actors
-  // rechnen je gescraptem Review und holen bei JEDEM Lauf ALLE Reviews
-  // neu (~$0,50/Inserat-Sync); täglich lief das auf ~$15–45/Monat.
-  // Wöchentlich sind es ~$2/Monat → das $5-Free-Guthaben reicht inkl.
-  // manueller Editor-Syncs (Starter-Abo gekündigt, endet 12.8.).
-  // Der Cron selbst bleibt TÄGLICH: der Score-Snapshot (§171) unten
-  // braucht tägliche Datenpunkte und kostet nichts.
+  /* Kosten-Drossel. Die Bezahl-Actors rechnen JE gescraptem Review; früher
+   * holte jeder Lauf ALLE Bewertungen neu (~0,50 $/Inserat) und täglich
+   * ergab das 15–45 $/Monat. Seit das Limit bei 40 NEUESTEN liegt, kostet
+   * ein Inserat ~0,25 $ — deshalb zwei Inserate pro Montag statt einem:
+   * jede Wohnung ist alle ~3,5 Wochen frisch, macht ~2 $/Monat und lässt
+   * im 5-$-Gratisrahmen noch Luft für manuelle Editor-Syncs.
+   * Der Cron selbst bleibt TÄGLICH: der Score-Snapshot (§171) unten
+   * braucht tägliche Datenpunkte und kostet nichts. */
   const scrapeToday = new Date().getUTCDay() === 1
+  const PRO_LAUF = 2
   const listingsRes = scrapeToday
     ? await supabaseAdmin
         .from('listings')
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
         // any of the four sources configured
         .or('airbnb_url.not.is.null,booking_url.not.is.null,vrbo_url.not.is.null,google_place_id.not.is.null')
         .order('reviews_synced_at', { ascending: true, nullsFirst: true })
-        .limit(1)
+        .limit(PRO_LAUF)
     : null
 
   const out = []
