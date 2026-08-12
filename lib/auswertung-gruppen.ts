@@ -49,4 +49,5 @@ export const KANAL_META: Record<string, { label: string; color: string }> = {
   fewo: { label: 'FeWo-direkt', color: '#8B5CF6' },
   hometogo: { label: 'HomeToGo', color: '#0E9F8A' },
   direkt: { label: 'Direkt / Website', color: '#B0912B' },
+  sonstige: { label: 'Sonstiger Kanal', color: '#8E8E93' },
 }

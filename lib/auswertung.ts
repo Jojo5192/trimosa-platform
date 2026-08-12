@@ -44,16 +44,21 @@ export interface AuswertungDaten {
 
 const KANZEM = 'Kanzem'
 
-/** Kanal normalisieren — §140-Falle: direct VOR booking prüfen! */
+/* Kanal normalisieren. REIHENFOLGE IST KRITISCH (§140-Substring-Falle):
+ * Smoobus Kanalnamen enthalten sich gegenseitig — „FeWo-direkt / HomeAway"
+ * enthält „direkt", „Direct booking" enthält „booking". Also von speziell
+ * nach allgemein: fewo → direkt → booking. */
 function normKanal(channel: string | null, source: string | null): string {
   if (source === 'trimosa') return 'direkt'
   const c = (channel ?? '').toLowerCase()
-  if (/direct|direkt|website/.test(c)) return 'direkt'
   if (/fewo|homeaway|vrbo|abritel/.test(c)) return 'fewo'
+  if (/direct|direkt|website/.test(c)) return 'direkt'
   if (/airbnb/.test(c)) return 'airbnb'
   if (/hometogo/.test(c)) return 'hometogo'
   if (/booking/.test(c)) return 'booking'
-  return 'direkt'
+  // Ohne Kanalangabe = eigene Website; ein UNBEKANNTER Kanal bekommt einen
+  // eigenen Topf, statt still die Direktbuchungen aufzublähen.
+  return c.trim() ? 'sonstige' : 'direkt'
 }
 
 interface Zuordnung { modus?: string; standort?: string; listingIds?: string[]; anteile?: number[] }

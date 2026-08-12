@@ -65,12 +65,14 @@ function fmtDate(iso: string): string {
   return `${d}.${m}.${y}`
 }
 
-/** Kanal-Normalisierung — direct VOR booking prüfen (§140-Substring-Falle). */
+/* Kanal-Normalisierung. REIHENFOLGE IST KRITISCH (§140-Substring-Falle):
+ * „FeWo-direkt / HomeAway" enthält „direkt", „Direct booking" enthält
+ * „booking" — deshalb von speziell nach allgemein prüfen. */
 function normChannel(s: string | null | undefined): string {
   const v = (s ?? '').toLowerCase()
+  if (/fewo|homeaway|vrbo|abritel/.test(v)) return 'fewo'
   if (/direct|direkt|website|trimosa/.test(v)) return 'direkt'
   if (/airbnb/.test(v)) return 'airbnb'
-  if (/fewo|homeaway|vrbo|abritel/.test(v)) return 'fewo'
   if (/hometogo/.test(v)) return 'hometogo'
   if (/booking/.test(v)) return 'booking'
   return v
