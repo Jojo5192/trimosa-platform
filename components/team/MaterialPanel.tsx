@@ -16,7 +16,7 @@ import { haptic } from '@/components/team/ux'
 
 const NAVY = '#12222E'
 
-interface Artikel { id: string; name: string; url?: string; asin?: string; menge?: number }
+interface Artikel { id: string; name: string; url?: string; bild?: string; asin?: string; menge?: number }
 interface Bedarf {
   id: string; standort: string; artikelId?: string; name: string
   prio: 'knapp' | 'leer'; status: 'offen' | 'bestellt' | 'aufgefuellt'
@@ -158,6 +158,12 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
           return (
             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
               <span style={{ fontSize: 13 }}>{b.prio === 'leer' ? '🔴' : '🟡'}</span>
+              {a?.bild && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={a.bild} alt="" loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  style={{ width: 34, height: 34, objectFit: 'contain', flexShrink: 0 }} />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1814' }}>
                   {a?.url ? <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#1A1814', textDecoration: 'underline', textDecorationColor: 'rgba(60,60,67,0.3)' }}>{b.name} ↗</a> : b.name}
@@ -251,7 +257,13 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
             {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: '#A9A499' }}>Merkliste ist leer — unten pflegen (Admin).</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6, marginTop: 8 }}>
               {gefiltert.map((a) => (
-                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, border: '0.5px solid rgba(60,60,67,0.15)', borderRadius: 12, padding: '8px 10px', background: '#FAFAF8' }}>
+                <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 5, border: '0.5px solid rgba(60,60,67,0.15)', borderRadius: 12, padding: '8px 10px', background: '#fff' }}>
+                  {a.bild && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.bild} alt="" loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      style={{ width: '100%', height: 74, objectFit: 'contain' }} />
+                  )}
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1814', lineHeight: 1.25, minHeight: 31 }}>{a.name}</span>
                   <div style={{ display: 'flex', gap: 5 }}>
                     <button onClick={() => melden(a.name, 'knapp', 'm' + a.id)} disabled={busy === 'm' + a.id || !ort}

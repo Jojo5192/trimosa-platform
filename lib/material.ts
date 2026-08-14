@@ -23,6 +23,9 @@ export interface MaterialArtikel {
   name: string
   /** Produkt-Link (dm.de-Merkliste, Amazon, egal) — Bestell-Liste verlinkt ihn */
   url?: string
+  /** Produktfoto-URL (dm-CDN products.dm-static.com — Hotlink, Fallback
+   *  ohne Bild wenn der Link je bricht; CSP img-src https: deckt es) */
+  bild?: string
   /** Amazon-ASIN — Artikel wandert zusätzlich in den Sammel-Warenkorb-Link */
   asin?: string
   /** Bestellmenge je Nachbestellung (Default 1) */

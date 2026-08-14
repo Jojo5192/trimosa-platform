@@ -29,10 +29,12 @@ function sanitizeArtikel(raw: unknown): MaterialArtikel[] {
     .map((a) => {
       const menge = Math.min(99, Math.max(1, Math.round(Number(a.menge)) || 1))
       const url = typeof a.url === 'string' ? a.url.trim().slice(0, 300) : ''
+      const bild = typeof a.bild === 'string' ? a.bild.trim().slice(0, 400) : ''
       return {
         id: typeof a.id === 'string' && a.id ? a.id.slice(0, 20) : Math.random().toString(36).slice(2, 10),
         name: String(a.name).trim().slice(0, 60),
         ...(url && /^https:\/\//.test(url) ? { url } : {}),
+        ...(bild && /^https:\/\//.test(bild) ? { bild } : {}),
         ...(typeof a.asin === 'string' && a.asin.trim() ? { asin: a.asin.trim().slice(0, 20) } : {}),
         ...(menge > 1 ? { menge } : {}),
       }
