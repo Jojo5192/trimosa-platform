@@ -77,7 +77,7 @@ export async function postAsClaude(
     for (const m of members ?? []) {
       if (opts.excludeUserId && m.user_id === opts.excludeUserId) continue
       // §254: Präferenz-Gate via category 'teamChats'
-      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), '/team?tab=intern', `intern-${chatId}`, 'teamChats').catch(() => {})
+      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · Claude`, content.slice(0, 160), `/team?tab=intern&chat=${chatId}`, `intern-${chatId}`, 'teamChats').catch(() => {})
     }
   })().catch(() => {})
 

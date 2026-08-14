@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const sender = (me?.display_name ?? '').trim().split(/\s+/)[0] || 'Team'
       const target = (msg.content || '').slice(0, 40) || (msg.attachment_type === 'audio' ? 'Sprachnachricht' : msg.attachment_type === 'image' ? 'Foto' : 'Anhang')
       // §254: Präferenz-Gate via category 'teamChats'
-      await sendPushToUser(msg.sender_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'}`, `${sender} hat mit ${emoji} auf „${target}“ reagiert`, '/team?tab=intern', undefined, 'teamChats')
+      await sendPushToUser(msg.sender_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'}`, `${sender} hat mit ${emoji} auf „${target}“ reagiert`, `/team?tab=intern&chat=${id}`, undefined, 'teamChats')
     })().catch(() => {})
   }
 

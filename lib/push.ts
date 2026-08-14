@@ -61,9 +61,9 @@ function ensureConfigured(): boolean {
   return true
 }
 
-type Sub = { id: string; endpoint: string; p256dh: string; auth: string }
+type Sub = { id: string; endpoint: string; p256dh: string; auth: string; user_id?: string | null }
 
-async function sendToSubs(subs: Sub[], title: string, body: string, url: string, tag?: string): Promise<void> {
+async function sendToSubs(subs: Sub[], title: string, body: string, url: string, tag?: string, category?: PushCategory): Promise<void> {
   // tag: gleiche Mitteilungen stapeln sich je Thread und lassen sich beim
   // Lesen in der App gezielt aus der Mitteilungszentrale räumen (§122)
   const payload = JSON.stringify({ title, body: body.slice(0, 180), url, tag: tag ?? url })
@@ -82,6 +82,20 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
       }
     }
   }))
+  /* §265 Push-Historie: je EMPFÄNGER eine Zeile (nicht je Gerät) — die
+   * Team-App zeigt daraus den anklickbaren Verlauf. Fail-soft: fehlt die
+   * Migration, geht der Push trotzdem raus. Aufräumen macht der 3:40-Cron. */
+  try {
+    const userIds = [...new Set(subs.map((s) => s.user_id).filter((x): x is string => !!x))]
+    if (userIds.length) {
+      // supabase-js WIRFT bei DB-Fehlern nicht — error explizit ansehen,
+      // damit „Migration fehlt" wenigstens einmal im Log auftaucht.
+      const { error } = await supabaseAdmin.from('push_log').insert(
+        userIds.map((user_id) => ({ user_id, title, body: body.slice(0, 180), url, category: category ?? null })),
+      )
+      if (error) console.error('[push-log] insert:', error.message)
+    }
+  } catch { /* Netz-Rejection — Push ging trotzdem raus */ }
 }
 
 /** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — DIENSTLEISTER
@@ -127,23 +141,28 @@ export async function sendPushToTeam(title: string, body: string, url = '/team',
     filtered = filtered.filter((s) => !s.user_id || ok.has(s.user_id))
   }
   if (!filtered.length) return
-  await sendToSubs(filtered, title, body, url)
+  const logCat = opts.category ?? (opts.guestChat ? 'guestChats' : opts.buchhaltung ? 'buchhaltung' : undefined)
+  await sendToSubs(filtered, title, body, url, undefined, logCat)
 }
 
 /** Push to ONE user's devices (e.g. task assignment to a provider).
  *  category (§254): respektiert die Push-Präferenz des Empfängers. */
-export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben', tag?: string, category?: PushCategory): Promise<void> {
-  if (!ensureConfigured()) return
+export async function sendPushToUser(userId: string, title: string, body: string, url = '/team?tab=aufgaben', tag?: string, category?: PushCategory): Promise<number> {
+  // §265: Rückgabe = Anzahl bedienter Geräte (0 = Empfänger unerreichbar —
+  // keine Subscription oder Kategorie stummgeschaltet). Aufrufer wie der
+  // Batterie-Wächter fallen dann auf einen Team-Broadcast zurück.
+  if (!ensureConfigured()) return 0
   if (category) {
     const ok = await prefAllows([userId], category)
-    if (!ok.has(userId)) return
+    if (!ok.has(userId)) return 0
   }
   const { data: subs } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
     .eq('user_id', userId)
-  if (!subs?.length) return
-  await sendToSubs(subs, title, body, url, tag)
+  if (!subs?.length) return 0
+  await sendToSubs((subs as Sub[]).map((s) => ({ ...s, user_id: userId })), title, body, url, tag, category)
+  return subs.length
 }
 
 /**
@@ -201,8 +220,8 @@ export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cance
       else if (p.is_staff) staffSubs.push(s)
     }
     await Promise.all([
-      chefSubs.length ? sendToSubs(chefSubs, title, base + amount, url) : Promise.resolve(),
-      staffSubs.length ? sendToSubs(staffSubs, title, base, url) : Promise.resolve(),
+      chefSubs.length ? sendToSubs(chefSubs, title, base + amount, url, undefined, 'bookings') : Promise.resolve(),
+      staffSubs.length ? sendToSubs(staffSubs, title, base, url, undefined, 'bookings') : Promise.resolve(),
     ])
   } catch (e) {
     console.error('[push] booking push failed:', e)

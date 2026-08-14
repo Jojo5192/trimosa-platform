@@ -27,11 +27,12 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'einstellungen', icon: '⚙️', label: 'Mehr' },
 ]
 
-export default function TeamShell({ userId, role, initialConvId, initialTab }: {
+export default function TeamShell({ userId, role, initialConvId, initialTab, initialInternChatId }: {
   userId: string
   role: 'team' | 'provider'
   initialConvId: string | null
   initialTab?: string
+  initialInternChatId?: string | null
 }) {
   const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat' && t.id !== 'offen') : TABS
   const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
@@ -145,6 +146,47 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
   }, [])
 
+  /* §265 Push-Tap in die LAUFENDE App: Der SW schickt statt eines Reloads
+   * eine Message (client.navigate() wirft bei unkontrollierten Clients und
+   * ist auf iOS-PWAs unzuverlässig — Pascals „lande nicht bei der
+   * Nachricht"-Bug). Hier wird die URL client-seitig umgesetzt: Tab
+   * schalten + Ziel-Events an die dauerhaft gemounteten Panels. */
+  const applyPushUrl = (url: string) => {
+    let u: URL
+    try { u = new URL(url, window.location.origin) } catch { return }
+    if (!u.pathname.startsWith('/team')) { window.location.href = url; return }
+    const conv = u.searchParams.get('conv')
+    const chat = u.searchParams.get('chat')
+    const wunschTab = u.searchParams.get('tab')
+    if (conv && role === 'team') {
+      setTab('chat')
+      window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: conv } }))
+      return
+    }
+    if (chat) {
+      setTab('intern')
+      window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: chat } }))
+      return
+    }
+    if (wunschTab && tabs.some((t) => t.id === wunschTab)) setTab(wunschTab as Tab)
+  }
+  const applyPushUrlRef = useRef(applyPushUrl)
+  applyPushUrlRef.current = applyPushUrl
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; url?: string } | null
+      if (d?.type === 'trimosa-push-open' && typeof d.url === 'string') {
+        // §265: ACK über den mitgeschickten Port — sonst fällt der SW nach
+        // 600 ms auf einen navigate()-Reload zurück (altes Bundle/kein Listener)
+        try { e.ports?.[0]?.postMessage('ack') } catch { /* egal */ }
+        applyPushUrlRef.current(d.url)
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg)
+  }, [])
+
   return (
     <div ref={shellRef} className="team-shell" style={{
       height: '100dvh', display: 'flex', flexDirection: 'column',
@@ -167,7 +209,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab }: {
           </div>
         )}
         <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
-          <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} />
+          <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} initialChatId={initialInternChatId ?? null} />
         </div>
         {tab === 'aufgaben' && (
           <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />

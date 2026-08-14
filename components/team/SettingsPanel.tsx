@@ -16,6 +16,7 @@ import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
 import CallsPanel from '@/components/team/CallsPanel'
 import BelegEinreichen from '@/components/team/BelegEinreichen'
+import PushLogPanel from '@/components/team/PushLogPanel'
 import LocksPanel from '@/components/team/LocksPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
 
@@ -73,6 +74,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // 🔑 Türschlösser (§253) — Admins/Hosts/Staff (probe 403 → Eintrag bleibt aus)
   const [locksOk, setLocksOk] = useState(false)
   const [showLocks, setShowLocks] = useState(false)
+  const [showPushLog, setShowPushLog] = useState(false)
   // ⏱ Reinigungs-Dauer (§255) — NUR Chefs (is_admin; probe 403 → aus)
   const [durOk, setDurOk] = useState(false)
   const [showDur, setShowDur] = useState(false)
@@ -304,6 +306,19 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
 
         <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+          {/* §265 (Pascal): anklickbarer Verlauf aller eigenen Pushes */}
+          <button onClick={() => setShowPushLog(true)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+            boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+          }}>
+            <span style={{ fontSize: 19 }}>🔔</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Verlauf</span>
+              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Alle Mitteilungen der letzten 30 Tage — antippen springt zum Ziel</span>
+            </span>
+            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+          </button>
           <Row
             title="Push auf diesem Gerät"
             subtitle={pushState === 'unsupported'
@@ -393,6 +408,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
       {showBeleg && <BelegEinreichen onClose={() => setShowBeleg(false)} />}
       {showLocks && <LocksPanel onClose={() => setShowLocks(false)} />}
+      {showPushLog && <PushLogPanel onClose={() => setShowPushLog(false)} />}
       {showDur && <CleaningDurations onClose={() => setShowDur(false)} />}
     </div>
   )

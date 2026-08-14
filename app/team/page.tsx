@@ -10,8 +10,8 @@ import TeamShell from '@/components/team/TeamShell'
  */
 export const metadata = { title: 'TRIMOSA Team' }
 
-export default async function TeamAppPage({ searchParams }: { searchParams: Promise<{ conv?: string; tab?: string }> }) {
-  const { conv, tab } = await searchParams
+export default async function TeamAppPage({ searchParams }: { searchParams: Promise<{ conv?: string; tab?: string; chat?: string }> }) {
+  const { conv, tab, chat } = await searchParams
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?next=/team')
@@ -30,7 +30,7 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
 
   return (
     <main style={{ height: '100dvh', overflow: 'hidden', background: '#fff' }}>
-      <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} />
+      <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} />
     </main>
   )
 }

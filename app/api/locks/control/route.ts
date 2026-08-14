@@ -8,6 +8,8 @@ import {
 } from '@/lib/locks'
 
 export const dynamic = 'force-dynamic'
+// §265: GET lädt Health über 3 Provider-APIs (auf 8 s gedeckelt) — Luft lassen
+export const maxDuration = 60
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
 /**
@@ -49,7 +51,9 @@ export async function GET(req: NextRequest) {
   if (req.nextUrl.searchParams.get('probe') === '1') return NextResponse.json({ ok: true }, NO_STORE)
 
   const [overview, staffCodes, log] = await Promise.all([
-    getLocksOverview(), getStaffCodes(), getLockOpenLog(),
+    // §265: Health (Akku/Online) nur hier für die Anzeige — der Öffnen-POST
+    // validiert bewusst OHNE (blockiert nie auf den Provider-APIs)
+    getLocksOverview({ withHealth: true }), getStaffCodes(), getLockOpenLog(),
   ])
   const myCode = staffCodes[a.userId] ?? null
   return NextResponse.json({

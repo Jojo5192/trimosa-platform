@@ -138,7 +138,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // §254: Präferenz-Gate übernimmt sendPushToUser (category 'teamChats',
     // push_prefs gewinnt über die Alt-Spalte)
     for (const m of members ?? []) {
-      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, '/team?tab=intern', `intern-${id}`, 'teamChats').catch(() => {})
+      await sendPushToUser(m.user_id, `${chat?.emoji ?? '💬'} ${chat?.name ?? 'Team'} · ${sender}`, preview, `/team?tab=intern&chat=${id}`, `intern-${id}`, 'teamChats').catch(() => {})
     }
   })().catch((e) => console.error('[team-chat] push:', e))
 

@@ -14,7 +14,8 @@ import { haptic } from '@/components/team/ux'
  * den Bereich gar nicht). Overlay via createPortal(document.body) — §83.
  */
 
-type LockRef = { provider: 'nuki' | 'tedee' | 'ttlock'; id: string; label: string }
+type LockHealth = { battery: number | null; critical: boolean; keypadCritical: boolean; online: boolean | null }
+type LockRef = { provider: 'nuki' | 'tedee' | 'ttlock'; id: string; label: string; health?: LockHealth | null }
 interface Wohnung {
   listingId: string
   title: string
@@ -144,9 +145,24 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
                   const key = `${w.listingId}:${lock.id}`
                   const armed = confirmKey === key
                   const busy = busyKey === key
+                  const h = lock.health ?? null
+                  const battSchwach = !!h && ((h.battery !== null && h.battery <= 20) || h.critical || h.keypadCritical)
                   return (
                     <div key={key} style={{ padding: '10px 16px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.1)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ flex: 1, fontSize: 14, color: '#1A1814' }}>🚪 {lock.label}</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: '#1A1814', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                        <span>🚪 {lock.label}</span>
+                        {/* §265: Akku + Online-Status */}
+                        {h?.online === false && (
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: '#B91C1C', background: '#FEF2F2', borderRadius: 999, padding: '2px 8px' }}>⚠️ offline</span>
+                        )}
+                        {battSchwach ? (
+                          <span title={h?.keypadCritical ? 'Keypad-Batterie kritisch' : undefined} style={{ fontSize: 10.5, fontWeight: 700, color: '#B45309', background: '#FEF3C7', borderRadius: 999, padding: '2px 8px' }}>
+                            🪫 {h?.battery !== null && h?.battery !== undefined ? `${h.battery} %` : 'schwach'}{h?.keypadCritical ? ' · Keypad' : ''}
+                          </span>
+                        ) : h?.battery !== null && h?.battery !== undefined ? (
+                          <span style={{ fontSize: 10.5, fontWeight: 600, color: '#8A8578' }}>🔋 {h.battery} %</span>
+                        ) : null}
+                      </span>
                       {!armed ? (
                         <button
                           onClick={() => { setConfirmKey(key); haptic() }}

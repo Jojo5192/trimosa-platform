@@ -528,6 +528,34 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const bottomRef     = useRef<HTMLDivElement>(null)
+  const feedRef       = useRef<HTMLDivElement>(null)
+  /* §265 Deep-Link ROBUST: Der Wunsch-Thread (aus ?conv= bzw. Push-Tap in die
+   * laufende App) lebt als „pending", bis die Inbox ihn liefert — vorher
+   * verpuffte er, wenn der ERSTE Fetch scheiterte oder die App schon lief. */
+  const pendingConvRef = useRef<string | null>(initialConvId ?? null)
+  const hatAuswahlRef  = useRef(false)
+  const convsRef       = useRef<Conversation[]>([])
+  /* Nach-unten-Knopf (Pascal §265): erscheint, sobald man deutlich
+   * hochgescrollt hat — ein Tipp springt ans Ende. */
+  const [showJump, setShowJump] = useState(false)
+  const pinTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  /* Beim Thread-Öffnen ans Ende PINNEN statt fester Timer: nachladende
+   * Bilder/Audio-Player strecken das Layout auch nach 800 ms noch — der Feed
+   * blieb dann oben hängen (Pascals „lande ganz oben"-Bug). Das Pinning hält
+   * 1,6 s lang unten fest und bricht sofort ab, wenn der Nutzer eingreift. */
+  const pinToBottom = (dauerMs = 1600) => {
+    if (pinTimer.current) clearInterval(pinTimer.current)
+    const bis = Date.now() + dauerMs
+    const step = () => {
+      const el = feedRef.current
+      if (el) el.scrollTop = el.scrollHeight
+      if (Date.now() > bis && pinTimer.current) { clearInterval(pinTimer.current); pinTimer.current = null }
+    }
+    step()
+    pinTimer.current = setInterval(step, 150)
+  }
+  const stopPin = () => { if (pinTimer.current) { clearInterval(pinTimer.current); pinTimer.current = null } }
+  useEffect(() => () => stopPin(), [])
   // Visitor UI language (guest side; the team keeps the German cookie anyway)
   const [uiLang, setUiLang] = useState<UiLang>('de')
   useEffect(() => {
@@ -590,14 +618,31 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           : a
       })
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
+      convsRef.current = data
+      applyPending(data)
       return data
     }
     const r = await fetch('/api/chat')
     if (!r.ok) return null
     const data: Conversation[] = await r.json()
     setConvs(data)
+    convsRef.current = data
+    applyPending(data)
     return data
-  }, [team, userId])
+  }, [team, userId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* §265: Wunsch-Thread anwenden, sobald er in einer geladenen Liste
+   * auftaucht — egal ob beim Mount, Pull-to-Refresh oder Poll. */
+  function applyPending(data: Conversation[]) {
+    const id = pendingConvRef.current
+    if (!id) return
+    const ziel = data.find(c => c.id === id)
+    if (!ziel) return
+    pendingConvRef.current = null
+    hatAuswahlRef.current = true
+    setActive(ziel)
+    if (window.innerWidth < 680) setMobileView('chat')
+  }
 
   // ⬇️ §209 Pull-to-Refresh der Thread-Liste (Ziehen am Listenanfang lädt neu)
   const listPtr = usePullToRefresh(listScrollRef, getConvs)
@@ -659,18 +704,27 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     } catch { /* ignore */ }
     setLoading(convs.length === 0 && !localStorage.getItem(CACHE_KEY))
     getConvs().then(data => {
-      if (!data || data.length === 0 || active) return
-      // Deep link (?conv= from notification emails) wins; otherwise desktop
-      // auto-opens the newest conversation, mobile stays on the list.
-      const target = initialConvId ? data.find(c => c.id === initialConvId) : undefined
-      if (target) {
-        setActive(target)
-        if (window.innerWidth < 680) setMobileView('chat')
-      } else if (window.innerWidth >= 680) {
-        setActive(data[0])
-      }
+      // Deep-Link (?conv=/Push) wird zentral in applyPending() angewendet —
+      // der Desktop-Fallback (neueste Konversation) darf ihn nie überschreiben.
+      if (!data || data.length === 0 || active || hatAuswahlRef.current) return
+      if (window.innerWidth >= 680) setActive(data[0])
     }).finally(() => setLoading(false))
   }, [open, getConvs, initialConvId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* §265: Push-Tap, während die App LÄUFT — der Service Worker schickt eine
+   * Message statt eines Reloads; die Shell übersetzt sie in dieses Event. */
+  useEffect(() => {
+    const h = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id
+      if (!id) return
+      pendingConvRef.current = id
+      const ziel = convsRef.current.find(c => c.id === id)
+      if (ziel) applyPending(convsRef.current)
+      else void getConvs() // frische Liste — applyPending greift dort
+    }
+    window.addEventListener('trimosa-open-conv', h)
+    return () => window.removeEventListener('trimosa-open-conv', h)
+  }, [getConvs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Thread switch: the composer belongs to ONE conversation — reset it */
   useEffect(() => {
@@ -722,16 +776,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (lastId === lastMsgIdRef.current) return
     lastMsgIdRef.current = lastId
     if (!lastId) return
-    const jump = () => bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
     if (active?.id !== scrolledThreadRef.current) {
       scrolledThreadRef.current = active?.id ?? null
-      jump()
-      setTimeout(jump, 250)
-      setTimeout(jump, 800)
+      pinToBottom()
     } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [msgs, active?.id])
+  }, [msgs, active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const ta = taRef.current; if (!ta) return
     const grow = () => {
@@ -762,6 +813,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   /* ── mobile: switch to chat when conversation selected ── */
   function selectConv(c: Conversation) {
+    // Manuelle Auswahl gewinnt — ein noch offener Deep-Link darf den Thread
+    // nicht Sekunden später unter den Fingern wegtauschen.
+    pendingConvRef.current = null
+    hatAuswahlRef.current = true
     setActive(c)
     if (isMobile) setMobileView('chat')
     // Push-Mitteilungen dieses Threads aus der Mitteilungszentrale räumen
@@ -1516,7 +1571,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         )}
 
         {/* Message feed */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+        <div
+          ref={feedRef}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 400)
+          }}
+          onTouchStart={stopPin}
+          onWheel={stopPin}
+          style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: '#fff', position: 'relative' }}
+        >
           {msgs.length === 0 && calls.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
@@ -1816,6 +1880,24 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           ))}
           <div ref={bottomRef} />
         </div>
+
+        {/* ↓ Nach unten springen (Pascal §265) — schwebt über dem Feed, sobald
+            man deutlich hochgescrollt hat. Sitzt AUSSERHALB des Scrollers,
+            sonst scrollte er mit dem Inhalt weg. */}
+        {showJump && (
+          <div style={{ position: 'relative', height: 0, flexShrink: 0 }}>
+            <button
+              onClick={() => { haptic(); pinToBottom(300); setShowJump(false) }}
+              aria-label="Nach unten springen"
+              style={{
+                position: 'absolute', right: 14, bottom: 12, width: 40, height: 40, borderRadius: '50%',
+                border: '0.5px solid rgba(60,60,67,0.2)', background: 'rgba(255,255,255,0.95)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
+                color: 'var(--gold, #AE8D2D)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+              }}
+            >↓</button>
+          </div>
+        )}
 
         {/* 🎙️ Zuhör-Modus: ersetzt den kompletten Antwortbereich — kein sichtbares
             Transkript; erneuter Tipp stoppt und Claude schreibt die Antwort */}

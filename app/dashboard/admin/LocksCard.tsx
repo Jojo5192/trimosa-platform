@@ -11,7 +11,22 @@ import { useEffect, useState } from 'react'
 
 type LockRef = { provider: 'nuki' | 'tedee' | 'ttlock'; id: string; label: string }
 type Row = { id: string; title: string; locks: LockRef[] | null }
-type NukiLock = { id: string; name: string }
+type NukiLock = { id: string; name: string; battery?: number | null; critical?: boolean; keypadCritical?: boolean; online?: boolean | null }
+
+/** §265: kleines Akku-/Offline-Badge hinter dem Schloss-Namen in den Chips */
+function healthBadge(l: NukiLock) {
+  const schwach = (l.battery !== null && l.battery !== undefined && l.battery <= 20) || l.critical || l.keypadCritical
+  if (l.online === false) {
+    return <span style={{ fontSize: 10, fontWeight: 700, color: '#B91C1C' }}> · ⚠️ offline</span>
+  }
+  if (schwach) {
+    return <span style={{ fontSize: 10, fontWeight: 700, color: '#B45309' }}> · 🪫{l.battery !== null && l.battery !== undefined ? ` ${l.battery} %` : ''}{l.keypadCritical ? ' Keypad' : ''}</span>
+  }
+  if (l.battery !== null && l.battery !== undefined) {
+    return <span style={{ fontSize: 10, opacity: 0.65 }}> · 🔋 {l.battery} %</span>
+  }
+  return null
+}
 type Person = { id: string; name: string; role: string }
 type StaffCode = { code: string; listingIds: string[]; label: string }
 
@@ -314,7 +329,7 @@ export default function LocksCard() {
                             color: on ? '#8A7020' : '#666',
                           }}
                         >
-                          {on ? '✓ ' : ''}{l.name}
+                          {on ? '✓ ' : ''}{l.name}{healthBadge(l)}
                         </button>
                       )
                     })}
@@ -331,7 +346,7 @@ export default function LocksCard() {
                             color: on ? '#245ABC' : '#666',
                           }}
                         >
-                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>tedee</span>
+                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>tedee</span>{healthBadge(l)}
                         </button>
                       )
                     })}
@@ -348,7 +363,7 @@ export default function LocksCard() {
                             color: on ? '#7A44B8' : '#666',
                           }}
                         >
-                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>TTLock</span>
+                          {on ? '✓ ' : ''}{l.name} <span style={{ fontSize: 10, opacity: 0.7 }}>TTLock</span>{healthBadge(l)}
                         </button>
                       )
                     })}

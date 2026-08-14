@@ -39,12 +39,33 @@ export function nukiConfigured(): boolean {
   return !!nukiToken()
 }
 
-/** Alle Schlösser des Nuki-Kontos (für die Zuordnung in der Admin-Karte). */
-export async function listNukiLocks(): Promise<{ id: string; name: string }[]> {
+/** 🔋 §265: Geräte-Gesundheit je Schloss — Batterie in %, Kritisch-Flags,
+ *  Online-Status. Alle Felder DEFENSIV gelesen (die genauen Formen liefern
+ *  die Provider-Antworten; fehlende Felder → null = „unbekannt"). */
+export interface LockHealth {
+  battery: number | null       // 0–100
+  critical: boolean            // Hersteller-Flag „Batterie kritisch"
+  keypadCritical: boolean      // Nuki: eigenes Keypad-Batterie-Flag
+  online: boolean | null       // Cloud-Erreichbarkeit (null = nicht ermittelbar)
+}
+export type LockHealthMap = Record<string, LockHealth>  // Key `${provider}:${id}`
+
+/** Alle Schlösser des Nuki-Kontos (für die Zuordnung in der Admin-Karte).
+ *  §265: liefert zusätzlich Batterie/Online — additive optionale Felder,
+ *  bestehende Aufrufer nutzen weiter nur id+name. */
+export async function listNukiLocks(): Promise<{ id: string; name: string; battery?: number | null; critical?: boolean; keypadCritical?: boolean; online?: boolean | null }[]> {
   const res = await nukiFetch('/smartlock')
   if (!res.ok) throw new Error(`Nuki /smartlock HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const list = await res.json() as { smartlockId: number; name?: string }[]
-  return (list ?? []).map((l) => ({ id: String(l.smartlockId), name: l.name ?? `Schloss ${l.smartlockId}` }))
+  const list = await res.json() as { smartlockId: number; name?: string; serverState?: number; state?: { batteryCharge?: number; batteryCritical?: boolean; keypadBatteryCritical?: boolean } }[]
+  return (list ?? []).map((l) => ({
+    id: String(l.smartlockId),
+    name: l.name ?? `Schloss ${l.smartlockId}`,
+    battery: typeof l.state?.batteryCharge === 'number' ? l.state.batteryCharge : null,
+    critical: l.state?.batteryCritical === true,
+    keypadCritical: l.state?.keypadBatteryCritical === true,
+    // Nuki serverState: 0 = OK/online; alles andere = Verbindungsproblem
+    online: typeof l.serverState === 'number' ? l.serverState === 0 : null,
+  }))
 }
 
 function isMonotoneSequence(c: string): boolean {
@@ -143,12 +164,23 @@ function tedeeResult<T>(json: unknown): T {
   return (j && typeof j === 'object' && 'result' in (j as object) ? (j as { result: T }).result : j as T)
 }
 
-/** Alle tedee-Schlösser des Kontos (für die Zuordnung in der Admin-Karte). */
-export async function listTedeeLocks(): Promise<{ id: string; name: string }[]> {
+/** Alle tedee-Schlösser des Kontos (für die Zuordnung in der Admin-Karte).
+ *  §265: + Batterie/Online (defensiv — tedee trägt die Felder je nach
+ *  API-Stand top-level oder unter lockProperties). */
+export async function listTedeeLocks(): Promise<{ id: string; name: string; battery?: number | null; critical?: boolean; online?: boolean | null }[]> {
   const res = await tedeeFetch('/api/v37/my/lock')
   if (!res.ok) throw new Error(`tedee /my/lock HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const list = tedeeResult<{ id: number; name?: string }[]>(await res.json())
-  return (list ?? []).map((l) => ({ id: String(l.id), name: l.name ?? `tedee ${l.id}` }))
+  const list = tedeeResult<{ id: number; name?: string; isConnected?: boolean; batteryLevel?: number; lockProperties?: { batteryLevel?: number; isCharging?: boolean; state?: number } }[]>(await res.json())
+  return (list ?? []).map((l) => {
+    const battery = typeof l.batteryLevel === 'number' ? l.batteryLevel
+      : typeof l.lockProperties?.batteryLevel === 'number' ? l.lockProperties.batteryLevel : null
+    return {
+      id: String(l.id), name: l.name ?? `tedee ${l.id}`,
+      battery,
+      critical: battery !== null && battery <= 20,
+      online: typeof l.isConnected === 'boolean' ? l.isConnected : null,
+    }
+  })
 }
 
 async function listTedeePins(lockId: number): Promise<{ id: number; alias?: string }[]> {
@@ -256,10 +288,18 @@ async function ttlockCall<T>(path: string, params: Record<string, string | numbe
 }
 
 /** Alle TTLock-Schlösser des Kontos (für die Zuordnung in der Admin-Karte). */
-export async function listTTLocks(): Promise<{ id: string; name: string }[]> {
-  const j = await ttlockCall<{ list?: { lockId: number; lockAlias?: string; lockName?: string }[] }>(
+export async function listTTLocks(): Promise<{ id: string; name: string; battery?: number | null; critical?: boolean; online?: boolean | null }[]> {
+  const j = await ttlockCall<{ list?: { lockId: number; lockAlias?: string; lockName?: string; electricQuantity?: number }[] }>(
     '/v3/lock/list', { pageNo: 1, pageSize: 100 })
-  return (j.list ?? []).map((l) => ({ id: String(l.lockId), name: l.lockAlias ?? l.lockName ?? `TTLock ${l.lockId}` }))
+  return (j.list ?? []).map((l) => {
+    // §265: electricQuantity = Batterie-% laut TTLock-Doku; Online-Status
+    // liefert die Liste nicht (Gateway-Zustand wäre ein Extra-Call) → null
+    const battery = typeof l.electricQuantity === 'number' ? l.electricQuantity : null
+    return {
+      id: String(l.lockId), name: l.lockAlias ?? l.lockName ?? `TTLock ${l.lockId}`,
+      battery, critical: battery !== null && battery <= 20, online: null,
+    }
+  })
 }
 
 async function listTTLockPins(lockId: number): Promise<{ id: number; name?: string; pwd?: string; endMs?: number }[]> {
@@ -870,13 +910,127 @@ export async function nukiLogProbe(smartlockId: number): Promise<{
   }
 }
 
+/* ── 🔋 §265: Geräte-Gesundheit + Batterie-Wächter ─────────────────────
+ * Pascal (Chefsache 11.8.): Akkustand anzeigen, Push-Warnung an die
+ * Verantwortliche ab 20 % (alle 3 Tage bis wieder voll), Schlösser bei
+ * niedrigem Akku markieren, Online-Status. */
+
+const BATTERIE_WARN_PROZENT = 20
+const BATTERIE_ERHOLT_PROZENT = 35   // Hysterese: erst darüber gilt „wieder voll"
+const WARN_WIEDERHOLUNG_MS = 3 * 86_400_000
+
+/** Gesundheit aller Schlösser aller Provider — je Provider fail-soft. */
+export async function listLockHealth(): Promise<LockHealthMap> {
+  const map: LockHealthMap = {}
+  const sammel = async (provider: 'nuki' | 'tedee' | 'ttlock', fn: () => Promise<{ id: string; battery?: number | null; critical?: boolean; keypadCritical?: boolean; online?: boolean | null }[]>) => {
+    try {
+      for (const l of await fn()) {
+        map[`${provider}:${l.id}`] = {
+          battery: l.battery ?? null,
+          critical: l.critical === true,
+          keypadCritical: l.keypadCritical === true,
+          online: l.online ?? null,
+        }
+      }
+    } catch { /* Provider nicht konfiguriert/erreichbar → Felder bleiben leer */ }
+  }
+  await Promise.all([
+    nukiConfigured() ? sammel('nuki', listNukiLocks) : Promise.resolve(),
+    tedeeConfigured() ? sammel('tedee', listTedeeLocks) : Promise.resolve(),
+    ttlockConfigured() ? sammel('ttlock', listTTLocks) : Promise.resolve(),
+  ])
+  return map
+}
+
+/**
+ * Täglicher Batterie-Wächter (läuft im 3:40-Locks-Cron): schwache Schlösser
+ * (≤20 % oder Hersteller-Kritisch-Flag) lösen einen Push an die
+ * REINIGUNGS-VERANTWORTLICHE der Wohnung aus (sie ist ohnehin vor Ort und
+ * tauscht die Batterien) — ohne Zuordnung an die Chefs. Wiederholung alle
+ * 3 Tage, bis der Akku wieder klar erholt ist (Hysterese 35 %).
+ * Zustand in app_settings 'lock_battery_state'.
+ */
+export async function checkLockBatteries(): Promise<{ geprueft: number; schwach: string[]; gewarnt: string[]; offline: string[] }> {
+  const health = await listLockHealth()
+  // BEWUSST ohne is_active-Filter: auch das einbaufertige Minden-UG-Schloss
+  // (inaktives Listing „Minden UG (Aufbau)", §250) soll überwacht sein.
+  const { data: listings } = await supabaseAdmin
+    .from('listings').select('id, title, locks, cleaning_responsible')
+  const rows = (listings ?? []).filter((l) => Array.isArray(l.locks) && (l.locks as unknown[]).length > 0)
+
+  // Zustand laden (Dedupe/Wiederholungs-Takt). §258-Regel: supabase-js WIRFT
+  // bei DB-Fehlern nicht ({ error }-Feld!) — ein Lesefehler darf NIE als
+  // „leerer Zustand" gelten, sonst resettet der 3-Tage-Takt und alle
+  // schwachen Schlösser werden erneut gewarnt (§243o-Fehlerpfad-Klasse).
+  let state: Record<string, { warnedAt: string; level: number | null }> = {}
+  let stateReadOk = true
+  try {
+    const { data, error } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'lock_battery_state').maybeSingle()
+    if (error) stateReadOk = false
+    else if (data?.value && typeof data.value === 'object') state = data.value as typeof state
+  } catch { stateReadOk = false }
+
+  const schwach: string[] = []
+  const gewarnt: string[] = []
+  const offline: string[] = []
+  let geprueft = 0
+  const jetzt = Date.now()
+
+  for (const l of rows) {
+    for (const ref of (l.locks as LockRef[])) {
+      const key = `${ref.provider}:${ref.id}`
+      const h = health[key]
+      if (!h) continue
+      geprueft++
+      if (h.online === false) offline.push(`${l.title as string} · ${ref.label}`)
+      const istSchwach = (h.battery !== null && h.battery <= BATTERIE_WARN_PROZENT) || h.critical || h.keypadCritical
+      const istErholt = h.battery !== null && h.battery > BATTERIE_ERHOLT_PROZENT && !h.critical && !h.keypadCritical
+      if (istErholt && state[key]) delete state[key]   // Batterie getauscht → Zyklus beendet
+      if (!istSchwach) continue
+      const label = `${l.title as string} · ${ref.label}${h.battery !== null ? ` (${h.battery} %)` : ''}`
+      schwach.push(label)
+      if (!stateReadOk) continue  // ohne verlässlichen State keine Warn-Pushes (kein Duplikat-Spam)
+      const letzte = state[key]?.warnedAt ? Date.parse(state[key].warnedAt) : 0
+      if (jetzt - letzte < WARN_WIEDERHOLUNG_MS) continue  // erst in 3 Tagen wieder
+      const grund = h.keypadCritical && !(h.battery !== null && h.battery <= BATTERIE_WARN_PROZENT)
+        ? 'Keypad-Batterie kritisch' : h.battery !== null ? `nur noch ${h.battery} %` : 'Batterie kritisch'
+      const text = `${ref.label} in ${l.title as string}: ${grund} — bitte beim nächsten Besuch die Batterien tauschen.`
+      const respId = (l.cleaning_responsible as string | null) ?? null
+      try {
+        // dynamischer Import wie beim Türcode-Fehler-Push (kein Zirkel push↔locks)
+        const { sendPushToUser, sendPushToTeam } = await import('@/lib/push')
+        // §265-Review: erreicht die Verantwortliche kein Gerät (keine
+        // Subscription / Kategorie stumm), MUSS die Warnung ans Team —
+        // sonst warnt der Wächter jahrelang ins Leere.
+        const geraete = respId
+          ? await sendPushToUser(respId, '🪫 Batterie schwach', text, '/team?tab=einstellungen', `batt-${key}`, 'system')
+          : 0
+        if (!geraete) {
+          await sendPushToTeam('🪫 Batterie schwach', text, '/team?tab=einstellungen', { category: 'system' })
+        }
+      } catch { /* Push-Fehler bricht den Wächter nie */ }
+      state[key] = { warnedAt: new Date().toISOString(), level: h.battery }
+      gewarnt.push(label)
+    }
+  }
+
+  if (stateReadOk) {
+    try {
+      const { error } = await supabaseAdmin.from('app_settings').upsert({ key: 'lock_battery_state', value: state }, { onConflict: 'key' })
+      if (error) console.error('[lock-battery] state-upsert:', error.message)
+    } catch (e) { console.error('[lock-battery] state-upsert:', e) }
+  }
+  return { geprueft, schwach, gewarnt, offline }
+}
+
 /* ── 📋 Übersicht + Öffnungs-Protokoll für die Team-App (§253) ── */
 
 export interface LockDoorInfo {
   listingId: string
   title: string
-  /** Schlösser dieser Wohnung — provider bestimmt, ob Fernöffnen geht */
-  locks: LockRef[]
+  /** Schlösser dieser Wohnung — provider bestimmt, ob Fernöffnen geht.
+   *  §265: + Batterie/Online für die Anzeige im Türschlösser-Bereich. */
+  locks: (LockRef & { health?: LockHealth | null })[]
   /** Türcode der laufenden bzw. nächsten Buchung (wenn schon erzeugt) */
   guestCode: string | null
   guestName: string | null
@@ -886,8 +1040,18 @@ export interface LockDoorInfo {
   guestStatus: 'current' | 'upcoming' | null
 }
 
-/** Alle aktiven Wohnungen mit Schlössern + aktuellem Gäste-Türcode. */
-export async function getLocksOverview(): Promise<LockDoorInfo[]> {
+/** Alle aktiven Wohnungen mit Schlössern + aktuellem Gäste-Türcode.
+ *  §265: withHealth lädt zusätzlich Akku-/Online-Status (3 Provider-APIs) —
+ *  NUR für die Anzeige (GET); der Öffnen-POST validiert ohne, damit das
+ *  zeitkritische Aufschließen nie auf einem hängenden Provider blockiert.
+ *  Der Health-Abruf ist zudem auf 8 s gedeckelt (fail-soft → keine Badges). */
+export async function getLocksOverview(opts: { withHealth?: boolean } = {}): Promise<LockDoorInfo[]> {
+  const healthP: Promise<LockHealthMap> = opts.withHealth
+    ? Promise.race([
+        listLockHealth(),
+        new Promise<LockHealthMap>((resolve) => setTimeout(() => resolve({}), 8000)),
+      ]).catch(() => ({} as LockHealthMap))
+    : Promise.resolve({} as LockHealthMap)
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, title, locks').eq('is_active', true).order('title')
   const withLocks = (listings ?? []).filter((l) => Array.isArray(l.locks) && (l.locks as unknown[]).length > 0)
@@ -907,6 +1071,7 @@ export async function getLocksOverview(): Promise<LockDoorInfo[]> {
     const lid = b.listing_id as string
     if (!byListing.has(lid)) byListing.set(lid, b as { guest_name: string | null; check_in: string; check_out: string; door_code: string | null })
   }
+  const health = await healthP
   return withLocks.map((l) => {
     const lid = l.id as string
     const bk = byListing.get(lid) ?? null
@@ -916,7 +1081,7 @@ export async function getLocksOverview(): Promise<LockDoorInfo[]> {
     return {
       listingId: lid,
       title: (l.title as string) ?? 'Wohnung',
-      locks: (l.locks as LockRef[]) ?? [],
+      locks: ((l.locks as LockRef[]) ?? []).map((ref) => ({ ...ref, health: health[`${ref.provider}:${ref.id}`] ?? null })),
       guestCode: bk?.door_code ?? null,
       guestName: bk?.guest_name ?? null,
       guestFrom: bk?.check_in ?? null,

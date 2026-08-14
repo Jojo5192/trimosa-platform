@@ -100,11 +100,13 @@ function Av({ name, src, size = 34 }: { name: string; src: string | null; size?:
   )
 }
 
-export default function InternPanel({ userId, onUnread, onMobileThread }: {
+export default function InternPanel({ userId, onUnread, onMobileThread, initialChatId }: {
   userId: string
   onUnread?: (n: number) => void
   /** meldet der Shell, ob mobil ein Thread offen ist (Tab-Bar verstecken) */
   onMobileThread?: (open: boolean) => void
+  /** §265: /team?tab=intern&chat=<id> — Push-Tap öffnet direkt die Gruppe */
+  initialChatId?: string | null
 }) {
   const [chats, setChats] = useState<TeamChat[]>([])
   const [directory, setDirectory] = useState<Directory[]>([])
@@ -129,6 +131,30 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const feedRef = useRef<HTMLDivElement>(null)
+  const [showJump, setShowJump] = useState(false)
+  /* §265: Wunsch-Gruppe (?chat= bzw. Push-Tap in die laufende App) lebt als
+   * „pending", bis loadChats sie liefert — vorher landete jeder Intern-Push
+   * nur auf der Gruppen-Liste. */
+  const pendingChatRef = useRef<string | null>(initialChatId ?? null)
+  const chatsRef = useRef<TeamChat[]>([])
+  /* Beim Öffnen ans Ende PINNEN statt fester 250/800ms-Timer: Bilder/Audio
+   * laden auch später nach und streckten das Layout — der Feed blieb dann
+   * oben stehen (Pascals Chefsache-Bug). Nutzer-Geste bricht sofort ab. */
+  const pinTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pinToBottom = (dauerMs = 1600) => {
+    if (pinTimer.current) clearInterval(pinTimer.current)
+    const bis = Date.now() + dauerMs
+    const step = () => {
+      const el = feedRef.current
+      if (el) el.scrollTop = el.scrollHeight
+      if (Date.now() > bis && pinTimer.current) { clearInterval(pinTimer.current); pinTimer.current = null }
+    }
+    step()
+    pinTimer.current = setInterval(step, 150)
+  }
+  const stopPin = () => { if (pinTimer.current) { clearInterval(pinTimer.current); pinTimer.current = null } }
+  useEffect(() => () => stopPin(), [])
   const composerRef = useRef<HTMLTextAreaElement>(null)
   // Schaut der Nutzer den Thread gerade wirklich an? (Basis des markRead-Gates)
   const viewingRef = useRef(true)
@@ -162,6 +188,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       if (!r.ok) { setError(`Laden fehlgeschlagen (HTTP ${r.status})`); return }
       const d = await r.json()
       setChats(d.chats ?? [])
+      chatsRef.current = d.chats ?? []
+      // §265: Wunsch-Gruppe aus Push/URL öffnen, sobald sie geladen ist
+      if (pendingChatRef.current) {
+        const ziel = (d.chats ?? []).find((c: TeamChat) => c.id === pendingChatRef.current)
+        if (ziel) { pendingChatRef.current = null; openChatRef.current?.(ziel) }
+      }
       setDirectory(d.directory ?? [])
       setCanCreate(!!d.canCreate)
       setIsAdmin(!!d.isAdmin)
@@ -232,13 +264,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     lastMsgIdRef.current = last.id
     if (freshThread) {
       scrolledChatRef.current = active.id
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-      const t1 = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 250)
-      const t2 = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 800)
-      return () => { clearTimeout(t1); clearTimeout(t2) }
+      pinToBottom()
+      return
     }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [msgs, active])
+  }, [msgs, active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-Grow des Schreibfelds als Effect (Pascal: „passt sich nicht an") —
   // deckt Tippen, iOS-Diktat UND programmatisches Leeren gleichermaßen ab
@@ -249,6 +279,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`
   }, [draft])
 
+  const openChatRef = useRef<((c: TeamChat) => void) | null>(null)
   function openChat(c: TeamChat) {
     if (recording) stopRec(false) // laufende Aufnahme beim Thread-Wechsel verwerfen
     scrolledChatRef.current = '' // jedes Öffnen scrollt frisch ans Ende (mobil remountet der Feed)
@@ -258,6 +289,20 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
     setChats((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))
     if (isMobile) setMobileView('chat')
   }
+  openChatRef.current = openChat
+
+  /* §265: Push-Tap, während die App läuft — Event aus der TeamShell */
+  useEffect(() => {
+    const h = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id
+      if (!id) return
+      const ziel = chatsRef.current.find((c) => c.id === id)
+      if (ziel) openChatRef.current?.(ziel)
+      else { pendingChatRef.current = id; void loadChats() }
+    }
+    window.addEventListener('trimosa-open-intern', h)
+    return () => window.removeEventListener('trimosa-open-intern', h)
+  }, [loadChats])
 
   async function sendText() {
     if (!active || !draft.trim() || busy) return
@@ -649,7 +694,17 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
       {/* Nachrichten — imsg-noselect auf dem GANZEN Feed: Long-Press für
           Tapbacks markierte sonst auf manchen iPhones den kompletten Chat
           (Dominik §133.10; die Klasse nur auf den Bubbles reichte nicht) */}
-      <div className="imsg-noselect" style={{ flex: 1, overflowY: 'auto', padding: '14px 12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div
+        className="imsg-noselect"
+        ref={feedRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 400)
+        }}
+        onTouchStart={stopPin}
+        onWheel={stopPin}
+        style={{ flex: 1, overflowY: 'auto', padding: '14px 12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}
+      >
         {grouped.map((g) => (
           <div key={g.day}>
             <div style={{ textAlign: 'center', margin: '10px 0' }}>
@@ -805,6 +860,23 @@ export default function InternPanel({ userId, onUnread, onMobileThread }: {
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {/* ↓ Nach unten springen (Pascal §265) — außerhalb des Scrollers,
+          sonst scrollte der Knopf mit dem Inhalt weg */}
+      {showJump && (
+        <div style={{ position: 'relative', height: 0, flexShrink: 0 }}>
+          <button
+            onClick={() => { haptic(); pinToBottom(300); setShowJump(false) }}
+            aria-label="Nach unten springen"
+            style={{
+              position: 'absolute', right: 14, bottom: 12, width: 40, height: 40, borderRadius: '50%',
+              border: '0.5px solid rgba(60,60,67,0.2)', background: 'rgba(255,255,255,0.95)',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
+              color: 'var(--gold, #AE8D2D)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+            }}
+          >↓</button>
+        </div>
+      )}
 
       {/* Composer — bei versteckter Tab-Bar übernimmt er die Safe-Area;
           während einer Sprachaufnahme wird er zur Aufnahme-Zeile */}
