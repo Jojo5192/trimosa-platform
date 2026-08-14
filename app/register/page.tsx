@@ -307,7 +307,7 @@ export default function RegisterPage() {
               disabled={loading}
               style={{
                 width: '100%', padding: '15px', borderRadius: '12px', border: 'none',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                background: 'var(--gold)',
                 color: '#fff', fontSize: '15px', fontWeight: 700,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 opacity: loading ? 0.7 : 1,

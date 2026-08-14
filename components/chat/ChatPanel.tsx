@@ -243,7 +243,7 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
+      background: 'var(--gold)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * .37, fontWeight: 700, color: '#fff', userSelect: 'none',
     }}>{ava(name)}</div>
@@ -1120,7 +1120,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   flexShrink: 0, padding: '5px 11px', borderRadius: 999, cursor: 'pointer',
                   fontSize: 11.5, fontWeight: 700,
                   border: activeF ? '1px solid transparent' : '1px solid #E5E1D6',
-                  background: activeF ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#fff',
+                  background: activeF ? 'var(--gold)' : '#fff',
                   color: activeF ? '#fff' : '#6B6455',
                 }}>
                   {f.label}{count > 0 && f.id !== 'alle' ? ` ${count}` : ''}
@@ -1374,7 +1374,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     title="Aufgabe aus diesem Chat erstellen"
                     style={{
                       width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                      background: taskOpen ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : 'rgba(118,118,128,0.12)',
+                      background: taskOpen ? 'var(--gold)' : 'rgba(118,118,128,0.12)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       fontSize: 13, transition: 'all .15s',
                       filter: taskOpen ? 'none' : 'grayscale(1) opacity(0.6)',
@@ -1485,7 +1485,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 disabled={taskBusy || !taskTitle.trim()}
                 style={{
                   padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff',
+                  background: 'var(--gold)', color: '#fff',
                   fontSize: 13, fontWeight: 700, opacity: taskBusy || !taskTitle.trim() ? 0.5 : 1,
                 }}
               >{taskBusy ? '…' : '✓ Aufgabe erstellen'}</button>
@@ -1838,7 +1838,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         padding: '10px 14px',
                         borderRadius,
                         background: isMe
-                          ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))'
+                          ? 'var(--gold)'
                           : '#E9E9EB',
                         color: isMe ? '#fff' : '#111',
                         fontSize: 15.5, lineHeight: 1.4,
@@ -1933,7 +1933,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
                 style={{
                   width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0,
-                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                  background: 'var(--gold)',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                 }}
               >
@@ -1955,7 +1955,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             />
             <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
               padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, whiteSpace: 'nowrap',
-              background: instruction.trim() && !refining ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#EDE9E0',
+              background: instruction.trim() && !refining ? 'var(--gold)' : '#EDE9E0',
               color: instruction.trim() && !refining ? '#fff' : '#BBB',
               fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
             }}>{refining ? '⏳' : '✨'}</button>
@@ -2117,13 +2117,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     <button onClick={() => {
                       setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + invForm.url)
                       setInvForm(f => ({ ...f, open: false }))
-                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: 'var(--gold)', color: '#fff', fontSize: 13, fontWeight: 800 }}>
                       📎 Link in Entwurf übernehmen
                     </button>
                   ) : (
                     <button onClick={submitRecipient} disabled={invForm.busy || !invForm.name.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer',
-                      background: invForm.name.trim() && !invForm.busy ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E1D6',
+                      background: invForm.name.trim() && !invForm.busy ? 'var(--gold)' : '#E5E1D6',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{invForm.busy ? '⏳ Speichert…' : '💾 Übernehmen'}</button>
                   )}
@@ -2175,7 +2175,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   style={{
                     position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
                     borderRadius: '50%', border: 'none', padding: 0,
-                    background: busy || translating ? '#EDE9E0' : 'linear-gradient(135deg,var(--gold),var(--gold-dark))',
+                    background: busy || translating ? '#EDE9E0' : 'var(--gold)',
                     color: '#fff', cursor: busy ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}

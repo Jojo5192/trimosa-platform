@@ -244,7 +244,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
               ${listing.flexNote ? `<p style="display:inline-block;font-size:10.5px;font-weight:600;border-radius:999px;padding:2px 8px;margin:0 0 8px;line-height:1.3;${listing.unavailable ? 'color:#8A6D1E;background:#FBF3E3;border:1px solid #F0E0A0' : 'color:#2D6A1E;background:#EAF3EC;border:1px solid #CDE6D2'}">📅 ${listing.unavailable ? t(lang, 'Alternativ frei') : t(lang, 'Frei')}: ${listing.flexNote}</p>` : ''}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <span style="line-height:1">${priceBlock}</span>
-                <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:6px 13px;border-radius:999px">${t(lang, 'Ansehen →')}</span>
+                <span style="flex-shrink:0;font-size:11.5px;font-weight:700;color:#1A1400;background:var(--gold);padding:6px 13px;border-radius:999px">${t(lang, 'Ansehen →')}</span>
               </div>
             </div>
           </a>

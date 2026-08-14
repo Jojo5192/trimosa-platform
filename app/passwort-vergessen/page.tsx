@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
               </p>
               <Link href="/login" style={{
                 display: 'inline-block', padding: '13px 28px', borderRadius: '12px',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                background: 'var(--gold)',
                 color: '#fff', fontSize: '14.5px', fontWeight: 700, textDecoration: 'none',
               }}>Zurück zur Anmeldung</Link>
             </>
@@ -113,7 +113,7 @@ export default function ForgotPasswordPage() {
                 disabled={loading || !email.trim()}
                 style={{
                   width: '100%', padding: '14px', borderRadius: '12px', border: 'none', marginTop: '18px',
-                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                  background: 'var(--gold)',
                   color: '#fff', fontSize: '15px', fontWeight: 700,
                   cursor: loading || !email.trim() ? 'not-allowed' : 'pointer',
                   opacity: !email.trim() ? 0.5 : 1,

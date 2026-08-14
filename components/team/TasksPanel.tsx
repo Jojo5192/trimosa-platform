@@ -514,7 +514,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 {t.assignee_id && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: '#374151' }}>
                     <span style={{
-                      width: 20, height: 20, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+                      width: 20, height: 20, borderRadius: '50%', background: 'var(--gold, #AE8D2D)',
                       color: '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     }}>{initials(personName.get(t.assignee_id) ?? '?')}</span>
                     {(personName.get(t.assignee_id) ?? '').split(/\s+/)[0]}
@@ -591,7 +591,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
       {manage && filter !== 'vorschlaege' && (
         <button onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'absolute', right: 18, bottom: 18, width: 54, height: 54, borderRadius: '50%',
-          border: 'none', background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+          border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
           boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
         }}>+</button>
@@ -716,7 +716,7 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
           style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid #E0DDD5', fontSize: 13, background: '#fff' }} />
         <button onClick={send} disabled={sending || !text.trim()} style={{
           width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: text.trim() ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#D1D5DB',
+          background: text.trim() ? 'var(--gold, #AE8D2D)' : '#D1D5DB',
           color: '#fff', fontSize: 15, fontWeight: 700, cursor: text.trim() ? 'pointer' : 'default',
         }}>↑</button>
       </div>
@@ -969,7 +969,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
 
           <button onClick={save} disabled={saving} style={{
             padding: '13px 0', borderRadius: 999, border: 'none', fontSize: 15, fontWeight: 700,
-            background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+            background: 'var(--gold, #AE8D2D)', color: '#fff',
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
           }}>{saving ? 'Speichern…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
 

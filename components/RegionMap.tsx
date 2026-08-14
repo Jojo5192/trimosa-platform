@@ -208,7 +208,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
         const popup = L.popup({ closeButton: false, className: 'trimosa-popup', maxWidth: 220 }).setContent(`
           <a href="/listing/${l.slug ?? l.id}" style="display:block;padding:10px 12px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:6px">${l.title}</span>
-            <span style="display:inline-block;font-size:11.5px;font-weight:700;color:#1A1400;background:linear-gradient(135deg,var(--gold),var(--gold-dark));padding:5px 12px;border-radius:999px">Ansehen →</span>
+            <span style="display:inline-block;font-size:11.5px;font-weight:700;color:#1A1400;background:var(--gold);padding:5px 12px;border-radius:999px">Ansehen →</span>
           </a>`)
         const m = L.marker([l.lat, l.lon], { icon }).addTo(map).bindPopup(popup)
         m.on('mouseover', () => m.openPopup())

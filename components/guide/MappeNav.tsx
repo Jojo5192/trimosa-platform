@@ -62,7 +62,7 @@ export default function MappeNav({ items }: { items: MappeNavItem[] }) {
                 flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
                 padding: '7px 13px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
                 fontSize: 12.5, fontWeight: 700, border: 'none', transition: 'background .15s, color .15s',
-                background: on ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : 'rgba(255,255,255,0.85)',
+                background: on ? 'var(--gold, #AE8D2D)' : 'rgba(255,255,255,0.85)',
                 color: on ? '#fff' : '#6B6250',
                 boxShadow: on ? '0 2px 8px rgba(138,112,32,0.3)' : '0 1px 3px rgba(0,0,0,0.06)',
               }}

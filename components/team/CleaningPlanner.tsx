@@ -949,7 +949,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                         </button>
                                         <a href={b.url} target="_blank" rel="noreferrer" style={{
                                           flexShrink: 0, padding: '4px 11px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: '#fff',
-                                          background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', textDecoration: 'none',
+                                          background: 'var(--gold, #AE8D2D)', textDecoration: 'none',
                                         }}>📄 PDF</a>
                                       </div>
                                       {pOpen && (
@@ -1012,7 +1012,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         <button onClick={() => autoCheck(m.key, expectedPayload)} disabled={!!invBusy} style={{
                           padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
                           fontSize: 12.5, fontWeight: 700, color: '#fff',
-                          background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', opacity: invBusy ? 0.5 : 1,
+                          background: 'var(--gold, #AE8D2D)', opacity: invBusy ? 0.5 : 1,
                         }}>🔍 Rechnung aus Mail-Import prüfen ({personLabel})</button>
                       ) : (
                         <span style={{ fontSize: 11.5, color: '#9CA3AF' }}>Für die automatische Prüfung oben eine 👤 Reinigungskraft wählen.</span>

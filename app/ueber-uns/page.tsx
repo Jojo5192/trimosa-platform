@@ -208,7 +208,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
             <div key={f.name} style={{ textAlign: 'center' }}>
               <div style={{
                 position: 'relative', overflow: 'hidden', width: '84px', height: '84px', borderRadius: '50%', margin: '0 auto 10px',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                background: 'var(--gold)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '0.02em',
                 boxShadow: '0 6px 18px rgba(174,141,45,0.3)',
@@ -251,7 +251,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
           <Link href="/?view=map" style={{
             display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
             padding: '14px 30px', borderRadius: '999px', color: '#1A1400',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+            background: 'var(--gold)', textDecoration: 'none',
           }}>{T('Alle Unterkünfte ansehen →')}</Link>
         </div>
       </div>

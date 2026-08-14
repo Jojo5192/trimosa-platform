@@ -45,7 +45,7 @@ export default function QuickFilters({
     textDecoration: 'none',
     whiteSpace: 'nowrap',
     ...(isActive
-      ? { backgroundColor: 'var(--gold)', color: '#fff' }
+      ? { backgroundColor: '#12222E', color: '#fff' }
       : { backgroundColor: '#F5F3EF', color: '#444', border: '1px solid #E4E0D8' }),
   })
 

@@ -126,7 +126,7 @@ export default function LoginPage() {
             disabled={loading || !email.trim() || !password}
             style={{
               width: '100%', padding: '14px', borderRadius: '12px', border: 'none',
-              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+              background: 'var(--gold)',
               color: '#fff', fontSize: '15px', fontWeight: 700,
               cursor: loading || !email.trim() || !password ? 'not-allowed' : 'pointer',
               opacity: !email.trim() || !password ? 0.5 : 1,

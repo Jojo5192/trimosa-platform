@@ -205,7 +205,7 @@ export default function SmoobuConnect({
                 <button
                   onClick={handleSaveChannel}
                   disabled={loading || !selectedChannelId}
-                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}
                 >
                   {loading ? 'Speichere...' : 'Verbindung speichern'}
                 </button>
@@ -240,7 +240,7 @@ export default function SmoobuConnect({
                 <button
                   onClick={handleConnect}
                   disabled={loading || !apiKey.trim()}
-                  style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
+                  style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: loading || !apiKey.trim() ? 0.6 : 1 }}
                 >
                   {loading ? '...' : 'Weiter'}
                 </button>
@@ -279,7 +279,7 @@ export default function SmoobuConnect({
           <button
             onClick={handleSaveMarkup}
             disabled={savingMarkup}
-            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: savingMarkup ? 0.6 : 1 }}
+            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: savingMarkup ? 0.6 : 1 }}
           >
             {savingMarkup ? '...' : savedMarkup ? '✓' : 'Speichern'}
           </button>

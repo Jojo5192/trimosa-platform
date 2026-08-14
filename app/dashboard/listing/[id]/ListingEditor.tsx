@@ -268,7 +268,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           style={{
             padding: '8px 20px', borderRadius: '999px', border: 'none', cursor: 'pointer',
             fontSize: '12px', fontWeight: 700,
-            background: isActive ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E5E5',
+            background: isActive ? 'var(--gold)' : '#E5E5E5',
             color: isActive ? '#fff' : '#666',
             transition: 'all 0.15s',
           }}
@@ -882,7 +882,7 @@ export default function ListingEditor({ listing }: { listing: Listing }) {
           disabled={saving}
           style={{
             flex: 1, padding: '14px', borderRadius: '14px', border: 'none',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+            background: 'var(--gold)',
             color: '#fff', fontSize: '14px', fontWeight: 700,
             cursor: saving ? 'not-allowed' : 'pointer',
             boxShadow: '0 4px 20px rgba(168,136,42,0.35)',

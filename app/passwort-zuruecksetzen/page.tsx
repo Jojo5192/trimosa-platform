@@ -109,7 +109,7 @@ export default function ResetPasswordPage() {
               </p>
               <Link href="/passwort-vergessen" style={{
                 display: 'inline-block', padding: '13px 28px', borderRadius: '12px',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                background: 'var(--gold)',
                 color: '#fff', fontSize: '14.5px', fontWeight: 700, textDecoration: 'none',
               }}>Neuen Link anfordern</Link>
             </>
@@ -151,7 +151,7 @@ export default function ResetPasswordPage() {
                 disabled={loading || !password || !confirm}
                 style={{
                   width: '100%', padding: '14px', borderRadius: '12px', border: 'none', marginTop: '18px',
-                  background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                  background: 'var(--gold)',
                   color: '#fff', fontSize: '15px', fontWeight: 700,
                   cursor: loading || !password || !confirm ? 'not-allowed' : 'pointer',
                   opacity: !password || !confirm ? 0.5 : 1,

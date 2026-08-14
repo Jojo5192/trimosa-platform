@@ -261,7 +261,7 @@ export default function GuestProfileClient({ initialName, initialBio, initialLoc
       )}
 
       <button type="button" onClick={handleSave} disabled={saving}
-        style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
+        style={{ width: '100%', padding: '14px', borderRadius: '14px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(168,136,42,0.35)' }}>
         {saving ? t(lang, 'Wird gespeichert…') : saved ? t(lang, '✓ Gespeichert') : t(lang, 'Profil speichern')}
       </button>
 

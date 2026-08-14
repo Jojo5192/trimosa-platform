@@ -187,7 +187,7 @@ export default async function FerienwohnungPage({ params }: { params: Promise<{ 
         </p>
 
         <h1 style={{ fontSize: 'clamp(24px, 4vw, 34px)', fontWeight: 800, color: '#111', margin: '0 0 14px', letterSpacing: '-0.5px', lineHeight: 1.2 }}>
-          {cfg.h1} <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>direkt vom Gastgeber</span>
+          {cfg.h1} <span style={{ background: 'var(--gold)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>direkt vom Gastgeber</span>
         </h1>
         {cfg.intro.map((p, i) => (
           <p key={i} style={{ fontSize: 15, color: '#555', lineHeight: 1.75, margin: '0 0 12px', maxWidth: 780 }}>{p}</p>

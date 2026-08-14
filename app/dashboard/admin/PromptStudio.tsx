@@ -74,7 +74,7 @@ export default function PromptStudio() {
                       if (data?.proposal) { setDraft(data.proposal); setMsg('✨ Vorschlag übernommen — prüfen und speichern.') }
                     }} style={{
                       padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, cursor: 'pointer',
-                      background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '12px', fontWeight: 700,
+                      background: 'var(--gold)', color: '#fff', fontSize: '12px', fontWeight: 700,
                       opacity: busy || !instruction.trim() ? 0.5 : 1,
                     }}>{busy ? '⏳' : 'Mit KI anpassen'}</button>
                   </div>

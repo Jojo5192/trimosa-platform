@@ -455,7 +455,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                       </p>
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 700,
-                        color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)',
+                        color: '#1A1400', background: '#E3C878',
                         padding: '9px 18px', borderRadius: '999px',
                       }}>{t(lang, 'Region entdecken →')}</span>
                     </div>
@@ -531,10 +531,11 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           {/* AI guest summary — generated server-side from imported review texts */}
           {listing.guest_summary && (
             <div style={{
-              marginBottom: '20px', borderRadius: '18px', padding: '18px 20px 15px',
-              background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+              marginBottom: '20px', borderRadius: '16px', padding: '18px 20px 15px',
+              background: '#fff', border: '1px solid rgba(60,60,67,0.12)', borderLeft: '3px solid var(--gold)',
+              boxShadow: '0 1px 4px rgba(35,28,10,0.05)',
             }}>
-              <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 800, color: '#8E8E93', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 0 8px' }}>
                 {t(lang, '💬 Das sagen unsere Gäste')}
               </p>
               <p style={{ fontSize: '14.5px', lineHeight: 1.7, color: '#3A3427', margin: '0 0 8px' }}>

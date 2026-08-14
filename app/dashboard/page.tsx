@@ -68,7 +68,7 @@ export default async function DashboardPage() {
           <Link
             href="/dashboard/new-listing"
             className="text-sm font-semibold text-white px-5 py-2.5 rounded-full hover:opacity-90 transition-all shadow-sm"
-            style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}
+            style={{ background: 'var(--gold)' }}
           >
             + Neues Inserat
           </Link>
@@ -159,7 +159,7 @@ export default async function DashboardPage() {
               <p className="text-sm mb-4" style={{ color: '#6E6E73' }}>Du hast noch keine Inserate.</p>
               <Link href="/dashboard/new-listing"
                 className="text-sm font-semibold text-white px-6 py-2.5 rounded-full hover:opacity-90 transition-all"
-                style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}>
+                style={{ background: 'var(--gold)' }}>
                 Erstes Inserat erstellen
               </Link>
             </div>

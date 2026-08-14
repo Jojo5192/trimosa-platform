@@ -84,7 +84,7 @@ export default async function GuestPage() {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={firstImage} alt="" style={{ width: '120px', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
-          <div style={{ width: '120px', flexShrink: 0, background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
+          <div style={{ width: '120px', flexShrink: 0, background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
         )}
         <div style={{ flex: 1, padding: '16px 20px', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
@@ -179,7 +179,7 @@ export default async function GuestPage() {
       {bookings?.length === 0 && (
         <div style={{ textAlign: 'center', marginTop: '20px' }}>
           <Link href="/"
-            style={{ display: 'inline-block', padding: '14px 32px', borderRadius: '999px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', boxShadow: '0 4px 20px rgba(168,136,42,0.3)' }}>
+            style={{ display: 'inline-block', padding: '14px 32px', borderRadius: '999px', background: 'var(--gold)', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', boxShadow: '0 4px 20px rgba(168,136,42,0.3)' }}>
             {t(lang, 'Unterkunft suchen →')}
           </Link>
         </div>

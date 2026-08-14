@@ -293,7 +293,7 @@ export default async function ErlebnisPage({ params, searchParams }: { params: P
           <Link href={`/region/${region.slug}`} style={{
             display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
             padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+            background: 'var(--gold)', textDecoration: 'none',
           }}>{T('Zur Region {r} →').replace('{r}', region.name)}</Link>
           <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--gold-dark)', textDecoration: 'none' }}>
             {T('Verfügbarkeit prüfen')}

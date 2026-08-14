@@ -46,7 +46,7 @@ export default function KomootEmbed({ title, embedUrl, lang = 'de' }: Props) {
       <span style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>{title}</span>
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '12.5px', fontWeight: 700,
-        color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)',
+        color: '#1A1400', background: '#E3C878',
         padding: '9px 18px', borderRadius: '999px',
       }}>{t(lang, 'Tour laden →')}</span>
       <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.55)', maxWidth: '340px', lineHeight: 1.5 }}>

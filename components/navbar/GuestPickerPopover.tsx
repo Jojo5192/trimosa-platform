@@ -70,7 +70,7 @@ export default function GuestPickerPopover({
       <button
         type="button"
         onClick={onClose}
-        style={{ display: 'block', width: '100%', marginTop: '16px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '10px', cursor: 'pointer' }}
+        style={{ display: 'block', width: '100%', marginTop: '16px', fontSize: '13px', fontWeight: 600, color: '#fff', background: 'var(--gold)', border: 'none', borderRadius: '999px', padding: '10px', cursor: 'pointer' }}
       >
         {t(lang, 'Fertig')}
       </button>

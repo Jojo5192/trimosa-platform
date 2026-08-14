@@ -182,7 +182,7 @@ export default function ProfilePage() {
           disabled={saving}
           style={{
             width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+            background: 'var(--gold)',
             color: '#fff', fontSize: '14px', fontWeight: 700,
             cursor: saving ? 'not-allowed' : 'pointer',
             boxShadow: '0 4px 20px rgba(168,136,42,0.35)',

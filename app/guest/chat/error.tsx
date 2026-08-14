@@ -20,7 +20,7 @@ export default function ChatError({
         onClick={reset}
         style={{
           padding: '12px 28px', borderRadius: '999px', border: 'none',
-          background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+          background: 'var(--gold)',
           color: '#fff', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
         }}
       >

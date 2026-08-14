@@ -37,7 +37,7 @@ export function HostBadge({ host, lang = 'de', team }: { host: HostProfile; lang
             position: 'relative', width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden',
             marginLeft: i === 0 ? 0 : '-10px', zIndex: members.length - i,
             border: '2px solid #fff', boxSizing: 'content-box',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+            background: 'var(--gold)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {m.avatarUrl ? (

@@ -115,7 +115,7 @@ export default function ConfirmClient({ token, title, slotDate, alreadyAt }: {
       <button onClick={send} disabled={busy} style={{
         width: '100%', border: 'none', borderRadius: 16, padding: '18px 20px',
         fontSize: 17, fontWeight: 800, cursor: 'pointer',
-        background: busy ? '#C9B77A' : 'linear-gradient(180deg, var(--gold, #AE8D2D), var(--gold-dark, #8A7020))',
+        background: busy ? '#C9B77A' : 'var(--gold, #AE8D2D)',
         color: '#fff', boxShadow: '0 6px 18px rgba(174,141,45,0.4)',
       }}>
         {busy ? 'Wird gemeldet…' : '✓ Wohnung ist gereinigt'}

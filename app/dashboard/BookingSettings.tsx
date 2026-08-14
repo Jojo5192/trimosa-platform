@@ -158,7 +158,7 @@ export default function BookingSettings({ allowInstant, allowRequests, minReques
         disabled={saving}
         style={{
           marginTop: '16px', width: '100%', padding: '12px', borderRadius: '12px', border: 'none',
-          background: saved ? '#16A34A' : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+          background: saved ? '#16A34A' : 'var(--gold)',
           color: '#fff', fontSize: '13px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
         }}
       >

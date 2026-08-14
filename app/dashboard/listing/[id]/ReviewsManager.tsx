@@ -61,7 +61,7 @@ export default function ReviewsManager({ listingId }: { listingId: string }) {
             } finally {
               setFetchingReviews(false)
             }
-          }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', cursor: fetchingReviews ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: fetchingReviews ? 0.6 : 1 }}>
+          }} style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: 'var(--gold)', cursor: fetchingReviews ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 700, color: '#fff', opacity: fetchingReviews ? 0.6 : 1 }}>
             {fetchingReviews ? '⏳ Wird abgerufen…' : '🔄 Bewertungen abrufen'}
           </button>
         </div>
@@ -201,7 +201,7 @@ export default function ReviewsManager({ listingId }: { listingId: string }) {
                 .then(r => r.json())
                 .then(d => setReviews(d.reviews ?? []))
             }
-          }} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+          }} style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
             Speichern
           </button>
         </div>

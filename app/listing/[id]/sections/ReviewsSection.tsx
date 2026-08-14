@@ -246,7 +246,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
               }}
               style={{
                 padding: '10px 24px', borderRadius: '10px', border: 'none',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff',
+                background: 'var(--gold)', color: '#fff',
                 fontSize: '13px', fontWeight: 700, cursor: submitStatus === 'submitting' ? 'not-allowed' : 'pointer',
               }}
             >

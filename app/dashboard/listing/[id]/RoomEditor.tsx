@@ -322,7 +322,7 @@ export default function RoomEditor({ listingId, rooms, onChange }: Props) {
             type="button"
             onClick={() => addRoom(newRoomName)}
             disabled={!newRoomName.trim()}
-            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: newRoomName.trim() ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E0DDD6', color: newRoomName.trim() ? '#fff' : '#aaa', fontSize: '13px', fontWeight: 600, cursor: newRoomName.trim() ? 'pointer' : 'default' }}
+            style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: newRoomName.trim() ? 'var(--gold)' : '#E0DDD6', color: newRoomName.trim() ? '#fff' : '#aaa', fontSize: '13px', fontWeight: 600, cursor: newRoomName.trim() ? 'pointer' : 'default' }}
           >
             Anlegen
           </button>

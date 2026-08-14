@@ -286,7 +286,7 @@ export default function LocksCard() {
                           style={{
                             padding: '6px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
                             border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#fff',
-                            background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+                            background: 'var(--gold, #AE8D2D)',
                           }}
                         >
                           {busy ? '⏳ Schreibe auf Schlösser…' : sc ? '💾 Zugriff aktualisieren' : '🔑 Code anlegen'}

@@ -196,7 +196,7 @@ export default async function VakantiehuisEifelPage({ params }: Props) {
         </p>
 
         <h1 style={{ fontSize: 'clamp(24px, 4vw, 34px)', fontWeight: 800, color: '#111', margin: '0 0 14px', letterSpacing: '-0.5px', lineHeight: 1.2 }}>
-          Vakantiehuis in de Eifel — <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>direct van de verhuurder</span>
+          Vakantiehuis in de Eifel — <span style={{ background: 'var(--gold)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>direct van de verhuurder</span>
         </h1>
         <p style={{ fontSize: 15, color: '#555', lineHeight: 1.75, margin: '0 0 12px', maxWidth: 780 }}>
           Op zoek naar een vakantiehuis of vakantiewoning in de Duitse Eifel? Onze zeven appartementen liggen in de Zuid-Eifel — in Minden en Ralingen direct aan de rivier de Sauer, op de grens met Luxemburg — en in Bitburg en Sirzenich bij de Romeinse stad Trier. Veel van onze gasten komen uit Nederland en België: de regio is vanuit de Benelux makkelijk bereikbaar en je zit hier midden in de natuur, met fietsen, kanoën en wandelen voor de deur.

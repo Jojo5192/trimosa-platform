@@ -20,7 +20,7 @@ export default function NotFound() {
         <Link href="/" style={{
           marginTop: '8px', fontSize: '13px', fontWeight: 600, padding: '10px 22px',
           borderRadius: '999px', color: '#fff',
-          background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+          background: 'var(--gold)',
           textDecoration: 'none',
         }}>
           ← Zurück zur Übersicht

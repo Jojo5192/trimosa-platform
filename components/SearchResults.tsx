@@ -287,7 +287,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                     {c.image
                       ? /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={c.image} alt="" style={{ width: '34px', height: '34px', borderRadius: '8px', objectFit: 'cover' }} />
-                      : <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏠</span>}
+                      : <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'var(--gold)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏠</span>}
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#111' }}>{c.title}</span>
                     <span style={{ fontSize: '11.5px', color: '#8A8065' }}>{c.maxGuests} {t(lang, 'Gäste')}</span>
                   </Link>

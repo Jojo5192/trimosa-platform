@@ -253,7 +253,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
                 {t.id === 'offen' && offenCount > 0 && (
                   <span style={{
                     position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
-                    background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                    background: 'var(--gold, #AE8D2D)', color: '#fff',
                     fontSize: 9.5, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
                     filter: 'none',

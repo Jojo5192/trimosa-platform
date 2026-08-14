@@ -41,7 +41,7 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
         {avatarUrl ? (
           <Image src={avatarUrl} alt="" width={30} height={30} className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} />
         ) : (
-          <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
+          <div className="nav-avatar" style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '12px', fontWeight: 700 }}>
             {initials}
           </div>
         )}

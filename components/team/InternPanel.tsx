@@ -94,7 +94,7 @@ function Av({ name, src, size = 34 }: { name: string; src: string | null; size?:
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+      background: 'var(--gold, #AE8D2D)', color: '#fff',
       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.42, fontWeight: 700,
     }}>{(name || '?').slice(0, 1).toUpperCase()}</div>
   )
@@ -592,7 +592,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           </div>
           <button onClick={create} disabled={!name.trim() || saving} style={{
             width: '100%', padding: '13px 0', borderRadius: 999, border: 'none',
-            background: name.trim() && !saving ? 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))' : '#E5E1D6',
+            background: name.trim() && !saving ? 'var(--gold, #AE8D2D)' : '#E5E1D6',
             color: name.trim() && !saving ? '#fff' : '#999', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
           }}>{saving ? 'Erstellt…' : 'Gruppe erstellen'}</button>
         </div>
@@ -782,7 +782,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                     )}
                     <div style={{
                       borderRadius: radius, padding: m.attachmentUrl && !m.content ? 4 : '8px 13px',
-                      background: mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : '#E9E9EB',
+                      background: mine ? 'var(--gold, #AE8D2D)' : '#E9E9EB',
                       color: mine ? '#fff' : '#1A1814', overflow: 'hidden', position: 'relative',
                     }}>
                       {/* ↩︎ Zitat der beantworteten Nachricht — Tap springt zum Original */}
@@ -897,7 +897,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           }}>✕</button>
           <button onClick={() => stopRec(true)} title="Senden" style={{
             width: 36, height: 36, borderRadius: '50%', border: 'none', padding: 0, flexShrink: 0,
-            background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))', color: '#fff', cursor: 'pointer',
+            background: 'var(--gold)', color: '#fff', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -952,7 +952,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           {draft.trim().length > 0 && (
             <button onClick={sendText} disabled={busy} title="Senden" style={{
               position: 'absolute', right: 4, bottom: 4, width: 28, height: 28, borderRadius: '50%', border: 'none', padding: 0,
-              background: busy ? '#EDE9E0' : 'linear-gradient(135deg,var(--gold),var(--gold-dark))', color: '#fff', cursor: 'pointer',
+              background: busy ? '#EDE9E0' : 'var(--gold)', color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -1116,7 +1116,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
                 style={{ flex: '1 1 160px', maxWidth: 260, borderRadius: 12, border: '1.5px solid #E0DDD6', padding: '10px 14px', fontSize: 15, fontWeight: 700, background: '#fff', outline: 'none' }} />
               <button onClick={saveName} disabled={saving || !name.trim()} style={{
                 padding: '10px 16px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
-                background: 'linear-gradient(135deg,var(--gold),var(--gold-dark))', color: '#fff', cursor: 'pointer',
+                background: 'var(--gold)', color: '#fff', cursor: 'pointer',
               }}>{saving ? '…' : 'OK'}</button>
               <button onClick={() => { setEditName(false); setName(chat.name); setEmoji(chat.emoji) }} style={{ border: 'none', background: 'none', color: '#8A8578', fontWeight: 700, cursor: 'pointer' }}>✕</button>
             </div>
@@ -1151,7 +1151,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button onClick={saveMembers} disabled={saving || selected.size === 0} style={{
                   flex: 1, padding: '10px 0', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
-                  background: selected.size ? 'linear-gradient(135deg,var(--gold),var(--gold-dark))' : '#E5E1D6',
+                  background: selected.size ? 'var(--gold)' : '#E5E1D6',
                   color: selected.size ? '#fff' : '#999', cursor: 'pointer',
                 }}>{saving ? 'Speichert…' : 'Speichern'}</button>
                 <button onClick={() => { setEditMembers(false); setSelected(new Set(chat.members.map((m) => m.id))) }} style={{

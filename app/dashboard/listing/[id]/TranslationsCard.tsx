@@ -67,7 +67,7 @@ export default function TranslationsCard({ listingId }: { listingId: string }) {
       {msg && <p style={{ fontSize: 12, color: msg.startsWith('Fehler') || msg.startsWith('⚠️') ? '#B45309' : '#2E7D32', margin: '0 0 10px' }}>{msg}</p>}
       <button type="button" disabled={busy} onClick={run} style={{
         padding: '9px 18px', borderRadius: 999, border: 'none', cursor: busy ? 'wait' : 'pointer',
-        background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff',
+        background: 'var(--gold)', color: '#fff',
         fontSize: 13, fontWeight: 700, opacity: busy ? 0.6 : 1,
       }}>
         {busy ? '⏳ Übersetzt… (bis zu 1 Min.)' : allFresh ? 'Neu übersetzen' : hasAny ? 'Übersetzungen aktualisieren' : 'Jetzt übersetzen (EN/FR/NL)'}

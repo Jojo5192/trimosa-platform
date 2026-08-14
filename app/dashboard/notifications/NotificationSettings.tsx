@@ -82,7 +82,7 @@ export default function NotificationSettings({
         disabled={saving}
         style={{
           width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-          background: saved ? '#16A34A' : 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+          background: saved ? '#16A34A' : 'var(--gold)',
           color: '#fff', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
         }}
       >

@@ -35,7 +35,7 @@ function CopyValue({ label, value, labels }: { label: string; value: string; lab
         }}
         style={{
           flexShrink: 0, padding: '7px 13px', borderRadius: 999, border: 'none', cursor: 'pointer',
-          background: copied ? '#16A34A' : 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)',
+          background: copied ? '#16A34A' : 'var(--gold, #AE8D2D)',
           color: '#fff', fontSize: 12, fontWeight: 700, transition: 'background .15s',
         }}
       >{copied ? labels.copied : labels.copy}</button>
@@ -212,7 +212,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                 {b.phone && (
                   <a href={`tel:${b.phone.replace(/[^+\d]/g, '')}`} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999,
-                    background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                    background: 'var(--gold, #AE8D2D)', color: '#fff',
                     fontSize: 13.5, fontWeight: 700, textDecoration: 'none',
                   }}>📞 {b.phone}</a>
                 )}
@@ -260,7 +260,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                   ? (
                     <a href={b.url} target="_blank" rel="noopener noreferrer" style={{
                       display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 26px', borderRadius: 999,
-                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                      background: 'var(--gold, #AE8D2D)', color: '#fff',
                       fontSize: 14, fontWeight: 700, textDecoration: 'none',
                     }}>{b.title || 'Öffnen'} ↗</a>
                   )
@@ -283,7 +283,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                   ? (
                     <a href={`https://search.google.com/local/writereview?placeid=${pid}`} target="_blank" rel="noopener noreferrer" style={{
                       display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 24px', borderRadius: 999,
-                      background: 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)', color: '#fff',
+                      background: 'var(--gold, #AE8D2D)', color: '#fff',
                       fontSize: 13.5, fontWeight: 700, textDecoration: 'none',
                     }}>⭐ {labels.reviewButton}</a>
                   )

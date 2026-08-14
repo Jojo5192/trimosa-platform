@@ -149,7 +149,7 @@ export default function BookingDetailClient({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverImage} alt="" style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '20px', marginBottom: '20px' }} />
       ) : (
-        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
+        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
       )}
 
       {/* Title + status */}
@@ -215,7 +215,7 @@ export default function BookingDetailClient({
       {/* Action buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <Link href={chatHref}
-          style={{ display: 'block', padding: '14px', borderRadius: '14px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
+          style={{ display: 'block', padding: '14px', borderRadius: '14px', background: 'var(--gold)', color: '#fff', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
           💬 {t(uiLang, 'Zum Chat')}
         </Link>
 

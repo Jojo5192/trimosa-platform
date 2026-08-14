@@ -13,7 +13,7 @@ function Face({ e, size = 30 }: { e: EmpfehlungView; size?: number }) {
     <span style={{
       position: 'relative', width: `${size}px`, height: `${size}px`, borderRadius: '50%',
       flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+      background: 'var(--gold)',
       boxShadow: '0 0 0 2px #E6C15A, 0 2px 8px rgba(0,0,0,0.25)',
       color: '#fff', fontSize: `${size * 0.42}px`, fontWeight: 800,
     }}>

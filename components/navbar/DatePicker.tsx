@@ -54,7 +54,7 @@ export function CalendarMonth({
                 fontWeight: isSelected ? 700 : 400,
                 color: isPast ? '#CCC' : isSelected ? '#fff' : '#111',
                 background: isSelected
-                  ? 'linear-gradient(135deg, var(--gold), var(--gold))'
+                  ? 'var(--gold)'
                   : inRange
                     ? 'rgba(196,162,53,0.12)'
                     : 'transparent',
@@ -184,7 +184,7 @@ export function DatePickerPopover({
           <button
             type="button"
             onClick={onClose}
-            style={{ fontSize: '12px', fontWeight: 600, color: '#fff', background: 'linear-gradient(135deg, var(--gold), var(--gold))', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer', flexShrink: 0 }}
+            style={{ fontSize: '12px', fontWeight: 600, color: '#fff', background: 'var(--gold)', border: 'none', borderRadius: '999px', padding: '8px 20px', cursor: 'pointer', flexShrink: 0 }}
           >
             {t(lang, 'Übernehmen')}
           </button>

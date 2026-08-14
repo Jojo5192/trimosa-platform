@@ -32,7 +32,7 @@ function Avatar({ name, url, size = 22 }: { name: string; url: string | null; si
     <span title={name} style={{
       position: 'relative', width: `${size}px`, height: `${size}px`, borderRadius: '50%',
       overflow: 'hidden', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+      background: 'var(--gold)',
       boxShadow: '0 0 0 1.5px #E6C15A', color: '#fff', fontSize: `${size * 0.45}px`, fontWeight: 800,
     }}>
       {url ? <Image src={url} alt={name} fill sizes="48px" style={{ objectFit: 'cover' }} /> : name.charAt(0)}
@@ -167,7 +167,7 @@ export default function EmpfehlungenClient({ gruppen }: { gruppen: KatalogGruppe
                 <div style={{ display: 'flex', gap: '10px', marginTop: '9px', alignItems: 'center' }}>
                   <button type="button" onClick={() => save(type, item.key)} disabled={busy || draft.trim().length === 0} style={{
                     padding: '8px 18px', borderRadius: '999px', border: 'none',
-                    background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+                    background: 'var(--gold)',
                     color: '#fff', fontSize: '12.5px', fontWeight: 700,
                     cursor: busy || draft.trim().length === 0 ? 'not-allowed' : 'pointer',
                     opacity: draft.trim().length === 0 ? 0.5 : 1,

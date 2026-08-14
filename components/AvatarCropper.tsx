@@ -165,7 +165,7 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
               // eslint-disable-next-line @next/next/no-img-element
               <img src={currentUrl} alt="" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #F0EDE6' }} />
             ) : (
-              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 700, color: '#fff' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: 700, color: '#fff' }}>
                 {displayName ? displayName[0].toUpperCase() : '?'}
               </div>
             )}
@@ -245,7 +245,7 @@ export default function AvatarCropper({ currentUrl, displayName, onUpload, bucke
                 type="button"
                 onClick={handleConfirm}
                 disabled={step === 'uploading'}
-                style={{ padding: '9px 24px', borderRadius: '999px', border: 'none', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: step === 'uploading' ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '9px 24px', borderRadius: '999px', border: 'none', background: 'var(--gold)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: step === 'uploading' ? 'not-allowed' : 'pointer' }}
               >
                 {step === 'uploading' ? 'Wird hochgeladen…' : 'Übernehmen'}
               </button>

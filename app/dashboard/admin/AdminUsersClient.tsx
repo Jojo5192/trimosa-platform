@@ -128,7 +128,7 @@ function RoleSection({
             disabled={saving || !email.trim()}
             style={{
               padding: '12px 20px', borderRadius: '12px', border: 'none',
-              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+              background: 'var(--gold)',
               color: '#fff', fontSize: '14px', fontWeight: 700,
               cursor: saving || !email.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
             }}

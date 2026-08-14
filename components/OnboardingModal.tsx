@@ -192,7 +192,7 @@ export default function OnboardingModal({ userId, userName = '', initialAccountT
           disabled={saving || !canSave}
           style={{
             width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
-            background: canSave ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#D2D2D7',
+            background: canSave ? 'var(--gold)' : '#D2D2D7',
             color: '#fff', fontSize: '15px', fontWeight: 700,
             cursor: saving || !canSave ? 'not-allowed' : 'pointer',
             boxShadow: canSave ? '0 4px 20px rgba(168,136,42,0.35)' : 'none',

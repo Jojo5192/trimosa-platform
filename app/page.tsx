@@ -435,7 +435,7 @@ export default async function Home({
                     {img && <Image src={img} alt={r.name} fill sizes="(max-width: 768px) 50vw, 350px" style={{ objectFit: 'cover' }} />}
                     <div style={{ position: 'absolute', inset: '35% 0 0 0', background: 'linear-gradient(to top, rgba(8,14,20,0.82), transparent)' }} />
                     {r.comingSoon && !hasListings && (
-                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: 'linear-gradient(135deg, var(--gold), #E3C878)', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t(lang, 'Bald')}</span>
+                      <span style={{ position: 'absolute', top: '10px', right: '10px', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.07em', color: '#1A1400', background: '#E3C878', padding: '3.5px 9px', borderRadius: '999px', textTransform: 'uppercase', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{t(lang, 'Bald')}</span>
                     )}
                     <div style={{ position: 'absolute', left: '14px', right: '14px', bottom: '12px' }}>
                       <p style={{ fontSize: '15.5px', fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '-0.2px', textShadow: '0 1px 6px rgba(0,0,0,0.4)' }}>
@@ -493,7 +493,7 @@ export default async function Home({
           {/* ── Homepage Listings Grid ── */}
           <section style={{ maxWidth: '1440px', margin: '0 auto', padding: 'clamp(14px, 3vw, 24px) clamp(12px, 4vw, 20px) 80px' }}>
             <h1 style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: '#111', letterSpacing: '-0.3px', margin: '0 0 14px', lineHeight: 1.25 }}>
-              {t(lang, 'Finde dein')} <span style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t(lang, 'Premium-Apartment')}</span> {t(lang, 'für die perfekte Auszeit.')}
+              {t(lang, 'Finde dein')} <span style={{ background: 'var(--gold)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{t(lang, 'Premium-Apartment')}</span> {t(lang, 'für die perfekte Auszeit.')}
             </h1>
             <div className="homepage-grid">
               {cardData.map((card, index) => {
@@ -640,7 +640,7 @@ export default async function Home({
             <Link href="/?view=map" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
-              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+              background: 'var(--gold)', textDecoration: 'none',
             }}>{t(lang, 'Alle Unterkünfte ansehen →')}</Link>
             <Link href="/ueber-uns" style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,

@@ -49,7 +49,7 @@ export default function OncallCard() {
             <button key={p.id} onClick={() => toggle(p.id)} style={{
               padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 700,
               border: on ? '1px solid transparent' : '1px solid #E0DDD6',
-              background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+              background: on ? 'var(--gold)' : '#fff',
               color: on ? '#fff' : '#3C3C43',
             }}>{on ? '✓ ' : ''}{p.name}<span style={{ fontWeight: 400, opacity: 0.75 }}> · {p.role}</span></button>
           )

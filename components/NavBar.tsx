@@ -482,7 +482,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                     color: '#fff',
                     border: 'none',
                     cursor: 'pointer',
-                    background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)',
+                    background: 'var(--gold)',
                     boxShadow: '0 2px 10px rgba(164,130,40,0.4)',
                     transition: 'all 0.2s ease',
                     flexShrink: 0,
@@ -584,7 +584,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   </Link>
                   <Link
                     href="/register"
-                    style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
+                    style={{ fontSize: '13px', fontWeight: 600, color: '#fff', padding: '10px 20px', borderRadius: '999px', background: 'var(--gold)', textDecoration: 'none', boxShadow: '0 2px 8px rgba(196,162,53,0.3)' }}
                   >
                     {t(lang, 'Registrieren')}
                   </Link>
@@ -656,7 +656,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
             width: '54px',
             height: '54px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%)',
+            background: 'var(--gold)',
             color: '#fff',
             border: 'none',
             cursor: 'pointer',

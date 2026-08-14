@@ -179,7 +179,7 @@ export default function NewListingPage() {
               type="submit"
               disabled={loading}
               className="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))' }}
+              style={{ background: 'var(--gold)' }}
             >
               {loading ? 'Wird erstellt…' : 'Inserat erstellen'}
             </button>

@@ -143,7 +143,7 @@ export default function MappeChat({ token, labels, lang = 'de', phone, note }: {
                 <div style={{
                   maxWidth: '82%', padding: '8px 12px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.55,
                   whiteSpace: 'pre-line', wordBreak: 'break-word',
-                  background: m.mine ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : 'rgba(245,240,232,0.1)',
+                  background: m.mine ? 'var(--gold, #AE8D2D)' : 'rgba(245,240,232,0.1)',
                   color: m.mine ? '#fff' : 'rgba(245,240,232,0.92)',
                 }}>
                   {linkify(m.content)}
@@ -179,7 +179,7 @@ export default function MappeChat({ token, labels, lang = 'de', phone, note }: {
               disabled={busy || !draft.trim()}
               style={{
                 flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: 'none',
-                background: draft.trim() ? 'linear-gradient(135deg, var(--gold, #AE8D2D), #8A7020)' : 'rgba(245,240,232,0.15)',
+                background: draft.trim() ? 'var(--gold, #AE8D2D)' : 'rgba(245,240,232,0.15)',
                 color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: draft.trim() ? 'pointer' : 'default',
               }}
             >{busy ? '…' : labels.send}</button>

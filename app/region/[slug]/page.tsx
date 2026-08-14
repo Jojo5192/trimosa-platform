@@ -256,7 +256,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
             <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
               padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
-              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', textDecoration: 'none',
+              background: 'var(--gold)', textDecoration: 'none',
             }}>{T('Verfügbarkeit prüfen →')}</Link>
           </div>
         )}

@@ -80,7 +80,7 @@ export default function AiPolishButton({ field, text, context, onAccept }: Props
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" onClick={() => { onAccept(suggestion); setSuggestion(null) }} style={{
               padding: '7px 16px', borderRadius: '999px', border: 'none',
-              background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+              background: 'var(--gold)',
               color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
             }}>Übernehmen</button>
             <button type="button" onClick={run} disabled={busy} style={{

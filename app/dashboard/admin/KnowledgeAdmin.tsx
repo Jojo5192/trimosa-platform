@@ -96,7 +96,7 @@ export default function KnowledgeAdmin() {
         </button>
         <button type="button" onClick={runRefresh} disabled={importing || refreshing} style={{
           padding: '9px 18px', borderRadius: '10px', border: 'none',
-          background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
+          background: 'var(--gold)',
           fontSize: '12.5px', fontWeight: 700, color: '#fff', cursor: refreshing ? 'wait' : 'pointer',
           opacity: importing || refreshing ? 0.6 : 1,
         }}>

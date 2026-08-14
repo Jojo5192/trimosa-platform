@@ -188,7 +188,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
             {hasLegacy && (
               <button type="button" onClick={importLegacy} style={{
                 padding: '9px 16px', borderRadius: 999, border: 'none', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+                background: 'var(--gold, #AE8D2D)',
               }}>📥 Bestehende Wohnungs-Mappen übernehmen</button>
             )}
             <button type="button" onClick={() => { setBlocks(defaultTemplate()); setDirty(true) }} style={{
@@ -202,7 +202,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
           {dirty && !savedAt && <span style={{ fontSize: 12, color: '#B45309' }}>Ungespeicherte Änderungen</span>}
           <button type="button" onClick={save} disabled={saving || !dirty} style={{
             padding: '10px 22px', borderRadius: 999, border: 'none', cursor: saving || !dirty ? 'default' : 'pointer',
-            background: dirty ? 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))' : '#E5E1D6',
+            background: dirty ? 'var(--gold, #AE8D2D)' : '#E5E1D6',
             color: dirty ? '#fff' : '#999', fontSize: 13.5, fontWeight: 700,
           }}>{saving ? 'Speichert…' : 'Speichern'}</button>
         </div>
@@ -318,7 +318,7 @@ export default function MappeBuilder({ listings, pool }: { listings: BuilderList
                 <button key={v} type="button" onClick={() => setPreviewPhase(v)} style={{
                   padding: '4px 11px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700,
                   border: on ? '1px solid transparent' : '1px solid #E5E1D6',
-                  background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                  background: on ? 'var(--gold)' : '#fff',
                   color: on ? '#fff' : '#8A857B',
                 }}>{lbl}</button>
               )
@@ -678,7 +678,7 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
               <button key={v} type="button" onClick={() => onChange({ show: v === 'beide' ? undefined : v } as Partial<GuideBlock>)} style={{
                 padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
                 border: on ? '1px solid transparent' : '1px solid #E5E1D6',
-                background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                background: on ? 'var(--gold)' : '#fff',
                 color: on ? '#fff' : '#8A857B',
               }}>{lbl}</button>
             )
@@ -712,7 +712,7 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
               style={{
                 padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
                 border: active ? '1px solid transparent' : '1px solid #E5E1D6',
-                background: active ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                background: active ? 'var(--gold)' : '#fff',
                 color: active ? '#fff' : '#8A857B',
               }}>{p.short}</button>
           )
@@ -736,7 +736,7 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
         <button type="button" onClick={() => onChange({ listingIds: undefined } as Partial<GuideBlock>)} style={{
           padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
           border: !block.listingIds?.length ? '1px solid transparent' : '1px solid #E5E1D6',
-          background: !block.listingIds?.length ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+          background: !block.listingIds?.length ? 'var(--gold)' : '#fff',
           color: !block.listingIds?.length ? '#fff' : '#8A857B',
         }}>Alle</button>
         {listings.map((l) => {
@@ -745,7 +745,7 @@ function BlockEditor({ block, index, total, listings, inventarPool, onChange, on
             <button key={l.id} type="button" onClick={() => toggleListing(l.id)} style={{
               padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700,
               border: on ? '1px solid transparent' : '1px solid #E5E1D6',
-              background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+              background: on ? 'var(--gold)' : '#fff',
               color: on ? '#fff' : '#8A857B',
             }}>{l.title}</button>
           )
@@ -836,7 +836,7 @@ function InventarEditor({ block, onChange, pool }: {
       <span key={it.id} style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, ...(noteFor === it.id ? { flexBasis: '100%' } : {}) }}>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 6px 4px 10px', borderRadius: 999,
-          background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#fff', fontSize: 11.5, fontWeight: 600,
+          background: 'var(--gold)', color: '#fff', fontSize: 11.5, fontWeight: 600,
         }}>
           {it.emoji} {it.label}
           <button type="button" onClick={() => set(items.filter((x) => x.id !== it.id))} title="Entfernen" style={{
@@ -884,7 +884,7 @@ function InventarEditor({ block, onChange, pool }: {
                   <button type="button" onClick={() => toggleCatalog(cat)} title={on ? 'Entfernen' : 'Als vorhanden markieren'} style={{
                     padding: '4px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
                     border: on ? '1px solid transparent' : '1px solid #E5E1D6',
-                    background: on ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+                    background: on ? 'var(--gold)' : '#fff',
                     color: on ? '#fff' : '#8A857B',
                   }}>{cat.emoji} {cat.label}</button>
                   {on && cat.countable && (
@@ -931,7 +931,7 @@ function InventarEditor({ block, onChange, pool }: {
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }} />
           <button type="button" onClick={addCustom} disabled={!cLabel.trim()} style={{
             padding: '8px 14px', borderRadius: 10, border: 'none', cursor: cLabel.trim() ? 'pointer' : 'default',
-            background: cLabel.trim() ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#E5E1D6',
+            background: cLabel.trim() ? 'var(--gold)' : '#E5E1D6',
             color: '#fff', fontSize: 12, fontWeight: 700,
           }}>+ Hinzufügen</button>
         </div>

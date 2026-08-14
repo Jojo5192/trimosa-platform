@@ -222,7 +222,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
         {messages.length === 0 && (
           <button type="button" onClick={loadDefaults} style={{
             padding: '9px 16px', borderRadius: 999, border: 'none', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-            background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+            background: 'var(--gold, #AE8D2D)',
           }}>✨ Standard-Vorlagen laden</button>
         )}
       </div>
@@ -430,7 +430,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }} onClick={(e) => e.stopPropagation()}>
                     <button type="button" onClick={() => saveRow(m.id)} disabled={savingId === m.id} style={{
                       padding: '8px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', color: '#fff', fontSize: 12.5, fontWeight: 700,
-                      background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+                      background: 'var(--gold, #AE8D2D)',
                     }}>{savingId === m.id ? 'Speichert…' : 'Speichern'}</button>
                     <span style={{ fontSize: 12, color: '#B45309' }}>Ungespeicherte Änderungen</span>
                   </div>
@@ -464,7 +464,7 @@ export default function AutoMessagesBuilder({ listings, initial, migrationMissin
                   <div style={{ fontSize: 11.5, color: 'rgba(245,240,232,0.7)', marginTop: 2 }}>Nachricht an {ctx.vorname}</div>
                 </div>
                 <div style={{ flex: 1, padding: '18px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                  <div style={{ alignSelf: 'flex-end', maxWidth: '88%', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))', color: '#fff', borderRadius: '16px 16px 4px 16px', padding: '11px 14px', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
+                  <div style={{ alignSelf: 'flex-end', maxWidth: '88%', background: 'var(--gold, #AE8D2D)', color: '#fff', borderRadius: '16px 16px 4px 16px', padding: '11px 14px', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}>
                     {renderBody(previewText, 'chat')}
                   </div>
                   <div style={{ alignSelf: 'flex-end', fontSize: 10, color: '#9A948A', marginTop: 6 }}>🌍 automatisch übersetzt</div>
@@ -558,7 +558,7 @@ function renderBody(text: string, mode: 'email' | 'chat'): React.ReactNode {
         return (
           <span key={i} style={{ display: 'block', margin: '16px 0 6px' }}>
             <a href={demoReview} target="_blank" rel="noreferrer" style={{
-              display: 'inline-block', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+              display: 'inline-block', background: 'var(--gold, #AE8D2D)',
               color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none', padding: '12px 26px', borderRadius: 999,
             }}>⭐ Auf Google bewerten</a>
           </span>
@@ -575,7 +575,7 @@ function renderBody(text: string, mode: 'email' | 'chat'): React.ReactNode {
         return (
           <span key={i} style={{ display: 'block', margin: '16px 0 6px' }}>
             <a href={DEMO_MAPPE_URL} target="_blank" rel="noreferrer" style={{
-              display: 'inline-block', background: 'linear-gradient(135deg, var(--gold), var(--gold-dark, #8A7020))',
+              display: 'inline-block', background: 'var(--gold, #AE8D2D)',
               color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none', padding: '12px 26px', borderRadius: 999,
             }}>📖 Zur Gästemappe</a>
           </span>

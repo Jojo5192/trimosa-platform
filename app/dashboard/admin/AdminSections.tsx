@@ -68,7 +68,7 @@ export default function AdminSections() {
             flexShrink: 0, padding: '7px 14px', borderRadius: 999, cursor: 'pointer',
             fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
             border: tab === t.id ? '1px solid transparent' : '1px solid #E0DDD6',
-            background: tab === t.id ? 'linear-gradient(135deg, var(--gold), var(--gold-dark))' : '#fff',
+            background: tab === t.id ? 'var(--gold)' : '#fff',
             color: tab === t.id ? '#fff' : '#6B6455',
           }}>{t.label}</button>
         ))}
