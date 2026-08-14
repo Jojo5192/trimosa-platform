@@ -91,9 +91,13 @@ function countryCodeFor(v: string | null | undefined): string {
 export function sanitizeRecipient(raw: unknown): InvoiceRecipient | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
-  const name = typeof r.name === 'string' ? r.name.trim().slice(0, 120) : ''
+  // §266c-Review: Whitespace/Zeilenumbrüche kollabieren — seit Gäste die
+  // Felder selbst befüllen (Mappe), darf ein \n im Namen keine zusätzlichen
+  // Adresszeilen aufs Rechnungs-PDF schleusen.
+  const clean = (v: string) => v.replace(/\s+/g, ' ').trim()
+  const name = typeof r.name === 'string' ? clean(r.name).slice(0, 120) : ''
   if (!name) return null
-  const opt = (k: string, max = 120) => (typeof r[k] === 'string' && (r[k] as string).trim() ? (r[k] as string).trim().slice(0, max) : undefined)
+  const opt = (k: string, max = 120) => (typeof r[k] === 'string' && clean(r[k] as string) ? clean(r[k] as string).slice(0, max) : undefined)
   return {
     name,
     supplement: opt('supplement'),

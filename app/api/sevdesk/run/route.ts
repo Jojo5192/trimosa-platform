@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
   if (!me?.is_admin && !me?.is_host) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   try {
     const b = await request.json().catch(() => ({}))
+
+    // §266c: Bestands-Reparatur leerer Rechnungsempfänger (dryRun Default)
+    if (b.action === 'recipient-fix') {
+      const { repairSevRecipients } = await import('@/lib/sevdesk-engine')
+      return NextResponse.json(await repairSevRecipients({ dryRun: b.dryRun !== false, limit: b.limit }))
+    }
+
     // §242-Reparatur: falsch-vorzeichige Zahlung lösen + korrekt neu buchen
     if (b.action === 'voucher-repair') {
       const { sevJson, sevFetch } = await import('@/lib/sevdesk')

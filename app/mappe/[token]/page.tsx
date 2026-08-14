@@ -11,6 +11,8 @@ import { ensureDoorCode, getRevealDays } from '@/lib/locks'
 import { guestLangFor } from '@/lib/auto-messages-engine'
 import GuideBlocks from '@/components/guide/GuideBlocks'
 import MappeChat from '@/components/guide/MappeChat'
+import MappeInvoice, { type MappeInvoiceLabels, type MappeInvoiceRecipient } from '@/components/guide/MappeInvoice'
+import { SEV_ENGINE_STICHTAG, previewSevRecipient } from '@/lib/sevdesk-engine'
 import MappeNav, { type MappeNavItem } from '@/components/guide/MappeNav'
 
 /**
@@ -84,6 +86,48 @@ export default async function MappePage({ params, searchParams }: {
     typeof listing.location === 'string' && listing.location.includes(r.locationMatch)
   )
 
+  // ── 🧾 §266c: Rechnungs-Status für den Mappe-Abschnitt ──
+  // sevdesk-Welt (Anreise ab Stichtag): Download sobald die Rechnung
+  // existiert + Empfänger-Formular (vorher = Wunsch wird gespeichert).
+  // Alt-Welt (lexoffice): nur Download, wenn eine Rechnung existiert.
+  const istSevWelt = String(booking.check_in) >= SEV_ENGINE_STICHTAG
+  let invoiceStatus: 'bereit' | 'kommt' | null = null
+  let invoiceNumber: string | null = null
+  let invoiceRecipient: MappeInvoiceRecipient | null = null
+  let invoiceCanEdit = false
+  try {
+    if (istSevWelt) {
+      const { data: inv } = await supabaseAdmin
+        .from('sevdesk_invoices').select('sevdesk_id, invoice_number, status').eq('booking_id', booking.id).maybeSingle()
+      if (inv?.sevdesk_id && inv.status !== 'storniert') {
+        invoiceStatus = 'bereit'
+        invoiceNumber = (inv.invoice_number as string | null) ?? null
+        invoiceCanEdit = true
+      } else {
+        // §243ac-Randfall (Manuela-Marc-Klasse): Legacy-lexoffice-Rechnung
+        // trotz sev-Welt — Download ja, Änderungen nur übers Team
+        const { data: legacy } = await supabaseAdmin
+          .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', booking.id).maybeSingle()
+        if (legacy?.lexoffice_id) {
+          invoiceStatus = 'bereit'
+          invoiceNumber = (legacy.voucher_number as string | null) ?? null
+        } else {
+          invoiceStatus = 'kommt'
+          invoiceCanEdit = true
+        }
+      }
+      if (invoiceCanEdit) invoiceRecipient = await previewSevRecipient(String(booking.id))
+    } else {
+      const { data: inv } = await supabaseAdmin
+        .from('lexoffice_invoices').select('lexoffice_id, voucher_number').eq('booking_id', booking.id).maybeSingle()
+      if (inv?.lexoffice_id) {
+        invoiceStatus = 'bereit'
+        invoiceNumber = (inv?.voucher_number as string | null) ?? null
+      }
+      // Alt-Buchung ohne Rechnung → Abschnitt gar nicht zeigen
+    }
+  } catch (e) { console.error('[mappe] rechnung-status:', e) }
+
   // §150 Pool-Modell: Der gemeinsame Baustein-Pool (app_settings
   // 'guide_global') gewinnt, sobald er für DIESE Wohnung Bausteine enthält;
   // sonst greift weiter die alte Wohnungs-Mappe (sanfte Migration).
@@ -119,6 +163,15 @@ export default async function MappePage({ params, searchParams }: {
   const stayStart = `${booking.check_in} ${shiftHours(ciTime, -PHASE_LEAD_H)}`
   const stayEnd = `${booking.check_out} ${shiftHours(coTime, PHASE_TAIL_H)}`
   const abgereist = berlinNow > stayEnd
+  // §266c-Review: „wird am Anreisetag erstellt" wäre NACH der Abreise ohne
+  // Rechnung dauerhaft falsch → Abschnitt dann ausblenden; und das
+  // Empfänger-Formular endet 30 Tage nach Abreise (wie der Chat/die API).
+  if (invoiceStatus === 'kommt' && abgereist) invoiceStatus = null
+  {
+    const editGrenze = new Date(String(booking.check_out) + 'T00:00:00Z')
+    editGrenze.setUTCDate(editGrenze.getUTCDate() + 30)
+    if (Date.now() > editGrenze.getTime()) invoiceCanEdit = false
+  }
   if (locksArr.length && !abgereist) {
     const revealDays = await getRevealDays()
     const daysToArrival = Math.ceil((new Date(String(booking.check_in) + 'T00:00:00Z').getTime() - Date.now()) / 86400_000)
@@ -187,15 +240,35 @@ export default async function MappePage({ params, searchParams }: {
     contactTitle: 'Kontakt',
     navLabel: 'Kontakt & Chat',
   }
+  const INV_DE: MappeInvoiceLabels = {
+    navLabel: 'Rechnung',
+    titleReady: 'Deine Rechnung',
+    titleUpcoming: 'Deine Rechnung',
+    hintReady: 'Deine Rechnung liegt bereit — du kannst sie jederzeit als PDF ansehen und speichern.',
+    hintUpcoming: 'Deine Rechnung wird am Anreisetag automatisch erstellt und erscheint dann hier. Brauchst du sie auf eine Firma oder eine bestimmte Anschrift? Dann leg den Empfänger gern schon jetzt fest.',
+    download: 'Rechnung ansehen (PDF)',
+    editRecipient: 'Rechnungsempfänger anpassen',
+    name: 'Name / Firma',
+    supplement: 'Zusatz (z. B. Ansprechpartner)',
+    street: 'Straße und Hausnummer',
+    zip: 'PLZ',
+    city: 'Ort',
+    country: 'Land',
+    save: 'Übernehmen',
+    savedStored: 'Gespeichert — deine Rechnung wird mit diesen Angaben erstellt.',
+    savedUpdated: 'Deine Rechnung wurde aktualisiert — das PDF zeigt sofort die neue Fassung.',
+    legacyHint: 'Du brauchst eine Änderung an dieser Rechnung? Schreib uns kurz über den Chat — wir kümmern uns.',
+  }
   let blocks = blocksAll
   let ctx = ctxDe
   let labels: GuideLabels = DE_LABELS
   let ui = UI_DE
   let chatLabels = CHAT_DE
+  let invLabels = INV_DE
   if (lang !== 'de') {
     const tr = await makeTr(lang, [
       ...collectGuideTexts(blocksAll), ...rules,
-      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE),
+      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE), ...Object.values(INV_DE),
       ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
     blocks = translateBlocks(blocksAll, tr)
@@ -207,6 +280,7 @@ export default async function MappePage({ params, searchParams }: {
     labels = Object.fromEntries(Object.entries(DE_LABELS).map(([k, v]) => [k, tr(v)])) as unknown as GuideLabels
     ui = Object.fromEntries(Object.entries(UI_DE).map(([k, v]) => [k, tr(v)])) as typeof UI_DE
     chatLabels = Object.fromEntries(Object.entries(CHAT_DE).map(([k, v]) => [k, tr(v)])) as typeof CHAT_DE
+    invLabels = Object.fromEntries(Object.entries(INV_DE).map(([k, v]) => [k, tr(v)])) as unknown as MappeInvoiceLabels
   }
 
   // §136: Bausteine nach Aufenthalts-Phase + Mindest-Nächten filtern —
@@ -246,6 +320,7 @@ export default async function MappePage({ params, searchParams }: {
       default: break // text/warning/times/image ohne eigenen Chip
     }
   }
+  if (invoiceStatus) navItems.push({ id: 'mb-rechnung', label: invLabels.navLabel, icon: '🧾' })
   const hasChatBlock = blocks.some((b) => b.type === 'chat')
   if (!hasChatBlock) navItems.push({ id: 'mb-chat', label: chatLabels.navLabel, icon: '💬' })
 
@@ -293,6 +368,19 @@ export default async function MappePage({ params, searchParams }: {
         {hasRealContent
           ? <GuideBlocks blocks={blocksBefore} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
+        {/* 🧾 §266c: Rechnung — Download + Empfänger-Anpassung durch den Gast */}
+        {invoiceStatus && (
+          <div id="mb-rechnung" style={{ scrollMarginTop: 70, margin: '14px 0' }}>
+            <MappeInvoice
+              token={token}
+              labels={invLabels}
+              status={invoiceStatus}
+              invoiceNumber={invoiceNumber}
+              initial={invoiceRecipient}
+              canEdit={invoiceCanEdit}
+            />
+          </div>
+        )}
         {/* 💬 Direkter Draht zum Team (§136) — Position folgt dem chat-Baustein (§163) */}
         <div id="mb-chat" style={{ scrollMarginTop: 70, margin: '14px 0' }}>
           <MappeChat token={token} labels={chatLabels} lang={lang} phone={chatBlock?.phone || null} note={chatBlock?.note || null} />

@@ -60,9 +60,12 @@ const CODE_NAMES: Record<string, string> = {
   CH: 'Schweiz', GB: 'Vereinigtes Königreich', PL: 'Polen', IT: 'Italien', ES: 'Spanien',
   DK: 'Dänemark', SE: 'Schweden',
 }
-/** Einmal-Adresse als Text (Invoice.address, §235) — nur wenn mehr als der
- *  Name bekannt ist; sonst druckt sevdesk die Kontakt-Standardanschrift. */
-function addressTextFor(rec: InvoiceRecipient): string | undefined {
+/** Einmal-Adresse als Text (Invoice.address, §235).
+ *  §266c-FIX: IMMER mindestens den NAMEN liefern — vorher fiel die Rechnung
+ *  bei Namen-only auf takeDefaultAddress zurück, und frisch angelegte
+ *  sevdesk-Kontakte haben KEINE Anschrift → das Empfängerfeld auf dem PDF
+ *  blieb komplett LEER (Inhaber-Befund 14.8.). */
+function addressTextFor(rec: InvoiceRecipient): string {
   const lines = [rec.name]
   if (rec.supplement) lines.push(rec.supplement)
   if (rec.street) lines.push(rec.street)
@@ -70,7 +73,7 @@ function addressTextFor(rec: InvoiceRecipient): string | undefined {
   if (zc) lines.push(zc)
   const cc = (rec.countryCode ?? 'DE').toUpperCase()
   if (cc !== 'DE') lines.push(CODE_NAMES[cc] ?? cc)
-  return lines.length > 1 ? lines.join('\n') : undefined
+  return lines.join('\n')
 }
 
 interface BookingRow {
@@ -141,6 +144,18 @@ async function resolveSevRecipient(b: BookingRow, row: SevRow | null): Promise<I
     }
   }
   return { name: (b.guest_name ?? '').trim() || 'Gast', countryCode: 'DE' }
+}
+
+/** §266c: aktueller Empfänger einer Buchung (für die Formular-Vorbefüllung
+ *  in der Gästemappe) — gleiche Auflösung wie die Rechnungs-Erstellung. */
+export async function previewSevRecipient(bookingId: string): Promise<InvoiceRecipient | null> {
+  const { data: b } = await supabaseAdmin
+    .from('bookings')
+    .select('id, status, source, payment_status, check_in, check_out, guest_name, guest_id, total_price, channel, listing_id, adults, children, smoobu_reservation_id')
+    .eq('id', bookingId).maybeSingle()
+  if (!b) return null
+  const row = await getSevRow(bookingId)
+  return resolveSevRecipient(b as BookingRow, row)
 }
 
 /** Nächste freie Nummer der RE0xxxx-Serie (Fortsetzung des Neuaufbaus §234):
@@ -287,8 +302,13 @@ export async function createSevInvoiceForBooking(bookingId: string, opts: {
  *  Rechnung (gleiche Nummer, sevdesk-Update + PDF-Neu-Render; geht solange
  *  nicht festgeschrieben — Inhaber-Doktrin). Nur bei festgeschriebenen
  *  Belegen bleibt der alte Weg: Auto-Storno + Neu-Ausstellung. */
-export async function reissueSevInvoice(bookingId: string, recipient: InvoiceRecipient): Promise<
-  SevCreateResult & { updated?: boolean; oldNumber?: string | null; stornoNote?: string }
+export async function reissueSevInvoice(bookingId: string, recipient: InvoiceRecipient, opts: {
+  /** §266c: true = bei FESTGESCHRIEBENEN Belegen KEIN Auto-Storno (Gast-
+   *  Pfad aus der Mappe) — stattdessen enshrined:true zurückgeben; der
+   *  Storno-Weg bleibt dem Team-Endpoint vorbehalten. */
+  noAutoStorno?: boolean
+} = {}): Promise<
+  SevCreateResult & { updated?: boolean; oldNumber?: string | null; stornoNote?: string; enshrined?: boolean }
 > {
   const row = await getSevRow(bookingId)
   if (!row?.sevdesk_id) {
@@ -317,6 +337,11 @@ export async function reissueSevInvoice(bookingId: string, recipient: InvoiceRec
     // API lehnt das Update ab (unerwartet) → NICHT automatisch stornieren,
     // der Fehler soll sichtbar werden statt still eine Storno-Kette zu bauen
     return { ok: false, error: `Empfänger-Update fehlgeschlagen: ${upd.error}`, oldNumber: row.invoice_number }
+  }
+  if (opts.noAutoStorno) {
+    // §266c: Festschreibung = Team-Sache — der Wunsch ist gespeichert
+    // (saveSevRecipient oben), aber der Storno passiert NIE aus Gast-Hand
+    return { ok: false, enshrined: true, error: 'Rechnung ist festgeschrieben — Änderung braucht das Team.', oldNumber: row.invoice_number }
   }
   // Festgeschrieben (z. B. nach der UStVA) → GoBD-Weg: Storno + Neu
   const oldNumber = row.invoice_number
@@ -702,4 +727,64 @@ export async function fewoBruttoFix(opts: {
     await new Promise((ok) => setTimeout(ok, 500))
   }
   return { geprueft: opts.rows.length, korrigiert, fehler, uebersprungen, details }
+}
+
+/**
+ * §266c: Bestands-Reparatur LEERER Rechnungsempfänger — alle Engine-
+ * Rechnungen (Anreise ab Stichtag) bekommen den aufgelösten Empfänger als
+ * addressText DIREKT auf die bestehende Rechnung (gleiche Nummer, kein
+ * Storno). Festgeschriebene Belege werden ÜBERSPRUNGEN (kein Auto-Storno
+ * im Massenlauf); bezahlte laufen über die §235-Zahlungs-Kaskade (rebook).
+ */
+export async function repairSevRecipients(opts: { dryRun?: boolean; limit?: number } = {}): Promise<{
+  geprueft: number; repariert: number; uebersprungen: number; fehler: number
+  details: { nummer: string | null; gast: string; empfaenger: string; ergebnis: string }[]
+}> {
+  const dryRun = opts.dryRun !== false
+  const limit = Math.min(Math.max(Number(opts.limit) || 40, 1), 60)
+  // §266c-Review: Die ~348 §234-Neuaufbau-Zeilen (created_at 01.08., alle
+  // VOR dem Stichtag) müssen VOR dem Limit rausfallen — sonst verbrauchen
+  // sie jeden Lauf und die Engine-Rechnungen werden NIE erreicht.
+  // Engine-Zeilen entstehen erst ab dem Stichtag → created_at-Filter.
+  const { data: rows } = await supabaseAdmin
+    .from('sevdesk_invoices')
+    .select('booking_id, sevdesk_id, invoice_number, status, recipient')
+    .not('sevdesk_id', 'is', null)
+    .gte('created_at', SEV_ENGINE_STICHTAG)
+    .order('created_at', { ascending: true })
+    .limit(900)
+  const kandidaten = (rows ?? []).filter((r) => r.status !== 'storniert').slice(0, limit)
+  const deadline = Date.now() + 235_000 // §257c-Muster: Teil-Report statt Vercel-Kill
+
+  let repariert = 0, uebersprungen = 0, fehler = 0
+  const details: { nummer: string | null; gast: string; empfaenger: string; ergebnis: string }[] = []
+  for (const r of kandidaten) {
+    if (Date.now() > deadline) { details.push({ nummer: null, gast: '', empfaenger: '', ergebnis: 'ZEITBUDGET — Rest im nächsten Lauf' }); break }
+    const bookingId = String(r.booking_id)
+    const { data: b } = await supabaseAdmin
+      .from('bookings')
+      .select('id, status, source, payment_status, check_in, check_out, guest_name, guest_id, total_price, channel, listing_id, adults, children, smoobu_reservation_id')
+      .eq('id', bookingId).maybeSingle()
+    if (!b || String(b.check_in) < SEV_ENGINE_STICHTAG) { uebersprungen++; continue }
+    const rec = await resolveSevRecipient(b as BookingRow, r as unknown as SevRow)
+    const det = { nummer: (r.invoice_number as string | null) ?? null, gast: String(b.guest_name ?? ''), empfaenger: addressTextFor(rec).replace(/\n/g, ' · '), ergebnis: '' }
+    if (dryRun) { det.ergebnis = 'dryRun'; details.push(det); continue }
+
+    // Zahlungs-Sicherung nur für BEZAHLTE ('gebucht') — wie reissueSevInvoice
+    let rebook: { clearingLabel: string; date: string } | undefined
+    if (r.status === 'gebucht') {
+      rebook = { clearingLabel: clearingLabelFor(`${b.channel ?? ''} ${b.source ?? ''}`), date: String(b.check_in) }
+    }
+    const upd = await updateSevInvoiceRecipient(String(r.sevdesk_id), {
+      contactName: rec.name,
+      addressText: addressTextFor(rec),
+      ...(rebook ? { rebook } : {}),
+    })
+    if (upd.ok) { repariert++; det.ergebnis = 'repariert' }
+    else if (upd.enshrined) { uebersprungen++; det.ergebnis = 'festgeschrieben — übersprungen' }
+    else { fehler++; det.ergebnis = 'FEHLER: ' + (upd.error ?? '') }
+    details.push(det)
+    await new Promise((ok) => setTimeout(ok, 550)) // sevdesk-Rate-Limit 2/s
+  }
+  return { geprueft: kandidaten.length, repariert, uebersprungen, fehler, details }
 }
