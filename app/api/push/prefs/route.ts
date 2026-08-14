@@ -12,7 +12,7 @@ import type { PushCategory } from '@/lib/push'
 export const dynamic = 'force-dynamic'
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
-const ALL: PushCategory[] = ['guestChats', 'teamChats', 'bookings', 'tasks', 'reinigung', 'calls', 'buchhaltung', 'wallbox', 'system']
+const ALL: PushCategory[] = ['guestChats', 'teamChats', 'bookings', 'tasks', 'reinigung', 'calls', 'buchhaltung', 'wallbox', 'material', 'system']
 const LEGACY: Partial<Record<PushCategory, string>> = {
   guestChats: 'push_guest_chats', teamChats: 'push_team_chats', bookings: 'push_bookings', buchhaltung: 'push_buchhaltung',
 }

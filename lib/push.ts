@@ -21,6 +21,7 @@ export type PushCategory =
   | 'calls'        // ☎️ Anrufe (Bereitschaft)
   | 'buchhaltung'  // 💶 Buchhaltung (Belege) — ohnehin nur Admins
   | 'wallbox'      // ⚡ Wallbox (Ladevorgänge)
+  | 'material'     // 🛒 Material & Bestellungen (Bedarf gemeldet, Bestellung fällig)
   | 'system'       // 🔧 System & Betrieb (TV, Boxen, Türschlösser, Überbuchung, Import)
 
 const LEGACY_COLS: Partial<Record<PushCategory, string>> = {

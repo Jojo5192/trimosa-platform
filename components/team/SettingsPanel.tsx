@@ -18,6 +18,7 @@ import CallsPanel from '@/components/team/CallsPanel'
 import BelegEinreichen from '@/components/team/BelegEinreichen'
 import PushLogPanel from '@/components/team/PushLogPanel'
 import LocksPanel from '@/components/team/LocksPanel'
+import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
@@ -61,7 +62,7 @@ function Row({ title, subtitle, last, children }: {
 export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; system: boolean } | null>(null)
+  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
@@ -74,6 +75,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // 🔑 Türschlösser (§253) — Admins/Hosts/Staff (probe 403 → Eintrag bleibt aus)
   const [locksOk, setLocksOk] = useState(false)
   const [showLocks, setShowLocks] = useState(false)
+  const [showMaterial, setShowMaterial] = useState(false)
   const [showPushLog, setShowPushLog] = useState(false)
   // ⏱ Reinigungs-Dauer (§255) — NUR Chefs (is_admin; probe 403 → aus)
   const [durOk, setDurOk] = useState(false)
@@ -90,7 +92,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, system: d.system !== false }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, material: d.material !== false, system: d.system !== false }) })
       .catch(() => {})
     fetch('/api/admin/oncall', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -157,7 +159,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     } finally { setBusy(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'tasks' | 'reinigung' | 'calls' | 'buchhaltung' | 'system') {
+  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'tasks' | 'reinigung' | 'calls' | 'buchhaltung' | 'material' | 'system') {
     if (!prefs) return
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
@@ -287,6 +289,23 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           </>
         )}
 
+        {/* §266f: Material — für ALLE Rollen (Bedarf melden, Status pflegen,
+            Warenkorb je Standort; Katalog-Pflege nur Admins) */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MATERIAL</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+          <button onClick={() => setShowMaterial(true)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+          }}>
+            <span style={{ fontSize: 19 }}>🛒</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Material & Bestellungen</span>
+              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Standort wählen, Produkt antippen — fertig. Warenkorb kommt automatisch</span>
+            </span>
+            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+          </button>
+        </div>
+
         {/* §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister
             (Upload + Ort + Notiz; keinerlei Finanz-Einblick) */}
         <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BELEGE</div>
@@ -348,6 +367,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           <Row title="🧹 Reinigung" subtitle="Fertigmeldungen aus den Wohnungen">
             <Switch on={prefs?.reinigung ?? true} disabled={!prefs} onChange={() => togglePref('reinigung')} />
           </Row>
+          <Row title="🛒 Material" subtitle="Bestellung fällig — Bedarf je Standort erreicht">
+            <Switch on={prefs?.material ?? true} disabled={!prefs} onChange={() => togglePref('material')} />
+          </Row>
           {role === 'team' && (
             <Row title="☎️ Anrufe" subtitle="Meldungen der Telefon-Assistentin (Bereitschaft)">
               <Switch on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />
@@ -408,6 +430,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
       {showBeleg && <BelegEinreichen onClose={() => setShowBeleg(false)} />}
       {showLocks && <LocksPanel onClose={() => setShowLocks(false)} />}
+      {showMaterial && <MaterialPanel onClose={() => setShowMaterial(false)} />}
       {showPushLog && <PushLogPanel onClose={() => setShowPushLog(false)} />}
       {showDur && <CleaningDurations onClose={() => setShowDur(false)} />}
     </div>

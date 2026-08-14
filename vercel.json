@@ -71,6 +71,10 @@
     {
       "path": "/api/tv-bridge/health-check",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/material/scan",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
