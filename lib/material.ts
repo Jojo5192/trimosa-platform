@@ -18,9 +18,14 @@ import { parseJsonLoose } from '@/lib/beleg-ki'
  * ZWEI Keys (§243o-Wipe-Klasse: Config-Saves fassen den Bedarf nie an).
  */
 
+/** Feste Kategorien fürs Merkliste-Grid (Filter-Chips) */
+export const MATERIAL_KATEGORIEN = ['🧽 Putzen', '🧺 Wäsche', '🍽 Küche', '🧻 Papier & Müll', '🧤 Handschuhe', '🧴 Pflege'] as const
+
 export interface MaterialArtikel {
   id: string
   name: string
+  /** Kategorie (aus MATERIAL_KATEGORIEN) — ohne = unter „Alle" sichtbar */
+  kategorie?: string
   /** Produkt-Link (dm.de-Merkliste, Amazon, egal) — Bestell-Liste verlinkt ihn */
   url?: string
   /** Produktfoto-URL (dm-CDN products.dm-static.com — Hotlink, Fallback
@@ -52,7 +57,6 @@ export interface MaterialBedarf {
   standort: string
   artikelId?: string
   name: string
-  prio: 'knapp' | 'leer'
   status: 'offen' | 'bestellt' | 'aufgefuellt'
   von: string
   at: string
@@ -110,27 +114,24 @@ function rid(): string {
 }
 
 /** Bedarf hinzufügen — dedupliziert je Standort+Name auf den OFFENEN
- *  Bestand (mehrfach gemeldet = ein Eintrag; „leer" gewinnt über „knapp"). */
-export async function addBedarf(items: { standort: string; artikelId?: string; name: string; prio: 'knapp' | 'leer'; von?: string }[], fallbackVon: string): Promise<{ neu: MaterialBedarf[]; hochgestuft: number }> {
+ *  Bestand (mehrfach gemeldet = ein Eintrag). */
+export async function addBedarf(items: { standort: string; artikelId?: string; name: string; von?: string }[], fallbackVon: string): Promise<{ neu: MaterialBedarf[]; schonDa: number }> {
   const all = await getBedarf()
   const neu: MaterialBedarf[] = []
-  let hochgestuft = 0
+  let schonDa = 0
   for (const it of items) {
     const key = `${it.standort}|${it.name.toLowerCase()}`
     const open = all.find((e) => e.status === 'offen' && `${e.standort}|${e.name.toLowerCase()}` === key)
-    if (open) {
-      if (it.prio === 'leer' && open.prio === 'knapp') { open.prio = 'leer'; hochgestuft++ }
-      continue
-    }
+    if (open) { schonDa++; continue }
     const row: MaterialBedarf = {
       id: rid(), standort: it.standort, artikelId: it.artikelId, name: it.name,
-      prio: it.prio, status: 'offen', von: it.von || fallbackVon, at: new Date().toISOString(),
+      status: 'offen', von: it.von || fallbackVon, at: new Date().toISOString(),
     }
     all.push(row)
     neu.push(row)
   }
-  if (neu.length || hochgestuft) await saveBedarf(all)
-  return { neu, hochgestuft }
+  if (neu.length) await saveBedarf(all)
+  return { neu, schonDa }
 }
 
 export async function setBedarfStatus(id: string, status: MaterialBedarf['status'] | 'entfernt'): Promise<boolean> {
@@ -210,23 +211,22 @@ export async function parseMeldungen(): Promise<{ gelesen: number; bedarf: numbe
   const system = `Du strukturierst Material-Meldungen einer Ferienwohnungs-Reinigung.
 Standorte: ${MATERIAL_STANDORTE.join(', ')}. Merkliste (gilt für alle Standorte):
 ${katalogText}
-Antworte NUR mit JSON: {"items":[{"standort":"...","name":"...","prio":"knapp"|"leer","melder":"Vorname"}],"unklar":"..."}
+Antworte NUR mit JSON: {"items":[{"standort":"...","name":"...","melder":"Vorname"}],"unklar":"..."}
 Regeln: name möglichst als EXAKTER Katalog-Name (sonst frei, kurz, Singular).
 melder = der Vorname vor dem Doppelpunkt der jeweiligen Nachricht.
-prio "leer" nur bei eindeutig leer/aus/alle — sonst "knapp".
 Standort aus dem Text ableiten (auch Wohnungsnamen: City Home=Bitburg, Cozy/Magnolia/Sweet=Sirzenich, Panorama/Sunrise=Minden, River=Edingen).
 Ist KEIN Standort erkennbar, items leer lassen und in "unklar" die Rückfrage formulieren.
 Nachrichten ohne Material-Bezug (Smalltalk, Fragen an den Bot): items leer, unklar leer.`
   const user = fresh.map((m) => `${nameOf(m.sender_id)}: ${(m.content ?? '').slice(0, 500)}`).join('\n---\n')
 
-  let items: { standort: string; name: string; prio: 'knapp' | 'leer'; melder?: string }[] = []
+  let items: { standort: string; name: string; melder?: string }[] = []
   let unklar = ''
   try {
     const raw = await askClaude(system, user, 1200, FAST_MODEL)
     // parseJsonLoose (§242d-Muster): Haiku hängt gern Erklärtext ans JSON
     const j = parseJsonLoose(raw) as { items?: typeof items; unklar?: string }
     items = (j.items ?? []).filter((i) => MATERIAL_STANDORTE.includes(i.standort as typeof MATERIAL_STANDORTE[number]) && i.name?.trim())
-      .map((i) => ({ ...i, name: i.name.trim().slice(0, 60), prio: i.prio === 'leer' ? 'leer' as const : 'knapp' as const }))
+      .map((i) => ({ ...i, name: i.name.trim().slice(0, 60) }))
     unklar = (j.unklar ?? '').slice(0, 200)
     // Erfolg: Fehlversuchs-Zähler zurücksetzen (sonst zählt der nächste
     // transiente Fehler von einem alten Stand weiter)
@@ -252,13 +252,15 @@ Nachrichten ohne Material-Bezug (Smalltalk, Fragen an den Bot): items leer, unkl
     // Merklisten-Match für artikelId (fürs spätere Warenkorb-Bauen)
     const withIds = items.map((i) => {
       const art = cfg.artikel.find((a) => a.name.toLowerCase() === i.name.toLowerCase())
-      return { standort: i.standort, artikelId: art?.id, name: art?.name ?? i.name, prio: i.prio, von: i.melder?.trim().slice(0, 30) }
+      return { standort: i.standort, artikelId: art?.id, name: art?.name ?? i.name, von: i.melder?.trim().slice(0, 30) }
     })
     const res = await addBedarf(withIds, nameOf(fresh[0].sender_id))
-    added = res.neu.length + res.hochgestuft
-    if (res.neu.length || res.hochgestuft) {
-      const zeilen = res.neu.map((b) => `${b.prio === 'leer' ? '🔴' : '🟡'} ${b.name} (${b.standort})`).join('\n')
-      parts.push(`✔ Notiert:${zeilen ? '\n' + zeilen : ''}${res.hochgestuft ? '\n(+ Priorität aktualisiert)' : ''}`)
+    added = res.neu.length
+    if (res.neu.length) {
+      const zeilen = res.neu.map((b) => `🛒 ${b.name} (${b.standort})`).join('\n')
+      parts.push(`✔ Notiert:\n${zeilen}`)
+    } else if (res.schonDa) {
+      parts.push('✔ Steht schon auf der Bestell-Liste.')
     }
   }
   // Rückfrage auch dann posten, wenn im selben Batch ANDERE Meldungen
@@ -277,10 +279,10 @@ function artFor(cfg: MaterialConfig, e: MaterialBedarf): MaterialArtikel | undef
 }
 
 /** ── Cron-Kern 2: offener Bedarf → Bestell-Ansage je Standort ──
- *  Bedingung: mind. ein 🔴-Eintrag ODER ≥3 offene; Cooldown 20h je
- *  Standort (kein Spam bei jedem Lauf). Hauptkanal ist der TEAM-PUSH
- *  (Kategorie 🛒 material, Deep-Link Mehr-Tab); ist die optionale
- *  Chat-Gruppe verknüpft, kommt derselbe Text zusätzlich als Post. */
+ *  Bedingung: mind. 1 offener Artikel (Meldung = Kaufabsicht); Cooldown
+ *  20h je Standort (kein Spam bei jedem Lauf). Hauptkanal ist der
+ *  TEAM-PUSH (Kategorie 🛒 material, Deep-Link Mehr-Tab); ist die
+ *  optionale Chat-Gruppe verknüpft, kommt derselbe Text als Post dazu. */
 export async function checkWarenkoerbe(): Promise<{ posts: number }> {
   const cfg = await getMaterialConfig()
   const state = (await readKey<State>(STATE_KEY)) ?? {}
@@ -291,13 +293,10 @@ export async function checkWarenkoerbe(): Promise<{ posts: number }> {
   for (const standort of MATERIAL_STANDORTE) {
     const offen = all.filter((e) => e.standort === standort)
     if (!offen.length) continue
-    const hatLeer = offen.some((e) => e.prio === 'leer')
-    if (!hatLeer && offen.length < 3) continue
     const last = lastPost[standort] ? Date.parse(lastPost[standort]) : 0
     if (Date.now() - last < 20 * 3600_000) continue
 
     const adr = cfg.adressen[standort]
-    const leer = offen.filter((e) => e.prio === 'leer').length
 
     // Team-Push = Hauptkanal (Zirkel-Vermeidung: dynamischer Import, §265-Muster)
     let pushed = false
@@ -305,7 +304,7 @@ export async function checkWarenkoerbe(): Promise<{ posts: number }> {
       const { sendPushToTeam } = await import('@/lib/push')
       await sendPushToTeam(
         `🛒 Bestellung fällig · ${standort}`,
-        `${offen.length} Artikel offen${leer ? ` (${leer}× leer)` : ''}${adr ? ` — Adresse „${adr.label}"` : ''}. Liste + Warenkorb im Material-Bereich (Mehr-Tab).`,
+        `${offen.length} Artikel zum Nachbestellen${adr ? ` — Adresse „${adr.label}"` : ''}. Liste + Warenkorb im Material-Bereich (Mehr-Tab).`,
         '/team?tab=einstellungen',
         { category: 'material' },
       )
@@ -323,9 +322,9 @@ export async function checkWarenkoerbe(): Promise<{ posts: number }> {
       const korb = cartUrl(mitAsin)
       const zeilen = offen.map((e) => {
         const a = artFor(cfg, e)
-        return `${e.prio === 'leer' ? '🔴' : '🟡'} ${e.name}${a?.url ? `\n${a.url}` : ''}`
+        return `🛒 ${e.name}${a?.url ? `\n${a.url}` : ''}`
       }).join('\n')
-      let text = `🛒 BESTELLUNG ${standort.toUpperCase()} — ${offen.length} Artikel offen:\n${zeilen}`
+      let text = `🛒 BESTELLUNG ${standort.toUpperCase()} — ${offen.length} Artikel zum Nachbestellen:\n${zeilen}`
       if (korb) text += `\n\nAmazon-Warenkorb (fertig befüllt):\n${korb}`
       if (adr) text += `\n\n📦 WICHTIG: Im Checkout die Lieferadresse „${adr.label}" wählen!${adr.hinweis ? ` (${adr.hinweis})` : ''}`
       text += `\n\nNach dem Bestellen im Material-Bereich (Mehr-Tab) auf „Bestellt" tippen.`
@@ -348,27 +347,25 @@ export async function checkWarenkoerbe(): Promise<{ posts: number }> {
 /** ── Freitext-Analyse fürs Panel („Etwas Besonderes?") ──
  *  Matcht die Beschreibung gegen die Merkliste; kein Treffer → freier
  *  Artikel-Vorschlag. Der MELDER bestätigt immer selbst (nie Auto-Add). */
-export async function analysiereFreitext(text: string): Promise<{ name: string; artikelId?: string; prio: 'knapp' | 'leer'; hinweis?: string }> {
+export async function analysiereFreitext(text: string): Promise<{ name: string; artikelId?: string; hinweis?: string }> {
   const cfg = await getMaterialConfig()
   const liste = cfg.artikel.map((a) => a.name).join(', ') || '(leer)'
   const system = `Du hilfst beim Material-Melden einer Ferienwohnungs-Reinigung.
 Merkliste: ${liste}
 Der Nutzer beschreibt frei, was fehlt. Antworte NUR mit JSON:
-{"name":"...","prio":"knapp"|"leer","hinweis":"..."}
+{"name":"...","hinweis":"..."}
 Regeln: name = EXAKTER Merklisten-Name, wenn eines der Produkte gemeint ist
 (auch bei Umschreibungen wie „Handschuhe" → passendster Eintrag); sonst ein
-kurzer, kaufbarer Produktname (Singular). prio "leer" nur bei eindeutig
-leer/aus/alle — sonst "knapp". hinweis = 1 kurzer Satz, z. B. welcher
-Merklisten-Eintrag gemeint sein könnte oder dass es ein neues Produkt ist.`
+kurzer, kaufbarer Produktname (Singular). hinweis = 1 kurzer Satz, z. B.
+welcher Merklisten-Eintrag gemeint sein könnte oder dass es neu ist.`
   const raw = await askClaude(system, text.slice(0, 400), 400, FAST_MODEL)
-  const j = parseJsonLoose(raw) as { name?: string; prio?: string; hinweis?: string }
+  const j = parseJsonLoose(raw) as { name?: string; hinweis?: string }
   const name = (j.name ?? '').trim().slice(0, 60)
   if (!name) throw new Error('Kein Vorschlag erkennbar')
   const art = cfg.artikel.find((a) => a.name.toLowerCase() === name.toLowerCase())
   return {
     name: art?.name ?? name,
     artikelId: art?.id,
-    prio: j.prio === 'leer' ? 'leer' : 'knapp',
     hinweis: (j.hinweis ?? '').slice(0, 160) || undefined,
   }
 }

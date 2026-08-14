@@ -3,7 +3,7 @@ import { getTaskAuth } from '@/lib/tasks'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import {
-  MATERIAL_STANDORTE, getMaterialConfig, saveMaterialConfig,
+  MATERIAL_STANDORTE, MATERIAL_KATEGORIEN, getMaterialConfig, saveMaterialConfig,
   getBedarf, addBedarf, setBedarfStatus, cartUrl, analysiereFreitext,
   type MaterialConfig, type MaterialArtikel,
 } from '@/lib/material'
@@ -30,9 +30,11 @@ function sanitizeArtikel(raw: unknown): MaterialArtikel[] {
       const menge = Math.min(99, Math.max(1, Math.round(Number(a.menge)) || 1))
       const url = typeof a.url === 'string' ? a.url.trim().slice(0, 300) : ''
       const bild = typeof a.bild === 'string' ? a.bild.trim().slice(0, 400) : ''
+      const kategorie = typeof a.kategorie === 'string' && (MATERIAL_KATEGORIEN as readonly string[]).includes(a.kategorie) ? a.kategorie : ''
       return {
         id: typeof a.id === 'string' && a.id ? a.id.slice(0, 20) : Math.random().toString(36).slice(2, 10),
         name: String(a.name).trim().slice(0, 60),
+        ...(kategorie ? { kategorie } : {}),
         ...(url && /^https:\/\//.test(url) ? { url } : {}),
         ...(bild && /^https:\/\//.test(bild) ? { bild } : {}),
         ...(typeof a.asin === 'string' && a.asin.trim() ? { asin: a.asin.trim().slice(0, 20) } : {}),
@@ -118,7 +120,7 @@ export async function PATCH(req: NextRequest) {
 
   // Bedarf melden (alle Rollen — Merklisten-Tap oder bestätigter KI-Vorschlag)
   if (typeof b.melden === 'object' && b.melden) {
-    const m = b.melden as { standort?: string; name?: string; prio?: string }
+    const m = b.melden as { standort?: string; name?: string }
     if (!MATERIAL_STANDORTE.includes(m.standort as typeof MATERIAL_STANDORTE[number]) || !m.name?.trim()) {
       return NextResponse.json({ error: 'Standort und Artikel erforderlich' }, { status: 400 })
     }
@@ -129,9 +131,8 @@ export async function PATCH(req: NextRequest) {
     const vorname = (prof?.display_name ?? 'Team').split(/\s+/)[0]
     const res = await addBedarf([{
       standort: m.standort!, artikelId: art?.id, name: art?.name ?? m.name!.trim().slice(0, 60),
-      prio: m.prio === 'leer' ? 'leer' : 'knapp',
     }], vorname)
-    return NextResponse.json({ ok: true, neu: res.neu.length })
+    return NextResponse.json({ ok: true, neu: res.neu.length, schonDa: res.schonDa })
   }
 
   // Merkliste/Adressen/Gruppe pflegen — nur Admins/Gastgeber; EIN

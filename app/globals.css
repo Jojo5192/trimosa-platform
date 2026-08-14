@@ -682,3 +682,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (prefers-reduced-motion: reduce) {
   .team-skel, .team-ptr-spin { animation: none; }
 }
+
+/* §267d Material: spürbares Tap-Feedback + Toast */
+.mat-tap { transition: transform 0.09s ease, opacity 0.09s ease; }
+.mat-tap:active { transform: scale(0.94); opacity: 0.85; }
+@keyframes mat-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes mat-pop {
+  0% { transform: scale(0.9); }
+  55% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+.mat-pop { animation: mat-pop 0.28s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .mat-tap, .mat-pop { transition: none; animation: none; }
+}
