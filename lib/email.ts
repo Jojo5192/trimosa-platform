@@ -284,6 +284,43 @@ export async function sendWelcomeEmail(to: string, name: string, lang: UiLang = 
   return sendViaResend(to, T('Willkommen bei TRIMOSA!'), html)
 }
 
+/**
+ * §266d Guest-Checkout: Der Gast hat beim Buchen automatisch ein Konto
+ * bekommen — diese Mail erklärt das und liefert den Passwort-Festlegen-Link
+ * (hashed_token → /passwort-zuruecksetzen?token_hash=… → verifyOtp; der
+ * §35-PKCE-Upgrade-Pfad, browser-unabhängig). Fällt der Link aus:
+ * „Passwort vergessen" auf der Website geht immer.
+ */
+export async function sendGuestAccountEmail(to: string, name: string, lang: UiLang = 'de') {
+  const P1 = 'wir haben dir automatisch ein TRIMOSA-Gastkonto angelegt — damit hast du deine Buchung, deine Rechnung und den direkten Chat zu uns jederzeit an einem Ort.'
+  const P2 = 'Lege einmal kurz ein Passwort fest, dann kannst du dich jederzeit anmelden:'
+  const NOTE = 'Der Link ist aus Sicherheitsgründen nur begrenzt gültig. Falls er abgelaufen ist, nutze einfach „Passwort vergessen" auf der Anmeldeseite — deine E-Mail-Adresse ist dein Benutzername.'
+  let actionLink = `${siteUrl}/passwort-vergessen`
+  try {
+    const { data: linkData, error } = await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email: to })
+    // §266d-Review (HOCH): NICHT action_link — dessen /verify-Redirect liefert
+    // ein Implicit-Fragment, das unser PKCE-Browser-Client hart verwirft (Link
+    // wäre tot). Stattdessen hashed_token → verifyOtp auf der Zielseite.
+    const th = linkData?.properties?.hashed_token
+    if (!error && th) actionLink = `${siteUrl}/passwort-zuruecksetzen?token_hash=${encodeURIComponent(th)}`
+  } catch (e) {
+    console.error('[email] generateLink fehlgeschlagen (Fallback Passwort-vergessen):', e)
+  }
+  const T = await makeTr(lang, lang === 'de' ? [] : [
+    'Hallo', 'Dein TRIMOSA-Konto', 'Wir haben dir ein Gastkonto angelegt.', P1, P2, NOTE, 'Passwort festlegen',
+  ])
+  const anrede = name ? `${T('Hallo')} ${name.trim().split(/\s+/)[0]},` : `${T('Hallo')},`
+  const html = renderEmail({
+    preheader: T('Wir haben dir ein Gastkonto angelegt.'),
+    heading: T('Dein TRIMOSA-Konto'),
+    paragraphs: [anrede, T(P1), T(P2)],
+    details: [],
+    cta: { label: T('Passwort festlegen'), url: actionLink },
+    note: T(NOTE),
+  })
+  return sendViaResend(to, T('Dein TRIMOSA-Konto'), html)
+}
+
 export async function sendBookingEmail(bookingId: string) {
   const loaded = await loadBooking(bookingId)
   if (!loaded) return { ok: false, error: 'Buchung nicht gefunden' }

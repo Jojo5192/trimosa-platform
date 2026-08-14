@@ -22,10 +22,21 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setHasSession(!!data.session)
+    // §266d: Guest-Checkout-Konto-Mails linken direkt hierher mit
+    // ?token_hash=… — verifyOtp(recovery) funktioniert mit dem PKCE-Client
+    // browser-unabhängig (der frühere action_link-Weg lieferte ein
+    // Implicit-Fragment, das der PKCE-Client hart verwirft → Link war tot).
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) { setHasSession(true); setChecking(false); return }
+      const tokenHash = new URLSearchParams(window.location.search).get('token_hash')
+      if (tokenHash) {
+        const { data: v, error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash })
+        if (!error && v?.session) { setHasSession(true); setChecking(false); return }
+      }
+      setHasSession(false)
       setChecking(false)
-    })
+    })()
   }, [])
 
   async function handleSave() {

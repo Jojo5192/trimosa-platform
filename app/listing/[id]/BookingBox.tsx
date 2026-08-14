@@ -185,7 +185,22 @@ export default function BookingBox({
   const [availability, setAvailability] = useState<{ available: boolean; minStayViolation: boolean } | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'not-logged-in' | 'unavailable' | 'profile-incomplete'>('idle')
+  const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'unavailable' | 'profile-incomplete' | 'guest-incomplete' | 'email-exists'>('idle')
+  // §266d Guest-Checkout: ohne Login klappt beim Buchen-Klick ein
+  // Kontaktdaten-Formular auf — das Konto entsteht automatisch beim Buchen.
+  const [guestOpen, setGuestOpen] = useState(false)
+  const [guest, setGuest] = useState({ email: '', firstName: '', lastName: '', phone: '', street: '', zip: '', city: '', country: 'Deutschland' })
+  const [loginHref, setLoginHref] = useState('/login')
+  useEffect(() => {
+    // Login-Ruecksprung MIT der aktuellen Auswahl (die Listing-Seite liest
+    // ?checkin/checkout/guests nativ) — im Effect, nie im Render (SSR/window)
+    const qs = new URLSearchParams()
+    if (checkIn) qs.set('checkin', checkIn)
+    if (checkOut) qs.set('checkout', checkOut)
+    qs.set('guests', String(adults + children))
+    const q = qs.toString() // .size erst ab Safari 17 — toString() ist überall da
+    setLoginHref('/login?next=' + encodeURIComponent(window.location.pathname + (q ? '?' + q : '')))
+  }, [checkIn, checkOut, adults, children])
 
   useEffect(() => {
     const from = today()
@@ -266,8 +281,46 @@ export default function BookingBox({
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
-      setStatus('not-logged-in')
-      setSubmitting(false)
+      // §266d: Erster Klick oeffnet das Kontakt-Formular (deutliches Feedback
+      // statt totem Button); zweiter Klick validiert + bucht mit Auto-Konto.
+      if (!guestOpen) {
+        setGuestOpen(true)
+        setStatus('idle')
+        setSubmitting(false)
+        return
+      }
+      const g = {
+        email: guest.email.trim().toLowerCase(), firstName: guest.firstName.trim(), lastName: guest.lastName.trim(),
+        phone: guest.phone.trim(), street: guest.street.trim(), zip: guest.zip.trim(), city: guest.city.trim(),
+        country: guest.country.trim() || 'Deutschland',
+      }
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(g.email)
+      if (!emailOk || !g.firstName || !g.lastName || !g.phone || !g.street || !g.zip || !g.city) {
+        setStatus('guest-incomplete')
+        setSubmitting(false)
+        return
+      }
+      try {
+        const res = await fetch('/api/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            listingId, checkIn, checkOut, adults, children, message,
+            booking_type: mode,
+            guest_price_suggestion: mode === 'request' && priceSuggestion ? parseFloat(priceSuggestion) : undefined,
+            ...(discount ? { discount_code: discount.code } : {}),
+            guest: g,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 409 && data.code === 'email-exists') { setStatus('email-exists'); setSubmitting(false); return }
+        if (res.status === 409) { setStatus('unavailable'); setSubmitting(false); return }
+        if (!res.ok || !data.checkoutUrl) { setStatus('error'); setSubmitting(false); return }
+        window.location.href = data.checkoutUrl
+      } catch {
+        setStatus('error')
+        setSubmitting(false)
+      }
       return
     }
 
@@ -333,6 +386,11 @@ export default function BookingBox({
   }
 
   const minDate = today()
+  // §266d: 16px Schrift — iOS zoomt bei Fokus auf Felder <16px automatisch
+  const gInput: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', borderRadius: '10px', border: '1.5px solid #E0DDD6',
+    padding: '10px 12px', fontSize: '16px', color: '#111', outline: 'none', fontFamily: 'inherit', backgroundColor: '#fff',
+  }
   const inputStyle: React.CSSProperties = {
     width: '100%', borderRadius: '12px', border: '1.5px solid #E0DDD6',
     padding: '10px 14px', fontSize: '13px', color: '#111',
@@ -620,6 +678,32 @@ export default function BookingBox({
         </div>
       )}
 
+      {/* §266d Guest-Checkout: Kontaktdaten-Formular (nur ohne Login) */}
+      {guestOpen && (
+        <div style={{ marginBottom: '12px', padding: '14px', background: '#FAF8F2', borderRadius: '12px', border: '1px solid #EFE9D8' }}>
+          <p style={{ fontSize: '13.5px', fontWeight: 800, color: '#2A2620', margin: '0 0 2px' }}>{t(lang, 'Fast geschafft — deine Kontaktdaten')}</p>
+          <p style={{ fontSize: '11.5px', color: '#8A8065', margin: '0 0 10px', lineHeight: 1.5 }}>
+            {t(lang, 'Wir legen dir dabei automatisch ein Gastkonto an: Rechnung online abrufen, Buchung verwalten, direkter Chat. Den Link zum Passwort-Festlegen bekommst du per E-Mail.')}
+          </p>
+          <input value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} type="email" inputMode="email" autoComplete="email" placeholder={t(lang, 'E-Mail')} style={gInput} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <input value={guest.firstName} onChange={(e) => setGuest({ ...guest, firstName: e.target.value })} autoComplete="given-name" placeholder={t(lang, 'Vorname')} style={{ ...gInput, flex: 1, minWidth: 0 }} />
+            <input value={guest.lastName} onChange={(e) => setGuest({ ...guest, lastName: e.target.value })} autoComplete="family-name" placeholder={t(lang, 'Nachname')} style={{ ...gInput, flex: 1, minWidth: 0 }} />
+          </div>
+          <input value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} type="tel" inputMode="tel" autoComplete="tel" placeholder={t(lang, 'Telefon')} style={{ ...gInput, marginTop: 8 }} />
+          <input value={guest.street} onChange={(e) => setGuest({ ...guest, street: e.target.value })} autoComplete="street-address" placeholder={t(lang, 'Straße & Hausnummer')} style={{ ...gInput, marginTop: 8 }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <input value={guest.zip} onChange={(e) => setGuest({ ...guest, zip: e.target.value })} autoComplete="postal-code" placeholder={t(lang, 'PLZ')} style={{ ...gInput, flex: '0 0 32%' }} />
+            <input value={guest.city} onChange={(e) => setGuest({ ...guest, city: e.target.value })} autoComplete="address-level2" placeholder={t(lang, 'Ort')} style={{ ...gInput, flex: 1, minWidth: 0 }} />
+          </div>
+          <input value={guest.country} onChange={(e) => setGuest({ ...guest, country: e.target.value })} autoComplete="country-name" placeholder={t(lang, 'Land')} style={{ ...gInput, marginTop: 8 }} />
+          <p style={{ fontSize: '11.5px', color: '#8A8065', margin: '10px 0 0' }}>
+            {t(lang, 'Schon ein Konto?')}{' '}
+            <a href={loginHref} style={{ fontWeight: 700, color: 'var(--gold-dark)', textDecoration: 'underline' }}>{t(lang, 'Anmelden')}</a> — {t(lang, 'deine Auswahl bleibt erhalten.')}
+          </p>
+        </div>
+      )}
+
       {/* Status messages */}
       {status === 'success' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#F0FDF4', border: '1px solid #BBF7D0', marginBottom: '12px' }}>
@@ -638,10 +722,18 @@ export default function BookingBox({
       {status === 'error' && (
         <p style={{ fontSize: '12px', color: '#DC2626', marginBottom: '12px' }}>{t(lang, 'Etwas ist schiefgelaufen. Bitte erneut versuchen.')}</p>
       )}
-      {status === 'not-logged-in' && (
+      {status === 'guest-incomplete' && (
         <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
           <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
-            {t(lang, 'Bitte')} <a href="/login" style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>{t(lang, 'anmelden')}</a> {t(lang, 'um zu buchen.')}
+            {t(lang, 'Bitte fülle alle Kontaktfelder aus — dann kann es losgehen.')}
+          </p>
+        </div>
+      )}
+      {status === 'email-exists' && (
+        <div style={{ borderRadius: '12px', padding: '12px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', marginBottom: '12px' }}>
+          <p style={{ fontSize: '13px', color: '#92400E', margin: 0 }}>
+            {t(lang, 'Mit dieser E-Mail-Adresse gibt es schon ein Konto.')}{' '}
+            <a href={loginHref} style={{ fontWeight: 700, textDecoration: 'underline', color: '#92400E' }}>{t(lang, 'Anmelden')}</a> — {t(lang, 'deine Auswahl bleibt erhalten.')}
           </p>
         </div>
       )}
@@ -679,6 +771,14 @@ export default function BookingBox({
 
       {/* Footer info */}
       <div style={{ marginTop: '12px' }}>
+        {guestOpen && (
+          <p style={{ textAlign: 'center', fontSize: '10.5px', color: '#BBB', margin: '0 0 6px' }}>
+            {t(lang, 'Mit deiner Buchung akzeptierst du unsere')}{' '}
+            <a href="/agb" target="_blank" rel="noreferrer" style={{ color: '#999', textDecoration: 'underline' }}>{t(lang, 'AGB')}</a>
+            {' & '}
+            <a href="/datenschutz" target="_blank" rel="noreferrer" style={{ color: '#999', textDecoration: 'underline' }}>{t(lang, 'Datenschutz')}</a>.
+          </p>
+        )}
         {mode === 'instant' ? (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
             {t(lang, 'Sofortige Bestätigung · Keine versteckten Gebühren')}
