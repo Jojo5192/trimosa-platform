@@ -97,15 +97,19 @@ async function getSevRow(bookingId: string): Promise<SevRow | null> {
 /** Zeile schreiben — select-then-insert/update (§46: nie upsert auf Indizes,
  *  die es zur Deploy-Zeit evtl. noch nicht gibt). */
 async function writeSevRow(bookingId: string, smoobuId: number | null, patch: Record<string, unknown>): Promise<void> {
+  // §266c-Lektion: supabase-js WIRFT nicht — ohne error-Check verpuffen
+  // Schreibfehler (z. B. fehlende Spalte, 42703) komplett still
   const existing = await getSevRow(bookingId)
-  if (existing) {
-    await supabaseAdmin.from('sevdesk_invoices')
-      .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id)
-  } else {
-    await supabaseAdmin.from('sevdesk_invoices').insert({
-      booking_id: bookingId, smoobu_reservation_id: smoobuId,
-      ...patch, updated_at: new Date().toISOString(),
-    })
+  const res = existing
+    ? await supabaseAdmin.from('sevdesk_invoices')
+        .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id)
+    : await supabaseAdmin.from('sevdesk_invoices').insert({
+        booking_id: bookingId, smoobu_reservation_id: smoobuId,
+        ...patch, updated_at: new Date().toISOString(),
+      })
+  if (res.error) {
+    console.error('[sevdesk-engine] writeSevRow failed:', bookingId.slice(0, 8), res.error.message)
+    throw new Error('sevdesk_invoices-Schreibfehler: ' + res.error.message)
   }
 }
 
@@ -293,7 +297,7 @@ export async function createSevInvoiceForBooking(bookingId: string, opts: {
   } catch (e) {
     const msg = String(e instanceof Error ? e.message : e).slice(0, 400)
     console.error('[sevdesk-engine] create failed:', bookingId.slice(0, 8), msg)
-    await writeSevRow(bookingId, b.smoobu_reservation_id, { status: 'fehler', error: msg })
+    await writeSevRow(bookingId, b.smoobu_reservation_id, { status: 'fehler', error: msg }).catch(() => {})
     return { ok: false, error: msg }
   }
 }
@@ -406,6 +410,7 @@ export async function runSevInvoiceRun(opts: { dryRun?: boolean } = {}): Promise
       continue
     }
     const r = await createSevInvoiceForBooking(b.id)
+      .catch((e): SevCreateResult => ({ ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) }))
     if (r.ok && !r.skipped) report.erstellt++
     else if (r.error) report.fehler.push({ gast, error: r.error })
     else if (r.skipped) report.uebersprungen.push({ gast, grund: r.skipped })
@@ -746,13 +751,19 @@ export async function repairSevRecipients(opts: { dryRun?: boolean; limit?: numb
   // VOR dem Stichtag) müssen VOR dem Limit rausfallen — sonst verbrauchen
   // sie jeden Lauf und die Engine-Rechnungen werden NIE erreicht.
   // Engine-Zeilen entstehen erst ab dem Stichtag → created_at-Filter.
-  const { data: rows } = await supabaseAdmin
+  const { data: rows, error: qErr } = await supabaseAdmin
     .from('sevdesk_invoices')
     .select('booking_id, sevdesk_id, invoice_number, status, recipient')
     .not('sevdesk_id', 'is', null)
     .gte('created_at', SEV_ENGINE_STICHTAG)
     .order('created_at', { ascending: true })
     .limit(900)
+  // §266c-Lektion (die eigene §243o-Klasse): ein Query-Fehler (z. B. fehlende
+  // recipient-Spalte) sah vorher exakt wie "nichts zu tun" aus
+  if (qErr) {
+    return { geprueft: 0, repariert: 0, uebersprungen: 0, fehler: 1,
+      details: [{ nummer: null, gast: '', empfaenger: '', ergebnis: 'DB-FEHLER: ' + qErr.message }] }
+  }
   const kandidaten = (rows ?? []).filter((r) => r.status !== 'storniert').slice(0, limit)
   const deadline = Date.now() + 235_000 // §257c-Muster: Teil-Report statt Vercel-Kill
 
