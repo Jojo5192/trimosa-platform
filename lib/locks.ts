@@ -170,9 +170,13 @@ function tedeeResult<T>(json: unknown): T {
 export async function listTedeeLocks(): Promise<{ id: string; name: string; battery?: number | null; critical?: boolean; online?: boolean | null }[]> {
   const res = await tedeeFetch('/api/v37/my/lock')
   if (!res.ok) throw new Error(`tedee /my/lock HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const list = tedeeResult<{ id: number; name?: string; isConnected?: boolean; batteryLevel?: number; lockProperties?: { batteryLevel?: number; isCharging?: boolean; state?: number } }[]>(await res.json())
+  const list = tedeeResult<{ id: number; name?: string; isConnected?: boolean; batteryLevel?: number; deviceState?: { batteryLevel?: number; isCharging?: boolean }; lockProperties?: { batteryLevel?: number; isCharging?: boolean; state?: number } }[]>(await res.json())
   return (list ?? []).map((l) => {
-    const battery = typeof l.batteryLevel === 'number' ? l.batteryLevel
+    // §265-Kalibrierung (health-raw am echten River-Schloss): das Batterie-
+    // Feld liegt unter deviceState.batteryLevel — die anderen Kandidaten
+    // bleiben als Fallback für künftige API-Stände.
+    const battery = typeof l.deviceState?.batteryLevel === 'number' ? l.deviceState.batteryLevel
+      : typeof l.batteryLevel === 'number' ? l.batteryLevel
       : typeof l.lockProperties?.batteryLevel === 'number' ? l.lockProperties.batteryLevel : null
     return {
       id: String(l.id), name: l.name ?? `tedee ${l.id}`,
