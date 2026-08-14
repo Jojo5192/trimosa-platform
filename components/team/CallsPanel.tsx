@@ -169,7 +169,7 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                           <div key={i} style={{
                             alignSelf: t.who === 'bot' ? 'flex-end' : 'flex-start',
                             maxWidth: '88%',
-                            background: t.who === 'bot' ? 'var(--gold)' : '#E9E9EB',
+                            background: t.who === 'bot' ? '#12222E' : '#E9E9EB',
                             color: t.who === 'bot' ? '#fff' : '#1A1814',
                             borderRadius: 14, padding: '7px 11px', fontSize: 13, lineHeight: 1.45,
                           }}>

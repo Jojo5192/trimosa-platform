@@ -501,7 +501,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       {[{ id: '', name: 'Alle' }, ...persons, ...(hasUnassigned ? [{ id: 'none', name: 'Ohne Zuordnung' }] : [])].map((p) => (
         <button key={p.id || 'alle'} onClick={() => setPersonFilter(p.id)} style={{
           flexShrink: 0, padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-          background: personFilter === p.id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+          background: personFilter === p.id ? '#12222E' : 'rgba(120,120,128,0.12)',
           color: personFilter === p.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
         }}>{p.id && p.id !== 'none' ? `👤 ${p.name}` : p.name}</button>
       ))}
@@ -949,7 +949,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                         </button>
                                         <a href={b.url} target="_blank" rel="noreferrer" style={{
                                           flexShrink: 0, padding: '4px 11px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: '#fff',
-                                          background: 'var(--gold, #AE8D2D)', textDecoration: 'none',
+                                          background: '#12222E', textDecoration: 'none',
                                         }}>📄 PDF</a>
                                       </div>
                                       {pOpen && (
@@ -1012,7 +1012,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         <button onClick={() => autoCheck(m.key, expectedPayload)} disabled={!!invBusy} style={{
                           padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
                           fontSize: 12.5, fontWeight: 700, color: '#fff',
-                          background: 'var(--gold, #AE8D2D)', opacity: invBusy ? 0.5 : 1,
+                          background: '#12222E', opacity: invBusy ? 0.5 : 1,
                         }}>🔍 Rechnung aus Mail-Import prüfen ({personLabel})</button>
                       ) : (
                         <span style={{ fontSize: 11.5, color: '#9CA3AF' }}>Für die automatische Prüfung oben eine 👤 Reinigungskraft wählen.</span>
@@ -1163,7 +1163,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     background: '#fff', borderRadius: 14, padding: '11px 13px',
                     boxShadow: s.sameDayArrival
                       ? 'inset 0 0 0 1.5px #C2410C'
-                      : showName && isMine ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)' : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                      : showName && isMine ? 'inset 0 0 0 1.5px #12222E' : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🧹 {info?.title ?? 'Wohnung'}</span>

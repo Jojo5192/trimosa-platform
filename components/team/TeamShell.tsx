@@ -238,7 +238,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
                   über currentColor (aktiv Gold, inaktiv iOS-Grau) */}
               <span style={{
                 position: 'relative', display: 'inline-flex',
-                color: active ? 'var(--gold, #AE8D2D)' : '#999BA0',
+                color: active ? '#12222E' : '#999BA0',
                 transition: 'color .15s',
               }}>
                 <TabIcon name={t.id} />
@@ -253,7 +253,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
                 {t.id === 'offen' && offenCount > 0 && (
                   <span style={{
                     position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
-                    background: 'var(--gold, #AE8D2D)', color: '#fff',
+                    background: '#12222E', color: '#fff',
                     fontSize: 9.5, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
                     filter: 'none',
@@ -262,7 +262,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
               </span>
               <span style={{
                 fontSize: 10, fontWeight: active ? 700 : 500,
-                color: active ? 'var(--gold, #AE8D2D)' : '#8E8E93',
+                color: active ? '#12222E' : '#8E8E93',
               }}>{t.label}</span>
             </button>
           )

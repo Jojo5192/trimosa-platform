@@ -243,7 +243,7 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'var(--gold)',
+      background: '#12222E',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * .37, fontWeight: 700, color: '#fff', userSelect: 'none',
     }}>{ava(name)}</div>
@@ -1120,7 +1120,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   flexShrink: 0, padding: '5px 11px', borderRadius: 999, cursor: 'pointer',
                   fontSize: 11.5, fontWeight: 700,
                   border: activeF ? '1px solid transparent' : '1px solid #E5E1D6',
-                  background: activeF ? 'var(--gold)' : '#fff',
+                  background: activeF ? '#12222E' : '#fff',
                   color: activeF ? '#fff' : '#6B6455',
                 }}>
                   {f.label}{count > 0 && f.id !== 'alle' ? ` ${count}` : ''}
@@ -1218,8 +1218,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               padding: fullWidth ? '13px 16px' : '12px 14px',
               borderBottom: 'none',
               boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
-              borderLeft: isSel ? '3px solid var(--gold)' : '3px solid transparent',
-              background: isSel ? '#F7F3E9' : '#fff',
+              borderLeft: isSel ? '3px solid #12222E' : '3px solid transparent',
+              background: isSel ? '#F2F2F7' : '#fff',
               display: 'flex', alignItems: 'center', gap: 12,
               position: 'relative',
               transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
@@ -1234,7 +1234,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <span style={{
                     position: 'absolute', top: -2, right: -2,
                     minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9,
-                    background: 'var(--gold)', border: '2px solid #fff',
+                    background: '#12222E', border: '2px solid #fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10, fontWeight: 800, color: '#fff',
                   }}>
@@ -1374,7 +1374,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     title="Aufgabe aus diesem Chat erstellen"
                     style={{
                       width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                      background: taskOpen ? 'var(--gold)' : 'rgba(118,118,128,0.12)',
+                      background: taskOpen ? '#12222E' : 'rgba(118,118,128,0.12)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       fontSize: 13, transition: 'all .15s',
                       filter: taskOpen ? 'none' : 'grayscale(1) opacity(0.6)',
@@ -1439,7 +1439,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               )}
               <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 {active.listing_title}
-                {dateRange && <span style={{ color: 'var(--gold)', fontWeight: 600 }}> · {dateRange}</span>}
+                {dateRange && <span style={{ color: 'var(--gold-dark)', fontWeight: 600 }}> · {dateRange}</span>}
               </span>
               {team && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -1485,7 +1485,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 disabled={taskBusy || !taskTitle.trim()}
                 style={{
                   padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                  background: 'var(--gold)', color: '#fff',
+                  background: '#12222E', color: '#fff',
                   fontSize: 13, fontWeight: 700, opacity: taskBusy || !taskTitle.trim() ? 0.5 : 1,
                 }}
               >{taskBusy ? '…' : '✓ Aufgabe erstellen'}</button>
@@ -1838,7 +1838,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         padding: '10px 14px',
                         borderRadius,
                         background: isMe
-                          ? 'var(--gold)'
+                          ? '#12222E'
                           : '#E9E9EB',
                         color: isMe ? '#fff' : '#111',
                         fontSize: 15.5, lineHeight: 1.4,
@@ -1933,7 +1933,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
                 style={{
                   width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0,
-                  background: 'var(--gold)',
+                  background: '#12222E',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                 }}
               >
@@ -1955,7 +1955,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             />
             <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
               padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, whiteSpace: 'nowrap',
-              background: instruction.trim() && !refining ? 'var(--gold)' : '#EDE9E0',
+              background: instruction.trim() && !refining ? '#12222E' : '#EDE9E0',
               color: instruction.trim() && !refining ? '#fff' : '#BBB',
               fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
             }}>{refining ? '⏳' : '✨'}</button>
@@ -2117,13 +2117,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     <button onClick={() => {
                       setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + invForm.url)
                       setInvForm(f => ({ ...f, open: false }))
-                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: 'var(--gold)', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: '#12222E', color: '#fff', fontSize: 13, fontWeight: 800 }}>
                       📎 Link in Entwurf übernehmen
                     </button>
                   ) : (
                     <button onClick={submitRecipient} disabled={invForm.busy || !invForm.name.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer',
-                      background: invForm.name.trim() && !invForm.busy ? 'var(--gold)' : '#E5E1D6',
+                      background: invForm.name.trim() && !invForm.busy ? '#12222E' : '#E5E1D6',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{invForm.busy ? '⏳ Speichert…' : '💾 Übernehmen'}</button>
                   )}
@@ -2175,7 +2175,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   style={{
                     position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
                     borderRadius: '50%', border: 'none', padding: 0,
-                    background: busy || translating ? '#EDE9E0' : 'var(--gold)',
+                    background: busy || translating ? '#EDE9E0' : '#12222E',
                     color: '#fff', cursor: busy ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
@@ -2226,13 +2226,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         <div style={{ marginBottom: '12px', display: isApp ? 'none' : 'flex', alignItems: 'center', gap: '10px' }}>
           {isMobile && mobileView === 'chat' ? null : (
             <div>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: '#8E8E93', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
                 {t(uiLang, 'Kommunikation')}
               </p>
               <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111', margin: 0, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {t(uiLang, 'Nachrichten')}
                 {unread > 0 && (
-                  <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--gold)', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, background: '#12222E', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
                     {unread}
                   </span>
                 )}
@@ -2294,13 +2294,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           }}>
             {mobileView === 'list' ? (
               <>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#12222E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 <span style={{ flex: 1, fontWeight: 700, fontSize: 17, color: '#1A1814' }}>
                   {t(uiLang, 'Nachrichten')}
                   {unread > 0 && (
-                    <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
+                    <span style={{ marginLeft: 8, background: '#12222E', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
                       {unread}
                     </span>
                   )}
@@ -2358,13 +2358,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             padding: '0 18px', height: 52, flexShrink: 0,
             background: '#FFFFFF', borderBottom: '1px solid #EDEBE4',
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#12222E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: '#1A1814' }}>
               {t(uiLang, 'Nachrichten')}
               {unread > 0 && (
-                <span style={{ marginLeft: 8, background: 'var(--gold)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
+                <span style={{ marginLeft: 8, background: '#12222E', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
                   {unread}
                 </span>
               )}
@@ -2376,7 +2376,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#3D3A32', lineHeight: 1.2 }}>{partner(active)}</span>
                   <span style={{ fontSize: 10.5, color: '#999', lineHeight: 1.2 }}>
                     {active.listing_title}
-                    {dateRange && <> · <strong style={{ color: 'var(--gold)' }}>{dateRange}</strong></>}
+                    {dateRange && <> · <strong style={{ color: 'var(--gold-dark)' }}>{dateRange}</strong></>}
                   </span>
                 </div>
               </div>

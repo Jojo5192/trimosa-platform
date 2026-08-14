@@ -146,7 +146,7 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
   const chip = (aktiv: boolean) => ({
     flexShrink: 0, padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 700 as const,
     border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', whiteSpace: 'nowrap' as const,
-    background: aktiv ? 'var(--gold, #AE8D2D)' : '#EFEFF4',
+    background: aktiv ? '#12222E' : '#EFEFF4',
     color: aktiv ? '#fff' : '#4A463E',
   })
   const kpi = { flex: 1, minWidth: 0, borderRadius: 14, background: '#fff', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', padding: '11px 13px' }

@@ -96,7 +96,7 @@ const betragAusText = (s: string | null): number | null => {
 }
 
 const NAVY = '#12222E'
-const GOLD = '#B0912B'
+const GOLD = '#12222E' // §266e: Interaktions-Akzent = Navy (war Gold #B0912B)
 const GOLDL = '#E3C878'
 const INK = '#1A1814'
 const SUB = 'rgba(60,60,67,0.6)'
@@ -1105,7 +1105,7 @@ export default function BuchhaltungClient() {
                       <button key={k} onClick={() => { haptic(); setEigenF(t.id, t, { typ: f.typ === k ? '' : k }) }} style={{
                         fontSize: 13.5, fontWeight: 600, padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
                         border: f.typ === k ? `1.5px solid ${GOLD}` : `0.5px solid ${HAIRLINE}`,
-                        background: f.typ === k ? 'rgba(176,145,43,0.12)' : '#fff', color: f.typ === k ? GOLD : INK,
+                        background: f.typ === k ? 'rgba(18,34,46,0.08)' : '#fff', color: f.typ === k ? GOLD : INK,
                         WebkitTapHighlightColor: 'transparent',
                       }}>{lbl}</button>
                     ))}

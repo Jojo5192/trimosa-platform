@@ -427,7 +427,7 @@ export default function OffenPanel({ visible, onCount }: {
         <span style={{ fontSize: 28, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>Offen</span>
         {loaded && queue.length > 0 && (
           <span style={{
-            fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'var(--gold, #AE8D2D)',
+            fontSize: 12.5, fontWeight: 800, color: '#fff', background: '#12222E',
             borderRadius: 999, padding: '3px 10px',
           }}>{queue.length}</span>
         )}
@@ -556,7 +556,7 @@ export default function OffenPanel({ visible, onCount }: {
                     <div style={{
                       maxWidth: '85%', padding: '8px 12px', borderRadius: 15, fontSize: 13, lineHeight: 1.5,
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      background: m.ours ? 'var(--gold, #AE8D2D)' : '#E9E9EB',
+                      background: m.ours ? '#12222E' : '#E9E9EB',
                       color: m.ours ? '#fff' : '#111',
                     }}>
                       {m.text}
@@ -586,7 +586,7 @@ export default function OffenPanel({ visible, onCount }: {
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" onClick={send} disabled={sending || !draft.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
-                      background: draft.trim() ? 'var(--gold, #AE8D2D)' : '#E5E1D6',
+                      background: draft.trim() ? '#12222E' : '#E5E1D6',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{sending ? 'Sendet…' : current.guestLang && current.guestLang !== 'de' ? `Senden (übersetzt ${LANG_FLAGS[current.guestLang] ?? ''})` : 'Senden'}</button>
                     <button type="button" onClick={suggest} disabled={aiBusy} title="Neuen Vorschlag" style={{
@@ -604,7 +604,7 @@ export default function OffenPanel({ visible, onCount }: {
                       <button type="button" onClick={toggleRecording} className={recording ? 'rec-pulse' : undefined}
                         title={recording ? 'Aufnahme beenden' : 'Anweisung diktieren'} style={{
                         width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-                        background: recording ? '#DC2626' : 'var(--gold, #AE8D2D)',
+                        background: recording ? '#DC2626' : '#12222E',
                         color: '#fff', fontSize: 15,
                       }}>{recording ? '■' : '🎤'}</button>
                     )}
@@ -620,7 +620,7 @@ export default function OffenPanel({ visible, onCount }: {
                     />
                     <button type="button" onClick={() => refine()} disabled={refining || !instruction.trim()} title="Anweisung ausführen" style={{
                       width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-                      background: instruction.trim() && !refining ? 'var(--gold, #AE8D2D)' : '#EDE9E0',
+                      background: instruction.trim() && !refining ? '#12222E' : '#EDE9E0',
                       color: instruction.trim() && !refining ? '#fff' : '#BBB',
                       fontSize: 15, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
                     }}>{refining ? '⏳' : '✨'}</button>
@@ -647,7 +647,7 @@ export default function OffenPanel({ visible, onCount }: {
                     </select>
                     <button type="button" onClick={createTask} disabled={taskBusy || !taskTitle.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
-                      background: 'var(--gold, #AE8D2D)', color: '#fff', fontSize: 13, fontWeight: 800,
+                      background: '#12222E', color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{taskBusy ? 'Erstellt…' : '📋 Aufgabe anlegen'}</button>
                     <button type="button" onClick={() => setTaskOpen(false)} style={{
                       border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 13px', cursor: 'pointer',
@@ -665,7 +665,7 @@ export default function OffenPanel({ visible, onCount }: {
                 <button type="button" onClick={() => mark('phone')} style={actionBtn('#EAF1FE', '#1D5FD1')}>
                   <span style={{ fontSize: 18 }}>📞</span>Telefonisch geklärt
                 </button>
-                <button type="button" onClick={() => (composer ? send() : suggest())} style={actionBtn('var(--gold, #AE8D2D)')}>
+                <button type="button" onClick={() => (composer ? send() : suggest())} style={actionBtn('#12222E')}>
                   <span style={{ fontSize: 18 }}>✨</span>{composer ? 'Senden' : 'KI-Antwort'}
                 </button>
                 <button type="button" onClick={openTask} style={actionBtn('#F3EFFC', '#6D28D9')}>

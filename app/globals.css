@@ -40,8 +40,8 @@ html {
 
 /* iMessage-Sprechblasen-Schwänzchen (Intern-Chat): sitzt nur an der LETZTEN
    Bubble einer Absender-Folge. ::before = Blasenfarbe, ::after = Ausschnitt in
-   Feed-Hintergrundfarbe (#fff). Eigene Bubbles enden im Gold-Verlauf unten
-   auf var(--gold-dark) — der Tail nimmt genau diese Farbe. */
+   Feed-Hintergrundfarbe (#fff). Eigene Bubbles sind seit §266e flaches
+   Navy — der Tail nimmt genau diese Farbe. */
 .imsg-tail-out::before {
   content: '';
   position: absolute;
@@ -49,7 +49,7 @@ html {
   right: -6px;
   width: 14px;
   height: 15px;
-  background: var(--gold-dark, #8A7020);
+  background: #12222E;
   border-bottom-left-radius: 14px 12px;
 }
 .imsg-tail-out::after {

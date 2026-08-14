@@ -342,7 +342,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
               <button key={id || 'alle'} onClick={() => { personTouched.current = true; setPersonFilter(id) }} style={{
                 padding: '5px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0,
-                background: personFilter === id ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+                background: personFilter === id ? '#12222E' : 'rgba(120,120,128,0.12)',
                 color: personFilter === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
               }}>{id && id !== 'none' ? `👤 ${label}` : label}</button>
             ))}
@@ -466,7 +466,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               style={{
                 background: '#fff', borderRadius: 18, padding: '13px 15px',
                 boxShadow: t.id === highlightId
-                  ? 'inset 0 0 0 2px var(--gold, #AE8D2D), 0 0 0 4px rgba(174,141,45,0.25)'
+                  ? 'inset 0 0 0 2px #12222E, 0 0 0 4px rgba(18,34,46,0.18)'
                   : overdue ? 'inset 0 0 0 1.5px #FF3B30, 0 1px 3px rgba(0,0,0,0.05)'
                   : 'inset 0 0 0 0.5px rgba(60,60,67,0.1), 0 1px 3px rgba(0,0,0,0.05)',
                 cursor: manage && t.editable !== false ? 'pointer' : 'default',
@@ -514,7 +514,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 {t.assignee_id && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: '#374151' }}>
                     <span style={{
-                      width: 20, height: 20, borderRadius: '50%', background: 'var(--gold, #AE8D2D)',
+                      width: 20, height: 20, borderRadius: '50%', background: '#12222E',
                       color: '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     }}>{initials(personName.get(t.assignee_id) ?? '?')}</span>
                     {(personName.get(t.assignee_id) ?? '').split(/\s+/)[0]}
@@ -716,7 +716,7 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
           style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid #E0DDD5', fontSize: 13, background: '#fff' }} />
         <button onClick={send} disabled={sending || !text.trim()} style={{
           width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: text.trim() ? 'var(--gold, #AE8D2D)' : '#D1D5DB',
+          background: text.trim() ? '#12222E' : '#D1D5DB',
           color: '#fff', fontSize: 15, fontWeight: 700, cursor: text.trim() ? 'pointer' : 'default',
         }}>↑</button>
       </div>
@@ -969,7 +969,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
 
           <button onClick={save} disabled={saving} style={{
             padding: '13px 0', borderRadius: 999, border: 'none', fontSize: 15, fontWeight: 700,
-            background: 'var(--gold, #AE8D2D)', color: '#fff',
+            background: '#12222E', color: '#fff',
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
           }}>{saving ? 'Speichern…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
 
@@ -1184,8 +1184,8 @@ function CallCard({ task, onDone, onError }: {
         )}
         <button onClick={toggleAi} style={{
           ...goldBtn,
-          background: open ? 'var(--gold, #AE8D2D)' : 'rgba(174,141,45,0.14)',
-          color: open ? '#fff' : 'var(--gold-dark, #8A7020)',
+          background: open ? '#12222E' : 'rgba(18,34,46,0.08)',
+          color: open ? '#fff' : '#12222E',
         }}>✨ Lösungen</button>
         {phone && (
           <button onClick={openCall} style={{
@@ -1207,7 +1207,7 @@ function CallCard({ task, onDone, onError }: {
                 <div key={i} style={{
                   borderRadius: 11, padding: '9px 11px', cursor: 'pointer',
                   background: selected === i ? 'rgba(174,141,45,0.1)' : '#FAFAFA',
-                  boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)' : 'inset 0 0 0 1px #ECECEC',
+                  boxShadow: selected === i ? 'inset 0 0 0 1.5px #12222E' : 'inset 0 0 0 1px #ECECEC',
                 }} onClick={() => setSelected(selected === i ? null : i)}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <span style={{ fontSize: 13, color: '#111', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
@@ -1215,7 +1215,7 @@ function CallCard({ task, onDone, onError }: {
                     </span>
                     <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt Claude darauf?" style={{
                       width: 24, height: 24, borderRadius: 999, border: 'none', flexShrink: 0, fontSize: 12, fontWeight: 800,
-                      background: infoOpen === i ? 'var(--gold, #AE8D2D)' : 'rgba(120,120,128,0.12)',
+                      background: infoOpen === i ? '#12222E' : 'rgba(120,120,128,0.12)',
                       color: infoOpen === i ? '#fff' : '#6B7280', cursor: 'pointer',
                     }}>i</button>
                   </div>
@@ -1255,7 +1255,7 @@ function CallCard({ task, onDone, onError }: {
               />
               <button onClick={() => instruction.trim() && fetchOptions(instruction.trim())} disabled={loadingAi} style={{
                 width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
-                background: 'var(--gold, #AE8D2D)', color: '#fff', cursor: 'pointer', fontSize: 15,
+                background: '#12222E', color: '#fff', cursor: 'pointer', fontSize: 15,
               }}>✨</button>
             </div>
           )}

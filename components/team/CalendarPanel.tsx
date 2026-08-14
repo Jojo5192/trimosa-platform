@@ -419,7 +419,7 @@ export default function CalendarPanel() {
                         flexShrink: 0, width: 62, padding: '9px 4px 8px', borderRadius: 14, border: 'none', cursor: 'pointer',
                         background: sel ? '#1A1814' : '#fff',
                         boxShadow: sel ? 'none' : iso === today
-                          ? 'inset 0 0 0 1.5px var(--gold, #AE8D2D)'
+                          ? 'inset 0 0 0 1.5px #12222E'
                           : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
                       }}>
                         <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: sel ? 'rgba(255,255,255,0.6)' : '#8E8E93' }}>
