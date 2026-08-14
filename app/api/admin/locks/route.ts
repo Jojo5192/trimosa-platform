@@ -107,6 +107,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // §265-Kalibrierung: rohe Provider-Antworten (Nuki state je Schloss,
+  // tedee /my/lock UND /my/lock/sync, TTLock-Liste) — kalibriert die
+  // Batterie-Felder und beweist, ob die %-Werte echt aus der API kommen.
+  if (body.action === 'health-raw') {
+    const { lockHealthRawProbe } = await import('@/lib/locks')
+    try {
+      return NextResponse.json(await lockHealthRawProbe())
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    }
+  }
+
   if (body.action === 'guest-code-verify') {
     const { verifyGuestCodes } = await import('@/lib/locks')
     try {

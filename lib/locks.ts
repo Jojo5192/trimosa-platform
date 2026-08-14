@@ -943,6 +943,47 @@ export async function listLockHealth(): Promise<LockHealthMap> {
 }
 
 /**
+ * §265-Kalibrierung: ROHE Provider-Antworten für die Gesundheits-Felder —
+ * zeigt je Nuki-Schloss das ungefilterte state-Objekt (beweist, ob die
+ * batteryCharge-Werte echt sind) und für tedee BEIDE Endpoint-Kandidaten
+ * (/my/lock Voll-DTO vs. /my/lock/sync Leichtform mit lockProperties),
+ * damit das Batterie-Feld am echten Gerät kalibriert werden kann.
+ */
+export async function lockHealthRawProbe(): Promise<{
+  nuki: unknown
+  tedeeLock: unknown
+  tedeeSync: unknown
+  ttlock: unknown
+}> {
+  const out: { nuki: unknown; tedeeLock: unknown; tedeeSync: unknown; ttlock: unknown } = {
+    nuki: null, tedeeLock: null, tedeeSync: null, ttlock: null,
+  }
+  if (nukiConfigured()) {
+    try {
+      const res = await nukiFetch('/smartlock')
+      const list = (await res.json()) as { name?: string; smartlockId?: number; serverState?: unknown; state?: unknown }[]
+      out.nuki = (list ?? []).map((l) => ({ name: l.name, smartlockId: l.smartlockId, serverState: l.serverState, state: l.state }))
+    } catch (e) { out.nuki = `Fehler: ${String(e).slice(0, 200)}` }
+  }
+  if (tedeeConfigured()) {
+    try {
+      const res = await tedeeFetch('/api/v37/my/lock')
+      out.tedeeLock = await res.json()
+    } catch (e) { out.tedeeLock = `Fehler: ${String(e).slice(0, 200)}` }
+    try {
+      const res = await tedeeFetch('/api/v37/my/lock/sync')
+      out.tedeeSync = await res.json()
+    } catch (e) { out.tedeeSync = `Fehler: ${String(e).slice(0, 200)}` }
+  }
+  if (ttlockConfigured()) {
+    try {
+      out.ttlock = await ttlockCall('/v3/lock/list', { pageNo: 1, pageSize: 100 })
+    } catch (e) { out.ttlock = `Fehler: ${String(e).slice(0, 200)}` }
+  }
+  return out
+}
+
+/**
  * Täglicher Batterie-Wächter (läuft im 3:40-Locks-Cron): schwache Schlösser
  * (≤20 % oder Hersteller-Kritisch-Flag) lösen einen Push an die
  * REINIGUNGS-VERANTWORTLICHE der Wohnung aus (sie ist ohnehin vor Ort und
