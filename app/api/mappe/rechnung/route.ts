@@ -103,7 +103,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Noch keine Rechnung → Empfänger speichern (fließt in die Erstellung ein)
-  await saveSevRecipient(String(b.id), recipient)
+  try {
+    await saveSevRecipient(String(b.id), recipient)
+  } catch (e) {
+    console.error('[mappe-rechnung] speichern fehlgeschlagen:', e)
+    return NextResponse.json({ error: 'Das Speichern hat gerade nicht geklappt — bitte später erneut versuchen oder kurz über den Chat melden.' }, { status: 502 })
+  }
   await sendPushToTeam(
     '🧾 Gast hat Rechnungsempfänger festgelegt',
     `${gast} · ${wohnung} → „${recipient.name}" — wird bei der Rechnungs-Erstellung verwendet.`,
