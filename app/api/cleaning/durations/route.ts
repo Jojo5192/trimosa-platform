@@ -111,6 +111,13 @@ export async function GET(req: NextRequest) {
       slotDate: r.slot_date, person: r.person_name, durationMin: r.duration_min,
       startedAt: r.started_at, confirmedAt: r.confirmed_at,
     })),
+    // §266b: ALLE gemessenen Einsätze chronologisch (alt → neu) — der
+    // Wohnungs-Filter im Client rechnet Median/Ø/Trend/Sparkline daraus.
+    einsaetze: asc.map((r) => ({
+      title: titles.get(r.listing_id) ?? 'Wohnung',
+      slotDate: r.slot_date, person: r.person_name, durationMin: r.duration_min,
+      startedAt: r.started_at, confirmedAt: r.confirmed_at,
+    })),
   }, NO_STORE)
 }
 
