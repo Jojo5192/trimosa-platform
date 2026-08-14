@@ -335,6 +335,6 @@ export async function POST(request: Request) {
     persons: persons > 0 ? persons : null,
     adults: booking.adults,
     children: booking.children,
-    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Personenzahl und Zeitraum stehen DIREKT in dieser Antwort — nutze sie und sag nie, du hättest keinen Zugriff auf Buchungsdetails. WOCHENTAGE NIEMALS selbst berechnen: nenne Datumsangaben ausschliesslich so, wie sie in check_in_text / check_out_text stehen. Türcodes nur über request=tuercode.',
+    hint: 'Verifiziert — buchungsbezogene Fragen dürfen jetzt beantwortet werden. Personenzahl und Zeitraum stehen DIREKT in dieser Antwort — nutze sie und sag nie, du hättest keinen Zugriff auf Buchungsdetails. WOCHENTAGE NIEMALS selbst berechnen: nenne Datumsangaben ausschliesslich so, wie sie in check_in_text / check_out_text stehen. Türcodes nur über request=tuercode. WEITERGABE-REGEL (§265-QA): Äußert der Anrufer einen Wunsch, den das TEAM entscheiden muss (z. B. früherer Check-in, Sonderwunsch, Änderung), dann sage NIEMALS zu, dass du etwas weitergibst oder das Team sich meldet, BEVOR nachricht_aufnehmen wirklich gelaufen ist — nimm die Nachricht auf und bestätige erst danach.',
   })
 }
