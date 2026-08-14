@@ -87,8 +87,8 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang
       onMouseLeave={() => onHover?.(null)}
       style={{
         display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff',
-        border: isHovered ? '1px solid var(--gold)' : '1px solid #EAE7E0',
-        boxShadow: isHovered ? '0 0 0 2px var(--gold), 0 14px 32px rgba(174,141,45,0.35)' : 'none',
+        border: isHovered ? '1px solid #12222E' : '1px solid #EAE7E0',
+        boxShadow: isHovered ? '0 0 0 2px #12222E, 0 14px 32px rgba(18,34,46,0.25)' : 'none',
         transform: isHovered ? 'translateY(-4px)' : 'none',
         transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
       }}
@@ -266,7 +266,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
       out.push(
         <div key="combo-panel" style={{
           gridColumn: '1 / -1', borderRadius: '18px', padding: '16px 18px',
-          background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+          background: '#fff', border: '1px solid rgba(60,60,67,0.12)', borderLeft: '3px solid var(--gold)',
           boxShadow: '0 6px 24px rgba(174,141,45,0.14)',
         }}>
           <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 4px' }}>
@@ -287,7 +287,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
                     {c.image
                       ? /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={c.image} alt="" style={{ width: '34px', height: '34px', borderRadius: '8px', objectFit: 'cover' }} />
-                      : <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'var(--gold)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏠</span>}
+                      : <span style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#12222E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏠</span>}
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#111' }}>{c.title}</span>
                     <span style={{ fontSize: '11.5px', color: '#8A8065' }}>{c.maxGuests} {t(lang, 'Gäste')}</span>
                   </Link>
@@ -335,7 +335,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
     }}>
      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
       <h1 style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.2 }}>
-        {sorted.length} {t(lang, 'Treffer')}{searchQuery ? <> · <span style={{ color: 'var(--gold)' }}>„{searchQuery}"</span></> : ''}
+        {sorted.length} {t(lang, 'Treffer')}{searchQuery ? <> · <span style={{ color: 'var(--gold-dark)' }}>„{searchQuery}"</span></> : ''}
         {searchGuests ? ` · ${searchGuests}+ ${t(lang, 'Gäste')}` : ''}
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>

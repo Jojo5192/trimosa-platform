@@ -559,8 +559,8 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           {/* Kontaktdaten sichtbar im Footer (Pascal, 26.7.) */}
           <div style={{ width: '100%', display: 'flex', gap: '22px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingBottom: '14px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>
-            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
-            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
+            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
+            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>

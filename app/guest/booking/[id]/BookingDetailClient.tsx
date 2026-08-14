@@ -149,7 +149,7 @@ export default function BookingDetailClient({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverImage} alt="" style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '20px', marginBottom: '20px' }} />
       ) : (
-        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
+        <div style={{ width: '100%', height: '140px', borderRadius: '20px', background: '#12222E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', marginBottom: '20px' }}>🏠</div>
       )}
 
       {/* Title + status */}
@@ -165,7 +165,7 @@ export default function BookingDetailClient({
 
       {/* Details card */}
       <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E5E5EA', padding: '20px 24px', marginBottom: '16px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 16px' }}>{t(uiLang, 'Buchungsdetails')}</p>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: '#8E8E93', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 16px' }}>{t(uiLang, 'Buchungsdetails')}</p>
 
         {[
           { label: 'Check-in',    value: formatDate(booking.check_in, uiLang) },
@@ -186,7 +186,7 @@ export default function BookingDetailClient({
       {/* Cancellation policy info */}
       {!cancelled && booking.status !== 'cancelled' && (
         <div style={{ background: '#FFF9EC', borderRadius: '16px', border: '1px solid #F0E5C0', padding: '14px 18px', marginBottom: '16px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>{t(uiLang, 'Stornierungsbedingungen')}</p>
+          <p style={{ fontSize: '11px', fontWeight: 700, color: '#8E8E93', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>{t(uiLang, 'Stornierungsbedingungen')}</p>
           <p style={{ fontSize: '12px', color: 'var(--gold-dark)', margin: 0, lineHeight: 1.6 }}>
             🛡 {buildPolicyText(listing, uiLang)}
           </p>
@@ -221,7 +221,7 @@ export default function BookingDetailClient({
 
         {invoiceUrl && (
           <a href={invoiceUrl} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', padding: '14px', borderRadius: '14px', border: '1.5px solid var(--gold)', background: '#FFFDF6', color: 'var(--gold-dark)', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
+            style={{ display: 'block', padding: '14px', borderRadius: '14px', border: '1.5px solid #12222E', background: '#FFFDF6', color: 'var(--gold-dark)', fontWeight: 700, fontSize: '14px', textDecoration: 'none', textAlign: 'center' }}>
             🧾 {t(uiLang, 'Rechnung ansehen (PDF)')}
           </a>
         )}

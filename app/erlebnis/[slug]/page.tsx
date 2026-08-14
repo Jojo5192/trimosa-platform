@@ -184,7 +184,7 @@ export default async function ErlebnisPage({ params, searchParams }: { params: P
         {poiEmp.length > 0 && (
           <div style={{
             maxWidth: '720px', margin: '24px 0 8px', borderRadius: '18px', padding: '18px 20px 16px',
-            background: 'linear-gradient(135deg, #FDF9EE, #FAF3DD)', border: '1.5px solid var(--gold)',
+            background: '#fff', border: '1px solid rgba(60,60,67,0.12)', borderLeft: '3px solid var(--gold)',
             boxShadow: '0 6px 24px rgba(174,141,45,0.14)',
           }}>
             <p style={{ fontSize: '11px', fontWeight: 800, color: 'var(--gold-dark)', letterSpacing: '0.09em', textTransform: 'uppercase', margin: '0 0 12px' }}>
@@ -227,7 +227,7 @@ export default async function ErlebnisPage({ params, searchParams }: { params: P
                 const empRaw = empfehlungen.tour[t.embedUrl]
                 const emp = empRaw ? empRaw.map((e) => ({ ...e, comment: TE(e.comment) })) : undefined
                 return (
-                  <div key={t.embedUrl} style={emp ? { border: '1.5px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
+                  <div key={t.embedUrl} style={emp ? { border: '1px solid rgba(60,60,67,0.12)', borderLeft: '3px solid var(--gold)', borderRadius: '18px', padding: '10px', background: '#FDFBF4', boxShadow: '0 4px 20px rgba(174,141,45,0.14)' } : undefined}>
                     {emp && <div style={{ margin: '2px 2px 10px' }}><EmpfehlungBubble empfehlungen={emp} lang={lang} /></div>}
                     <KomootEmbed title={T(t.title)} embedUrl={t.embedUrl} lang={lang} />
                   </div>
@@ -306,8 +306,8 @@ export default async function ErlebnisPage({ params, searchParams }: { params: P
         <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           {/* Kontaktdaten sichtbar im Footer (Pascal, 26.7.) */}
           <div style={{ width: '100%', display: 'flex', gap: '22px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingBottom: '14px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>
-            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
-            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
+            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
+            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>

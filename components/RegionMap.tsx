@@ -357,7 +357,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                       <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
                         display: 'block', textDecoration: 'none', borderRadius: '14px',
                         background: '#fff', overflow: 'hidden',
-                        border: emp ? '1.5px solid var(--gold)' : '1px solid #EAE7E0',
+                        border: emp ? '1px solid rgba(60,60,67,0.12)' : '1px solid #EAE7E0',
                         boxShadow: emp ? '0 4px 20px rgba(174,141,45,0.18)' : 'none',
                       }}>
                         <div style={{ position: 'relative', aspectRatio: '16/10', background: `linear-gradient(135deg, ${c}1F, ${c}0A)` }}>
@@ -383,7 +383,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                   <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px' }}>
                     <button type="button" onClick={() => setShowAllPois(!showAllPois)} style={{
                       padding: '10px 24px', borderRadius: '999px', cursor: 'pointer',
-                      border: '1.5px solid var(--gold)', background: '#fff',
+                      border: '1px solid #D8D4CC', background: '#fff',
                       color: 'var(--gold-dark)', fontSize: '13px', fontWeight: 700,
                     }}>
                       {showAllPois ? `− ${t(lang, 'Weniger anzeigen')}` : t(lang, 'Alle {n} Ausflugsziele anzeigen', { n: filtered.length })}

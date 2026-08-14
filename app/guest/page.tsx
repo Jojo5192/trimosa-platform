@@ -84,7 +84,7 @@ export default async function GuestPage() {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={firstImage} alt="" style={{ width: '120px', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
-          <div style={{ width: '120px', flexShrink: 0, background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
+          <div style={{ width: '120px', flexShrink: 0, background: '#12222E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🏠</div>
         )}
         <div style={{ flex: 1, padding: '16px 20px', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
@@ -100,7 +100,7 @@ export default async function GuestPage() {
             {formatDate(booking.check_in as string, lang)} – {formatDate(booking.check_out as string, lang)}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--gold)', fontWeight: 600 }}>
+            <span style={{ fontSize: '11px', color: 'var(--gold-dark)', fontWeight: 600 }}>
               {t(lang, 'Details & Stornierung')} →
             </span>
             {tripStatus(booking.check_in as string, booking.check_out as string) === 'past' && (booking.status === 'confirmed' || booking.status === 'completed') && (
@@ -149,7 +149,7 @@ export default async function GuestPage() {
     <div style={{ maxWidth: '700px', margin: '0 auto', padding: '32px 20px 80px' }}>
       {/* Header */}
       <div style={{ marginBottom: '28px' }}>
-        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>{t(lang, 'Mein Bereich')}</p>
+        <p style={{ fontSize: '11px', fontWeight: 700, color: '#8E8E93', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>{t(lang, 'Mein Bereich')}</p>
         <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111', margin: 0 }}>
           {t(lang, 'Hallo')}, {user.user_metadata?.name?.split(' ')[0] || '👋'}! 👋
         </h1>

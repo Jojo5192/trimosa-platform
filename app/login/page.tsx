@@ -49,7 +49,7 @@ export default function LoginPage() {
 
       {/* Left: Decorative */}
       <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-16"
-        style={{ background: 'linear-gradient(145deg, var(--gold) 0%, var(--gold-dark) 60%, var(--gold-dark) 100%)' }}>
+        style={{ background: '#12222E' }}>
         <div className="text-center">
           <Image src="/logo.png" alt="TRIMOSA" width={260} height={58}
             className="h-14 w-auto object-contain brightness-0 invert opacity-90 mb-8" />

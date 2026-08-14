@@ -578,9 +578,9 @@ export default async function Home({
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {[
-              { n: '01', title: t(lang, 'Entdecken'), desc: t(lang, 'Stöbere durch handverlesene Premium-Apartments in den schönsten Regionen.'), accent: '#0C9AAB' },
-              { n: '02', title: t(lang, 'Buchen'), desc: t(lang, 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.'), accent: 'var(--gold)' },
-              { n: '03', title: t(lang, 'Ankommen'), desc: t(lang, 'Schlüssel rein, Koffer ab — und einfach da sein. Kein Schnickschnack, kein Stress.'), accent: '#4A8A60' },
+              { n: '01', title: t(lang, 'Entdecken'), desc: t(lang, 'Stöbere durch handverlesene Premium-Apartments in den schönsten Regionen.'), accent: '#8E8E93' },
+              { n: '02', title: t(lang, 'Buchen'), desc: t(lang, 'Sichere dir dein Wunschdatum — direkt, ohne Umwege.'), accent: '#8E8E93' },
+              { n: '03', title: t(lang, 'Ankommen'), desc: t(lang, 'Schlüssel rein, Koffer ab — und einfach da sein. Kein Schnickschnack, kein Stress.'), accent: '#8E8E93' },
             ].map((item) => (
               <div key={item.n} style={{ padding: '24px', borderRadius: '16px', border: '1px solid #EEEBE4', backgroundColor: '#FAFAF8' }}>
                 <div style={{ fontSize: '11px', fontWeight: 800, color: item.accent, letterSpacing: '0.1em', marginBottom: '12px' }}>
@@ -656,8 +656,8 @@ export default async function Home({
         <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           {/* Kontaktdaten sichtbar im Footer (Pascal, 26.7.) */}
           <div style={{ width: '100%', display: 'flex', gap: '22px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingBottom: '14px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>
-            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
-            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
+            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
+            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
           </div>
           {/* §226: interne Verlinkung der kommerziellen Standort-Landingpages */}
           <div style={{ width: '100%', display: 'flex', gap: '18px', flexWrap: 'wrap', justifyContent: 'center', paddingBottom: '12px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>

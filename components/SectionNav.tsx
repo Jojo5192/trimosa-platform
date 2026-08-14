@@ -51,7 +51,7 @@ export default function SectionNav({ sections }: { sections: NavSection[] }) {
             flexShrink: 0, padding: '8px 15px', borderRadius: '999px', textDecoration: 'none',
             fontSize: '12.5px', fontWeight: 700,
             color: active ? '#fff' : '#3A3427',
-            background: active ? 'var(--gold)' : '#fff',
+            background: active ? '#12222E' : '#fff',
             border: active ? '1px solid transparent' : '1px solid #E5E1D6',
             boxShadow: active ? '0 3px 12px rgba(168,136,42,0.35)' : '0 2px 8px rgba(0,0,0,0.05)',
             transition: 'all 0.2s',

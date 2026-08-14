@@ -144,7 +144,7 @@ export default function RegisterPage() {
 
       {/* Left: Deko */}
       <div className="hidden lg:flex lg:w-2/5 items-center justify-center p-16 sticky top-0 h-screen"
-        style={{ background: 'linear-gradient(145deg, var(--gold) 0%, var(--gold-dark) 60%, var(--gold-dark) 100%)' }}>
+        style={{ background: '#12222E' }}>
         <div className="text-center">
           <Image src="/logo.png" alt="TRIMOSA" width={240} height={54}
             className="h-12 w-auto object-contain brightness-0 invert opacity-90 mb-8" />

@@ -603,6 +603,24 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   /* ── Chat-Liste ── */
   const List = (
     <div ref={internListRef} style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: isMobile ? '14px 16px 10px' : '14px 14px 10px', flexShrink: 0,
+      }}>
+        <span style={{ fontSize: isMobile ? 28 : 22, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>
+          Intern
+          {chats.length > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#8E8E93', marginLeft: 8, letterSpacing: 0 }}>{chats.length} {chats.length === 1 ? 'Gruppe' : 'Gruppen'}</span>
+          )}
+        </span>
+        {canCreate && (
+          <button onClick={() => { haptic(); setShowCreate(true) }} aria-label="Neue Gruppe" style={{
+            width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer',
+            background: '#12222E', color: '#fff', fontSize: 20, fontWeight: 400, lineHeight: 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent',
+          }}>+</button>
+        )}
+      </div>
       <PullHint pull={internPtr.pull} busy={internPtr.busy} />
       {loading && <SkeletonRows kind="chat" count={6} />}
       {error && !loading && (
@@ -615,14 +633,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           <div style={{ fontSize: 38, marginBottom: 10 }}>💼</div>
           <div style={{ fontSize: 14.5, fontWeight: 700, color: '#555' }}>Noch keine internen Gruppen</div>
           <div style={{ fontSize: 12.5, color: '#AAA', marginTop: 6, lineHeight: 1.5 }}>
-            {canCreate ? 'Lege unten die erste Gruppe an — z. B. „Geschäftsführung" oder „Handwerker".' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'}
+            {canCreate ? 'Lege oben mit + die erste Gruppe an — z. B. „Geschäftsführung" oder „Handwerker".' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'}
           </div>
         </div>
       )}
       {chats.map((c) => (
         <button key={c.id} onClick={() => openChat(c)} style={{
           display: 'flex', alignItems: 'center', gap: 11, padding: '11px 14px', border: 'none', textAlign: 'left',
-          background: !isMobile && active?.id === c.id ? 'rgba(174,141,45,0.08)' : '#fff',
+          background: !isMobile && active?.id === c.id ? '#F2F2F7' : '#fff',
           boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.12)`, cursor: 'pointer',
         }}>
           <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, flexShrink: 0 }}>{c.emoji}</div>
@@ -640,12 +658,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           )}
         </button>
       ))}
-      {canCreate && !loading && (
-        <button onClick={() => setShowCreate(true)} style={{
-          margin: 14, padding: '11px 0', borderRadius: 12, border: '2px dashed #D8D2C4', background: '#FCFBF7',
-          color: '#8A7020', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
-        }}>+ Neue Gruppe</button>
-      )}
+      {/* §266e: Neue-Gruppe-Aktion lebt jetzt als +-Kreis im Header */}
     </div>
   )
 

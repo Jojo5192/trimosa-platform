@@ -108,7 +108,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px 20px 60px' }}>
 
         {/* ── Hero ── */}
-        <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px', textAlign: 'center' }}>
+        <p style={{ fontSize: '12px', fontWeight: 700, color: '#8E8E93', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px', textAlign: 'center' }}>
           {T('Über TRIMOSA')}
         </p>
         <h1 style={{ fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 800, color: '#1A1400', letterSpacing: '-0.02em', margin: '0 auto 14px', lineHeight: 1.15, textAlign: 'center', maxWidth: '640px' }}>
@@ -208,7 +208,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
             <div key={f.name} style={{ textAlign: 'center' }}>
               <div style={{
                 position: 'relative', overflow: 'hidden', width: '84px', height: '84px', borderRadius: '50%', margin: '0 auto 10px',
-                background: 'var(--gold)',
+                background: '#12222E',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '0.02em',
                 boxShadow: '0 6px 18px rgba(174,141,45,0.3)',
@@ -261,8 +261,8 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
         <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           {/* Kontaktdaten sichtbar im Footer (Pascal, 26.7.) */}
           <div style={{ width: '100%', display: 'flex', gap: '22px', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', paddingBottom: '14px', marginBottom: '4px', borderBottom: '1px solid #F1EEE7' }}>
-            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
-            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
+            <a href="tel:+4965143614036" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>📞 +49 651 43614036</a>
+            <a href="mailto:mail@trimosa.de" style={{ fontSize: '13.5px', color: 'var(--gold-dark)', textDecoration: 'none', fontWeight: 600 }}>✉️ mail@trimosa.de</a>
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
