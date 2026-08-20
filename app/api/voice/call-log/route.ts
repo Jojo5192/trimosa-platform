@@ -32,6 +32,25 @@ function verifySignature(rawBody: string, header: string | null, secret: string)
 
 type Turn = { role?: string; message?: string | null }
 
+/** §227/§269: Hat take-message in den letzten 45 Min eine Spur hinterlassen
+ *  (☎️-Nachricht im Buchungs-Thread oder ☎️-Aufgabe)? supabase-js wirft
+ *  nicht — bei DB-Fehler ist data null → false → das Netz greift lieber
+ *  einmal zu viel (Duplikat-Aufgabe) als einen Rückruf zu verpassen. */
+async function hasTakeMessageSpur(bookingId: string | null): Promise<boolean> {
+  const since = new Date(Date.now() - 45 * 60000).toISOString()
+  if (bookingId) {
+    const { data: m } = await supabaseAdmin
+      .from('messages').select('id')
+      .eq('booking_id', bookingId).gte('created_at', since)
+      .ilike('content', '%Telefonnachricht%').limit(1)
+    if (m?.length) return true
+  }
+  const { data: t } = await supabaseAdmin
+    .from('tasks').select('id')
+    .eq('source', 'anruf').gte('created_at', since).limit(1)
+  return !!t?.length
+}
+
 export async function POST(request: Request) {
   const secret = process.env.ELEVENLABS_WEBHOOK_SECRET
   if (!secret) return Response.json({ error: 'ELEVENLABS_WEBHOOK_SECRET nicht konfiguriert' }, { status: 503 })
@@ -78,14 +97,18 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, note: 'archiviert (zu kurz)' })
   }
 
-  // Haiku: Zusammenfassung + Klassifikation + Zuordnungs-Daten in EINEM Call
+  // Haiku: Zusammenfassung + Klassifikation + Zuordnungs-Daten in EINEM Call.
+  // §269: notfall = NUR echte Notfälle; Zusagen („Team meldet sich") laufen
+  // über das eigene Feld rueckruf_zugesagt — die Vermischung in EINEM Boolean
+  // hat beim Pflasterfuchs-Anruf (18.8.) beide Netze verfehlen lassen.
   let info: {
     zusammenfassung?: string; gast_anfrage?: boolean; notfall?: boolean
+    rueckruf_zugesagt?: boolean; rueckrufnummer?: string | null
     wohnung?: string | null; anreise?: string | null; abreise?: string | null; vorname?: string | null
   } = {}
   try {
     const rawOut = await askClaude(
-      'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "notfall": true|false (true = Gast steht vor der Tür und kommt nicht in die Wohnung, Code funktioniert nicht, Wasserschaden/Strom/Verletzung, ODER die Assistentin hat versprochen, das Team sofort zu informieren, ODER das Problem war am Gesprächsende ersichtlich NICHT gelöst), "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte.',
+      'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "notfall": true|false (true = Gast steht vor der Tür und kommt nicht in die Wohnung, Code funktioniert nicht, Wasserschaden/Strom/Verletzung, ODER das Problem war am Gesprächsende ersichtlich NICHT gelöst), "rueckruf_zugesagt": true|false (true = die Assistentin hat zugesagt, eine Nachricht/Meldung ans Team weiterzugeben, einen Rückruf zu veranlassen oder dass sich das Team beim Anrufer meldet), "rueckrufnummer": "im Gespräch vom Anrufer GENANNTE Rückrufnummer oder null", "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte.',
       transcript,
       1000,
       FAST_MODEL,
@@ -192,21 +215,7 @@ export async function POST(request: Request) {
   // SERVER die Bereitschaft — unabhängig davon, was das LLM getan hat.
   let safetyNet = false
   if (info.notfall === true) {
-    const since = new Date(Date.now() - 45 * 60000).toISOString()
-    let escalated = false
-    if (booking) {
-      const { data: m } = await supabaseAdmin
-        .from('messages').select('id')
-        .eq('booking_id', booking.id).gte('created_at', since)
-        .ilike('content', '%Telefonnachricht%').limit(1)
-      escalated = !!m?.length
-    }
-    if (!escalated) {
-      const { data: t } = await supabaseAdmin
-        .from('tasks').select('id')
-        .eq('source', 'anruf').gte('created_at', since).limit(1)
-      escalated = !!t?.length
-    }
+    const escalated = await hasTakeMessageSpur(booking?.id ?? null)
     if (!escalated) {
       safetyNet = true
       console.warn('[call-log] 🚨 Notfall OHNE take-message — Sicherheitsnetz-Push:', convId)
@@ -219,6 +228,27 @@ export async function POST(request: Request) {
     }
   }
 
+  // ☎️ §269 RÜCKRUF-ZUSAGEN-NETZ (Fall Pflasterfuchs 18.8.): Der Bot sagte
+  // „Ich habe deine Nachricht notiert, das Team meldet sich" — rief
+  // nachricht_aufnehmen aber NIE auf. Kein Task, kein Push, Rückruf
+  // verpasst. Auch OHNE Notfall gilt ab jetzt: Zusage ohne take-message-
+  // Spur → der SERVER legt die Meldung selbst an (Task unten über
+  // `vorfaelle`) und alarmiert die Bereitschaft. Modellunabhängig.
+  let promiseNet = false
+  if (!safetyNet && info.rueckruf_zugesagt === true) {
+    const spur = await hasTakeMessageSpur(booking?.id ?? null)
+    if (!spur) {
+      promiseNet = true
+      console.warn('[call-log] ☎️ Rückruf zugesagt OHNE take-message — Zusagen-Netz greift:', convId)
+      vorfaelle.push('☎️ Der Bot hat dem Anrufer eine Weitergabe ans Team bzw. einen Rückruf ZUGESAGT, aber keine Meldung angelegt — diese Aufgabe ersetzt sie. Bitte zurückrufen!')
+      await pushOncall(
+        '☎️ Rückruf zugesagt — Meldung fehlte!',
+        `${summary.slice(0, 150)}${(info.rueckrufnummer || caller) ? ` — Rückruf: ${info.rueckrufnummer || caller}` : ''}`,
+        booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
+      ).catch((e) => console.error('[call-log] promise push:', e))
+    }
+  }
+
   // 📋 §246 Schicht 2: Jeder Vorfall wird zusätzlich zum flüchtigen Push als
   // ECHTE ☎️-Aufgabe angelegt (source 'anruf') — erst dadurch erscheint die
   // Anruf-Karte mit 📞 Rückruf / 🤖 KI-Rückruf / ✨-Lösungsvorschlägen im
@@ -227,17 +257,19 @@ export async function POST(request: Request) {
   let taskCreated = false
   if (vorfaelle.length) {
     const wer = [info.vorname, booking?.listingTitle].filter(Boolean).join(' · ')
+    const nurZusage = promiseNet && vorfaelle.length === 1
+    const rueckruf = String(info.rueckrufnummer ?? '').trim() || caller
     const { error: taskErr } = await supabaseAdmin.from('tasks').insert({
-      title: `🚨 Anruf-Vorfall: ${wer || caller || 'unbekannter Anrufer'}`.slice(0, 120),
+      title: `${nurZusage ? '☎️ Rückruf zugesagt' : '🚨 Anruf-Vorfall'}: ${wer || rueckruf || 'unbekannter Anrufer'}`.slice(0, 120),
       description: [
         ...vorfaelle,
         '',
         `Zusammenfassung: ${summary}`,
-        caller ? `Rückrufnummer: ${caller}` : 'Rückrufnummer unbekannt (unterdrückt/Browser-Test)',
+        rueckruf ? `Rückrufnummer: ${rueckruf}` : 'Rückrufnummer unbekannt (unterdrückt/Browser-Test)',
         `Erkannt vom Anruf-Sicherheitsnetz am ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })} — Transkript unter Mehr → Telefonate.`,
       ].join('\n').slice(0, 2000),
       source: 'anruf',
-      source_ref: caller || null,
+      source_ref: rueckruf || null,
       listing_id: bookingListingId,
       is_general: !bookingListingId,
       prio: 'hoch',
@@ -248,6 +280,6 @@ export async function POST(request: Request) {
     if (taskErr) console.error('[call-log] vorfall-task:', taskErr.message)
   }
 
-  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded, 'sicherheitsnetz:', safetyNet, 'vorfall-task:', taskCreated)
-  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded, safetyNet, taskCreated })
+  console.log('[call-log] verarbeitet:', convId, 'booking:', booking?.id ?? '—', 'gast_anfrage:', guestInquiry, 'notiz:', noteAdded, 'sicherheitsnetz:', safetyNet, 'zusagen-netz:', promiseNet, 'vorfall-task:', taskCreated)
+  return Response.json({ ok: true, booking: booking?.id ?? null, note: noteAdded, safetyNet, promiseNet, taskCreated })
 }
