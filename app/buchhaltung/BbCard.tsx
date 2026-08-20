@@ -100,7 +100,9 @@ export default function BbCard() {
   }
 
   const optLabel = (o: Record<string, unknown>) => {
-    const code = String(o.code ?? o.cost_location ?? o.postingaccount ?? o.number ?? o.id ?? '')
+    // Kalibriert 20.8.: Kostenstellen liefern {code, name}, Sachkonten
+    // {postingaccount_number, name}
+    const code = String(o.code ?? o.postingaccount_number ?? o.cost_location ?? o.postingaccount ?? o.number ?? o.id ?? '')
     const name = String(o.name ?? o.description ?? o.text ?? '')
     return { code, text: [code, name].filter(Boolean).join(' · ') }
   }

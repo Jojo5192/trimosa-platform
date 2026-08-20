@@ -83,8 +83,10 @@ export async function POST(req: NextRequest) {
     // Einrichtungslauf: Kostenstellen + Sachkonten live auflisten
     if (action === 'setup') {
       if (!bbConfigured()) return NextResponse.json({ error: 'BB-Envs fehlen (BB_API_CLIENT/SECRET/KEY in Vercel).' }, { status: 503 })
+      // Kalibriert 20.8.: BBs Kontenrahmen (SKR04-artig) hat >400 Konten —
+      // ein 400er-Cap schnitt alle Aufwandskonten ab
       const [kst, konten] = await Promise.all([listBbCostLocations(), listBbPostingAccounts()])
-      return NextResponse.json({ ok: true, kostenstellen: kst, sachkonten: konten.slice(0, 400), settings: await getBbSettings() }, NO_STORE)
+      return NextResponse.json({ ok: true, kostenstellen: kst, sachkonten: konten.slice(0, 2500), settings: await getBbSettings() }, NO_STORE)
     }
 
     if (action === 'settings') {
@@ -120,8 +122,9 @@ export async function POST(req: NextRequest) {
 
     if (action === 'sync') {
       if (!bbConfigured()) return NextResponse.json({ error: 'BB-Envs fehlen (BB_API_CLIENT/SECRET/KEY in Vercel).' }, { status: 503 })
-      const { report, txCount } = await bbSyncAlle(typeof b.id === 'string' ? b.id : undefined)
-      return NextResponse.json({ ok: true, txCount, report }, NO_STORE)
+      const limit = Number.isFinite(Number(b.limit)) && Number(b.limit) > 0 ? Math.min(150, Math.round(Number(b.limit))) : undefined
+      const { report, txCount, offen } = await bbSyncAlle(typeof b.id === 'string' ? b.id : undefined, limit)
+      return NextResponse.json({ ok: true, txCount, offen, report }, NO_STORE)
     }
 
     // Kalibrier-Blick: rohe Zahlungen (Feldnamen!), §127-Muster

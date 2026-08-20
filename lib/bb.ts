@@ -477,10 +477,16 @@ export async function bbSyncOne(
 /** Alle offenen UG-Belege durchsyncen. 'zugeordnet' läuft MIT (Review §271:
  *  nachgetragenes Setup holt die Buchung über den Nachbuchungs-Pfad nach —
  *  dort wird nie neu gematcht). Lauf-Lock gegen Cron+Button-Parallelität. */
-export async function bbSyncAlle(nurRowId?: string): Promise<{ report: BbSyncResult[]; txCount: number }> {
-  const g = globalThis as typeof globalThis & { __bbSyncRun?: boolean }
-  if (g.__bbSyncRun) throw new Error('BB-Sync läuft bereits — bitte kurz warten.')
-  g.__bbSyncRun = true
+export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise<{ report: BbSyncResult[]; txCount: number; offen: number }> {
+  // Lock mit Auto-Expire (10 Min): wird die Function mitten im Lauf von
+  // Vercel gekillt (Timeout), darf der Lock die warme Instanz nicht
+  // dauerhaft blockieren — die per-Schritt-Persistenz macht Wiederholungen
+  // ohnehin gefahrlos.
+  const g = globalThis as typeof globalThis & { __bbSyncRunAt?: number }
+  if (g.__bbSyncRunAt && Date.now() - g.__bbSyncRunAt < 10 * 60000) {
+    throw new Error('BB-Sync läuft bereits — bitte kurz warten.')
+  }
+  g.__bbSyncRunAt = Date.now()
   try {
     const settings = await getBbSettings()
     let q = supabaseAdmin
@@ -494,7 +500,7 @@ export async function bbSyncAlle(nurRowId?: string): Promise<{ report: BbSyncRes
     const { data: rows, error } = await q.limit(150)
     if (error) throw new Error('beleg_inbox select failed: ' + error.message)
     const list = (rows ?? []) as BbRow[]
-    if (!list.length) return { report: [], txCount: 0 }
+    if (!list.length) return { report: [], txCount: 0, offen: 0 }
 
     const today = new Date().toISOString().slice(0, 10)
     const txs = await listBbTransactions(settings.zeitraumAb, today)
@@ -515,11 +521,14 @@ export async function bbSyncAlle(nurRowId?: string): Promise<{ report: BbSyncRes
     const report: BbSyncResult[] = []
     // chronologisch alt → neu (frühere Belege greifen zuerst auf die Zahlungen zu)
     list.sort((a, b) => String(a.beleg_datum ?? a.created_at).localeCompare(String(b.beleg_datum ?? b.created_at)))
-    for (const row of list) {
+    // Batch-Limit für große Erst-Läufe (66 Kanzem-Belege × Upload+Assign
+    // sprengen sonst die 300s-Function — Häppchen-Aufrufe, Rest im `offen`)
+    const batch = maxBelege && maxBelege > 0 ? list.slice(0, maxBelege) : list
+    for (const row of batch) {
       report.push(await bbSyncOne(row, txs, used, settings, kostenstellen))
     }
-    return { report, txCount: txs.length }
+    return { report, txCount: txs.length, offen: list.length - batch.length }
   } finally {
-    g.__bbSyncRun = false
+    g.__bbSyncRunAt = 0
   }
 }
