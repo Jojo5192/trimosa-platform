@@ -76,8 +76,10 @@ export async function GET(req: NextRequest) {
   }, NO_STORE)
 }
 
-/** Entscheidung auf EINE Inbox-Zeile anwenden (Einzel- und Bulk-Pfad). */
-async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null, userId: string, zuordnung: Record<string, unknown> | null = null): Promise<{ ok: boolean; error?: string }> {
+/** Entscheidung auf EINE Inbox-Zeile anwenden (Einzel- und Bulk-Pfad).
+ *  §271: ziel 'andere' + firma 'ug' → Beleg geht in die BuchhaltungsButler-
+ *  Pipeline (bb_status 'wartet', Sync direkt danach); firma 'gbr' = Archiv. */
+async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null, userId: string, zuordnung: Record<string, unknown> | null = null, firma: string | null = null): Promise<{ ok: boolean; error?: string }> {
   let voucherId: string | null = null
   if (ziel === 'sevdesk') {
     let erstellt = 0
@@ -107,8 +109,14 @@ async function decideRow(r: BelegRow, ziel: string, kostenstelle: string | null,
     status: ziel, decided_by: userId, decided_at: new Date().toISOString(),
     ...(voucherId ? { sevdesk_voucher_id: voucherId } : {}),
     ...(zuordnung ? { zuordnung } : {}),
+    ...(ziel === 'andere' && firma ? { firma, ...(firma === 'ug' ? { bb_status: 'wartet' } : {}) } : {}),
   }
   let { error: updErr } = await supabaseAdmin.from('beleg_inbox').update(upd).eq('id', r.id)
+  if (updErr && /firma|bb_status/.test(updErr.message) && firma) {
+    // Review §271: die UG-Markierung darf NIE still verloren gehen — sonst
+    // ist der Beleg „entschieden" und taucht nach der Migration nirgends auf
+    return { ok: false, error: 'Migration 20260820_bb_ug.sql fehlt noch — bitte zuerst im SQL-Editor ausführen.' }
+  }
   if (updErr && /sevdesk_voucher_id|zuordnung/.test(updErr.message)) {
     // Migration 20260801_buchhaltung_v2 fehlt noch → ohne die neuen Felder
     delete upd.sevdesk_voucher_id
@@ -130,6 +138,7 @@ export async function POST(req: NextRequest) {
   const kostenstelle = typeof b.kostenstelle === 'string' && b.kostenstelle.trim() && b.kostenstelle !== 'Allgemein'
     ? b.kostenstelle.trim().slice(0, 80) : null
   const zuordnung = b.zuordnung && typeof b.zuordnung === 'object' ? b.zuordnung as Record<string, unknown> : null
+  const firma = ziel === 'andere' && ['ug', 'gbr'].includes(String(b.firma)) ? String(b.firma) : null
 
   // §241: Sammel-Aktion — alle OFFENEN Belege eines Lieferanten auf einmal
   // (z. B. 38× VP Glanzteam → sevdesk mit einer Kostenstelle)
@@ -141,7 +150,7 @@ export async function POST(req: NextRequest) {
     let ok = 0
     const fehler: string[] = []
     for (const row of rows as BelegRow[]) {
-      const res = await decideRow(row, ziel, kostenstelle, user.id, zuordnung)
+      const res = await decideRow(row, ziel, kostenstelle, user.id, zuordnung, firma)
       if (res.ok) ok++
       else fehler.push(`${row.subject?.slice(0, 40) ?? row.id}: ${res.error}`)
     }
@@ -153,7 +162,7 @@ export async function POST(req: NextRequest) {
     .from('beleg_inbox').select('*').eq('id', b.id).maybeSingle()
   if (!row) return NextResponse.json({ error: 'Beleg nicht gefunden.' }, { status: 404 })
   if (row.status !== 'offen') return NextResponse.json({ error: `Bereits entschieden (${row.status}).` }, { status: 409 })
-  const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id, zuordnung)
+  const res = await decideRow(row as BelegRow, ziel, kostenstelle, user.id, zuordnung, firma)
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 502 })
   // §243ad: nach der Einzel-Übernahme direkt die Voll-Automatik (§243f) —
   // sichere Kategorien werden sofort verbucht, sonst liegt die Analyse
@@ -169,5 +178,17 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* fail-soft */ }
   }
-  return NextResponse.json({ ok: true, status: ziel, ...(auto ? { auto: auto.auto, autoText: auto.text } : {}) }, NO_STORE)
+  // §271: UG-Beleg → sofort gegen BuchhaltungsButler matchen (awaited, §135;
+  // fail-soft — ohne Envs/Migration bleibt der Beleg auf 'wartet')
+  let bb: string | null = null
+  if (firma === 'ug') {
+    try {
+      const { bbConfigured, bbSyncAlle } = await import('@/lib/bb')
+      if (bbConfigured()) {
+        const { report } = await bbSyncAlle(String(b.id))
+        bb = report[0] ? `${report[0].status}: ${report[0].detail}` : null
+      } else bb = 'wartet: BB-Zugangsdaten noch nicht hinterlegt (Vercel-Envs)'
+    } catch (e) { bb = 'fehler: ' + String(e instanceof Error ? e.message : e).slice(0, 150) }
+  }
+  return NextResponse.json({ ok: true, status: ziel, ...(auto ? { auto: auto.auto, autoText: auto.text } : {}), ...(bb ? { bb } : {}) }, NO_STORE)
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { haptic, SkeletonRows } from '@/components/team/ux'
 import DocScanner from '@/components/DocScanner'
+import BbCard from './BbCard'
 
 /**
  * 💶 BUCHHALTUNG v2 (§242) — Vollbild-Oberfläche (nur Admins), iOS-Look:
@@ -623,7 +624,7 @@ export default function BuchhaltungClient() {
     } catch (e) { setErr(String(e instanceof Error ? e.message : e)) } finally { setBusy(null) }
   }
 
-  const inboxDecide = async (b: InboxBeleg, ziel: 'sevdesk' | 'andere' | 'verworfen', bulk = false) => {
+  const inboxDecide = async (b: InboxBeleg, ziel: 'sevdesk' | 'andere' | 'verworfen', bulk = false, firma?: 'ug' | 'gbr') => {
     if (bulk && !confirm(`Alle offenen Belege von „${b.lieferant}“ übernehmen?`)) return
     setBusy(bulk ? 'bulk-' + b.lieferant : b.id); setErr('')
     try {
@@ -631,6 +632,7 @@ export default function BuchhaltungClient() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(bulk ? { bulkLieferant: b.lieferant } : { id: b.id }), ziel,
+          ...(firma ? { firma } : {}),
           ...(ziel === 'sevdesk' ? { kostenstelle: inboxKst[b.id] ?? 'Allgemein' } : {}),
           ...(ziel === 'sevdesk' && inboxZuo[b.id] ? { zuordnung: inboxZuo[b.id] } : {}),
         }),
@@ -648,6 +650,8 @@ export default function BuchhaltungClient() {
       // §243ad: nach der Einzel-Übernahme läuft die Voll-Automatik mit —
       // Ergebnis („✅ automatisch verbucht" vs. „🧾 zur Prüfung") anzeigen
       if (!bulk && j.autoText) setNotice((j.auto ? '✅ ' : '🧾 ') + (b.lieferant ?? 'Beleg') + ': ' + j.autoText)
+      // §271: UG-Beleg → BuchhaltungsButler-Sync-Ergebnis direkt anzeigen
+      if (!bulk && j.bb) setNotice('🏢 ' + (b.lieferant ?? 'Beleg') + ' → BuchhaltungsButler · ' + j.bb)
       // Bei „→ sevdesk" entsteht ein neuer Beleg, den nur der Server kennt —
       // der kommt still nach, ohne den Arbeitsfluss zu unterbrechen.
       if (ziel === 'sevdesk') void stillerRefresh()
@@ -910,7 +914,8 @@ export default function BuchhaltungClient() {
             <div style={{ display: 'grid', gap: 9 }}>
               <button onClick={() => inboxDecide(b, 'sevdesk')} disabled={busy === b.id} style={{ ...BTN, background: GOLD, color: '#fff' }}>{busy === b.id ? '⏳ Übernehme…' : '→ sevdesk (Apartments & Homes)'}</button>
               <div style={{ display: 'flex', gap: 9 }}>
-                <button onClick={() => inboxDecide(b, 'andere')} disabled={busy === b.id} style={{ ...BTN, flex: 1, background: 'rgba(10,132,255,0.12)', color: '#0A84FF' }}>Andere Gesellschaft</button>
+                <button onClick={() => inboxDecide(b, 'andere', false, 'ug')} disabled={busy === b.id} style={{ ...BTN, flex: 1, background: 'rgba(10,132,255,0.12)', color: '#0A84FF' }}>🏢 Immobilien UG → BB</button>
+                <button onClick={() => inboxDecide(b, 'andere', false, 'gbr')} disabled={busy === b.id} style={{ ...BTN, flex: 1, background: 'rgba(10,132,255,0.06)', color: '#5A6B7A' }}>GbR (Archiv)</button>
                 <button onClick={() => inboxDecide(b, 'verworfen')} disabled={busy === b.id} style={{ ...BTN, flex: 1, background: 'rgba(215,0,21,0.08)', color: RED }}>Kein Beleg</button>
               </div>
               {b.lieferant != null && gleiche > 2 && (
@@ -1320,6 +1325,9 @@ export default function BuchhaltungClient() {
                 </div>
               )}
             </div>
+          )}
+          {section === 'belege' && belegFilter === 'todo' && (
+            <div style={{ marginBottom: 12 }}><BbCard /></div>
           )}
           {section === 'belege' && belegFilter === 'todo' && (
             <label style={{

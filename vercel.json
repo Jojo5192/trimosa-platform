@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/bb",
+      "schedule": "5 4 * * *"
+    },
+    {
       "path": "/api/reviews/sync",
       "schedule": "0 4 * * *"
     },
