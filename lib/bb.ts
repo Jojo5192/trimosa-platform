@@ -232,11 +232,20 @@ export function findBbMatch(
       ? true : dayDiff(t.datum, datum) <= s.tolTage
     return dayDiff(t.datum, datum) <= s.tolTage
   }
+  // Review §271: Keyword-only-Treffer zusätzlich GROB aufs Datum begrenzen
+  // (21 Tage bzw. bei Tranchen bis datumBis) — sonst stiehlt ein jüngerer
+  // Beleg gleichen Betrags (2 Globus-Bons) dem älteren seine Zahlung und
+  // beide werden dauerhaft über Kreuz verknüpft.
+  const grobImFenster = (t: BbTx) => {
+    if (!datum || !t.datum) return true
+    if (datumBis && t.datum >= datum && t.datum <= datumBis) return true
+    return dayDiff(t.datum, datum) <= 21
+  }
   const kandidaten = txs.filter((t) =>
     !used.has(t.id)
     && richtungOk(t)
     && Math.abs(Math.abs(t.betrag) - Math.abs(betrag)) < 0.005
-    && (hatKeyword(t, lieferant) || imFenster(t)))
+    && ((hatKeyword(t, lieferant) && grobImFenster(t)) || imFenster(t)))
   if (!kandidaten.length) return { ok: false, grund: `keine Zahlung über ${betrag.toFixed(2)} € (Fenster/Keyword)` }
   if (kandidaten.length === 1) return { ok: true, tx: kandidaten[0] }
   const mitKeyword = kandidaten.filter((t) => hatKeyword(t, lieferant))
@@ -310,6 +319,17 @@ function vatFor(row: BbRow): number {
   return 19
 }
 
+// Spec-kalibriert 20.8. (§271): BBs vats[] sind STRINGS — für
+// Eingangsrechnungen die VORSTEUER-Optionen ('19_pre' = 19 % VSt), nicht
+// '19_vat' (= USt/Ausgangsseite). 17 % lux. USt (PK Montageservice) ist in DE
+// nicht als Vorsteuer abziehbar → '0_none' (Bruttobuchung).
+function bbVatOption(row: BbRow): string {
+  const t = vatFor(row)
+  if (t === 19) return '19_pre'
+  if (t === 7) return '7_pre'
+  return '0_none'
+}
+
 function csvSet(v: string | null): Set<string> {
   return new Set(String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean))
 }
@@ -360,7 +380,11 @@ export async function bbSyncOne(
           await writeBb(row.id, { bb_status: status, bb_detail: `${m.grund}${zielTxIds.length ? ` (Tranche ${i + 1}/${betraege.length})` : ''}` })
           // Push-Entscheidung liegt beim Aufrufer (bbSyncAlle) — EIN
           // Sammel-Push je Lauf statt einem je Beleg (Erstlauf = 40+ alte
-          // Belege → Push-Flut an alle Admins)
+          // Belege → Push-Flut an alle Admins). Bewusst akzeptiert (Review,
+          // NIEDRIG): Läuft ein pruefen-Beleg über einen transienten
+          // 'fehler'-Umweg zurück nach 'pruefen', wird er erneut mitgemeldet
+          // — Doppel-Meldung ist verschmerzbar, ein Gemeldet-Flag bräuchte
+          // eine Migration.
           return { id: row.id, status, detail: m.grund, pruefNeu: status === 'pruefen' && !wasPruefen }
         }
         used.add(m.tx.id)
@@ -385,23 +409,37 @@ export async function bbSyncOne(
       const { data: blob, error: dlErr } = await supabaseAdmin.storage.from('belege').download(file.path)
       if (dlErr || !blob) throw new Error(`Storage-Download: ${dlErr?.message ?? '?'}`)
       const b64 = Buffer.from(await blob.arrayBuffer()).toString('base64')
-      const up = await bbCall('/receipts/add', {
+      // Spec-kalibriert 20.8. (§271): Datei-Uploads laufen über /receipts/upload
+      // (/receipts/add ist explizit „without a file"); type MUSS
+      // 'invoice inbound' heißen (nicht 'inbound' — „invalid type specified");
+      // Feld heißt file_name; payment_reference nur für Amazon/PayPal/Stripe-IDs
+      // → weglassen. amount = der BELEG-Betrag (positiv; Tranchen sind nur
+      // Zahlungs-Matching — Globus-Sonderfälle weisen mehr aus als gezahlt).
+      // Review §271: betrag=0 wird von BB abgelehnt („'0.00' is not valid")
+      // → Fallback auf die Tranchen-Summe; Leerstring-Lieferant ebenso
+      // („empty string is not a valid counterparty"); Belegnummer max 60;
+      // vat_rate nur mit deutschen Sätzen (17 % lux. USt → weglassen,
+      // eigener BB-Fehlercode „invalid vat rate specified").
+      const belegBetrag = row.betrag != null && Number.isFinite(Number(row.betrag)) && Number(row.betrag) !== 0
+        ? Number(Number(row.betrag).toFixed(2))
+        : Number(betraege.reduce((a, b) => a + b, 0).toFixed(2))
+      const up = await bbCall('/receipts/upload', {
         file: b64,
-        filename: file.name,
-        type: 'inbound',
-        list: 'inbound',
-        counterparty: row.lieferant ?? 'Unbekannt',
-        ...(row.belegnummer ? { invoice_number: row.belegnummer } : {}),
+        file_name: file.name,
+        type: 'invoice inbound',
+        counterparty: row.lieferant || 'Unbekannt',
+        ...(row.belegnummer ? { invoice_number: row.belegnummer.slice(0, 60) } : {}),
         ...(row.beleg_datum ? { date: row.beleg_datum } : {}),
-        amount: betraege.reduce((a, b) => a + b, 0).toFixed(2),
+        amount: belegBetrag,
         currency: 'EUR',
-        vat_rate: vatFor(row),
-        payment_reference: row.subject ?? '',
+        ...([0, 7, 19].includes(vatFor(row)) ? { vat_rate: vatFor(row) } : {}),
       })
       const d = (up.data ?? up) as Record<string, unknown>
       receiptId = String(d.receipt_id_by_customer ?? d.id_by_customer ?? d.id ?? '').trim() || null
-      if (!receiptId) throw new Error(`receipts/add ohne erkennbare receipt_id — Rohantwort: ${JSON.stringify(up).slice(0, 200)}`)
+      if (!receiptId) throw new Error(`receipts/upload ohne erkennbare receipt_id — Rohantwort: ${JSON.stringify(up).slice(0, 200)}`)
       await writeBb(row.id, { bb_receipt_id: receiptId })
+      // BB-Rate-Limit: max 10 Uploads/Minute → 6,5s Pause nach jedem Upload
+      await new Promise((res) => setTimeout(res, 6500))
     }
 
     // 3) Kostenstelle bestimmen (§271b, Inhaber-Wunsch 20.8.): fixe Vorgabe
@@ -427,27 +465,46 @@ export async function bbSyncOne(
     //    persistiert (Review §271: Teilfehler-Retry überspringt Erledigtes)
     for (const txId of zielTxIds) {
       if (!assigned.has(txId)) {
+        // Spec: beide IDs sind Integer
         await bbCall('/transactions/assign/receipt', {
-          transaction_id_by_customer: txId,
-          receipt_id_by_customer: receiptId,
+          transaction_id_by_customer: Number(txId),
+          receipt_id_by_customer: Number(receiptId),
         })
         assigned.add(txId)
         await writeBb(row.id, { bb_transaction_ids: [...assigned].join(',') })
       }
       if (!setupFehlt && kst && !posted.has(txId)) {
         const tx = txById.get(txId)
-        const tranche = zielTxIds.length === 1
-          ? betraege.reduce((a, b) => a + b, 0)
-          : (tx ? Math.abs(tx.betrag) : null)
-        if (tranche == null) throw new Error(`Zahlung ${txId} nicht mehr im Abfrage-Zeitraum — Buchungsbetrag unklar (zeitraumAb prüfen).`)
-        await bbCall('/postings/add/transaction', {
-          transaction_id_by_customer: txId,
+        if (!tx) throw new Error(`Zahlung ${txId} nicht mehr im Abfrage-Zeitraum — Buchungsbetrag unklar (zeitraumAb prüfen).`)
+        // Spec-kalibriert 20.8.: Die Posting-Summe MUSS dem
+        // TRANSAKTIONSBETRAG entsprechen (Fehler 27) — Abbuchungen also
+        // NEGATIV, Format „0000.00" als String; vats sind String-Optionen
+        // (bbVatOption). oi_receipts_ids_by_customer nur im Retry (Fehler 34,
+        // falls OI-Postings im BB-Konto aktiviert sind).
+        const postingBody = {
+          transaction_id_by_customer: Number(txId),
           postingaccounts: [settings.sachkonto],
-          postingtexts: [`${row.lieferant ?? 'Beleg'} · ${(row.subject ?? '').slice(0, 60)}`.trim()],
-          vats: [vatFor(row)],
-          amounts: [tranche],
+          postingtexts: [`${row.lieferant ?? 'Beleg'} · ${(row.subject ?? '').slice(0, 60)}`.trim().slice(0, 128)],
+          vats: [bbVatOption(row)],
+          amounts: [tx.betrag.toFixed(2)],
           cost_locations: [kst],
-        })
+        }
+        try {
+          await bbCall('/postings/add/transaction', postingBody)
+        } catch (e) {
+          const msg = String(e instanceof Error ? e.message : e)
+          if (/already been posted/i.test(msg)) {
+            // Review §271: Kill-Fenster zwischen Posting-Erfolg und writeBb —
+            // BB hat schon gebucht (Fehler 7), als Erfolg werten statt den
+            // Beleg für immer im Fehler-Loop zu halten
+          } else if (/oi_receipts|explicitly via/i.test(msg)) {
+            // Selbstkalibrierung: OI-Postings im Konto aktiv (Fehler 34) →
+            // Beleg explizit ans Posting hängen
+            await bbCall('/postings/add/transaction', {
+              ...postingBody, oi_receipts_ids_by_customer: [Number(receiptId)],
+            })
+          } else throw e
+        }
         posted.add(txId)
         await writeBb(row.id, { bb_posted_ids: [...posted].join(',') })
       }
@@ -473,10 +530,11 @@ export async function bbSyncOne(
  *  nachgetragenes Setup holt die Buchung über den Nachbuchungs-Pfad nach —
  *  dort wird nie neu gematcht). Lauf-Lock gegen Cron+Button-Parallelität. */
 export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise<{ report: BbSyncResult[]; txCount: number; offen: number }> {
-  // Lock mit Auto-Expire (10 Min): wird die Function mitten im Lauf von
-  // Vercel gekillt (Timeout), darf der Lock die warme Instanz nicht
-  // dauerhaft blockieren — die per-Schritt-Persistenz macht Wiederholungen
-  // ohnehin gefahrlos.
+  // Lock mit Auto-Expire (10 Min). EHRLICH (Review §271): globalThis gilt
+  // nur je warmer Instanz — Cron und Button-Sync auf VERSCHIEDENEN Instanzen
+  // können parallel laufen. Akzeptiert: die per-Schritt-Persistenz + der
+  // Fresh-Read vor dem Upload + „already been posted"-Toleranz begrenzen den
+  // Schaden auf seltene Duplikat-Receipts (in BB löschbar), nie Doppel-GELD.
   const g = globalThis as typeof globalThis & { __bbSyncRunAt?: number }
   if (g.__bbSyncRunAt && Date.now() - g.__bbSyncRunAt < 10 * 60000) {
     throw new Error('BB-Sync läuft bereits — bitte kurz warten.')
@@ -484,10 +542,19 @@ export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise
   g.__bbSyncRunAt = Date.now()
   try {
     const settings = await getBbSettings()
+    const settingsSachkontoDa = !!settings.sachkonto
     let q = supabaseAdmin
       .from('beleg_inbox').select('*')
       .eq('firma', 'ug')
-      .in('bb_status', ['wartet', 'fehler', 'zugeordnet'])
+      // 'pruefen' bleibt drin: tauchen fehlende Zahlungen später in BB auf
+      // (z. B. Bank-Historie nachgeladen), heilen die Belege sich im
+      // täglichen Lauf selbst — der wasPruefen-Guard verhindert Push-Spam.
+      // Review §271: OHNE Sachkonto können 'zugeordnet'-Belege nichts mehr
+      // erreichen (Posting wird übersprungen) — als Prio-0-No-ops würden sie
+      // jeden 12er-Batch belegen und die 'wartet'-Belege aushungern.
+      .in('bb_status', settingsSachkontoDa
+        ? ['wartet', 'fehler', 'zugeordnet', 'pruefen']
+        : ['wartet', 'fehler', 'pruefen'])
     if (nurRowId) {
       // Review §271: auch der Einzel-Pfad bleibt auf UG-Belege beschränkt
       q = supabaseAdmin.from('beleg_inbox').select('*').eq('id', nurRowId).eq('firma', 'ug')
@@ -514,13 +581,28 @@ export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise
     }
 
     const report: BbSyncResult[] = []
-    // chronologisch alt → neu (frühere Belege greifen zuerst auf die Zahlungen zu)
-    list.sort((a, b) => String(a.beleg_datum ?? a.created_at).localeCompare(String(b.beleg_datum ?? b.created_at)))
-    // Batch-Limit für große Erst-Läufe (66 Kanzem-Belege × Upload+Assign
-    // sprengen sonst die 300s-Function — Häppchen-Aufrufe, Rest im `offen`)
-    const batch = maxBelege && maxBelege > 0 ? list.slice(0, maxBelege) : list
+    // Live-Befund 20.8.: Fehler-Belege am Queue-Anfang verstopften bei
+    // maxBelege-Häppchen die GESAMTE Warteschlange (immer derselbe Batch
+    // scheiterte, die „wartet"-Belege dahinter kamen nie dran) → zuerst nach
+    // Status priorisieren (zugeordnet = fast fertig > wartet > fehler >
+    // pruefen), erst DANN chronologisch alt → neu.
+    const prio: Record<string, number> = { zugeordnet: 0, wartet: 1, fehler: 2, pruefen: 3 }
+    list.sort((a, b) =>
+      (prio[a.bb_status ?? 'wartet'] ?? 1) - (prio[b.bb_status ?? 'wartet'] ?? 1)
+      || String(a.beleg_datum ?? a.created_at).localeCompare(String(b.beleg_datum ?? b.created_at)))
+    // Review §271: DEFAULT-Batch 12 — der Cron ruft ohne Limit auf, und 66
+    // Belege × (Upload + 6,5s Pflicht-Pause + Assign + Posting) sprengen die
+    // 300s-Function um das Doppelte; ein Vercel-Kill mitten im Upload-Call
+    // erzeugte Duplikat-Receipts in BB (bb_receipt_id noch nicht persistiert).
+    // Zusätzlich Zeitbudget-Guard (§257c-Muster): Abbruch VOR dem nächsten
+    // Beleg, Rest kommt über `offen` in den Folgelauf.
+    const batch = list.slice(0, maxBelege && maxBelege > 0 ? maxBelege : 12)
+    const deadline = Date.now() + 240_000
+    let verarbeitet = 0
     for (const row of batch) {
+      if (Date.now() > deadline) break
       report.push(await bbSyncOne(row, txs, used, settings, kostenstellen))
+      verarbeitet++
     }
     // EIN Sammel-Push je Lauf für neue Prüffälle (statt je Beleg)
     const pruefNeu = report.filter((r) => r.pruefNeu).length
@@ -532,7 +614,7 @@ export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise
         '/buchhaltung', { buchhaltung: true },
       ).catch(() => {})
     }
-    return { report, txCount: txs.length, offen: list.length - batch.length }
+    return { report, txCount: txs.length, offen: list.length - verarbeitet }
   } finally {
     g.__bbSyncRunAt = 0
   }
