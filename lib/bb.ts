@@ -481,12 +481,17 @@ export async function bbSyncOne(
         // NEGATIV, Format „0000.00" als String; vats sind String-Optionen
         // (bbVatOption). oi_receipts_ids_by_customer nur im Retry (Fehler 34,
         // falls OI-Postings im BB-Konto aktiviert sind).
+        // Vorzeichen LIVE-kalibriert 20.8.: negativ (= Tx-Betrag) warf
+        // Fehler 27 „total amount of all postings does not match the
+        // transaction amount" — BB erwartet den ABSOLUTBETRAG (UI-Konvention,
+        // die Richtung steckt in der Transaktion). Selbstkalibrierungs-Retry
+        // mit invertiertem Vorzeichen bleibt als Netz (z. B. Gutschriften).
         const postingBody = {
           transaction_id_by_customer: Number(txId),
           postingaccounts: [settings.sachkonto],
           postingtexts: [`${row.lieferant ?? 'Beleg'} · ${(row.subject ?? '').slice(0, 60)}`.trim().slice(0, 128)],
           vats: [bbVatOption(row)],
-          amounts: [tx.betrag.toFixed(2)],
+          amounts: [Math.abs(tx.betrag).toFixed(2)],
           cost_locations: [kst],
         }
         try {
@@ -502,6 +507,10 @@ export async function bbSyncOne(
             // Beleg explizit ans Posting hängen
             await bbCall('/postings/add/transaction', {
               ...postingBody, oi_receipts_ids_by_customer: [Number(receiptId)],
+            })
+          } else if (/does not match the transaction amount/i.test(msg)) {
+            await bbCall('/postings/add/transaction', {
+              ...postingBody, amounts: [tx.betrag.toFixed(2)],
             })
           } else throw e
         }
