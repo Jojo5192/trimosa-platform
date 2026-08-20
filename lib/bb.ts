@@ -319,7 +319,7 @@ async function writeBb(rowId: string, patch: Record<string, unknown>): Promise<v
   if (error) throw new Error('beleg_inbox bb-update failed: ' + error.message)
 }
 
-export interface BbSyncResult { id: string; status: string; detail: string }
+export interface BbSyncResult { id: string; status: string; detail: string; pruefNeu?: boolean }
 
 export async function bbSyncOne(
   row: BbRow, txs: BbTx[], used: Set<string>, settings: BbSettings, kostenstellen: BbKst[],
@@ -358,15 +358,10 @@ export async function bbSyncOne(
           const status = zielTxIds.length ? 'zugeordnet' : (alt ? 'pruefen' : 'wartet')
           const wasPruefen = row.bb_status === 'pruefen'
           await writeBb(row.id, { bb_status: status, bb_detail: `${m.grund}${zielTxIds.length ? ` (Tranche ${i + 1}/${betraege.length})` : ''}` })
-          if (status === 'pruefen' && !wasPruefen) {
-            const { sendPushToTeam } = await import('@/lib/push')
-            await sendPushToTeam(
-              '🏢 UG-Beleg ohne Zahlungs-Treffer',
-              `${row.lieferant ?? 'Beleg'} · ${betraege.map((x) => x.toFixed(2)).join(' + ')} € — ${m.grund}. Bitte in BuchhaltungsButler prüfen.`,
-              '/buchhaltung', { buchhaltung: true },
-            ).catch(() => {})
-          }
-          return { id: row.id, status, detail: m.grund }
+          // Push-Entscheidung liegt beim Aufrufer (bbSyncAlle) — EIN
+          // Sammel-Push je Lauf statt einem je Beleg (Erstlauf = 40+ alte
+          // Belege → Push-Flut an alle Admins)
+          return { id: row.id, status, detail: m.grund, pruefNeu: status === 'pruefen' && !wasPruefen }
         }
         used.add(m.tx.id)
         zielTxIds.push(m.tx.id)
@@ -526,6 +521,16 @@ export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise
     const batch = maxBelege && maxBelege > 0 ? list.slice(0, maxBelege) : list
     for (const row of batch) {
       report.push(await bbSyncOne(row, txs, used, settings, kostenstellen))
+    }
+    // EIN Sammel-Push je Lauf für neue Prüffälle (statt je Beleg)
+    const pruefNeu = report.filter((r) => r.pruefNeu).length
+    if (pruefNeu) {
+      const { sendPushToTeam } = await import('@/lib/push')
+      await sendPushToTeam(
+        '🏢 UG-Belege ohne Zahlungs-Treffer',
+        `${pruefNeu} Beleg${pruefNeu === 1 ? '' : 'e'} ohne passende Zahlung in BuchhaltungsButler — Prüfliste in der Buchhaltung (🏢-Karte).`,
+        '/buchhaltung', { buchhaltung: true },
+      ).catch(() => {})
     }
     return { report, txCount: txs.length, offen: list.length - batch.length }
   } finally {
