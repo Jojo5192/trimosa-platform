@@ -102,15 +102,7 @@ export interface AnnuitaetsFit {
   monate: number      // wie viele Monatsschritte im Fit
 }
 
-export function fitAnnuitaet(verlauf: KreditMonat[], maxMonate = 18): AnnuitaetsFit | null {
-  // nur LÜCKENLOSE, direkt aufeinanderfolgende Monate vom Ende her nehmen —
-  // Lücken würden die Differenzen (Mehr-Monats-Tilgung) verfälschen
-  const sorted = [...verlauf].sort((a, b) => a.monat.localeCompare(b.monat))
-  const seg: KreditMonat[] = []
-  for (let k = sorted.length - 1; k >= 0 && seg.length < maxMonate + 1; k--) {
-    if (seg.length && monatIndex(seg[0].monat) - monatIndex(sorted[k].monat) !== 1) break
-    seg.unshift(sorted[k])
-  }
+function lsqFit(seg: KreditMonat[]): AnnuitaetsFit | null {
   if (seg.length < 5) return null
   const xs: number[] = []
   const ys: number[] = []
@@ -131,6 +123,28 @@ export function fitAnnuitaet(verlauf: KreditMonat[], maxMonate = 18): Annuitaets
   const zinsPa = iMonat * 12 * 100
   if (!Number.isFinite(zinsPa) || !Number.isFinite(rate) || rate <= 0 || zinsPa < -1 || zinsPa > 25) return null
   return { zinsPa, rate, maxAbw, exakt: maxAbw < 1, monate: n }
+}
+
+export function fitAnnuitaet(verlauf: KreditMonat[], maxMonate = 18): AnnuitaetsFit | null {
+  // nur LÜCKENLOSE, direkt aufeinanderfolgende Monate vom Ende her nehmen —
+  // Lücken würden die Differenzen (Mehr-Monats-Tilgung) verfälschen
+  const sorted = [...verlauf].sort((a, b) => a.monat.localeCompare(b.monat))
+  const seg: KreditMonat[] = []
+  for (let k = sorted.length - 1; k >= 0 && seg.length < maxMonate + 1; k--) {
+    if (seg.length && monatIndex(seg[0].monat) - monatIndex(sorted[k].monat) !== 1) break
+    seg.unshift(sorted[k])
+  }
+  const basis = lsqFit(seg)
+  if (!basis || basis.exakt) return basis
+  // Ausreißer-Robustheit (§272b, Zewen-Fund: EINE ~415-€-Sondertilgung im
+  // Fenster drückte den Fit von echten 1,39 % auf 0,37 %): das längste
+  // JÜNGSTE Teilfenster, das mathematisch exakt ist, gewinnt — sonst bleibt
+  // der volle Fit als gekennzeichnete Schätzung (~) stehen.
+  for (let len = seg.length - 1; len >= 6; len--) {
+    const f = lsqFit(seg.slice(seg.length - len))
+    if (f?.exakt) return f
+  }
+  return basis
 }
 
 /** Monate bis Restschuld 0 bei (zinsPa, rate) — null wenn die Rate die Zinsen nicht deckt. */
@@ -169,6 +183,22 @@ export function summenVerlauf(kredite: Kredit[]): KreditMonat[] {
     out.push({ monat: indexMonat(i), restschuld: Math.round(sum * 100) / 100 })
   }
   return out
+}
+
+/* ── Ist/Plan-Trennung (§272b): Tilgungsplan-Tabellen enthalten Zukunfts-
+ *    monate — „aktuell" ist immer der letzte Monat ≤ HEUTE, alles danach
+ *    ist Plan (im Chart gestrichelt). ── */
+
+export function heuteMonat(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** Anzahl der Ist-Monate am Verlaufsanfang (Rest = Plan/Zukunft). */
+export function istAnzahl(verlauf: KreditMonat[], heute = heuteMonat()): number {
+  let n = 0
+  for (const z of verlauf) { if (z.monat <= heute) n++; else break }
+  return n
 }
 
 /* ── Format-Helfer ── */

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Kredit, KreditMonat, FIRMEN, fitAnnuitaet, projektionMonate, summenVerlauf,
-  parseVerlaufBulk, fmtMonat, indexMonat, monatIndex, eur0, eur2, pct2,
+  parseVerlaufBulk, fmtMonat, indexMonat, monatIndex, istAnzahl, eur0, eur2, pct2,
 } from '@/lib/schulden-mathe'
 import { haptic } from '@/components/team/ux'
 
@@ -38,7 +38,11 @@ const fmtMonatLang = (m: string) => {
 
 /* ── SVG-Verlaufs-Chart (Apple-like: Fläche + Linie + Endpunkt) ── */
 
-function VerlaufChart({ verlauf, color, height = 220 }: { verlauf: KreditMonat[]; color: string; height?: number }) {
+function VerlaufChart({ verlauf, color, height = 220, planAb }: {
+  verlauf: KreditMonat[]; color: string; height?: number
+  /** Index des ersten PLAN-Monats (Zukunft) — ab dort gestrichelt; undefined = alles Ist */
+  planAb?: number
+}) {
   const W = 680
   const H = height
   const PAD = { l: 56, r: 14, t: 12, b: 24 }
@@ -53,14 +57,22 @@ function VerlaufChart({ verlauf, color, height = 220 }: { verlauf: KreditMonat[]
     max = max + span * 0.06
     const x = (i: number) => PAD.l + (i / (verlauf.length - 1)) * (W - PAD.l - PAD.r)
     const y = (v: number) => PAD.t + (1 - (v - min) / (max - min)) * (H - PAD.t - PAD.b)
-    const line = verlauf.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.restschuld).toFixed(1)}`).join(' ')
-    const area = `${line} L${x(verlauf.length - 1).toFixed(1)},${H - PAD.b} L${x(0).toFixed(1)},${H - PAD.b} Z`
+    const seg = (von: number, bis: number) => verlauf.slice(von, bis + 1)
+      .map((p, j) => `${j === 0 ? 'M' : 'L'}${x(von + j).toFixed(1)},${y(p.restschuld).toFixed(1)}`).join(' ')
+    // §272b: Ist-Segment voll + Fläche, Plan-Segment (Zukunft) gestrichelt
+    const split = planAb != null && planAb > 0 && planAb < verlauf.length ? planAb : verlauf.length
+    const istEnd = split - 1
+    const istLine = seg(0, istEnd)
+    const planLine = split < verlauf.length ? seg(istEnd, verlauf.length - 1) : null
+    const area = istEnd > 0
+      ? `${istLine} L${x(istEnd).toFixed(1)},${H - PAD.b} L${x(0).toFixed(1)},${H - PAD.b} Z`
+      : null
     const kEuro = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)))
     const yTicks = [min, (min + max) / 2, max].map((v) => ({ label: kEuro(v), y: y(v) }))
     const xIdx = verlauf.length > 2 ? [0, Math.floor((verlauf.length - 1) / 2), verlauf.length - 1] : [0, verlauf.length - 1]
     const xLabels = xIdx.map((i) => ({ label: fmtMonat(verlauf[i].monat), x: x(i) }))
-    return { line, area, yTicks, xLabels, lastX: x(verlauf.length - 1), lastY: y(verlauf[verlauf.length - 1].restschuld) }
-  }, [verlauf, H])
+    return { istLine, planLine, area, yTicks, xLabels, dotX: x(istEnd), dotY: y(verlauf[istEnd].restschuld) }
+  }, [verlauf, H, planAb])
   if (!chart) return <p style={{ fontSize: 13, color: '#8A8578', margin: '10px 0' }}>Mindestens 2 Monatswerte für den Verlauf eintragen.</p>
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
@@ -73,9 +85,13 @@ function VerlaufChart({ verlauf, color, height = 220 }: { verlauf: KreditMonat[]
       {chart.xLabels.map((xl, i) => (
         <text key={i} x={xl.x} y={H - 6} textAnchor="middle" fontSize={11} fill="#8A8578">{xl.label}</text>
       ))}
-      <path d={chart.area} fill={color} opacity={0.08} />
-      <path d={chart.line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={chart.lastX} cy={chart.lastY} r={4.5} fill={color} stroke="#fff" strokeWidth={2} />
+      {chart.area && <path d={chart.area} fill={color} opacity={0.08} />}
+      <path d={chart.istLine} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      {chart.planLine && (
+        <path d={chart.planLine} fill="none" stroke={color} strokeWidth={2} strokeDasharray="5 5"
+          opacity={0.45} strokeLinejoin="round" strokeLinecap="round" />
+      )}
+      <circle cx={chart.dotX} cy={chart.dotY} r={4.5} fill={color} stroke="#fff" strokeWidth={2} />
     </svg>
   )
 }
@@ -153,12 +169,15 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
     } catch (e) { setFehler(String(e instanceof Error ? e.message : e)); return null } finally { busyRef.current = false; setBusy(false) }
   }
 
-  /* Gesamt-Kennzahlen */
+  /* Gesamt-Kennzahlen — §272b: „aktuell" = letzter IST-Monat (≤ heute),
+     Tilgungsplan-Zukunftszeilen zählen nicht als Stand */
   const gesamt = useMemo(() => summenVerlauf(kredite), [kredite])
-  const aktuell = gesamt.length ? gesamt[gesamt.length - 1].restschuld : 0
+  const gesamtIstN = useMemo(() => istAnzahl(gesamt), [gesamt])
+  const istEnde = gesamtIstN > 0 ? gesamt[gesamtIstN - 1] : (gesamt[0] ?? null)
+  const aktuell = istEnde?.restschuld ?? 0
   const wertVor = (monate: number): number | null => {
-    if (!gesamt.length) return null
-    const ziel = monatIndex(gesamt[gesamt.length - 1].monat) - monate
+    if (!istEnde) return null
+    const ziel = monatIndex(istEnde.monat) - monate
     const p = gesamt.filter((z) => monatIndex(z.monat) <= ziel)
     return p.length ? p[p.length - 1].restschuld : null
   }
@@ -213,15 +232,20 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
                 {eur0(aktuell)}
               </div>
               <div style={{ fontSize: 12.5, opacity: 0.65 }}>
-                {kredite.length ? `${kredite.length} Kredit${kredite.length === 1 ? '' : 'e'} · Stand ${gesamt.length ? fmtMonatLang(gesamt[gesamt.length - 1].monat) : '—'}` : 'Noch keine Kredite angelegt'}
+                {kredite.length ? `${kredite.length} Kredit${kredite.length === 1 ? '' : 'e'} · Stand ${istEnde ? fmtMonatLang(istEnde.monat) : '—'}` : 'Noch keine Kredite angelegt'}
               </div>
               <div style={{ display: 'flex', gap: 8, margin: '10px 0 6px', flexWrap: 'wrap' }}>
                 {deltaChip(vorMonat != null ? aktuell - vorMonat : null, 'Vormonat')}
                 {deltaChip(vorJahr != null ? aktuell - vorJahr : null, '12 Monate')}
+                {gesamtIstN < gesamt.length && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
+                    Plan bis {fmtMonat(gesamt[gesamt.length - 1].monat)} ┄
+                  </span>
+                )}
               </div>
               {gesamt.length >= 2 && (
                 <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: '8px 6px 2px', marginTop: 8 }}>
-                  <VerlaufChart verlauf={gesamt} color="#7FA8C9" height={170} />
+                  <VerlaufChart verlauf={gesamt} color="#7FA8C9" height={170} planAb={gesamtIstN} />
                 </div>
               )}
             </div>
@@ -231,7 +255,11 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
           {gruppen.map(([standort, liste]) => (
             <div key={standort}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '2px 4px 7px', textTransform: 'uppercase' }}>
-                📍 {standort} · {eur0(liste.reduce((a, k) => a + (k.verlauf.length ? k.verlauf[k.verlauf.length - 1].restschuld : 0), 0))}
+                📍 {standort} · {eur0(liste.reduce((a, k) => {
+                  const n = istAnzahl(k.verlauf)
+                  const z = n > 0 ? k.verlauf[n - 1] : k.verlauf[0]
+                  return a + (z ? z.restschuld : 0)
+                }, 0))}
               </div>
               <div style={{ display: 'grid', gap: 10 }}>
                 {liste.map((k) => (
@@ -277,23 +305,30 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
   const [bulkInfo, setBulkInfo] = useState('')
   const [edit, setEdit] = useState(false)
 
-  const aktuell = k.verlauf.length ? k.verlauf[k.verlauf.length - 1] : null
+  // §272b: „aktuell" = letzter IST-Monat; Zukunftszeilen (Tilgungsplan) nur
+  // fürs gestrichelte Chart-Segment. Fit bevorzugt Ist-Monate (echte
+  // Zahlungen), fällt bei zu wenigen auf den Gesamtverlauf zurück (frischer
+  // Kredit mit reinem Plan trägt dieselben Konditionen).
+  const istN = useMemo(() => istAnzahl(k.verlauf), [k.verlauf])
+  const aktuell = istN > 0 ? k.verlauf[istN - 1] : (k.verlauf[0] ?? null)
   const erster = k.verlauf.length ? k.verlauf[0] : null
   const getilgt = erster && aktuell ? erster.restschuld - aktuell.restschuld : 0
   const getilgtPct = erster && erster.restschuld > 0 ? (getilgt / erster.restschuld) * 100 : 0
-  const fit = useMemo(() => fitAnnuitaet(k.verlauf), [k.verlauf])
+  const fit = useMemo(
+    () => fitAnnuitaet(k.verlauf.slice(0, istN)) ?? fitAnnuitaet(k.verlauf),
+    [k.verlauf, istN],
+  )
   const proj = aktuell && fit ? projektionMonate(aktuell.restschuld, fit.zinsPa, fit.rate) : null
   const projMonat = proj != null && aktuell ? indexMonat(monatIndex(aktuell.monat) + proj) : null
   const tilgung12 = useMemo(() => {
-    if (k.verlauf.length < 2) return null
-    const letzte = k.verlauf[k.verlauf.length - 1]
-    const zielIdx = monatIndex(letzte.monat) - 12
+    if (!aktuell || istN < 2) return null
+    const zielIdx = monatIndex(aktuell.monat) - 12
     const alt = k.verlauf.filter((z) => monatIndex(z.monat) <= zielIdx)
     if (!alt.length) return null
     const ref = alt[alt.length - 1]
-    const monate = monatIndex(letzte.monat) - monatIndex(ref.monat)
-    return monate > 0 ? (ref.restschuld - letzte.restschuld) / monate : null
-  }, [k.verlauf])
+    const monate = monatIndex(aktuell.monat) - monatIndex(ref.monat)
+    return monate > 0 ? (ref.restschuld - aktuell.restschuld) / monate : null
+  }, [k.verlauf, istN, aktuell])
 
   const uebernehmen = async () => {
     const parsed = parseVerlaufBulk(bulk)
@@ -346,7 +381,12 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
 
       {open && (
         <div style={{ padding: '0 16px 16px', display: 'grid', gap: 12 }}>
-          <VerlaufChart verlauf={k.verlauf} color={NAVY} />
+          <VerlaufChart verlauf={k.verlauf} color={NAVY} planAb={istN} />
+          {istN < k.verlauf.length && (
+            <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: -6 }}>
+              ┄ gestrichelt = hinterlegter Tilgungsplan bis {fmtMonat(k.verlauf[k.verlauf.length - 1].monat)}
+            </div>
+          )}
 
           {/* Kennzahlen */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
