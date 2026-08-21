@@ -120,8 +120,15 @@ function lsqFit(seg: KreditMonat[]): AnnuitaetsFit | null {
   const rate = my + iMonat * mx
   let maxAbw = 0
   for (let k = 0; k < n; k++) maxAbw = Math.max(maxAbw, Math.abs(ys[k] - (rate - iMonat * xs[k])))
-  const zinsPa = iMonat * 12 * 100
-  if (!Number.isFinite(zinsPa) || !Number.isFinite(rate) || rate <= 0 || zinsPa < -1 || zinsPa > 25) return null
+  let zinsPa = iMonat * 12 * 100
+  // Kosmetik (§272c): zinslose Darlehen fitten numerisch auf −0,000x % → „-0,00 %"
+  if (Math.abs(zinsPa) < 0.005) zinsPa = 0
+  // rate < 1 statt <= 0 (Review §272c, MITTEL): Stundungs-Verläufe (Restschuld
+  // wächst durch Zinskapitalisierung, Salden cent-gerundet) fitten sonst auf
+  // eine MIKRO-Rate aus dem Rundungsrauschen (0,00–0,20 €) mit exakt=true —
+  // und die Fortschreibung nähme den Störfit statt der Vertragsfelder. Eine
+  // echte Monatsrate unter 1 € existiert nicht.
+  if (!Number.isFinite(zinsPa) || !Number.isFinite(rate) || rate < 1 || zinsPa < -1 || zinsPa > 25) return null
   return { zinsPa, rate, maxAbw, exakt: maxAbw < 1, monate: n }
 }
 
@@ -135,16 +142,64 @@ export function fitAnnuitaet(verlauf: KreditMonat[], maxMonate = 18): Annuitaets
     seg.unshift(sorted[k])
   }
   const basis = lsqFit(seg)
-  if (!basis || basis.exakt) return basis
+  if (basis?.exakt) return basis
   // Ausreißer-Robustheit (§272b, Zewen-Fund: EINE ~415-€-Sondertilgung im
   // Fenster drückte den Fit von echten 1,39 % auf 0,37 %): das längste
   // JÜNGSTE Teilfenster, das mathematisch exakt ist, gewinnt — sonst bleibt
-  // der volle Fit als gekennzeichnete Schätzung (~) stehen.
+  // der volle Fit als gekennzeichnete Schätzung (~) stehen. Läuft auch bei
+  // basis == null (§272c, Sirzenich-2-Fund: VARIABLE Zinsphasen im Fenster
+  // sprengen den Plausibilitäts-Guard des Voll-Fits — die stabile jüngste
+  // Phase ist trotzdem exakt erkennbar).
   for (let len = seg.length - 1; len >= 6; len--) {
     const f = lsqFit(seg.slice(seg.length - len))
     if (f?.exakt) return f
   }
   return basis
+}
+
+/* ── Auto-Fortschreibung (§272c): endet der gepflegte Verlauf VOR dem
+ *    heutigen Monat, läuft die Tilgung real ja trotzdem weiter — die Lücke
+ *    wird mit den erkannten Konditionen (Fit; Fallback Vertragsfelder)
+ *    annuitätisch bis heute hochgerechnet. NIE persistiert, nur berechnete
+ *    Anzeige — echte nachgepflegte Werte ersetzen die Schätzung automatisch.
+ *    Greift per Definition nur bei Krediten OHNE Zukunfts-/Planzeilen
+ *    (letzter Monat < heute ⇒ alle Zeilen sind Ist ⇒ der interne Fit ist
+ *    identisch mit dem Karten-Fit). ── */
+
+export interface Fortschreibung {
+  zeilen: KreditMonat[]        // NUR die ergänzten Monate (nach dem letzten echten)
+  abMonat: string              // erster fortgeschriebener Monat
+  letzterEchter: KreditMonat   // letzter gepflegter (echter) Stand
+  basis: 'fit' | 'vertrag'
+  zinsPa: number
+  rate: number
+}
+
+export function fortschreibungBisHeute(
+  k: Pick<Kredit, 'verlauf' | 'rate' | 'zinssatz'>,
+  heute = heuteMonat(),
+): Fortschreibung | null {
+  if (!k.verlauf.length) return null
+  const letzte = k.verlauf[k.verlauf.length - 1]
+  const von = monatIndex(letzte.monat)
+  const bis = monatIndex(heute)
+  // Lücke > 10 Jahre = kaputter Datenstand, keine Schätzung darüber
+  if (bis <= von || bis - von > 120) return null
+  let zinsPa: number
+  let rate: number
+  let basis: Fortschreibung['basis']
+  const fit = fitAnnuitaet(k.verlauf)
+  if (fit && fit.rate > 0) { zinsPa = fit.zinsPa; rate = fit.rate; basis = 'fit' }
+  else if (k.rate != null && k.rate > 0) { zinsPa = k.zinssatz ?? 0; rate = k.rate; basis = 'vertrag' }
+  else return null
+  const iMonat = zinsPa / 100 / 12
+  const zeilen: KreditMonat[] = []
+  let r = letzte.restschuld
+  for (let m = von + 1; m <= bis; m++) {
+    r = Math.max(0, r * (1 + iMonat) - rate)
+    zeilen.push({ monat: indexMonat(m), restschuld: Math.round(r * 100) / 100 })
+  }
+  return { zeilen, abMonat: zeilen[0].monat, letzterEchter: letzte, basis, zinsPa, rate }
 }
 
 /** Monate bis Restschuld 0 bei (zinsPa, rate) — null wenn die Rate die Zinsen nicht deckt. */

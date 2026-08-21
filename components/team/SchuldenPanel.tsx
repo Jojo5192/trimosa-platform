@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Kredit, KreditMonat, FIRMEN, fitAnnuitaet, projektionMonate, summenVerlauf,
-  parseVerlaufBulk, fmtMonat, indexMonat, monatIndex, istAnzahl, eur0, eur2, pct2,
+  fortschreibungBisHeute, parseVerlaufBulk, fmtMonat, indexMonat, monatIndex,
+  istAnzahl, eur0, eur2, pct2,
 } from '@/lib/schulden-mathe'
 import { haptic } from '@/components/team/ux'
 
@@ -43,9 +44,26 @@ function VerlaufChart({ verlauf, color, height = 220, planAb }: {
   /** Index des ersten PLAN-Monats (Zukunft) — ab dort gestrichelt; undefined = alles Ist */
   planAb?: number
 }) {
-  const W = 680
+  // §272c Mobil-Fix: ECHTE Container-Breite messen statt festem 680er-viewBox.
+  // Doppelter Gewinn: (a) Safari-Blowout — WebKit nimmt bei <svg viewBox> mit
+  // width:100% die viewBox-Breite als min-content-Beitrag im Grid, der Track
+  // wuchs auf dem iPhone auf 680px und schob die ganze Karte aus dem Viewport
+  // (§84-Klasse; Chromium clampt auf 0, darum im Pane nie sichtbar);
+  // (b) Labels bleiben in echter 11px-Größe lesbar statt auf ~6px gestaucht.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [w, setW] = useState(320)
+  useEffect(() => {
+    const mess = () => {
+      const el = wrapRef.current
+      if (el && el.clientWidth > 40) setW(el.clientWidth)
+    }
+    mess()
+    window.addEventListener('resize', mess)
+    return () => window.removeEventListener('resize', mess)
+  }, [])
+  const W = w
   const H = height
-  const PAD = { l: 56, r: 14, t: 12, b: 24 }
+  const PAD = { l: 48, r: 12, t: 12, b: 22 }
   const chart = useMemo(() => {
     if (verlauf.length < 2) return null
     const vals = verlauf.map((p) => p.restschuld)
@@ -72,10 +90,13 @@ function VerlaufChart({ verlauf, color, height = 220, planAb }: {
     const xIdx = verlauf.length > 2 ? [0, Math.floor((verlauf.length - 1) / 2), verlauf.length - 1] : [0, verlauf.length - 1]
     const xLabels = xIdx.map((i) => ({ label: fmtMonat(verlauf[i].monat), x: x(i) }))
     return { istLine, planLine, area, yTicks, xLabels, dotX: x(istEnd), dotY: y(verlauf[istEnd].restschuld) }
-  }, [verlauf, H, planAb])
-  if (!chart) return <p style={{ fontSize: 13, color: '#8A8578', margin: '10px 0' }}>Mindestens 2 Monatswerte für den Verlauf eintragen.</p>
+  }, [verlauf, H, W, planAb])
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+    <div ref={wrapRef} style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+      {!chart ? (
+        <p style={{ fontSize: 13, color: '#8A8578', margin: '10px 0' }}>Mindestens 2 Monatswerte für den Verlauf eintragen.</p>
+      ) : (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', maxWidth: '100%' }}>
       {chart.yTicks.map((tk, i) => (
         <g key={i}>
           <line x1={PAD.l} x2={W - PAD.r} y1={tk.y} y2={tk.y} stroke="rgba(60,60,67,0.1)" strokeWidth={1} />
@@ -93,6 +114,8 @@ function VerlaufChart({ verlauf, color, height = 220, planAb }: {
       )}
       <circle cx={chart.dotX} cy={chart.dotY} r={4.5} fill={color} stroke="#fff" strokeWidth={2} />
     </svg>
+      )}
+    </div>
   )
 }
 
@@ -169,9 +192,21 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
     } catch (e) { setFehler(String(e instanceof Error ? e.message : e)); return null } finally { busyRef.current = false; setBusy(false) }
   }
 
+  /* §272c: Kredite, deren Verlauf VOR heute endet (z. B. variabel, Tabelle
+     nicht fortgeschrieben), werden für Hero/Gruppen-Summen automatisch bis
+     heute hochgerechnet — sonst zählte ein 8 Monate alter Stand als aktuell */
+  const krediteEff = useMemo(() => kredite.map((k) => {
+    const fs = fortschreibungBisHeute(k)
+    return fs ? { ...k, verlauf: [...k.verlauf, ...fs.zeilen] } : k
+  }), [kredite])
+  const fsAnzahl = useMemo(
+    () => krediteEff.filter((k, i) => k !== kredite[i]).length,
+    [krediteEff, kredite],
+  )
+
   /* Gesamt-Kennzahlen — §272b: „aktuell" = letzter IST-Monat (≤ heute),
      Tilgungsplan-Zukunftszeilen zählen nicht als Stand */
-  const gesamt = useMemo(() => summenVerlauf(kredite), [kredite])
+  const gesamt = useMemo(() => summenVerlauf(krediteEff), [krediteEff])
   const gesamtIstN = useMemo(() => istAnzahl(gesamt), [gesamt])
   const istEnde = gesamtIstN > 0 ? gesamt[gesamtIstN - 1] : (gesamt[0] ?? null)
   const aktuell = istEnde?.restschuld ?? 0
@@ -184,7 +219,8 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
   const vorMonat = wertVor(1)
   const vorJahr = wertVor(12)
 
-  /* Standort-Gruppen */
+  /* Standort-Gruppen (Karten bekommen die ECHTEN Kredite — die Summenzeile
+     nutzt den effektiven, ggf. fortgeschriebenen Stand aus effStand) */
   const gruppen = useMemo(() => {
     const map = new Map<string, Kredit[]>()
     for (const k of kredite) {
@@ -194,6 +230,15 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [kredite])
+  const effStand = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const k of krediteEff) {
+      const n = istAnzahl(k.verlauf)
+      const z = n > 0 ? k.verlauf[n - 1] : k.verlauf[0]
+      m.set(k.id, z ? z.restschuld : 0)
+    }
+    return m
+  }, [krediteEff])
   const standorte = useMemo(() => {
     const s = new Set<string>(['Minden', 'Sirzenich', 'Bitburg', 'Edingen', 'Kanzem'])
     for (const k of kredite) s.add(k.standort)
@@ -215,8 +260,8 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
         <span style={{ fontSize: 11, fontWeight: 700, color: '#8A8578', background: 'rgba(120,120,128,0.12)', borderRadius: 999, padding: '4px 10px' }}>nur Chefs</span>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 14px 48px' }}>
-        <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gap: 14 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', padding: '14px 14px 48px' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
           {fehler && (
             <div style={{ fontSize: 13.5, color: '#B42318', background: '#FEE2E2', borderRadius: 12, padding: '10px 13px' }}>
               {fehler} <button onClick={load} style={{ ...BTN, padding: '4px 10px', fontSize: 12.5, marginLeft: 6, background: '#fff', color: '#B42318' }}>Erneut laden</button>
@@ -229,7 +274,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
             <div style={{ background: NAVY, borderRadius: 20, padding: '20px 20px 14px', color: '#fff' }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.65, textTransform: 'uppercase' }}>Gesamt-Restschuld</div>
               <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: '-0.8px', fontVariantNumeric: 'tabular-nums', margin: '4px 0 2px' }}>
-                {eur0(aktuell)}
+                {fsAnzahl > 0 ? '~ ' : ''}{eur0(aktuell)}
               </div>
               <div style={{ fontSize: 12.5, opacity: 0.65 }}>
                 {kredite.length ? `${kredite.length} Kredit${kredite.length === 1 ? '' : 'e'} · Stand ${istEnde ? fmtMonatLang(istEnde.monat) : '—'}` : 'Noch keine Kredite angelegt'}
@@ -240,6 +285,11 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
                 {gesamtIstN < gesamt.length && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.75)' }}>
                     Plan bis {fmtMonat(gesamt[gesamt.length - 1].monat)} ┄
+                  </span>
+                )}
+                {fsAnzahl > 0 && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'rgba(255,184,0,0.18)', color: '#FFD68A' }}>
+                    ↻ {fsAnzahl} Kredit{fsAnzahl === 1 ? '' : 'e'} fortgeschrieben ~
                   </span>
                 )}
               </div>
@@ -255,13 +305,9 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
           {gruppen.map(([standort, liste]) => (
             <div key={standort}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '2px 4px 7px', textTransform: 'uppercase' }}>
-                📍 {standort} · {eur0(liste.reduce((a, k) => {
-                  const n = istAnzahl(k.verlauf)
-                  const z = n > 0 ? k.verlauf[n - 1] : k.verlauf[0]
-                  return a + (z ? z.restschuld : 0)
-                }, 0))}
+                📍 {standort} · {eur0(liste.reduce((a, k) => a + (effStand.get(k.id) ?? 0), 0))}
               </div>
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
                 {liste.map((k) => (
                   <KreditKarte key={k.id} k={k} open={openId === k.id}
                     onToggle={() => { haptic(); setOpenId(openId === k.id ? '' : k.id) }}
@@ -284,7 +330,12 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
           <p style={{ fontSize: 11.5, color: '#8A8578', lineHeight: 1.55, margin: '4px 4px 0' }}>
             Zins &amp; Monatsrate werden automatisch aus dem Restschuld-Verlauf erkannt
             (Annuitäts-Fit über die letzten 18 Monate). ✓ = mathematisch exakt,
-            ~ = Schätzung. Verlauf einfach aus Excel kopieren und einfügen —
+            ~ = Schätzung. Endet ein Verlauf in der Vergangenheit, schreibt die App
+            ihn mit den erkannten Konditionen automatisch bis heute fort (↻ — im
+            Kredit-Chart gestrichelt, in der Gesamt-Grafik steckt der Schätzanteil
+            in der Summenlinie, erkennbar am ~ vor der Zahl und dem ↻-Chip) —
+            echte nachgepflegte Werte ersetzen die Schätzung.
+            Verlauf einfach aus Excel kopieren und einfügen —
             Format „07.2024 440.000,00" je Zeile.
           </p>
         </div>
@@ -309,26 +360,42 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
   // fürs gestrichelte Chart-Segment. Fit bevorzugt Ist-Monate (echte
   // Zahlungen), fällt bei zu wenigen auf den Gesamtverlauf zurück (frischer
   // Kredit mit reinem Plan trägt dieselben Konditionen).
-  const istN = useMemo(() => istAnzahl(k.verlauf), [k.verlauf])
-  const aktuell = istN > 0 ? k.verlauf[istN - 1] : (k.verlauf[0] ?? null)
-  const erster = k.verlauf.length ? k.verlauf[0] : null
+  const istNEcht = useMemo(() => istAnzahl(k.verlauf), [k.verlauf])
+  const fit = useMemo(
+    () => fitAnnuitaet(k.verlauf.slice(0, istNEcht)) ?? fitAnnuitaet(k.verlauf),
+    [k.verlauf, istNEcht],
+  )
+  // §272c: endet der gepflegte Verlauf VOR heute, wird bis heute
+  // fortgeschrieben (fs greift nur ohne Plan-Zeilen — dann sind alle Zeilen
+  // Ist und der interne Fit von fortschreibungBisHeute ist identisch mit
+  // `fit`; Hero/Gruppen rechnen im Haupt-Panel dieselbe Funktion)
+  const fs = useMemo(() => fortschreibungBisHeute(k), [k])
+  const verlaufEff = useMemo(() => (fs ? [...k.verlauf, ...fs.zeilen] : k.verlauf), [k.verlauf, fs])
+  const istN = fs ? verlaufEff.length : istNEcht
+  const aktuell = istN > 0 ? verlaufEff[istN - 1] : (verlaufEff[0] ?? null)
+  const erster = verlaufEff.length ? verlaufEff[0] : null
   const getilgt = erster && aktuell ? erster.restschuld - aktuell.restschuld : 0
   const getilgtPct = erster && erster.restschuld > 0 ? (getilgt / erster.restschuld) * 100 : 0
-  const fit = useMemo(
-    () => fitAnnuitaet(k.verlauf.slice(0, istN)) ?? fitAnnuitaet(k.verlauf),
-    [k.verlauf, istN],
-  )
-  const proj = aktuell && fit ? projektionMonate(aktuell.restschuld, fit.zinsPa, fit.rate) : null
+  // Review §272c: einheitliche Konditions-Quelle — Fit, sonst (im
+  // Vertrags-Fallback der Fortschreibung) die Vertragsfelder; damit zeigen
+  // KPI-Block und Projektion dieselben Werte, mit denen das Chart rechnet
+  const kond = fit
+    ? { zinsPa: fit.zinsPa, rate: fit.rate, vertrag: false }
+    : fs && fs.basis === 'vertrag'
+      ? { zinsPa: fs.zinsPa, rate: fs.rate, vertrag: true }
+      : null
+  const zeigZins = kond != null && (!kond.vertrag || k.zinssatz != null)
+  const proj = aktuell && kond && kond.rate > 0 ? projektionMonate(aktuell.restschuld, kond.zinsPa, kond.rate) : null
   const projMonat = proj != null && aktuell ? indexMonat(monatIndex(aktuell.monat) + proj) : null
   const tilgung12 = useMemo(() => {
     if (!aktuell || istN < 2) return null
     const zielIdx = monatIndex(aktuell.monat) - 12
-    const alt = k.verlauf.filter((z) => monatIndex(z.monat) <= zielIdx)
+    const alt = verlaufEff.filter((z) => monatIndex(z.monat) <= zielIdx)
     if (!alt.length) return null
     const ref = alt[alt.length - 1]
     const monate = monatIndex(aktuell.monat) - monatIndex(ref.monat)
     return monate > 0 ? (ref.restschuld - aktuell.restschuld) / monate : null
-  }, [k.verlauf, istN, aktuell])
+  }, [verlaufEff, istN, aktuell])
 
   const uebernehmen = async () => {
     const parsed = parseVerlaufBulk(bulk)
@@ -353,7 +420,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15.5, fontWeight: 700, color: '#1A1814', flex: 1, minWidth: 140 }}>{k.name}</span>
           <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, fontVariantNumeric: 'tabular-nums' }}>
-            {aktuell ? eur0(aktuell.restschuld) : '—'}
+            {aktuell ? `${fs ? '~ ' : ''}${eur0(aktuell.restschuld)}` : '—'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
@@ -362,6 +429,11 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
           {fit && (
             <span style={{ fontSize: 11, fontWeight: 700, color: '#0A84FF', background: 'rgba(10,132,255,0.1)', borderRadius: 999, padding: '2px 9px' }}>
               {fit.exakt ? '✓' : '~'} {pct2(fit.zinsPa)} p.a.
+            </span>
+          )}
+          {fs && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#B45309', background: '#FEF3C7', borderRadius: 999, padding: '2px 9px' }}>
+              ↻ ab {fmtMonat(fs.abMonat)} geschätzt
             </span>
           )}
           <span style={{ marginLeft: 'auto', color: '#C7C7CC', fontSize: 13 }}>{open ? '▴' : '▾'}</span>
@@ -380,20 +452,40 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
       </button>
 
       {open && (
-        <div style={{ padding: '0 16px 16px', display: 'grid', gap: 12 }}>
-          <VerlaufChart verlauf={k.verlauf} color={NAVY} planAb={istN} />
-          {istN < k.verlauf.length && (
+        <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
+          <VerlaufChart verlauf={verlaufEff} color={NAVY} planAb={fs ? k.verlauf.length : istN} />
+          {fs ? (
             <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: -6 }}>
-              ┄ gestrichelt = hinterlegter Tilgungsplan bis {fmtMonat(k.verlauf[k.verlauf.length - 1].monat)}
+              ┄ gestrichelt = automatisch fortgeschrieben ab {fmtMonat(fs.abMonat)}
+              {' '}({pct2(fs.zinsPa)} · {eur2(fs.rate)}/M{fs.basis === 'vertrag' ? ', Vertragsdaten' : ''})
+            </div>
+          ) : istN < verlaufEff.length && (
+            <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: -6 }}>
+              ┄ gestrichelt = hinterlegter Tilgungsplan bis {fmtMonat(verlaufEff[verlaufEff.length - 1].monat)}
+            </div>
+          )}
+          {fs && (
+            <div style={{ fontSize: 12, color: '#B45309', background: '#FEF3C7', borderRadius: 10, padding: '8px 11px', lineHeight: 1.5 }}>
+              Der gepflegte Verlauf endet {fmtMonatLang(fs.letzterEchter.monat)} ({eur0(fs.letzterEchter.restschuld)}) —
+              seither rechnet die App mit {pct2(fs.zinsPa)} p.a. · {eur2(fs.rate)}/M automatisch weiter.
+              Echte Kontostände unten einfügen ersetzt die Schätzung.
             </div>
           )}
 
           {/* Kennzahlen */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
-            {fit && <Kpi label={fit.exakt ? 'Zins (erkannt ✓)' : 'Zins (geschätzt ~)'} value={pct2(fit.zinsPa) + ' p.a.'} sub={`aus ${fit.monate} Monaten`} color="#0A84FF" />}
-            {fit && <Kpi label="Monatsrate" value={eur2(fit.rate)} sub={fit.exakt ? 'exakt erkannt' : 'geschätzt'} />}
-            {fit && aktuell && <Kpi label="Zinskosten p.a." value={'≈ ' + eur0(aktuell.restschuld * fit.zinsPa / 100)} sub="beim aktuellen Stand" />}
-            {tilgung12 != null && <Kpi label="Ø Tilgung / Monat" value={eur0(tilgung12)} sub="letzte 12 Monate" color="#16A34A" />}
+            {zeigZins && kond && (
+              <Kpi label={kond.vertrag ? 'Zins (Vertrag)' : fit?.exakt ? 'Zins (erkannt ✓)' : 'Zins (geschätzt ~)'}
+                value={pct2(kond.zinsPa) + ' p.a.'}
+                sub={kond.vertrag ? 'aus Vertragsdaten' : `aus ${fit?.monate ?? 0} Monaten`}
+                color={kond.vertrag ? '#B45309' : '#0A84FF'} />
+            )}
+            {kond && (
+              <Kpi label="Monatsrate" value={eur2(kond.rate)}
+                sub={kond.vertrag ? 'aus Vertragsdaten' : fit?.exakt ? 'exakt erkannt' : 'geschätzt'} />
+            )}
+            {zeigZins && kond && aktuell && <Kpi label="Zinskosten p.a." value={'≈ ' + eur0(aktuell.restschuld * kond.zinsPa / 100)} sub="beim aktuellen Stand" />}
+            {tilgung12 != null && <Kpi label="Ø Tilgung / Monat" value={(fs ? '~ ' : '') + eur0(tilgung12)} sub={fs ? 'letzte 12 M. · teils fortgeschrieben' : 'letzte 12 Monate'} color="#16A34A" />}
             {projMonat && <Kpi label="Schuldenfrei ca." value={fmtMonatLang(projMonat)} sub={`bei gleichen Konditionen (~${Math.round((proj ?? 0) / 12)} J.)`} />}
             {k.zinsbindungBis && <Kpi label="Zinsbindung bis" value={fmtMonatLang(k.zinsbindungBis)} color="#B45309" />}
           </div>
@@ -501,7 +593,7 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
   }
 
   return (
-    <div style={{ ...CARD, padding: 16, display: 'grid', gap: 10 }}>
+    <div style={{ ...CARD, padding: 16, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: '#1A1814' }}>{vorlage ? 'Kredit bearbeiten' : 'Neuer Kredit'}</div>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name — z. B. Volksbank MFH Minden" style={INPUT} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
