@@ -25,22 +25,42 @@ async function requireAdmin() {
   return me?.is_admin ? user : null
 }
 
-async function readKredite(): Promise<Kredit[]> {
+async function readSchulden(): Promise<{ kredite: Kredit[]; rev: number }> {
   const { data, error } = await supabaseAdmin
     .from('app_settings').select('value').eq('key', KEY).maybeSingle()
   if (error) throw new Error('schulden read failed: ' + error.message)
-  const v = (data?.value ?? {}) as { kredite?: Kredit[] }
-  return Array.isArray(v.kredite) ? v.kredite : []
+  const v = (data?.value ?? {}) as { kredite?: Kredit[]; rev?: number }
+  return {
+    kredite: Array.isArray(v.kredite) ? v.kredite : [],
+    rev: Number.isFinite(Number(v.rev)) ? Number(v.rev) : 0,
+  }
 }
 
-async function writeKredite(kredite: Kredit[]): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from('app_settings')
-    .upsert({ key: KEY, value: { kredite } }, { onConflict: 'key' })
+/** CAS-Write (Review §272, HOCH): drei Chefs arbeiten parallel auf demselben
+ *  Blob — ohne Versions-Guard überschreibt der langsamere Write den
+ *  schnelleren kommentarlos (inkl. Wiederauferstehung gelöschter Kredite).
+ *  Update greift nur, wenn die gelesene rev noch stimmt; sonst KONFLIKT →
+ *  der Client lädt neu. */
+async function writeKredite(kredite: Kredit[], erwarteteRev: number): Promise<void> {
+  const next = { kredite, rev: erwarteteRev + 1 }
+  let q = supabaseAdmin.from('app_settings').update({ value: next }).eq('key', KEY)
+  // Bestand ohne rev-Feld (bzw. Erstanlage) zählt als rev 0
+  q = erwarteteRev === 0
+    ? q.or('value->>rev.eq.0,value->>rev.is.null')
+    : q.eq('value->>rev', String(erwarteteRev))
+  const { data, error } = await q.select('key')
   if (error) throw new Error('schulden write failed: ' + error.message)
+  if (data?.length) return
+  if (erwarteteRev === 0) {
+    const { error: insErr } = await supabaseAdmin.from('app_settings').insert({ key: KEY, value: next })
+    if (!insErr) return
+  }
+  throw new Error('KONFLIKT: Die Daten wurden gerade von jemand anderem geändert — bitte neu laden und erneut speichern.')
 }
 
-const MONAT_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+// Jahres-Plausibilität 2000–2099 (Review: Zehner-Dreher wie „2924" vergiftet
+// Gesamt-Hero und Chart)
+const MONAT_RE = /^20\d{2}-(0[1-9]|1[0-2])$/
 
 function cleanVerlauf(input: unknown): KreditMonat[] {
   if (!Array.isArray(input)) return []
@@ -90,7 +110,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   if (req.nextUrl.searchParams.get('probe') === '1') return NextResponse.json({ ok: true }, NO_STORE)
   try {
-    return NextResponse.json({ kredite: await readKredite() }, NO_STORE)
+    return NextResponse.json({ kredite: (await readSchulden()).kredite }, NO_STORE)
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 })
   }
@@ -102,10 +122,14 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   const action = String(b.action ?? '')
   try {
-    const kredite = await readKredite()
+    const { kredite, rev } = await readSchulden()
 
     if (action === 'save-kredit') {
-      const idx = kredite.findIndex((k) => k.id === String(b.id ?? ''))
+      const idGegeben = String(b.id ?? '')
+      const idx = kredite.findIndex((k) => k.id === idGegeben)
+      // Review §272: Stale-Edit (Kredit wurde parallel gelöscht) darf KEINE
+      // stille Neuanlage mit leerem Verlauf werden
+      if (idGegeben && idx < 0) return NextResponse.json({ error: 'Kredit nicht gefunden — bitte neu laden.' }, { status: 404 })
       const clean = cleanKredit((b.kredit ?? {}) as Record<string, unknown>, idx >= 0 ? kredite[idx] : undefined)
       if (!clean) return NextResponse.json({ error: 'Name und Standort sind Pflicht.' }, { status: 400 })
       if (idx >= 0) kredite[idx] = clean
@@ -114,14 +138,14 @@ export async function PATCH(req: NextRequest) {
         clean.id = crypto.randomUUID()
         kredite.push(clean)
       }
-      await writeKredite(kredite)
+      await writeKredite(kredite, rev)
       return NextResponse.json({ ok: true, id: idx >= 0 ? kredite[idx].id : clean.id, kredite }, NO_STORE)
     }
 
     if (action === 'delete-kredit') {
       const next = kredite.filter((k) => k.id !== String(b.id ?? ''))
       if (next.length === kredite.length) return NextResponse.json({ error: 'Kredit nicht gefunden.' }, { status: 404 })
-      await writeKredite(next)
+      await writeKredite(next, rev)
       return NextResponse.json({ ok: true, kredite: next }, NO_STORE)
     }
 
@@ -135,7 +159,7 @@ export async function PATCH(req: NextRequest) {
       for (const z of neu) map.set(z.monat, z.restschuld)
       k.verlauf = [...map.entries()].map(([monat, restschuld]) => ({ monat, restschuld }))
         .sort((a, b2) => a.monat.localeCompare(b2.monat)).slice(0, 600)
-      await writeKredite(kredite)
+      await writeKredite(kredite, rev)
       return NextResponse.json({ ok: true, uebernommen: neu.length, kredite }, NO_STORE)
     }
 
@@ -143,12 +167,13 @@ export async function PATCH(req: NextRequest) {
       const k = kredite.find((x) => x.id === String(b.id ?? ''))
       if (!k) return NextResponse.json({ error: 'Kredit nicht gefunden.' }, { status: 404 })
       k.verlauf = k.verlauf.filter((z) => z.monat !== String(b.monat ?? ''))
-      await writeKredite(kredite)
+      await writeKredite(kredite, rev)
       return NextResponse.json({ ok: true, kredite }, NO_STORE)
     }
 
     return NextResponse.json({ error: `Unbekannte action ${action}` }, { status: 400 })
   } catch (e) {
-    return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 })
+    const msg = String(e instanceof Error ? e.message : e)
+    return NextResponse.json({ error: msg }, { status: msg.startsWith('KONFLIKT') ? 409 : 500 })
   }
 }

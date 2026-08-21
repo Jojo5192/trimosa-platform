@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Kredit, KreditMonat, FIRMEN, fitAnnuitaet, projektionMonate, summenVerlauf,
@@ -131,17 +131,26 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
   }
   useEffect(load, [])
 
-  const patch = async (body: Record<string, unknown>): Promise<boolean> => {
+  // Review §272: busyRef-Guard — zwei schnelle ✕-Taps feuerten sonst
+  // parallele PATCHes (Lost Update: der zweite schrieb den alten Stand zurück)
+  const busyRef = useRef(false)
+  const patch = async (body: Record<string, unknown>): Promise<Record<string, unknown> | null> => {
+    if (busyRef.current) return null
+    busyRef.current = true
     setBusy(true); setFehler('')
     try {
       const r = await fetch('/api/schulden', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
       const j = await r.json()
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+      if (!r.ok) {
+        // CAS-Konflikt / Stale-Edit → frischen Stand laden, dann Meldung zeigen
+        if (r.status === 409 || r.status === 404) load()
+        throw new Error(j.error ?? `HTTP ${r.status}`)
+      }
       if (Array.isArray(j.kredite)) setKredite(j.kredite)
-      return true
-    } catch (e) { setFehler(String(e instanceof Error ? e.message : e)); return false } finally { setBusy(false) }
+      return j
+    } catch (e) { setFehler(String(e instanceof Error ? e.message : e)); return null } finally { busyRef.current = false; setBusy(false) }
   }
 
   /* Gesamt-Kennzahlen */
@@ -262,7 +271,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
 
 function KreditKarte({ k, open, onToggle, patch, busy }: {
   k: Kredit; open: boolean; onToggle: () => void
-  patch: (b: Record<string, unknown>) => Promise<boolean>; busy: boolean
+  patch: (b: Record<string, unknown>) => Promise<Record<string, unknown> | null>; busy: boolean
 }) {
   const [bulk, setBulk] = useState('')
   const [bulkInfo, setBulkInfo] = useState('')
@@ -289,9 +298,13 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
   const uebernehmen = async () => {
     const parsed = parseVerlaufBulk(bulk)
     if (!parsed.zeilen.length) { setBulkInfo('Keine gültigen Zeilen erkannt — Format „07.2024 440.000,00".'); return }
-    if (await patch({ action: 'set-verlauf', id: k.id, zeilen: parsed.zeilen })) {
+    const j = await patch({ action: 'set-verlauf', id: k.id, zeilen: parsed.zeilen })
+    if (j) {
       setBulk('')
-      setBulkInfo(`✓ ${parsed.zeilen.length} Monat${parsed.zeilen.length === 1 ? '' : 'e'} übernommen${parsed.fehler.length ? ` · ${parsed.fehler.length} Zeile(n) übersprungen` : ''}`)
+      // Review §272: Zahl aus der SERVER-Antwort (was wirklich übernommen
+      // wurde), nicht aus dem Client-Parse
+      const n = Number(j.uebernommen ?? parsed.zeilen.length)
+      setBulkInfo(`✓ ${n} Monat${n === 1 ? '' : 'e'} übernommen${parsed.fehler.length ? ` · ${parsed.fehler.length} Zeile(n) übersprungen` : ''}`)
     }
   }
 
@@ -371,8 +384,8 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
                 {k.verlauf.slice(-3).map((z) => (
                   <span key={z.monat} style={{ whiteSpace: 'nowrap', marginRight: 8 }}>
                     {fmtMonat(z.monat)} {eur2(z.restschuld)}
-                    <button onClick={() => { if (confirm(`${fmtMonat(z.monat)} löschen?`)) void patch({ action: 'delete-monat', id: k.id, monat: z.monat }) }}
-                      style={{ border: 'none', background: 'none', color: '#B42318', cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>✕</button>
+                    <button disabled={busy} onClick={() => { if (confirm(`${fmtMonat(z.monat)} löschen?`)) void patch({ action: 'delete-monat', id: k.id, monat: z.monat }) }}
+                      style={{ border: 'none', background: 'none', color: '#B42318', cursor: 'pointer', fontSize: 12, padding: '0 2px', opacity: busy ? 0.4 : 1 }}>✕</button>
                   </span>
                 ))}
               </div>
@@ -387,9 +400,9 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setEdit(true)} style={{ ...BTN, background: 'rgba(120,120,128,0.1)', color: '#1A1814' }}>✏️ Bearbeiten</button>
-              <button onClick={() => {
+              <button disabled={busy} onClick={() => {
                 if (confirm(`Kredit „${k.name}" mit ${k.verlauf.length} Monatswerten wirklich löschen?`)) void patch({ action: 'delete-kredit', id: k.id })
-              }} style={{ ...BTN, background: 'rgba(255,59,48,0.08)', color: '#D70015' }}>🗑 Löschen</button>
+              }} style={{ ...BTN, background: 'rgba(255,59,48,0.08)', color: '#D70015', opacity: busy ? 0.5 : 1 }}>🗑 Löschen</button>
             </div>
           )}
         </div>
@@ -409,15 +422,40 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
   const [standortNeu, setStandortNeu] = useState('')
   const [firma, setFirma] = useState<string>(vorlage?.firma ?? 'gbr')
   const [bank, setBank] = useState(vorlage?.bank ?? '')
-  const [zinsbindung, setZinsbindung] = useState(vorlage?.zinsbindungBis ?? '')
+  const [zinsbindung, setZinsbindung] = useState(vorlage?.zinsbindungBis ? fmtMonat(vorlage.zinsbindungBis) : '')
+  const [zins, setZins] = useState(vorlage?.zinssatz != null ? String(vorlage.zinssatz).replace('.', ',') : '')
+  const [rate, setRate] = useState(vorlage?.rate != null ? String(vorlage.rate).replace('.', ',') : '')
   const [notiz, setNotiz] = useState(vorlage?.notiz ?? '')
+  const [formFehler, setFormFehler] = useState('')
 
   const submit = () => {
     const st = standortNeu.trim() || standort
     if (!name.trim() || !st) return
+    // Zinsbindung: MM.JJJJ (wie überall in der App) ODER JJJJ-MM — Müll
+    // blockiert den Submit statt still zu löschen (Review §272)
+    let zb: string | null = null
+    const zbT = zinsbindung.trim()
+    if (zbT) {
+      const a = zbT.match(/^(0[1-9]|1[0-2])\.(20\d{2})$/)
+      const b = zbT.match(/^(20\d{2})-(0[1-9]|1[0-2])$/)
+      if (a) zb = `${a[2]}-${a[1]}`
+      else if (b) zb = zbT
+      else { setFormFehler('Zinsbindung bitte als MM.JJJJ angeben (z. B. 06.2030).'); return }
+    }
+    const numOderNull = (s: string): number | null | undefined => {
+      const t = s.trim()
+      if (!t) return null
+      const n = Number(t.replace(/\./g, '').replace(',', '.'))
+      return Number.isFinite(n) && n >= 0 ? n : undefined
+    }
+    const z = numOderNull(zins)
+    const r = numOderNull(rate)
+    if (z === undefined) { setFormFehler('Vertragszins bitte als Zahl angeben (z. B. 4,2).'); return }
+    if (r === undefined) { setFormFehler('Rate bitte als Zahl angeben (z. B. 2328,17).'); return }
+    setFormFehler('')
     onSave({
       name: name.trim(), standort: st, firma, bank: bank || null,
-      zinsbindungBis: /^\d{4}-(0[1-9]|1[0-2])$/.test(zinsbindung) ? zinsbindung : null,
+      zinsbindungBis: zb, zinssatz: z, rate: r,
       notiz: notiz || null,
     })
   }
@@ -443,9 +481,14 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input value={bank ?? ''} onChange={(e) => setBank(e.target.value)} placeholder="Bank (optional)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
-        <input value={zinsbindung ?? ''} onChange={(e) => setZinsbindung(e.target.value)} placeholder="Zinsbindung bis (JJJJ-MM)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
+        <input value={zinsbindung ?? ''} onChange={(e) => setZinsbindung(e.target.value)} placeholder="Zinsbindung bis (MM.JJJJ)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input value={zins} onChange={(e) => setZins(e.target.value)} inputMode="decimal" placeholder="Vertragszins % p.a. (optional)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
+        <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="Rate €/Monat (optional)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
       </div>
       <input value={notiz ?? ''} onChange={(e) => setNotiz(e.target.value)} placeholder="Notiz (optional)" style={INPUT} />
+      {formFehler && <div style={{ fontSize: 12.5, color: '#B42318', background: '#FEE2E2', borderRadius: 10, padding: '8px 11px' }}>{formFehler}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={submit} disabled={busy || !name.trim()} style={{ ...BTN, background: NAVY, color: '#fff', opacity: busy || !name.trim() ? 0.5 : 1 }}>
           {busy ? '⏳…' : '💾 Speichern'}

@@ -48,20 +48,26 @@ export function parseVerlaufBulk(text: string): { zeilen: KreditMonat[]; fehler:
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim()
     if (!line) continue
-    // Monat: MM.YYYY oder YYYY-MM
+    // Monat: MM.YYYY oder YYYY-MM — Jahr plausibel (2000–2099, Review-Fund:
+    // ein Zehner-Dreher wie „2924" würde sonst Hero/Chart vergiften)
     let monat: string | null = null
-    const m1 = line.match(/\b(0[1-9]|1[0-2])\.(\d{4})\b/)
-    const m2 = line.match(/\b(\d{4})-(0[1-9]|1[0-2])\b/)
+    const m1 = line.match(/\b(0[1-9]|1[0-2])\.(20\d{2})\b/)
+    const m2 = line.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/)
     if (m1) monat = `${m1[2]}-${m1[1]}`
     else if (m2) monat = `${m2[1]}-${m2[2]}`
     if (!monat) { fehler.push(line.slice(0, 40)); continue }
-    // Betrag: deutscher Stil (Tausenderpunkte + Komma) — Monat vorher aus der
-    // Zeile entfernen, damit „07.2024" nicht als Betrag durchgeht
-    const rest = line.replace(m1?.[0] ?? m2?.[0] ?? '', ' ')
-    const b = rest.match(/-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g)
-    const kandidaten = (b ?? [])
-      .map((s) => parseDeutsch(s))
-      .filter((n): n is number => n != null && Number.isFinite(n) && Math.abs(n) >= 0)
+    // Review-Fund: ALLE Datums-Vorkommen entfernen (auch eine zweite Spalte
+    // wie „Zinsbindung 06.2030"), sonst zerfallen sie in Betrag-Kandidaten
+    const rest = line
+      .replace(/\b(0[1-9]|1[0-2])\.(20\d{2})\b/g, ' ')
+      .replace(/\b(20\d{2})-(0[1-9]|1[0-2])\b/g, ' ')
+    // Review-Fund (HOCH): kein Regex-Scan über Teilstrings — der zerhackte
+    // „440000,00" in 3er-Chunks. Stattdessen je Whitespace-Token die GANZE
+    // Zahl parsen (deckt 440.000,00 · 440000,00 · 440000 · 439400.55).
+    const kandidaten = rest.split(/[\s;€]+/)
+      .filter((t) => /^-?[\d.,]+$/.test(t))
+      .map((t) => parseDeutsch(t))
+      .filter((n): n is number => n != null && Number.isFinite(n) && n >= 0)
     if (!kandidaten.length) { fehler.push(line.slice(0, 40)); continue }
     // größter Kandidat = die Restschuld (kleine Zahlen wären z. B. Zeilen-Nrn.)
     const restschuld = Math.max(...kandidaten)
@@ -142,8 +148,11 @@ export function projektionMonate(restschuld: number, zinsPa: number, rate: numbe
 export function summenVerlauf(kredite: Kredit[]): KreditMonat[] {
   const alle = kredite.filter((k) => k.verlauf.length)
   if (!alle.length) return []
-  const von = Math.min(...alle.map((k) => monatIndex(k.verlauf[0].monat)))
+  let von = Math.min(...alle.map((k) => monatIndex(k.verlauf[0].monat)))
   const bis = Math.max(...alle.map((k) => monatIndex(k.verlauf[k.verlauf.length - 1].monat)))
+  // Defensiv-Kappung (Review): ein Ausreißer-Jahr darf nie zehntausende
+  // Chart-Punkte erzeugen — mehr als 100 Jahre Spanne kappt auf das Ende
+  if (bis - von > 1200) von = bis - 1200
   const out: KreditMonat[] = []
   for (let i = von; i <= bis; i++) {
     let sum = 0
