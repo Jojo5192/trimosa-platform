@@ -20,6 +20,7 @@ import PushLogPanel from '@/components/team/PushLogPanel'
 import LocksPanel from '@/components/team/LocksPanel'
 import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
+import SchuldenPanel from '@/components/team/SchuldenPanel'
 
 const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
 
@@ -80,6 +81,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // ⏱ Reinigungs-Dauer (§255) — NUR Chefs (is_admin; probe 403 → aus)
   const [durOk, setDurOk] = useState(false)
   const [showDur, setShowDur] = useState(false)
+  // 🏦 Schuldenstand (§272) — NUR Chefs (is_admin; probe 403 → aus)
+  const [schuldenOk, setSchuldenOk] = useState(false)
+  const [showSchulden, setShowSchulden] = useState(false)
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
   const [belegeOk, setBelegeOk] = useState(false)
@@ -110,6 +114,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       .catch(() => {})
     fetch('/api/cleaning/durations?probe=1', { cache: 'no-store' })
       .then((r) => { if (r.ok) setDurOk(true) })
+      .catch(() => {})
+    fetch('/api/schulden?probe=1', { cache: 'no-store' })
+      .then((r) => { if (r.ok) setSchuldenOk(true) })
       .catch(() => {})
   }, [])
 
@@ -228,6 +235,20 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Reinigungs-Dauer</span>
                     <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Wie lange Reinigungen dauern (nur Chefs)</span>
+                  </span>
+                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                </button>
+              )}
+              {schuldenOk && (
+                <button onClick={() => setShowSchulden(true)} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                }}>
+                  <span style={{ fontSize: 19 }}>🏦</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Schuldenstand</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Kredite je Standort — Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
                   </span>
                   <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
                 </button>
@@ -433,6 +454,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showMaterial && <MaterialPanel onClose={() => setShowMaterial(false)} />}
       {showPushLog && <PushLogPanel onClose={() => setShowPushLog(false)} />}
       {showDur && <CleaningDurations onClose={() => setShowDur(false)} />}
+      {showSchulden && <SchuldenPanel onClose={() => setShowSchulden(false)} />}
     </div>
   )
 }
