@@ -236,10 +236,10 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   }
 
   // §231: Wohnungen, deren AKTUELLER Reinigungs-Slot (jüngste Abreise bis
-  // heute) vor Ort BESTÄTIGT gemeldet ist — Basis für den Anreisetag-Morgen-
+  // heute) vor Ort fertig gemeldet ist — Basis für den Anreisetag-Morgen-
   // Versand der „Früher Check-in"-Vorlage. Eine zwischenzeitliche Lücken-
   // Buchung verschiebt die jüngste Abreise → Wohnung fällt automatisch raus,
-  // bis DEREN Reinigung bestätigt ist. Fail-soft ohne Migration.
+  // bis DEREN Reinigung gemeldet ist. Fail-soft ohne Migration.
   const cleanReady = new Set<string>()
   if (templates.some((t) => t.trigger_type === 'reinigung_fertig')) {
     try {
@@ -261,7 +261,12 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           if ((latest.get(k) ?? '') < v) latest.set(k, v)
         }
         for (const c of confs ?? []) {
-          if (c.verify_status === 'bestaetigt' && latest.get(String(c.listing_id)) === String(c.slot_date)) {
+          // §248d-Nachzügler (Bug, Johannes 27.8.): Seit dem Zeugen-Ausbau
+          // speichert JEDE Fertigmeldung verify 'nicht_pruefbar' — der alte
+          // 'bestaetigt'-Filter machte den Morgen-Pfad seit 7.8. komplett
+          // tot (Vorab-Reinigungen lösten nie mehr Früh-Check-in aus).
+          // Doktrin §248d: die Fertigmeldung selbst zählt, ohne Schloss-Beweis.
+          if (latest.get(String(c.listing_id)) === String(c.slot_date)) {
             cleanReady.add(String(c.listing_id))
           }
         }
