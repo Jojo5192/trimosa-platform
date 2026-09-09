@@ -674,6 +674,19 @@ export async function sendMessageToHost(
  * adults, children, phone) — Smoobu übernimmt nur die mitgeschickten Felder.
  * Rückgabe: null bei Erfolg, sonst Fehlertext.
  */
+/** Paragraph 297: Roh-Antwort eines Reservierungs-Updates (Diagnose, warum Smoobu Felder ignoriert). */
+export async function updateReservationRaw(
+  reservationId: number,
+  fields: Record<string, unknown>,
+): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
+    method: 'PUT',
+    headers: smoobuHeaders(),
+    body: JSON.stringify(fields),
+  })
+  return { status: res.status, body: (await res.text().catch(() => '')).slice(0, 600) }
+}
+
 export async function updateReservation(
   reservationId: number,
   fields: Record<string, unknown>,

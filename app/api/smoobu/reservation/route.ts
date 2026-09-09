@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { getRawReservation, updateReservation } from '@/lib/smoobu'
+import { getRawReservation, updateReservationRaw } from '@/lib/smoobu'
 
 /**
  * 🔎 §291 Diagnose (Admin/Gastgeber): Roh-Reservierung aus Smoobu neben unserer Buchung —
@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
   if (!smoobuId || !Object.keys(fields).length) {
     return NextResponse.json({ error: 'booking/id oder erlaubte fields fehlen.', erlaubt: [...ALLOWED] }, { status: 400, ...NO_STORE })
   }
-  const ergebnis = await updateReservation(smoobuId, fields)
+  const antwort = await updateReservationRaw(smoobuId, fields)
   const raw = await getRawReservation(smoobuId)
   const danach = raw ? { firstName: raw.firstname, lastName: raw.lastname, email: raw.email, phone: raw.phone, adults: raw.adults, children: raw.children } : null
-  return NextResponse.json({ smoobuId, gesendet: fields, ergebnis: ergebnis ?? 'ok', danach }, NO_STORE)
+  return NextResponse.json({ smoobuId, gesendet: fields, antwort, danach }, NO_STORE)
 }
