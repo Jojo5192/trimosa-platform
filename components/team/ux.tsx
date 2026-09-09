@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { pickSpruch } from '@/lib/start-curtain'
 
 /**
  * 📱 §209 iOS-Feeling-Paket (Pascal): geteilte UX-Bausteine der Team-App —
@@ -274,4 +275,26 @@ export function initials(name?: string | null): string {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return '·'
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
+}
+
+/* ── §282.10 Leere Zustände mit Charakter: Linien-Illustration in Markenfarbe
+   + ein Satz aus dem Sprüche-Fundus des Start-Vorhangs ── */
+const EMPTY_ART: Record<'house' | 'check' | 'chat' | 'calendar', string[]> = {
+  house: ['M12 36 L44 12 L76 36', 'M22 30 V58 H66 V30', 'M39 58 V44 H49 V58', 'M14 14 a5 5 0 1 0 0.01 0'],
+  check: ['M44 12 a20 20 0 1 0 0.01 0', 'M34 33 l7 7 l13 -14'],
+  chat: ['M14 18 h36 a6 6 0 0 1 6 6 v12 a6 6 0 0 1 -6 6 h-22 l-8 7 v-7 h-6 a6 6 0 0 1 -6 -6 v-12 a6 6 0 0 1 6 -6 z', 'M60 30 h10 a5 5 0 0 1 5 5 v10 a5 5 0 0 1 -5 5 h-4 v6 l-7 -6 h-12 a5 5 0 0 1 -5 -5 v-3'],
+  calendar: ['M18 16 h52 a4 4 0 0 1 4 4 v34 a4 4 0 0 1 -4 4 h-52 a4 4 0 0 1 -4 -4 v-34 a4 4 0 0 1 4 -4 z', 'M14 28 h60', 'M30 10 v10', 'M58 10 v10', 'M28 40 h6', 'M41 40 h6', 'M54 40 h6', 'M28 48 h6', 'M41 48 h6'],
+}
+export function EmptyState({ title, hint, icon = 'house' }: { title: string; hint?: string; icon?: keyof typeof EMPTY_ART }) {
+  const [spruch] = useState(() => pickSpruch(new Date(), null).text)
+  return (
+    <div className="tm-empty tm-enter" style={{ textAlign: 'center', padding: '40px 24px 32px' }}>
+      <svg width="88" height="64" viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
+        {EMPTY_ART[icon].map((d, i) => <path key={i} d={d} />)}
+      </svg>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text, #171a1f)', marginTop: 14 }}>{title}</div>
+      {hint && <div style={{ fontSize: 13, color: 'var(--tm-muted, #646b76)', marginTop: 6, lineHeight: 1.5 }}>{hint}</div>}
+      <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>
+    </div>
+  )
 }

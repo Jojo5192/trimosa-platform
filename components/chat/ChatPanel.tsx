@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode, type
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, portalOf, portalColor, initials } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials } from '@/components/team/ux'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 
@@ -410,6 +410,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // 📱 §209 iOS-Feeling: Swipe-Aktionen + Pull-to-Refresh der Liste
   // (die Suche lebt seit §277 in der Such-Ebene der Shell — Lupe/⌘K)
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null)
+  // §282.7 Langer Druck auf eine Karte → Peek-Menü · §282.8 Blase fliegt beim Senden
+  const [peek, setPeek] = useState<Conversation | null>(null)
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const peekJustOpened = useRef(false)
+  const [flyText, setFlyText] = useState<string | null>(null)
   const swipeInfo = useRef<{ x: number; y: number; id: string; el: HTMLElement | null; locked: '' | 'h' | 'v' } | null>(null)
   const listScrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -1038,6 +1043,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       })
       if (r.ok) {
         haptic('success')
+        setFlyText(content); setTimeout(() => setFlyText(null), 600)
         setDraft('')
         await getMsgs(active.id, active.kind); getConvs()
       } else if (r.status === 401 || r.status === 403) {
@@ -1130,6 +1136,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       el: e.currentTarget.querySelector('[data-swipe-front]') as HTMLElement | null,
       locked: '',
     }
+    // §282.7 Langer Druck (480 ms ohne Bewegung) → Peek-Menü
+    if (pressTimer.current) clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      pressTimer.current = null
+      const c = convsRef.current.find((x) => x.id === id) ?? (archivThreads ?? []).find((x) => x.id === id)
+      if (!c) return
+      peekJustOpened.current = true
+      haptic()
+      setPeek(c)
+    }, 480)
   }
   function moveRowSwipe(e: ReactTouchEvent<HTMLDivElement>, id: string) {
     const s = swipeInfo.current
@@ -1137,6 +1153,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const t0 = e.touches[0]
     const dx = t0.clientX - s.x
     const dy = t0.clientY - s.y
+    if (pressTimer.current && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) { clearTimeout(pressTimer.current); pressTimer.current = null }
     if (!s.locked) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
       s.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'
@@ -1148,6 +1165,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     s.el.style.transform = `translateX(${x}px)`
   }
   function endRowSwipe(id: string) {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null }
     const s = swipeInfo.current
     swipeInfo.current = null
     if (!s || s.id !== id || !s.el || s.locked !== 'h') return
@@ -1159,6 +1177,45 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (willOpen && openSwipeId !== id) haptic()
     setOpenSwipeId(willOpen ? id : (openSwipeId === id ? null : openSwipeId))
   }
+
+  /* §282.7 Peek-Menü (langer Druck / Rechtsklick auf eine Karte): Hintergrund
+     verschwimmt, die Karte hebt sich ab, darunter die Aktionen */
+  const peekSheet = (c: Conversation) => (
+    <div className="team-shell tm-peek" onClick={() => setPeek(null)} style={{
+      position: 'fixed', inset: 0, zIndex: 1200, padding: 20,
+      background: 'rgba(23,26,31,0.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div className="tm-pop-in" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420 }}>
+        <div className="tm-card" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: 'var(--tm-shadow-float)' }}>
+          <span style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: portalColor(c.platform), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15 }}>{initials(partner(c))}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>{partner(c)}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 2 }}>{c.listing_title ?? '—'}{c.check_in && c.check_out ? ` · ${fmtRangeShort(c.check_in, c.check_out)}` : ''}</div>
+            {c.lastPreview && <div style={{ fontSize: 13, color: 'var(--tm-text)', marginTop: 6, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.lastPreview}</div>}
+            <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap' }}><ThreadBadges c={c} /></div>
+          </div>
+        </div>
+        <div className="tm-card" style={{ marginTop: 10, overflow: 'hidden', boxShadow: 'var(--tm-shadow-float)' }}>
+          {([
+            ['💬', 'Antworten', () => { setPeek(null); selectConv(c) }],
+            ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt — keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
+            ['📞', c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt', () => { setPeek(null); markConv(c, 'phone') }],
+            ['🧾', 'Buchung & Gast', () => { setPeek(null); selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
+            ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); window.open(c.mappeUrl!, '_blank', 'noopener') }]] : []),
+          ] as [string, string, () => void][]).map(([icon, label, fn], i) => (
+            <button key={label} className="tm-press-btn" onClick={() => { haptic(); fn() }} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', border: 'none',
+              borderTop: i ? '1px solid var(--tm-line)' : 'none', background: 'transparent', color: 'var(--tm-text)',
+              fontSize: 15, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+            }}>
+              <span style={{ width: 24, textAlign: 'center', flexShrink: 0 }}>{icon}</span>{label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   /* ═══════════════════════════════════════════════════════════
      CONVERSATION LIST (shared between mobile list view + desktop sidebar)
@@ -1213,6 +1270,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </div>
           </div>
         )}
+        {peek && typeof document !== 'undefined' && createPortal(peekSheet(peek), document.body)}
         <PullHint pull={listPtr.pull} busy={listPtr.busy} />
         {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
             das Team weiß, dass ✓/📞 die Antwortzeit im Wochenbericht sauber hält */}
@@ -1228,13 +1286,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         )}
         {loading && <SkeletonRows kind="chat" count={7} />}
         {!loading && filtered.length === 0 && (
-          <div style={{ padding: '64px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>{t(uiLang, 'Keine Nachrichten')}</div>
-            <div style={{ fontSize: 13, color: '#AAA', marginTop: 6, lineHeight: 1.5 }}>
-              {team && inboxFilter !== 'alle' ? 'Kein Chat passt zu diesem Filter.' : 'Gäste können über die Inseratsseite schreiben.'}
-            </div>
-          </div>
+          <EmptyState icon="chat" title={t(uiLang, 'Keine Nachrichten')} hint={team && inboxFilter !== 'alle' ? 'Kein Chat passt zu diesem Filter.' : 'Gäste können über die Inseratsseite schreiben.'} />
         )}
         {rows.map(c => {
           if ('divider' in c) return (
@@ -1252,7 +1304,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           const unread = (c.unread ?? 0) > 0
           const range = fmtRangeShort(c.check_in, c.check_out)
           return (
-            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 8px', borderRadius: 16 }}
+            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 8px', borderRadius: 16, WebkitTouchCallout: 'none' }}
+              onContextMenu={team ? (e) => { e.preventDefault(); haptic(); setPeek(c) } : undefined}
               onTouchStart={canSwipe ? (e) => beginRowSwipe(e, c.id) : undefined}
               onTouchMove={canSwipe ? (e) => moveRowSwipe(e, c.id) : undefined}
               onTouchEnd={canSwipe ? () => endRowSwipe(c.id) : undefined}
@@ -1278,7 +1331,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               )}
             {/* §277 Chat-KARTE (Pascal-Spec): 16px Radius, hairline, weicher Schatten;
                 ungelesen = Akzent-Rahmen, Name extra fett, Zeit in Akzent, Punkt rechts */}
-            <button data-swipe-front className="tm-press" onClick={() => { if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
+            <button data-swipe-front className="tm-press" onClick={() => { if (peekJustOpened.current) { peekJustOpened.current = false; return } if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
               width: '100%', textAlign: 'left', cursor: 'pointer',
               padding: '12px 14px', borderRadius: 16,
               border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, #e3e6ea)'}`,
@@ -2226,6 +2279,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 overflowY: 'auto',
               }}
             />
+            {flyText && (
+              <div className="tm-fly" aria-hidden="true" style={{ position: 'absolute', right: 8, bottom: 'calc(100% - 4px)', maxWidth: '75%', padding: '8px 12px', borderRadius: 16, background: 'var(--tm-accent-soft, rgba(174,141,45,0.13))', color: 'var(--tm-text, #171a1f)', fontSize: 14, lineHeight: 1.35, pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flyText}</div>
+            )}
             {draft.trim().length > 0 && (
               <>
                 <button

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 
 /** §280 Sofortstart: letzter Gruppen-Stand im Gerätespeicher */
@@ -113,6 +113,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   initialChatId?: string | null
 }) {
   const [chats, setChats] = useState<TeamChat[]>([])
+  const [flyText, setFlyText] = useState<string | null>(null) // §282.8 Blase fliegt beim Senden
   const [internFilter, setInternFilter] = useState<string>('alle') // §277: Alle · Ungelesen · g:<Gruppe>
   const [directory, setDirectory] = useState<Directory[]>([])
   const [canCreate, setCanCreate] = useState(false)
@@ -354,6 +355,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       })
       if (r.ok) {
         haptic('success')
+        setFlyText(body.content); setTimeout(() => setFlyText(null), 600)
         setDraft('')
         setReplyTo(null)
         if (composerRef.current) composerRef.current.style.height = 'auto'
@@ -709,16 +711,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         </div>
       )}
       {!loading && !error && chats.length === 0 && (
-        <div style={{ padding: '54px 24px', textAlign: 'center' }}>
-          <div style={{ fontSize: 38, marginBottom: 10 }}>💼</div>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#555' }}>Noch keine internen Gruppen</div>
-          <div style={{ fontSize: 12.5, color: '#AAA', marginTop: 6, lineHeight: 1.5 }}>
-            {canCreate ? 'Lege oben mit + die erste Gruppe an — z. B. „Geschäftsführung" oder „Handwerker".' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'}
-          </div>
-        </div>
+        <EmptyState icon="chat" title="Noch keine internen Gruppen" hint={canCreate ? 'Lege oben mit + die erste Gruppe an — z. B. „Geschäftsführung" oder „Handwerker".' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'} />
       )}
       {!loading && !error && chats.length > 0 && visibleChats.length === 0 && (
-        <div style={{ padding: '36px 24px', textAlign: 'center', fontSize: 13, color: 'var(--tm-muted2, #959ca7)' }}>Nichts Ungelesenes.</div>
+        <EmptyState icon="chat" title="Nichts Ungelesenes." />
       )}
       {visibleChats.map((c) => {
         const isSel = !isMobile && active?.id === c.id
@@ -1072,6 +1068,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
             placeholder="Nachricht"
             style={{ flex: 1, resize: 'none', outline: 'none', border: 'none', borderRadius: 18, padding: draft.trim() ? '7px 40px 7px 13px' : '7px 13px', fontSize: 16, lineHeight: '22px', fontFamily: 'inherit', background: 'transparent', color: '#111', maxHeight: 160, overflowY: 'auto' }}
           />
+          {flyText && (
+            <div className="tm-fly" aria-hidden="true" style={{ position: 'absolute', right: 8, bottom: 'calc(100% - 4px)', maxWidth: '75%', padding: '8px 12px', borderRadius: 16, background: 'var(--tm-accent-soft, rgba(174,141,45,0.13))', color: 'var(--tm-text, #171a1f)', fontSize: 14, lineHeight: 1.35, pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flyText}</div>
+          )}
           {draft.trim().length > 0 && (
             <button onClick={sendText} disabled={busy} title="Senden" style={{
               position: 'absolute', right: 4, bottom: 4, width: 28, height: 28, borderRadius: '50%', border: 'none', padding: 0,

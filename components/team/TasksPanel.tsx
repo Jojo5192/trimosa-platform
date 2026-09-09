@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import QsBlock from '@/components/team/QsPanel'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented } from '@/components/team/ux'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 
 export interface Task {
   id: string
@@ -108,6 +108,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   onFocusConsumed?: () => void
 }) {
   const [tasks, setTasks] = useState<Task[]>([])
+  // §282.8 Erfolgs-Moment: die gerade erledigte Karte wischt grün + Haken
+  const [flashId, setFlashId] = useState<string | null>(null)
+  const flash = (id: string) => { setFlashId(id); setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1100) }
   const [people, setPeople] = useState<Person[]>([])
   const [listings, setListings] = useState<ListingOpt[]>([])
   const [groups, setGroups] = useState<string[]>([])
@@ -288,6 +291,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
 
   async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
     haptic(status === 'erledigt' ? 'success' : 'tap')
+    if (status === 'erledigt') flash(task.id)
     setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status } : t))
     const res = await fetch(`/api/tasks/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -461,22 +465,17 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         {loading ? (
           <SkeletonRows kind="card" count={5} />
         ) : visible.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
-            <p style={{ fontSize: 40, margin: '0 0 8px' }}>✅</p>
-            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>
-              {filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich — alles erledigt!' : 'Keine offenen Aufgaben.'}
-            </p>
-          </div>
+          <EmptyState icon="check" title={filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich — alles erledigt!' : 'Keine offenen Aufgaben.'} />
         ) : visible.map((t) => {
           const overdue = isOverdue(t)
           const prio = PRIO_META[t.prio] ?? PRIO_META.mittel
           const st = STATUS_META[t.status] ?? STATUS_META.offen
           const done = t.status === 'erledigt'
           return (
-            <div key={t.id} id={`task-card-${t.id}`}
+            <div key={t.id} id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
               onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
               style={{
-                background: '#fff', borderRadius: 18, padding: '13px 15px',
+                background: '#fff', borderRadius: 18, padding: '13px 15px', position: 'relative',
                 boxShadow: t.id === highlightId
                   ? 'inset 0 0 0 2px #12222E, 0 0 0 4px rgba(18,34,46,0.18)'
                   : overdue ? 'inset 0 0 0 1.5px #FF3B30, 0 1px 3px rgba(0,0,0,0.05)'
@@ -485,6 +484,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 opacity: done ? 0.6 : 1,
                 transition: 'box-shadow .3s',
               }}>
+              {flashId === t.id && (
+                <span className="tm-pop-in" aria-hidden="true" style={{ position: 'absolute', top: 10, right: 12, width: 26, height: 26, borderRadius: '50%', background: 'var(--tm-green, #1a9d57)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 8px rgba(26,157,87,0.4)' }}>✓</span>
+              )}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
                 {/* §243ag: Prio als Reminders-Punkt (rot/orange/grau) */}
                 <span title={`Priorität: ${prio.label}`} style={{
@@ -639,7 +641,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
           listings={listings}
           groups={groups}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load() }}
+          onSaved={(doneId) => { setEditing(null); if (doneId) flash(doneId); load() }}
         />
       )}
     </div>
@@ -747,7 +749,8 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   listings: ListingOpt[]
   groups: string[]
   onClose: () => void
-  onSaved: () => void
+  /** §282.8: ID der gerade erledigten Aufgabe (für den Erfolgs-Moment) */
+  onSaved: (doneId?: string) => void
 }) {
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
@@ -792,7 +795,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
           body: JSON.stringify({ content: `✅ Erledigt: ${doneNote.trim()}` }),
         }).catch(() => {})
       }
-      onSaved()
+      onSaved(task && status === 'erledigt' && task.status !== 'erledigt' ? task.id : undefined)
     }
     else {
       const json = await res.json().catch(() => ({}))

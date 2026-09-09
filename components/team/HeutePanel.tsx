@@ -10,7 +10,7 @@
  * /api/chat/inbox (team). 90 s Client-Cache, Snapshot im Gerätespeicher.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, portalColor, initials } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalColor, initials } from '@/components/team/ux'
 import type { HeuteDaten, HeuteAnreise, HeuteStay } from '@/lib/heute'
 import { shouldPoll } from '@/lib/offline'
 
@@ -349,11 +349,8 @@ export default function HeutePanel({ role, visible, onCount }: {
         {loading && !d && <SkeletonRows kind="card" count={3} />}
 
         {d && nothing && (
-          <section style={{ ...CARD, padding: '30px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, color: 'var(--tm-green)', lineHeight: 1 }}>✓</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tm-muted)', marginTop: 10 }}>
-              {istHeute ? 'Heute ist nichts offen.' : 'Keine An- oder Abreisen an diesem Tag.'}
-            </div>
+          <section style={CARD}>
+            <EmptyState icon="check" title={istHeute ? 'Heute ist nichts offen.' : 'Keine An- oder Abreisen an diesem Tag.'} />
           </section>
         )}
 

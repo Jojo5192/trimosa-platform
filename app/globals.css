@@ -976,3 +976,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .tm-stagger > *, .tm-grow, .tm-live, .tm-ring-spin { animation: none; }
   .tm-title { transition: none; }
 }
+
+/* ═══════════ §282 Design-Liste — zweite Welle ═══════════ */
+/* 8 Erfolgs-Momente: Blase fliegt aus dem Eingabefeld, Karte wischt grün */
+@keyframes tmFly { 0% { opacity: 0.95; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-64px) scale(0.9); } }
+.tm-fly { animation: tmFly 0.5s var(--tm-ease) forwards; }
+@keyframes tmDoneFlash { 0% { background-color: #ffffff; } 20% { background-color: rgba(26,157,87,0.22); } 100% { background-color: #ffffff; } }
+.tm-done-flash { animation: tmDoneFlash 1s var(--tm-ease) both; }
+/* 7 Peek-Menü: Hintergrund verschwimmt, Karte hebt sich ab */
+@keyframes tmDim { from { opacity: 0; } to { opacity: 1; } }
+.tm-peek { animation: tmDim 0.2s var(--tm-ease) both; }
+/* 10 Leere Zustände: Linien-Illustration in Markenfarbe */
+.tm-empty svg { color: var(--tm-accent); }
+@media (prefers-reduced-motion: reduce) {
+  .tm-fly { display: none; }
+  .tm-done-flash, .tm-peek { animation: none; }
+}

@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
-import { usePullToRefresh, PullHint, SkeletonRows, Segmented } from '@/components/team/ux'
+import { usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 import KennzahlenCard from '@/components/team/KennzahlenCard'
 
@@ -538,10 +538,7 @@ export default function CalendarPanel() {
           )}
 
           {days.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
-              <p style={{ fontSize: 40, margin: '0 0 8px' }}>📅</p>
-              <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine Termine in den nächsten 8 Wochen.</p>
-            </div>
+            <EmptyState icon="calendar" title="Keine Termine in den nächsten 8 Wochen." />
           ) : days.map(({ iso, events }) => (
             <div key={iso} style={{ marginBottom: 16 }}>
               <p style={{
