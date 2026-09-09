@@ -665,7 +665,8 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     if (typeof parsed.kinder === 'number' && parsed.kinder >= 0) fields.children = parsed.kinder
     if (typeof parsed.telefon === 'string' && parsed.telefon.length > 5) fields.phone = parsed.telefon
     if (typeof parsed.email === 'string' && parsed.email.includes('@')) fields.email = parsed.email
-    if (typeof upd.guest_name === 'string') { fields.firstname = nameParts[0]; fields.lastname = nameParts.slice(1).join(' ') }
+    // Paragraph 297: Smoobu-PUT erwartet camelCase (wie createReservation) - firstname/lastname wurden still ignoriert
+    if (typeof upd.guest_name === 'string') { fields.firstName = nameParts[0]; fields.lastName = nameParts.slice(1).join(' ') }
     smoobu = Object.keys(fields).length
       ? await updateReservation(Number(booking.smoobu_reservation_id), fields)
       : 'nichts zu übertragen'

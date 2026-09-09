@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
  * die erlaubten Felder per PUT und liefert Smoobus Antwort plus den Stand danach. Nutzen: belegen, welche
  * Felder Smoobu bei Kanal-Buchungen wirklich uebernimmt (E-Mail?).
  */
-const ALLOWED = new Set(['firstname', 'lastname', 'email', 'phone', 'adults', 'children', 'price', 'notice'])
+const ALLOWED = new Set(['firstname', 'lastname', 'firstName', 'lastName', 'email', 'phone', 'adults', 'children', 'price', 'notice'])
 export async function POST(req: NextRequest) {
   const auth = await getTaskAuth()
   if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nur für Admins/Gastgeber.' }, { status: 403, ...NO_STORE })

@@ -298,7 +298,7 @@ export async function POST(request: Request) {
   // Website-Buchungen ODER 'modified'-Events → dann KEIN Buchungs-Push)
   const { data: known } = await supabaseAdmin
     .from('bookings')
-    .select('id')
+    .select('id, guest_name')
     .eq('smoobu_reservation_id', reservationId)
     .maybeSingle()
 
@@ -316,7 +316,11 @@ export async function POST(request: Request) {
       channel: channel,
     }
     if (totalPrice > 0) upd.total_price = totalPrice
-    if (guestName && guestName !== 'Externer Gast') upd.guest_name = guestName
+    // Paragraph 297: einen angereicherten VOLLEN Namen (Mail-Pipeline) nie durch Smoobus kuerzeren Vornamen
+    // ersetzen - unser eigener Smoobu-PUT loest dieses Update-Event aus und kuerzte so Pohlschneider wieder
+    const oursName = String(known.guest_name ?? '').trim()
+    const shorter = !!guestName && oursName.length > guestName.length && oursName.toLowerCase().startsWith(guestName.toLowerCase())
+    if (guestName && guestName !== 'Externer Gast' && !shorter) upd.guest_name = guestName
     if (guestEmail) upd.guest_email = guestEmail
     // Gastanzahl aus dem Update übernehmen (Michiel-Fall §175: Gast ergänzt
     // 2+2 nachträglich — vorher blieb persons auf dem Import-Stand 1)
