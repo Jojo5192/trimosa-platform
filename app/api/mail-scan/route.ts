@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
         ...(b.belegeOnly === true ? { belegeOnly: true } : {}),
         ...(iso(b.from) ? { sinceIso: iso(b.from)! } : {}),
         ...(iso(b.to) ? { untilIso: iso(b.to)! } : {}),
+        ...(typeof b.mailbox === 'string' && b.mailbox.includes('@') ? { mailbox: b.mailbox.trim().toLowerCase() } : {}),
       }), NO_STORE)
     }
     if (b.action === 'enable') {

@@ -192,7 +192,7 @@ async function handleMessage(m: GraphMsg, mailbox: string, state: GraphMailState
   }
 }
 
-export async function runMailScan(opts: { hours?: number; force?: boolean; belegeOnly?: boolean; sinceIso?: string; untilIso?: string } = {}): Promise<MailScanReport> {
+export async function runMailScan(opts: { hours?: number; force?: boolean; belegeOnly?: boolean; sinceIso?: string; untilIso?: string; mailbox?: string } = {}): Promise<MailScanReport> {
   const state = await getGraphMailState()
   const report: MailScanReport = {
     enabled: state.enabled, mailboxes: state.mailboxes,
@@ -216,7 +216,9 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
   }
 
   const fallbackHours = Math.min(Math.max(Number(opts.hours) || 24, 1), 24 * 45)
-  for (const mailbox of state.mailboxes) {
+  // Paragraph 295: gezielter Rescan eines einzelnen Postfachs ({ mailbox }) - die anderen bleiben unberuehrt
+  const boxes = opts.mailbox ? state.mailboxes.filter((mb) => mb === opts.mailbox) : state.mailboxes
+  for (const mailbox of boxes) {
     try {
       const since = opts.sinceIso
         ?? (opts.hours || !state.cursor[mailbox]
@@ -226,7 +228,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
       // bis 400 Mails/Postfach, fasst Cursor + processed NIE an
       const msgs = opts.belegeOnly
         ? await listInboxMessages(mailbox, since, 100, opts.untilIso, 400)
-        : await listInboxMessages(mailbox, since)
+        : await listInboxMessages(mailbox, since, 25, opts.untilIso)
       report.geprueft += msgs.length
       for (const m of msgs) {
         // force = Kalibrier-Rescan: bereits verarbeitete Mails erneut durch

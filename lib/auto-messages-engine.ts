@@ -22,6 +22,7 @@ import {
 } from '@/lib/auto-messages'
 import { translateOutgoing } from '@/lib/translate'
 import { sendMessageToGuest } from '@/lib/smoobu'
+import { isFewoRelayEmail } from '@/lib/fewo'
 import { ensureDoorCode, getLockSettings } from '@/lib/locks'
 import { loadStayIndex } from '@/lib/stammgaeste'
 import { sendAutoMessageEmail } from '@/lib/email'
@@ -29,6 +30,8 @@ import { sendAutoMessageEmail } from '@/lib/email'
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
 const MAX_PER_RUN = 40          // Sicherheitsventil gegen Massen-Versand
 const NEW_BOOKING_WINDOW_MS = 6 * 3600_000
+/** Paragraph 295: so lange wird eine gescheiterte Zustellung erneut versucht */
+const RETRY_WINDOW_MS = 48 * 3600_000
 
 /* ── Master-Schalter ── */
 export async function getAutoSendEnabled(): Promise<boolean> {
@@ -181,6 +184,8 @@ export interface AutoSendReport {
   truncated: number
   due: { vorlage: string; gast: string; wohnung: string; zeitraum: string; kanal: string; vorschau: string }[]
   failed: { vorlage: string; gast: string; error: string }[]
+  /** Paragraph 295: erneut versuchte, zuvor gescheiterte Zustellungen */
+  retried: number
 }
 
 /** Hauptlauf. dryRun = nur berechnen & Vorschau liefern, NICHTS senden/loggen. */
@@ -188,7 +193,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const dryRun = opts.dryRun === true
   const report: AutoSendReport = {
     enabled: await getAutoSendEnabled(), dryRun,
-    templates: 0, bookingsChecked: 0, sent: 0, postponed: 0, truncated: 0, due: [], failed: [],
+    templates: 0, bookingsChecked: 0, sent: 0, postponed: 0, truncated: 0, retried: 0, due: [], failed: [],
   }
   if (!report.enabled && !dryRun) return report
 
@@ -229,13 +234,22 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const listings = new Map((lRows ?? []).map(l => [l.id as string, l as ListingRow]))
 
   // Bereits versendete Paare (300er-Chunks — §129-URL-Längen-Lektion)
+  // Paragraph 295: gescheiterte Zustellungen (channel 'fehler: ...', juenger als 48 h) gelten NICHT als
+  // erledigt - sie werden erneut versucht, sobald ein Kanal da ist (z. B. FeWo-Relay-Adresse nachgeerntet).
+  // Der Faelligkeits-Filter oben begrenzt das von selbst auf den Zieltag.
   const logSet = new Set<string>()
+  const retrySet = new Set<string>()
   const bIds = bookings.map(b => b.id)
   for (let i = 0; i < bIds.length; i += 300) {
     const { data: logs } = await supabaseAdmin
-      .from('auto_message_log').select('auto_message_id, booking_id')
+      .from('auto_message_log').select('auto_message_id, booking_id, channel, sent_at')
       .in('booking_id', bIds.slice(i, i + 300))
-    for (const l of logs ?? []) logSet.add(`${l.auto_message_id}|${l.booking_id}`)
+    for (const l of logs ?? []) {
+      const key = `${l.auto_message_id}|${l.booking_id}`
+      const fresh = Date.now() - new Date(String(l.sent_at ?? 0)).getTime() < RETRY_WINDOW_MS
+      if (String(l.channel ?? '').startsWith('fehler') && fresh) retrySet.add(key)
+      else logSet.add(key)
+    }
   }
 
   // §231: Wohnungen, deren AKTUELLER Reinigungs-Slot (jüngste Abreise bis
@@ -397,10 +411,23 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
       // Claim VOR dem Senden — unique(auto_message_id, booking_id) verhindert
       // Doppelversand auch bei parallelen Läufen
-      const { error: claimErr } = await supabaseAdmin
-        .from('auto_message_log')
-        .insert({ auto_message_id: t.id, booking_id: b.id, channel: 'sendet…' })
-      if (claimErr) continue
+      if (retrySet.has(`${t.id}|${b.id}`)) {
+        // Paragraph 295: Wiederholung - Claim per Update NUR auf der Fehlerzeile (parallele Laeufe sehen
+        // dann 'sendet...' und bekommen 0 Zeilen zurueck)
+        const { data: claimed } = await supabaseAdmin
+          .from('auto_message_log')
+          .update({ channel: 'sendet…', sent_at: new Date().toISOString() })
+          .match({ auto_message_id: t.id, booking_id: b.id })
+          .like('channel', 'fehler%')
+          .select('booking_id')
+        if (!claimed?.length) continue
+        report.retried++
+      } else {
+        const { error: claimErr } = await supabaseAdmin
+          .from('auto_message_log')
+          .insert({ auto_message_id: t.id, booking_id: b.id, channel: 'sendet…' })
+        if (claimErr) continue
+      }
 
       const lang = await guestLangFor(b, conv?.id, conv?.guest_id)
       const tr = await translateProtected(german, lang)
@@ -434,7 +461,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           }).catch(e => console.error('[auto-messages] email:', e))
           outcome = 'chat+email'
         } else outcome = 'chat'
-      } else if (b.smoobu_reservation_id) {
+      } else if (b.smoobu_reservation_id && !isFewoRelayEmail(b.guest_email)) {
+        // Paragraph 294: FeWo-Relay-Gaeste laufen unten direkt ueber die Mail-Bruecke, nicht ueber Smoobu
         // §210: „gesendet" entscheidet der HTTP-Erfolg — NICHT das Vorhandensein
         // einer Message-ID (Smoobu liefert sie nicht immer). Ohne ID adoptiert
         // der nächste Sync unsere Zeile per Zwillings-Claim (§57/§131).

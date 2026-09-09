@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { isFewoRelayEmail } from '@/lib/fewo'
 import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho, stripEmailQuote } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 
@@ -253,7 +254,10 @@ export async function POST(
   // Store the returned Smoobu message id on our row: the next sync would
   // otherwise re-import our own message as a "new" one → duplicate bubble.
   let smoobuDelivered = false
-  if (isHost && booking.smoobu_reservation_id) {
+  // Paragraph 294 (Pascal): FeWo-direkt-Gaeste mit Relay-Adresse bekommen die Antwort DIREKT per Mail an den
+  // FeWo-Messenger - nicht ueber Smoobu (die Mail-Bruecke unten uebernimmt)
+  const fewoDirekt = isFewoRelayEmail(booking.guest_email as string | null)
+  if (isHost && booking.smoobu_reservation_id && !fewoDirekt) {
     try {
       // §210: Zustellung gilt als erfolgt, sobald Smoobu den Call quittiert —
       // eine fehlende Message-ID ist KEIN Fehlschlag (sonst ging zusätzlich

@@ -168,8 +168,8 @@ export async function deliverToGuest(
     content_de: lang !== 'de' ? textDe : null, lang,
   }
 
-  // 1) Portal-Chat über Smoobu (Airbnb/Booking/FeWo)
-  if (b.smoobu_reservation_id) {
+  // 1) Portal-Chat ueber Smoobu (Airbnb/Booking) - FeWo-Relay-Gaeste direkt per Mail (Paragraph 294)
+  if (b.smoobu_reservation_id && !/@messages\.homeaway\.com$/i.test((b.guest_email ?? '').trim())) {
     try {
       const { sendMessageToGuest } = await import('@/lib/smoobu')
       const push = await sendMessageToGuest(Number(b.smoobu_reservation_id), text)
