@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
-import { haptic, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
+import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
 import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
 import { applyTheme, useIsDark } from '@/lib/theme'
 import OffenPanel from '@/components/team/OffenPanel'
@@ -88,6 +88,9 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // Die App startet immer auf „Heute" (Pascal-Spec) — außer ein Deep-Link
   // (Push-Tap: ?conv= / ?chat= / ?task=) verlangt ein Ziel
   const fallback: Tab = 'heute'
+  // Paragraph 308: Update-Streifen
+  const [updating, setUpdating] = useState(false)
+
   const [tab, setTab] = useState<Tab>(
     initialTaskId ? 'aufgaben'
       : initialConvId || initialInternChatId ? 'inbox'
@@ -292,7 +295,21 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // Snapshots/Warteschlange/Cache vorher weg.
   useEffect(() => {
     ensureOwner(userId)
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+    if (!('serviceWorker' in navigator)) return
+    // Paragraph 308 (Pascal): neue App-Version -> Goldstreifen laeuft oben durch, nach Aktivierung Toast
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing
+        if (!w || !navigator.serviceWorker.controller) return
+        setUpdating(true)
+        w.addEventListener('statechange', () => {
+          if (w.state === 'activated' || w.state === 'redundant') setTimeout(() => setUpdating(false), 2500)
+        })
+      })
+    }).catch(() => {})
+    const onChange = () => tmToast('✨ App aktualisiert')
+    navigator.serviceWorker.addEventListener('controllerchange', onChange)
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', onChange)
   }, [userId])
 
   /* §280 Offline: Leiste unter der Kopfleiste, Warteschlange automatisch
@@ -573,6 +590,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       // das Padding den Inhalt frei (0 bei opaker Statusbar — harmlos)
       paddingTop: 'env(safe-area-inset-top)',
     }}>
+      {updating && <div className="tm-update-stripe" aria-hidden="true" />}
       {syncing && <div className="tm-loadbar" aria-hidden="true" />}
       {isDesktop && sidebar}
 

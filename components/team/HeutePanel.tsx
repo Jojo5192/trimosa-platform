@@ -31,6 +31,7 @@ type Task = {
  *  Regel: Rückruf-Aufgaben (source anruf) immer; sonst Prio hoch UND Titel/Beschreibung nennt
  *  eine solche Handlung; nie, wenn ein Termin in der Zukunft steht. */
 const SOFORT_RE = /rechnung|r[üu]ckruf|zur[üu]ckrufen|storn|zahlung|erstatt|gutschrift|[üu]berweis|mahnung|check-?in|zugang|t[üu]rcode|schl[üu]ssel|wlan|parkplatz/i
+const hmBerlin = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })
 const istSofort = (t: Task, heute: string) => (t.status === 'offen' || t.status === 'in_arbeit')
   && (!t.due_date || t.due_date <= heute)
   && (t.source === 'anruf' || (t.prio === 'hoch' && SOFORT_RE.test(`${t.title} ${t.description ?? ''}`)))
@@ -255,6 +256,8 @@ export default function HeutePanel({ role, visible, onCount }: {
   const code = d?.doorCode ?? heuteData?.doorCode ?? (storedCode ? { code: storedCode.code, listings: storedCode.listings } : null)
   const firstName = d?.firstName ?? heuteData?.firstName ?? storedCode?.firstName ?? null
   const roleLabel = d?.roleLabel ?? heuteData?.roleLabel ?? storedCode?.roleLabel ?? null
+  // Paragraph 308: Rollen-Ansicht (Reinigungs-Dienstleister: nur An-/Abreisen; Handwerker: Aufgaben + An-/Abreisen)
+  const view: 'full' | 'cleaning' | 'provider' = d?.heuteView ?? heuteData?.heuteView ?? (role === 'provider' ? 'provider' : 'full')
   const copyCode = async () => {
     if (!code) return
     haptic()
@@ -279,9 +282,11 @@ export default function HeutePanel({ role, visible, onCount }: {
         <Dot tone={a.infosRaus ? 'green' : 'grey'} title="Anreise-Infos gesendet">✉</Dot>
         <Dot tone={a.codeDa ? 'green' : 'grey'} title="Türcode liegt bereit">🔑</Dot>
         <Dot tone={a.fertig === 'ja' ? 'green' : a.fertig === 'fehler' ? 'red' : 'grey'} title="„Wohnung ist fertig“ gemeldet">{a.fertig === 'gesperrt' ? '🚫' : '✓'}</Dot>
+        {/* Paragraph 308: 4. Haken = Gast hat eingecheckt (Tuercode benutzt) - Information, zaehlt nicht mit */}
+        <Dot tone={a.eingecheckt ? 'green' : 'grey'} title={a.eingecheckt ? `Eingecheckt ${hmBerlin(a.eingecheckt)} — Wohnung belegt` : 'Noch nicht eingecheckt'}>🏠</Dot>
       </span>
     )
-    const sub = `${a.guestName ? `${a.listingTitle} · ` : ''}bis ${ddmm(a.checkOut)}${a.persons ? ` · ${a.persons} 👤` : ''}${(a.stays ?? 1) >= 2 ? ` · ⭐ ${a.stayNr}. Aufenthalt` : ''}`
+    const sub = `${a.guestName ? `${a.listingTitle} · ` : ''}${view !== 'full' ? `Check-in ab ${a.checkInTime} · ` : ''}bis ${ddmm(a.checkOut)}${a.persons ? ` · ${a.persons} 👤` : ''}${(a.stays ?? 1) >= 2 ? ` · ⭐ ${a.stayNr}. Aufenthalt` : ''}`
     const last = i === all.length - 1
     return (
       <div key={a.bookingId}>
@@ -390,7 +395,7 @@ export default function HeutePanel({ role, visible, onCount }: {
         {/* 💬 Warten auf Antwort — IMMER sichtbar (Pascal 9.9.: offene Nachrichten
             gehören aufs Home-Fenster; leer = „alles beantwortet"), Reihenfolge wie
             in Pascals Stand: Anreisen → Warten → Abreisen → Aufgaben */}
-        {d && (
+        {d && view === 'full' && (
           <Card title="💬 Warten auf Antwort" count={warten.length}>
             {warten.length === 0 && <Empty text="Keine offenen Nachrichten – alles beantwortet." />}
             {warten.slice(0, 6).map((t, i, arr) => (

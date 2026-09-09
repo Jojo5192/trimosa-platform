@@ -9,7 +9,7 @@
  * NIE Gastnamen. Server-Cache 2 Min je Nutzer+Tag.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getStaffCodes, firstCleaningOpenAt, type LockRef } from '@/lib/locks'
+import { getStaffCodes, firstCleaningOpenAt, firstGuestOpenAt, type LockRef } from '@/lib/locks'
 import type { TaskAuth } from '@/lib/tasks'
 import { loadStayIndex } from '@/lib/stammgaeste'
 
@@ -67,6 +67,9 @@ export interface HeuteStay {
   checkOut: string
   persons: number | null
   platform: string
+  /** Paragraph 308: Check-in-/Check-out-Zeit der Wohnung (fuer Reinigung/Handwerker) */
+  checkInTime: string
+  checkOutTime: string
   /** §290 Stammgast: Aufenthalte gesamt (≥ 2 = Wiederkehrer) + laufende Nummer */
   stays?: number
   stayNr?: number
@@ -81,6 +84,8 @@ export interface HeuteAnreise extends HeuteStay {
   /** nur am HEUTIGEN Tag befüllt */
   reinigung: { status: 'fertig' | 'laeuft' | 'frei' | 'offen' | 'unklar'; text: string } | null
   checkin: { status: 'green' | 'yellow' | 'red' | 'grey'; text: string } | null
+  /** Paragraph 308: erste Tuer-Oeffnung mit Gast-Code heute (ISO) = eingecheckt, Wohnung belegt */
+  eingecheckt: string | null
 }
 export interface HeuteDaten {
   tag: string
@@ -89,6 +94,8 @@ export interface HeuteDaten {
   firstName: string | null
   /** Pascal 9.9. (Chefsache): Rolle hinter dem Namen auf der Türcode-Karte — CEO · Reinigung · Handwerker · Team */
   roleLabel: string | null
+  /** Paragraph 308: Rollen-Ansicht - Reinigungs-Dienstleister / Handwerker / alles */
+  heuteView: 'full' | 'cleaning' | 'provider'
   doorCode: { code: string; listings: string[] } | null
   anreisen: HeuteAnreise[]
   abreisen: HeuteStay[]
@@ -179,6 +186,8 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     checkOut: b.check_out,
     persons: ((b.adults ?? 0) + (b.children ?? 0)) || null,
     platform: portalOf(b.channel, b.source),
+    checkInTime: (byId.get(b.listing_id)?.check_in_time ?? '16:00').slice(0, 5),
+    checkOutTime: (byId.get(b.listing_id)?.check_out_time ?? '10:00').slice(0, 5),
   })
   const byTitle = (a: HeuteStay, b: HeuteStay) => a.listingTitle.localeCompare(b.listingTitle, 'de')
   const arrivals = rows.filter((b) => b.check_in === tag)
@@ -240,6 +249,16 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     }))
   }
 
+  // Paragraph 308: „eingecheckt" = erste Oeffnung mit Gast-Code heute ab 10:00 (Schlossprotokoll, je Wohnung max. 6 s)
+  const guestOpen = new Map<string, string | null>()
+  if (istHeute) {
+    await Promise.all(arrivals.filter((b) => b.door_code).map(async (b) => {
+      const l = byId.get(b.listing_id)
+      const iso = await withTimeout(firstGuestOpenAt(l?.locks ?? [], '10:00', tag).catch(() => null), 6000, null)
+      guestOpen.set(b.listing_id, iso)
+    }))
+  }
+
   const anreisen: HeuteAnreise[] = arrivals.map((b) => {
     const base = toStay(b)
     const l = byId.get(b.listing_id)
@@ -285,7 +304,7 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
       else if (!wechsel) checkin = { status: 'grey', text: `ab ${ci} · Vornacht war frei` }
       else checkin = { status: 'grey', text: `ab ${ci}` }
     }
-    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin }
+    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin, eingecheckt: guestOpen.get(b.listing_id) ?? null }
   }).sort(byTitle)
 
   /* Eigener Türcode (§141) — nur der eigene, nie fremde */
@@ -295,7 +314,8 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     if (sc?.code) doorCode = { code: sc.code, listings: sc.listingIds.map((id) => byId.get(id)?.title ?? '').filter(Boolean) }
   } catch { /* fail-soft */ }
 
-  const data: HeuteDaten = { tag, heute, stand: new Date().toISOString(), firstName, roleLabel, doorCode, anreisen, abreisen, vorschau }
+  const heuteView: HeuteDaten['heuteView'] = auth.role === 'provider' ? (cleans ? 'cleaning' : 'provider') : 'full'
+  const data: HeuteDaten = { tag, heute, stand: new Date().toISOString(), firstName, roleLabel, heuteView, doorCode, anreisen, abreisen, vorschau }
   cache.__heuteCache!.set(key, { at: Date.now(), data })
   return data
 }

@@ -211,14 +211,14 @@ body {
 
 /* Glass morphism */
 .glass {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
   background-color: rgba(255, 255, 255, 0.72);
 }
 
 .glass-dark {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
   background-color: rgba(0, 0, 0, 0.4);
 }
 
@@ -586,8 +586,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   gap: 5px;
   cursor: default;
   background: rgba(16, 22, 28, 0.55);
-  -webkit-backdrop-filter: blur(10px) saturate(1.4);
-  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  backdrop-filter: blur(16px) saturate(1.6);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   padding: 5px 11px 5px 9px;
@@ -725,8 +725,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-yellow-soft: rgba(217, 133, 6, 0.13);
   --tm-red: #dc3d3d;
   --tm-red-soft: rgba(220, 61, 61, 0.13);
-  --tm-glass: rgba(243, 244, 246, 0.82);
-  --tm-glass-soft: rgba(243, 244, 246, 0.55);
+  --tm-glass: rgba(243, 244, 246, 0.72);
+  --tm-glass-soft: rgba(243, 244, 246, 0.45);
   --tm-nav-glass: rgba(247, 248, 250, 0.9);
   /* Primär-Knöpfe (Senden, Speichern): Navy hell, im Dunkeln aufgehellt */
   --tm-navy: #12222E;
@@ -753,8 +753,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-accent: #C9A44A;
   --tm-accent-dark: #E3C878;
   --tm-accent-soft: rgba(201, 164, 74, 0.18);
-  --tm-glass: rgba(15, 17, 20, 0.82);
-  --tm-glass-soft: rgba(15, 17, 20, 0.55);
+  --tm-glass: rgba(15, 17, 20, 0.70);
+  --tm-glass-soft: rgba(15, 17, 20, 0.42);
   --tm-nav-glass: rgba(22, 25, 29, 0.92);
   --tm-navy: #2b4257;
   --tm-blue: #8ab4ff;
@@ -1008,3 +1008,16 @@ html.tm-dark { color-scheme: dark; }
   .tm-fly { display: none; }
   .tm-done-flash, .tm-peek { animation: none; }
 }
+
+/* Paragraph 308 (Pascal 9.9.): Update-Streifen - laeuft von links nach rechts, solange eine neue Version installiert */
+.tm-update-stripe {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 12000; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--gold, #AE8D2D) 35%, #fff6d6 50%, var(--gold, #AE8D2D) 65%, transparent 100%);
+  background-size: 45% 100%; background-repeat: no-repeat;
+  animation: tm-stripe 1.1s linear infinite;
+}
+@keyframes tm-stripe { from { background-position: -45% 0; } to { background-position: 145% 0; } }
+
+/* Paragraph 308: kein Gummiband-Ruckeln am Seitenende - Scroll-Ketten bleiben im jeweiligen Scroller */
+html, body { overscroll-behavior-y: none; }
+.team-shell [style*="overflow-y: auto"], .team-shell [style*="overflow: auto"] { overscroll-behavior: contain; }
