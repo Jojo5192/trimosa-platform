@@ -351,8 +351,8 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           </>
         )}
 
-        {/* §266f: Material — für ALLE Rollen (Bedarf melden, Status pflegen,
-            Warenkorb je Standort; Katalog-Pflege nur Admins) */}
+        {/* §266f/§303: Material — Team-Rollen (Pascal 9.9.: für Dienstleister ausgeblendet) */}
+        {role === 'team' && (<>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MATERIAL</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
           <button onClick={() => setShowMaterial(true)} style={{
@@ -367,6 +367,8 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
             <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
         </div>
+
+        </>)}
 
         {/* §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister
             (Upload + Ort + Notiz; keinerlei Finanz-Einblick) */}
@@ -429,9 +431,11 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
           <Row title="🧹 Reinigung" subtitle="Fertigmeldungen aus den Wohnungen">
             <Switch on={prefs?.reinigung ?? true} disabled={!prefs} onChange={() => togglePref('reinigung')} />
           </Row>
+          {role === 'team' && (
           <Row title="🛒 Material" subtitle="Bestellung fällig — Bedarf je Standort erreicht">
             <Switch on={prefs?.material ?? true} disabled={!prefs} onChange={() => togglePref('material')} />
           </Row>
+          )}
           {role === 'team' && (
             <Row title="☎️ Anrufe" subtitle="Meldungen der Telefon-Assistentin (Bereitschaft)">
               <Switch on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />

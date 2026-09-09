@@ -3,10 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToUser } from '@/lib/push'
 import { getTaskAuth, TASK_PRIOS as PRIOS } from '@/lib/tasks'
 
+/** Paragraph 303: Standorte, die es als Aufgaben-Zuordnung geben soll, obwohl dort keine Wohnung gelistet ist */
+const EXTRA_TASK_LOCATIONS = ['Kanzem']
+
 /**
  * Aufgaben-API (Team-App). Rechte sind admin-konfigurierbar (lib/tasks):
  *  viewAll=false → nur Aufgaben, die einem zugewiesen sind ODER die man selbst
- *  angelegt hat. manage=false → kein Anlegen/Bearbeiten, nur Status der eigenen.
+ *  angelegt hat. manage=false → nur EIGENE Aufgaben anlegen/bearbeiten (Paragraph 303), sonst nur Status der eigenen.
  * Zuweisung pusht den Empfänger („✅ Neue Aufgabe") auf /team?tab=aufgaben.
  */
 
@@ -35,7 +38,8 @@ export async function GET() {
 
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, title, location_group').order('title')
-  const groups = [...new Set((listings ?? []).map((l) => (l.location_group ?? '').trim()).filter(Boolean))].sort()
+  // Paragraph 303 (Pascal): feste Zusatz-Standorte ohne eigene Listings (Kanzem = UG-Sanierung Brueckenstrasse 1)
+  const groups = [...new Set([...(listings ?? []).map((l) => (l.location_group ?? '').trim()).filter(Boolean), ...EXTRA_TASK_LOCATIONS])].sort()
 
   // Personen: Verwalter (manage/viewAll) bekommen die komplette Team-Liste
   // (Zuweisungs-Dropdown + Personen-Filter); sonst nur Namen der Beteiligten.
@@ -72,7 +76,8 @@ export async function GET() {
   }
   const withEditable = (tasks ?? []).map((t) => ({
     ...t,
-    editable: auth.role === 'admin' || (auth.manage && !(t.created_by && adminCreators.has(t.created_by))),
+    // Paragraph 303: selbst angelegte Aufgaben darf auch ein Nicht-Verwalter (Handwerker/Mitarbeiter) bearbeiten
+    editable: auth.role === 'admin' || (auth.manage && !(t.created_by && adminCreators.has(t.created_by))) || (!auth.manage && t.created_by === auth.userId),
   }))
 
   // Kommentar-Zähler der sichtbaren Aufgaben (ein Query, Zählung in JS)
@@ -94,6 +99,8 @@ export async function GET() {
     role: auth.role,
     viewAll: auth.viewAll,
     manage: auth.manage,
+    // Paragraph 303: jede Rolle darf Aufgaben FUER SICH SELBST anlegen und einplanen (Pascal: Handwerker planen selbst)
+    createOwn: !auth.manage,
     oncall,
     tasks: withEditable,
     commentCounts,
@@ -105,7 +112,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const auth = await getTaskAuth()
-  if (!auth || !auth.manage) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  if (!auth) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
+  // Paragraph 303: ohne manage-Recht nur EIGENE Aufgabe (sich selbst zugewiesen, nur fuer Admins + einen selbst sichtbar)
+  const selfOnly = !auth.manage
 
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' ? body.title.trim() : ''
@@ -122,8 +131,8 @@ export async function POST(req: NextRequest) {
     is_general: !listingId && !locationGroup,
     prio: PRIOS.includes(body.prio) ? body.prio : 'mittel',
     status: 'offen',
-    visibility: ['admin', 'team', 'alle'].includes(body.visibility) ? body.visibility : 'admin',
-    assignee_id: typeof body.assignee_id === 'string' && body.assignee_id ? body.assignee_id : null,
+    visibility: selfOnly ? 'admin' : ['admin', 'team', 'alle'].includes(body.visibility) ? body.visibility : 'admin',
+    assignee_id: selfOnly ? auth.userId : typeof body.assignee_id === 'string' && body.assignee_id ? body.assignee_id : null,
     due_date: typeof body.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null,
     recur_days: Number.isInteger(body.recur_days) && body.recur_days >= 1 && body.recur_days <= 365 ? body.recur_days : null,
     created_by: auth.userId,

@@ -121,6 +121,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   const [error, setError] = useState<string | null>(null)
   // Rechte kommen vom Server (admin-konfigurierbar); Startwert = grobe Vermutung
   const [manage, setManage] = useState(role === 'team')
+  // Paragraph 303: ohne manage-Recht duerfen alle Rollen EIGENE Aufgaben anlegen (Handwerker planen selbst)
+  const [createOwn, setCreateOwn] = useState(false)
   const [viewAll, setViewAll] = useState(role === 'team')
   const [apiRole, setApiRole] = useState<string>('')
   const [oncall, setOncall] = useState(true)
@@ -179,6 +181,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         setListings(json.listings ?? [])
         setGroups(json.groups ?? [])
         setManage(!!json.manage)
+        setCreateOwn(!!json.createOwn)
         setViewAll(!!json.viewAll)
         setApiRole(json.role ?? '')
         setOncall(json.oncall !== false)
@@ -473,14 +476,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
           const done = t.status === 'erledigt'
           return (
             <div key={t.id} id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
-              onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
+              onClick={(manage && t.editable !== false) || (!manage && t.editable === true) ? () => setEditing(t) : undefined}
               style={{
                 background: 'var(--tm-card)', borderRadius: 18, padding: '13px 15px', position: 'relative',
                 boxShadow: t.id === highlightId
                   ? 'inset 0 0 0 2px var(--tm-accent), 0 0 0 4px rgba(18,34,46,0.18)'
                   : overdue ? 'inset 0 0 0 1.5px var(--tm-red), 0 1px 3px rgba(0,0,0,0.05)'
                   : 'inset 0 0 0 0.5px var(--tm-line), 0 1px 3px rgba(0,0,0,0.05)',
-                cursor: manage && t.editable !== false ? 'pointer' : 'default',
+                cursor: (manage && t.editable !== false) || (!manage && t.editable === true) ? 'pointer' : 'default',
                 opacity: done ? 0.6 : 1,
                 transition: 'box-shadow .3s',
               }}>
@@ -606,7 +609,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     </div>
 
       {/* FAB (nur mit Anlegen-Recht) — außerhalb des Scrollers, im Content-Bereich */}
-      {manage && filter !== 'vorschlaege' && (
+      {(manage || createOwn) && filter !== 'vorschlaege' && (
         <button className="tm-press-btn" onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'absolute', right: 18, bottom: 'calc(var(--tm-nav-pad) + 6px)', width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
@@ -634,9 +637,10 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
         />
       )}
 
-      {editing && manage && (
+      {editing && (manage || createOwn) && (
         <TaskSheet
           task={editing === 'new' ? null : editing}
+          limited={!manage}
           people={people}
           listings={listings}
           groups={groups}
@@ -743,7 +747,9 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
 }
 
 /* ── Bottom-Sheet: Aufgabe anlegen/bearbeiten (Team) ── */
-function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
+function TaskSheet({ task, limited = false, people, listings, groups, onClose, onSaved }: {
+  /** Paragraph 303: Nicht-Verwalter - eigene Aufgabe ohne Zuweisung/Sichtbarkeit/Wiederholung */
+  limited?: boolean
   task: Task | null
   people: Person[]
   listings: ListingOpt[]
@@ -767,6 +773,9 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   const [recurDays, setRecurDays] = useState<string>(task?.recur_days ? String(task.recur_days) : '')
   const [doneNote, setDoneNote] = useState('')
   const [photos, setPhotos] = useState<{ url: string }[]>(task?.photos ?? [])
+  // Paragraph 303: Fotos schon beim ANLEGEN auswaehlen - werden nach dem Speichern hochgeladen
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [uploadNote, setUploadNote] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // iOS zeigt bei leeren date-Inputs GAR NICHTS an → eigener Platzhalter
@@ -789,6 +798,23 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
       ? await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     if (res.ok) {
+      if (!task && pendingFiles.length) {
+        // Paragraph 303: Fotos der neuen Aufgabe nachladen (gleiche Route wie der Foto-Knopf an der Karte)
+        const created = await res.json().catch(() => null) as { task?: { id?: string } } | null
+        const newId = created?.task?.id
+        if (newId) {
+          for (let i = 0; i < pendingFiles.length; i++) {
+            try {
+              setUploadNote(`Foto ${i + 1}/${pendingFiles.length} wird hochgeladen…`)
+              const blob = await compressToJpeg(pendingFiles[i])
+              const fd = new FormData()
+              fd.append('file', new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' }))
+              await fetch(`/api/tasks/${newId}/photos`, { method: 'POST', body: fd })
+            } catch { /* einzelnes Foto uebersprungen */ }
+          }
+          setUploadNote(null)
+        }
+      }
       if (task && status === 'erledigt' && task.status !== 'erledigt' && doneNote.trim()) {
         await fetch(`/api/tasks/${task.id}/comments`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -898,6 +924,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               onChange={setPrio}
             />
           </div>
+          {!limited && (<>
           <div>
             <label style={labelStyle}>Sichtbar für (Zugewiesene sehen ihre Aufgabe immer)</label>
             <Segmented
@@ -912,6 +939,28 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
               {RECUR_OPTIONS.map(([v, label]) => <option key={String(v)} value={String(v)}>{label}</option>)}
             </select>
           </div>
+          </>)}
+          {!task && (
+            <div>
+              <label style={labelStyle}>📷 Fotos anhängen (optional)</label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {pendingFiles.length ? `${pendingFiles.length} Foto${pendingFiles.length > 1 ? 's' : ''} ausgewählt` : 'Fotos auswählen'}
+                <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                  onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) setPendingFiles((prev) => [...prev, ...fs].slice(0, 6)); e.target.value = '' }} />
+              </label>
+              {pendingFiles.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {pendingFiles.map((f, i) => (
+                    <span key={i} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 8, background: 'var(--tm-surface2)', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      {f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name}
+                      <button type="button" aria-label="Foto entfernen" onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 14, padding: 0 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {uploadNote && <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--tm-muted)' }}>{uploadNote}</p>}
+            </div>
+          )}
           {task && photos.length > 0 && (
             <div>
               <label style={labelStyle}>Fotos ({photos.length})</label>
@@ -957,6 +1006,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 )}
               </div>
             </div>
+            {!limited && (
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <label style={labelStyle}>Zugewiesen an</label>
               <select value={assignee} onChange={(e) => setAssignee(e.target.value)}
@@ -965,6 +1015,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isProvider ? ' · Dienstleister' : ''}</option>)}
               </select>
             </div>
+            )}
           </div>
           {task && (
             <div>

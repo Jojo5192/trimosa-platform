@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
@@ -965,7 +966,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                           fontStyle: m.attachmentType === 'audio' ? 'italic' : undefined,
                           opacity: m.attachmentType === 'audio' ? 0.85 : 1,
                           maxWidth: m.attachmentType === 'audio' ? 224 : undefined,
-                        }}>{m.content}</div>
+                        }}>{linkify(m.content, mine)}</div>
                       )}
                     </div>
                     </div>
