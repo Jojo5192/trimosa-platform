@@ -516,6 +516,37 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [translating, setTranslating] = useState(false)
   const [instruction, setInstruction] = useState('')
   const [mappeMenu, setMappeMenu] = useState(false)
+  // Paragraph 306 (Pascal 21:25): Vorlagen der Auto-Nachrichten im Gaeste-Chat auswaehlen -> Entwurf im Composer
+  const [tplMenu, setTplMenu] = useState(false)
+  const [tplList, setTplList] = useState<{ id: string; name: string; enabled?: boolean }[] | null>(null)
+  const [tplBusy, setTplBusy] = useState(false)
+  async function openTplMenu() {
+    haptic()
+    setMappeMenu(false)
+    setTplMenu(v => !v)
+    if (tplList === null) {
+      try {
+        const r = await fetch('/api/auto-messages', { cache: 'no-store' })
+        const d = await r.json()
+        setTplList(((d.messages ?? []) as { id: string; name: string; enabled?: boolean }[]).filter(m => m.enabled !== false))
+      } catch { setTplList([]) }
+    }
+  }
+  async function insertTemplate(tid: string) {
+    if (!active) return
+    setTplBusy(true)
+    try {
+      const key = (active.kind ?? 'direct') === 'booking' ? 'booking' : 'conv'
+      const r = await fetch(`/api/auto-messages/render?template=${encodeURIComponent(tid)}&${key}=${encodeURIComponent(active.id)}`, { cache: 'no-store' })
+      const d = await r.json()
+      if (!r.ok || !d.text) { tmToast(d.error ?? 'Vorlage konnte nicht gefuellt werden'); return }
+      setDraft(d.text)
+      setTplMenu(false)
+      tmToast(`Vorlage „${d.name}" eingefuegt — bitte pruefen und senden`)
+      setTimeout(() => taRef.current?.focus(), 50)
+    } catch { tmToast('Vorlage konnte nicht geladen werden') }
+    finally { setTplBusy(false) }
+  }
   const [invoiceBusy, setInvoiceBusy] = useState(false)
   const [invoiceErr, setInvoiceErr] = useState<string | null>(null)
   // §159: Empfänger-Dialog (vom Gast mitgeteilte Rechnungsdaten erfassen)
@@ -2163,6 +2194,43 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {aiBusy ? '⏳' : '✨'}
             </button>
           )}
+          {/* Paragraph 306: 📨 Vorlagen (Auto-Nachrichten) als Entwurf einfuegen */}
+          {team && active && (
+            <div style={{ position: 'relative', flexShrink: 0, marginBottom: 1 }}>
+              <button
+                onClick={openTplMenu}
+                title="Vorlage einfügen"
+                aria-label="Vorlage einfügen"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  border: 'none', background: tplMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)',
+                  cursor: 'pointer', fontSize: 15,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >📨</button>
+              {tplMenu && (
+                <div style={{
+                  position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 250, maxHeight: 320, overflowY: 'auto',
+                  background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                  border: '0.5px solid var(--tm-line)',
+                }}>
+                  <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
+                    📨 VORLAGE EINFÜGEN
+                  </div>
+                  {tplList === null && <div style={{ padding: '8px 13px 12px', fontSize: 13, color: 'var(--tm-muted)' }}>Lädt…</div>}
+                  {tplList && tplList.length === 0 && <div style={{ padding: '8px 13px 12px', fontSize: 13, color: 'var(--tm-muted)' }}>Keine Vorlagen angelegt.</div>}
+                  {(tplList ?? []).map((t) => (
+                    <button key={t.id} disabled={tplBusy} onClick={() => insertTemplate(t.id)}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: tplBusy ? 'default' : 'pointer', fontSize: 14, color: 'var(--tm-text)', borderTop: '0.5px solid var(--tm-line)', opacity: tplBusy ? 0.6 : 1 }}
+                    >{t.name}</button>
+                  ))}
+                  <div style={{ padding: '6px 13px 10px', fontSize: 11, color: 'var(--tm-muted)', borderTop: '0.5px solid var(--tm-line)' }}>
+                    Platzhalter werden mit den Buchungsdaten gefüllt; der Text landet als Entwurf — senden entscheidest du.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {/* §157: 📖 Gästemappen-Link — anhängen oder direkt senden */}
           {team && active?.mappeUrl && (
             <div style={{ position: 'relative', flexShrink: 0, marginBottom: 1 }}>
@@ -2323,7 +2391,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               rows={1}
               style={{
                 flex: 1, resize: 'none', outline: 'none', border: 'none',
-                borderRadius: 18, padding: draft.trim() ? '7px 62px 7px 13px' : '7px 13px',
+                borderRadius: 18, padding: draft.trim() ? '7px 76px 7px 13px' : '7px 13px', minHeight: 46,
                 fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
                 background: 'transparent', color: 'var(--tm-text)',
                 overflowY: 'auto',
@@ -2338,7 +2406,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   onClick={() => { setDraft(''); setInstruction('') }}
                   title="Entwurf verwerfen"
                   style={{
-                    position: 'absolute', right: 36, bottom: 7, width: 22, height: 22,
+                    position: 'absolute', right: 48, bottom: 12, width: 22, height: 22,
                     borderRadius: '50%', border: 'none', background: 'rgba(118,118,128,0.28)',
                     color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
@@ -2348,15 +2416,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   onClick={send}
                   disabled={busy || translating}
                   title="Senden"
+                  aria-label="Senden"
                   style={{
-                    position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
+                    // Paragraph 306 (Pascal): groesserer Senden-Knopf (28 -> 38 px)
+                    position: 'absolute', right: 4, bottom: 4, width: 38, height: 38,
                     borderRadius: '50%', border: 'none', padding: 0,
                     background: busy || translating ? 'var(--tm-surface2)' : 'var(--tm-navy)',
                     color: '#fff', cursor: busy ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
                   </svg>
                 </button>

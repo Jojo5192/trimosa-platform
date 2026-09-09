@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
 import { sendPushToUser } from '@/lib/push'
@@ -145,6 +145,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   })().catch((e) => console.error('[team-chat] push:', e))
 
+  // Paragraph 306 (Pascal 9.9. 18:49 „da fehlt der halbe Text"): Das Live-Transkript kommt aus der Browser-
+  // Spracherkennung, die auf iOS nach ~1 Minute abbricht. Nach der Antwort transkribiert ElevenLabs Scribe die
+  // komplette Audiodatei und ersetzt den Text, wenn er laenger ist (ohne Key oder bei Fehler bleibt alles wie es ist).
+  if (attachmentType === 'audio' && attachmentUrl) {
+    const liveLen = (content ?? '').length
+    after(async () => {
+      try {
+        const key = process.env.ELEVENLABS_API_KEY
+        if (!key) return
+        const audio = await fetch(attachmentUrl)
+        if (!audio.ok) return
+        const blob = await audio.blob()
+        const fd = new FormData()
+        fd.append('model_id', 'scribe_v1')
+        fd.append('language_code', 'deu')
+        fd.append('file', blob, 'sprachnachricht.m4a')
+        const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: fd })
+        if (!res.ok) { console.error('[team-chat] Scribe:', res.status, (await res.text()).slice(0, 160)); return }
+        const j = await res.json() as { text?: string }
+        const text = String(j.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 12000)
+        if (text.length > liveLen + 20) {
+          await supabaseAdmin.from('team_messages').update({ content: text }).eq('id', msg.id)
+          console.log('[team-chat] Sprachnachricht voll transkribiert:', msg.id, text.length, 'Zeichen (live:', liveLen, ')')
+        }
+      } catch (e) { console.error('[team-chat] Scribe:', String(e).slice(0, 160)) }
+    })
+  }
   return NextResponse.json({ id: msg.id })
 }
 

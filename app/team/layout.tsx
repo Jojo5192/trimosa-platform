@@ -18,7 +18,9 @@ async function isDarkCookie(): Promise<boolean> {
 export async function generateMetadata(): Promise<Metadata> {
   const dark = await isDarkCookie()
   return {
-    appleWebApp: { capable: true, statusBarStyle: dark ? 'black' : 'default', title: 'TRIMOSA Team' },
+    // Paragraph 306 (Pascal 9.9. 19:50): durchscheinend statt schwarz/weiss - bei Modus 'system' kennt der Server
+    // die Geraete-Einstellung nicht; so zeigt die Statusleiste immer den echten Seitenhintergrund (Shell hat safe-area-Padding)
+    appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'TRIMOSA Team' },
   }
 }
 export async function generateViewport(): Promise<Viewport> {
