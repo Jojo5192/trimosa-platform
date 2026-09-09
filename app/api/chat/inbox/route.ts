@@ -444,8 +444,8 @@ export async function PATCH(req: Request) {
     if (kind !== 'booking' || typeof id !== 'string' || typeof value !== 'string' || !['', 'alle', 'bewertung'].includes(value)) {
       return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
     }
-    const { data: me } = await supabaseAdmin.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
-    const who = String((me as { full_name?: string | null } | null)?.full_name ?? '').split(' ')[0] || 'Team'
+    const { data: me } = await supabaseAdmin.from('profiles').select('display_name').eq('id', user.id).maybeSingle()
+    const who = String((me as { display_name?: string | null } | null)?.display_name ?? '').split(' ')[0] || 'Team'
     const { error } = await supabaseAdmin.from('bookings')
       .update({ msg_mute: value || null, msg_mute_reason: value ? `manuell (${who})` : null }).eq('id', id)
     if (error) return NextResponse.json({ error: `Speichern fehlgeschlagen (${error.message.slice(0, 80)}) — Migration 20260909_msg_mute.sql ausgeführt?` }, { status: 500 })
