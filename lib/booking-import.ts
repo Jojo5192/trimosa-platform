@@ -56,7 +56,7 @@ export async function importMissingReservations(
         check_in: r.arrival,
         check_out: r.departure,
         total_price: Math.round((r.price ?? 0) * 100) / 100, // §221 cent-genau
-        adults: (r.adults ?? 0) > 0 ? r.adults : 1,
+        adults: (r.adults ?? 0) > 0 ? r.adults : null, // §291: unbekannt bleibt unbekannt (keine erfundene 1)
         children: r.children ?? 0,
         status: 'confirmed',
         channel: r.channelName ?? 'Smoobu',

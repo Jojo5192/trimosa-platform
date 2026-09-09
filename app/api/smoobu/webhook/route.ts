@@ -335,7 +335,9 @@ export async function POST(request: Request) {
         check_in: checkIn,
         check_out: checkOut,
         total_price: totalPrice,
-        adults: adults > 0 ? adults : 1,
+        // §291: Smoobu liefert bei FeWo-direkt oft KEINE Personenzahl (null) - dann null speichern
+        // statt eine 1 zu erfinden (Heute/Kalender zeigen dann keine Zahl, Pascal 9.9.)
+        adults: adults > 0 ? adults : null,
         children,
         status: 'confirmed',
         channel: channel,

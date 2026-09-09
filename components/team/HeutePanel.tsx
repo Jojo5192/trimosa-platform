@@ -229,15 +229,17 @@ export default function HeutePanel({ role, visible, onCount }: {
       .sort((a, b) => String(b.lastMessageAt ?? '').localeCompare(String(a.lastMessageAt ?? '')))
     : [], [threads, role, istHeute])
 
-  // Roter Zähler am Reiter (Pascal 9.9. 15:04): NUR Handlungsbedarf — Sofort-Aufgaben,
-  // heute geplante Aufgaben und offene Gast-Nachrichten. Anreisen zählen nicht mehr
-  // („wenn dort eine Zahl ist, muss jemand aktiv werden").
+  // Roter Zähler am Reiter (Pascal 9.9. 15:04–15:08, verbindlich): NUR Handlungsbedarf —
+  // Sofort-Aufgaben + heute geplante Aufgaben + offene Gast-Nachrichten + Anreisen NUR, wenn
+  // noch ein Häkchen fehlt (Infos nicht raus, Türcode fehlt, Reinigung nicht „fertig" gemeldet).
+  // Abreisen und komplett grüne Anreisen sind Information, kein To-do.
   const heuteData = data[heute]
   useEffect(() => {
     const planned = tasks.filter((t) => (t.status === 'offen' || t.status === 'in_arbeit') && t.due_date === heute)
     const s = tasks.filter((t) => istSofort(t, heute) && t.due_date !== heute)
     const offen = role === 'team' ? threads.filter((t) => t.lastSender === 'guest' && !t.noReplyNeeded && !t.phoneResolved).length : 0
-    onCount(s.length + planned.length + offen)
+    const anreisenOffen = (heuteData?.anreisen ?? []).filter((a) => !(a.infosRaus && a.codeDa && a.fertig === 'ja')).length
+    onCount(s.length + planned.length + offen + anreisenOffen)
   }, [heuteData, tasks, threads, role, heute, onCount])
 
   /* Ziele öffnen */
