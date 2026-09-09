@@ -64,8 +64,8 @@ const CARD: CSSProperties = { background: 'var(--tm-card)', border: '1px solid v
 function Card({ title, count, right, children }: { title: string; count?: number; right?: ReactNode; children: ReactNode }) {
   return (
     <section className="tm-stagger" style={CARD}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px 6px' }}>
-        <span style={{ flex: 1, fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.01em' }}>{title}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px 5px' }}>
+        <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.01em' }}>{title}</span>
         {right}
         {count !== undefined && <span className="tm-num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-muted2)' }}>{count}</span>}
       </div>
@@ -73,7 +73,7 @@ function Card({ title, count, right, children }: { title: string; count?: number
     </section>
   )
 }
-function Avatar({ name, platform, size = 40 }: { name: string | null; platform: string; size?: number }) {
+function Avatar({ name, platform, size = 36 }: { name: string | null; platform: string; size?: number }) {
   return (
     <span style={{
       width: size, height: size, borderRadius: Math.round(size * 0.32), flexShrink: 0,
@@ -91,7 +91,7 @@ const DOT: Record<'green' | 'grey' | 'red' | 'yellow', { bg: string; fg: string 
 function Dot({ tone, children, title }: { tone: keyof typeof DOT; children: ReactNode; title?: string }) {
   return (
     <span title={title} style={{
-      width: 22, height: 22, borderRadius: 7, background: DOT[tone].bg, color: DOT[tone].fg,
+      width: 20, height: 20, borderRadius: 6, background: DOT[tone].bg, color: DOT[tone].fg,
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, flexShrink: 0,
     }}>{children}</span>
   )
@@ -103,7 +103,7 @@ function Row({ onClick, children, last }: { onClick?: () => void; children: Reac
       className={onClick ? 'tm-press' : undefined}
       onClick={onClick ? () => { haptic(); onClick() } : undefined}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
         cursor: onClick ? 'pointer' : 'default',
         boxShadow: last ? 'none' : 'inset 0 -1px 0 var(--tm-line)',
       }}
@@ -260,10 +260,10 @@ export default function HeutePanel({ role, visible, onCount }: {
     <Row key={s.bookingId} last={last} onClick={role === 'team' ? () => openConv(s.bookingId) : undefined}>
       <Avatar name={s.guestName ?? s.listingTitle} platform={s.platform} />
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {s.guestName ?? s.listingTitle}
         </span>
-        <span style={{ display: 'block', fontSize: 13, color: 'var(--tm-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>
+        <span style={{ display: 'block', fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>
       </span>
       {right}
     </Row>
@@ -282,18 +282,18 @@ export default function HeutePanel({ role, visible, onCount }: {
       <div key={a.bookingId}>
         {stayRow(a, sub, !!a.reinigung || last, dots)}
         {a.reinigung && a.checkin && (
-          <div style={{ margin: '0 16px 10px 68px', padding: '8px 12px', borderRadius: 12, background: 'var(--tm-surface2)', fontSize: 12.5, lineHeight: 1.5, boxShadow: last ? 'none' : undefined }}>
+          <div style={{ margin: '0 14px 8px 60px', padding: '7px 10px', borderRadius: 11, background: 'var(--tm-surface2)', fontSize: 12, lineHeight: 1.45, boxShadow: last ? 'none' : undefined }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <span style={{ width: 84, flexShrink: 0, color: 'var(--tm-muted)' }}>🧹 Reinigung</span>
+              <span style={{ width: 80, flexShrink: 0, color: 'var(--tm-muted)' }}>🧹 Reinigung</span>
               <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: a.reinigung.status === 'offen' ? 'var(--tm-red)' : a.reinigung.status === 'laeuft' || a.reinigung.status === 'unklar' ? 'var(--tm-yellow)' : 'var(--tm-green)' }}>{a.reinigung.text}</span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <span style={{ width: 84, flexShrink: 0, color: 'var(--tm-muted)' }}>🕐 Check-in</span>
+              <span style={{ width: 80, flexShrink: 0, color: 'var(--tm-muted)' }}>🕐 Check-in</span>
               <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: a.checkin.status === 'green' ? 'var(--tm-green)' : a.checkin.status === 'red' ? 'var(--tm-red)' : a.checkin.status === 'yellow' ? 'var(--tm-yellow)' : 'var(--tm-muted)' }}>{a.checkin.text}</span>
             </div>
           </div>
         )}
-        {a.reinigung && !last && <div style={{ height: 1, background: 'var(--tm-line)', margin: '0 16px' }} />}
+        {a.reinigung && !last && <div style={{ height: 1, background: 'var(--tm-line)', margin: '0 14px' }} />}
       </div>
     )
   }
@@ -303,9 +303,9 @@ export default function HeutePanel({ role, visible, onCount }: {
       <Row key={t.id} last={last} onClick={() => openTask(t.id)}>
         <span style={{ width: 9, height: 9, borderRadius: 5, flexShrink: 0, background: t.prio === 'hoch' ? 'var(--tm-red)' : t.prio === 'mittel' ? 'var(--tm-yellow)' : 'var(--tm-muted2)' }} />
         <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
+          <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
           {(overdue || t.due_date) && (
-            <span style={{ display: 'block', fontSize: 12.5, marginTop: 2, color: overdue ? 'var(--tm-yellow)' : 'var(--tm-muted)' }}>
+            <span style={{ display: 'block', fontSize: 12, marginTop: 1, color: overdue ? 'var(--tm-yellow)' : 'var(--tm-muted)' }}>
               {overdue ? `! überfällig seit ${ddmm(t.due_date)}` : `bis ${ddmm(t.due_date)}`}
             </span>
           )}
@@ -321,7 +321,7 @@ export default function HeutePanel({ role, visible, onCount }: {
   return (
     <div ref={scrollRef} style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch', paddingBottom: 'var(--tm-nav-pad)' }}>
       <PullHint pull={ptr.pull} busy={ptr.busy} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 14px 0' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 0' }}>
 
         {/* Datumszeile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -334,19 +334,19 @@ export default function HeutePanel({ role, visible, onCount }: {
 
         {/* 🔑 Türcode — bleibt an jedem Tag oben stehen */}
         {code ? (
-          <section style={{ borderRadius: 22, padding: '14px 16px 15px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
+          <section style={{ borderRadius: 20, padding: '12px 14px 13px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
             {/* Pascal 9.9. (Chefsache): kein Schlüssel-Symbol; Name größer mit Rolle dahinter,
                 „TÜRCODE" als eigene Zeile, Code etwas kleiner — ruhig und symmetrisch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName ?? 'Team'}</span>
-                {roleLabel && <span style={{ fontSize: 14, fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>· {roleLabel}</span>}
+                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName ?? 'Team'}</span>
+                {roleLabel && <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>· {roleLabel}</span>}
               </span>
               <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)', flexShrink: 0 }}>Kopieren</button>
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', opacity: 0.8, marginTop: 12 }}>Türcode</div>
-            <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 26, fontWeight: 800, letterSpacing: '6px', marginTop: 3, lineHeight: 1.1 }}>{code.code}</div>
-            <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 6 }}>
+            <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 24, fontWeight: 800, letterSpacing: '5px', marginTop: 2, lineHeight: 1.1 }}>{code.code}</div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 5 }}>
               {code.listings.length >= 7 ? 'Alle Wohnungen' : code.listings.length ? code.listings.join(' · ') : 'Alle Schlösser'} · dauerhaft gültig
             </div>
           </section>
@@ -392,8 +392,8 @@ export default function HeutePanel({ role, visible, onCount }: {
               <Row key={t.id} last={i === arr.length - 1 && warten.length <= 6} onClick={() => { openTab('chat'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: t.id } })) }}>
                 <Avatar name={t.guestName} platform={t.platform} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.guestName}</span>
-                  <span style={{ display: 'block', fontSize: 13, color: 'var(--tm-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.lastPreview || t.listingTitle || ''}</span>
+                  <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700, color: 'var(--tm-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.guestName}</span>
+                  <span style={{ display: 'block', fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.lastPreview || t.listingTitle || ''}</span>
                 </span>
                 <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </Row>

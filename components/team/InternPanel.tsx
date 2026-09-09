@@ -721,28 +721,28 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         const unread = c.unread > 0
         return (
         <button key={c.id} className="tm-press" onClick={() => openChat(c)} style={{
-          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', textAlign: 'left',
-          margin: '0 12px 8px', borderRadius: 16, cursor: 'pointer', flexShrink: 0,
+          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 12px', textAlign: 'left',
+          margin: '0 12px 6px', borderRadius: 16, cursor: 'pointer', flexShrink: 0,
           border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
           background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
           boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
         }}>
           {/* §277 Gruppen-Quadrat in neutraler Teamfarbe + Mitglieder-Zähler als Gruppen-Symbol */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
+            <div style={{ width: 40, height: 40, borderRadius: 13, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
             {/* Pascal 9.9.: Mitglieder-Zahl am Emoji entfiel — sie wurde als Ungelesen-Zähler gelesen */}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>{c.name}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>{c.name}</span>
               {c.lastAt && <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtTime(c.lastAt)}</span>}
               {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
               {c.members.map((m) => m.name.split(' ')[0]).join(', ')}
             </div>
             {c.lastPreview && (
-              <div style={{ fontSize: 13, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', fontWeight: unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 3 }}>
+              <div style={{ fontSize: 12.5, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', fontWeight: unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 3 }}>
                 {c.lastFromMe ? 'Du: ' : ''}{c.lastPreview}
               </div>
             )}

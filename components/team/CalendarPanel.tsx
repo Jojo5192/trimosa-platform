@@ -87,7 +87,6 @@ export default function CalendarPanel() {
   // 🔑 Service-PINs (Reinigung/Handwerker, §132) — API filtert nach Sichtbarkeit
   const [servicePins, setServicePins] = useState<Record<string, string>>({})
   // 👤 Persönlicher Zugangs-Code (§141) — API liefert nur den EIGENEN
-  const [myDoorCode, setMyDoorCode] = useState<{ code: string; listings: string[] } | null>(null)
   const [agendaMode, setAgendaMode] = useState<'liste' | 'woche'>('liste')
   const [selDay, setSelDay] = useState<string>(isoOffset(0))
   const viewInitRef = useRef(false)
@@ -100,7 +99,7 @@ export default function CalendarPanel() {
       const j = raw ? JSON.parse(raw) : null
       if (j && Array.isArray(j.stays)) {
         setStays(j.stays); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
-        setCleaning(j.cleaning ?? null); setServicePins(j.servicePins ?? {}); setMyDoorCode(j.myDoorCode ?? null)
+        setCleaning(j.cleaning ?? null); setServicePins(j.servicePins ?? {})
         setLoading(false)
       }
     } catch { /* egal */ }
@@ -123,7 +122,6 @@ export default function CalendarPanel() {
         setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
         setCleaning(j.cleaning ?? null)
         setServicePins(j.servicePins ?? {})
-        setMyDoorCode(j.myDoorCode ?? null)
         setError(null)
         try { localStorage.setItem(CAL_SNAP_KEY, JSON.stringify({ stays: j.stays ?? [], tasks: j.tasks ?? [], qs: j.qs ?? [], listings: j.listings ?? {}, cleaning: j.cleaning ?? null, servicePins: j.servicePins ?? {}, myDoorCode: j.myDoorCode ?? null })) } catch { /* quota */ }
         window.dispatchEvent(new Event('trimosa-synced'))
@@ -354,24 +352,7 @@ export default function CalendarPanel() {
           onChange={(id) => setView(id as typeof view)}
         />
       </div>
-
-      {/* 👤 Persönlicher Zugangs-Code (§141) — Navy-Karte, nur der EIGENE
-          Code; gilt an allen freigegebenen Wohnungen inkl. Haustür */}
-      {!loading && !error && myDoorCode && (
-        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: 'var(--tm-navy)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#E3C878', marginBottom: 6 }}>
-            👤 Dein Zugangs-Code (Keypad)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color: '#E3C878', letterSpacing: '0.18em', fontVariantNumeric: 'tabular-nums' }}>
-              {myDoorCode.code}
-            </span>
-            <span style={{ fontSize: 12, color: 'rgba(245,240,232,0.75)', lineHeight: 1.5 }}>
-              gilt für: {myDoorCode.listings.join(' · ') || '—'}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Pascal 9.9.: der persönliche Türcode steht nur noch auf Heute (§141-Karte hier entfernt) */}
 
       {/* 🔑 Service-PINs über dem Kalender (Pascal, §99.5) — Navy-Karte,
           erscheint nur, wenn im Admin-Bereich PINs gepflegt sind */}

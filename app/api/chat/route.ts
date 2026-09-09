@@ -138,6 +138,8 @@ export async function GET(req: NextRequest) {
   // §156 Performance: ?fast=1 = nur DB-Stand (kein Sync-Trigger, keine
   // Übersetzung) — Client rendert instant und holt den vollen Stand nach
   const fast = req.nextUrl.searchParams.get('fast') === '1'
+  // §288: ?peek=1 = Vorladen im Hintergrund — NICHT als gelesen markieren
+  const peek = req.nextUrl.searchParams.get('peek') === '1'
 
   if (conversationId) {
     // Load conversation metadata to know booking / Smoobu link
@@ -165,13 +167,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Mark messages as read
-    await supabaseAdmin
-      .from('messages')
-      .update({ read_at: new Date().toISOString() })
-      .eq('conversation_id', conversationId)
-      .neq('sender_id', user.id)
-      .is('read_at', null)
+    // Mark messages as read — nicht beim Vorladen (peek)
+    if (!peek) {
+      await supabaseAdmin
+        .from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', user.id)
+        .is('read_at', null)
+    }
 
     const { data: messages } = await supabaseAdmin
       .from('messages')

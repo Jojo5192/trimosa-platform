@@ -17,6 +17,8 @@ export async function GET(
   // Übersetzung) — der Client rendert damit INSTANT und holt direkt danach
   // den vollen Stand nach (fast-first, stale-while-revalidate).
   const fast = new URL(request.url).searchParams.get('fast') === '1'
+  // §288: ?peek=1 = Vorladen im Hintergrund — NICHT als gelesen markieren
+  const peek = new URL(request.url).searchParams.get('peek') === '1'
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -130,8 +132,8 @@ export async function GET(
     }
   }
 
-  // Reading as team marks guest messages as read (inbox unread counter)
-  if (isHost) {
+  // Reading as team marks guest messages as read (inbox unread counter) — nicht beim Vorladen (peek)
+  if (isHost && !peek) {
     await supabaseAdmin
       .from('messages')
       .update({ read_at: new Date().toISOString() })

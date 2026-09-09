@@ -722,39 +722,73 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     finally { setArchivLoading(false) }
   }, [userId])
 
+  /** Nachrichten eines Threads laden (booking → gemeinsame Form; direct → wie geliefert).
+   *  peek = Vorladen im Hintergrund: Server markiert NICHT als gelesen (§288). */
+  const fetchMsgList = useCallback(async (id: string, kind: 'direct' | 'booking' | undefined, fast: boolean, peek = false): Promise<Message[] | null> => {
+    const q = [fast ? 'fast=1' : '', peek ? 'peek=1' : ''].filter(Boolean).join('&')
+    if (kind === 'booking') {
+      const r = await fetch(`/api/messages/${id}${q ? `?${q}` : ''}`)
+      if (!r.ok) return null
+      const { messages } = await r.json()
+      // Map booking messages (sender_type guest/host/system) onto the
+      // shared shape: everything from our side renders as "me".
+      return ((messages ?? []) as Record<string, unknown>[]).map((m) => ({
+        id: m.id, conversation_id: id,
+        sender_id: m.sender_type === 'guest' ? 'guest' : userId,
+        content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
+        lang: m.lang ?? null, content_de: m.content_de ?? null,
+      })) as Message[]
+    }
+    const r = await fetch(`/api/chat?conversationId=${id}${q ? `&${q}` : ''}`)
+    if (!r.ok) return null
+    return (await r.json()) as Message[]
+  }, [userId])
+
   const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking', fast = false) => {
     // setMsgs nur bei echter Änderung (Signatur-Diff) — sonst Voll-Re-Render
     // + Scroll-Sprung bei jedem 5s-Poll (§110-Lektion aus dem InternPanel).
     const apply = (list: Message[]) => {
       msgsCacheRef.current.set(id, list)
       const sig = msgsSig(id, list)
-      if (sig !== msgsSigRef.current) { msgsSigRef.current = sig; setMsgs(list) }
+      if (sig !== msgsSigRef.current) {
+        msgsSigRef.current = sig
+        // §288 (Pascal): steht der Leser unten, bleibt er unten, auch wenn der
+        // volle Stand (Übersetzungen) den Inhalt streckt — kein Springen
+        const el = feedRef.current
+        const nearBottom = !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        setMsgs(list)
+        if (nearBottom) pinToBottom(500)
+      }
     }
     // Unread-Reset nur, wenn der Thread wirklich ungelesen war (spart Re-Renders)
     const clearUnread = () =>
       setConvs(cs => cs.some(c => c.id === id && c.unread > 0) ? cs.map(c => c.id === id ? { ...c, unread: 0 } : c) : cs)
-    if (kind === 'booking') {
-      const r = await fetch(`/api/messages/${id}${fast ? '?fast=1' : ''}`)
-      if (r.ok) {
-        const { messages } = await r.json()
-        // Map booking messages (sender_type guest/host/system) onto the
-        // shared shape: everything from our side renders as "me".
-        apply((messages ?? []).map((m: Record<string, unknown>) => ({
-          id: m.id, conversation_id: id,
-          sender_id: m.sender_type === 'guest' ? 'guest' : userId,
-          content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
-          lang: m.lang ?? null, content_de: m.content_de ?? null,
-        })) as Message[])
-        clearUnread()
+    const list = await fetchMsgList(id, kind, fast)
+    if (list) { apply(list); clearUnread() }
+  }, [fetchMsgList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* §288 (Pascal 9.9., „im Hintergrund vorladen"): die ersten Threads der Liste
+     vorab in den Nachrichten-Cache holen (fast + peek: kein Smoobu-Sync, KEIN
+     Gelesen-Markieren) — der Thread öffnet dann sofort unten, ohne Sprung. */
+  const prefetchedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!open || !team || convs.length === 0) return
+    const targets = convs.slice(0, 6).filter((c) => !msgsCacheRef.current.has(c.id) && !prefetchedRef.current.has(c.id))
+    if (!targets.length) return
+    let cancelled = false
+    ;(async () => {
+      for (const c of targets) {
+        if (cancelled) return
+        prefetchedRef.current.add(c.id)
+        try {
+          const list = await fetchMsgList(c.id, c.kind, true, true)
+          if (list && !msgsCacheRef.current.has(c.id)) msgsCacheRef.current.set(c.id, list)
+        } catch { /* egal — beim Öffnen wird regulär geladen */ }
+        await new Promise((r) => setTimeout(r, 250))
       }
-      return
-    }
-    const r = await fetch(`/api/chat?conversationId=${id}${fast ? '&fast=1' : ''}`)
-    if (r.ok) {
-      apply(await r.json())
-      clearUnread()
-    }
-  }, [userId])
+    })()
+    return () => { cancelled = true }
+  }, [open, team, convs, fetchMsgList])
 
   useEffect(() => {
     if (!open) return
@@ -803,8 +837,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.removeEventListener(OUTBOX_SENT_EVENT, onSent)
   }, [active, getMsgs, getConvs])
 
-  /* Thread switch: the composer belongs to ONE conversation — reset it */
+  /* Thread switch: the composer belongs to ONE conversation — reset it.
+     §288: Feed bleibt unsichtbar, bis er unten steht (kein Sprung von oben nach
+     unten beim ersten Öffnen); Notbremse 450 ms für leere Threads. */
   useEffect(() => {
+    if (feedRef.current) feedRef.current.style.opacity = '0'
+    const reveal = setTimeout(() => { if (feedRef.current) feedRef.current.style.opacity = '1' }, 450)
     setDraft('')
     setInstruction('')
     setShowOriginal({})
@@ -812,6 +850,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     setMappeMenu(false)
     setTaskOpen(false)
     setTaskInfo(null)
+    return () => clearTimeout(reveal)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id])
 
@@ -857,6 +896,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     if (active?.id !== scrolledThreadRef.current) {
       scrolledThreadRef.current = active?.id ?? null
       pinToBottom()
+      // §288: erst unten anpinnen, dann einblenden
+      requestAnimationFrame(() => { if (feedRef.current) feedRef.current.style.opacity = '1' })
     } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
@@ -1304,7 +1345,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           const unread = (c.unread ?? 0) > 0
           const range = fmtRangeShort(c.check_in, c.check_out)
           return (
-            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 8px', borderRadius: 16, WebkitTouchCallout: 'none' }}
+            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 6px', borderRadius: 16, WebkitTouchCallout: 'none' }}
               onContextMenu={team ? (e) => { e.preventDefault(); haptic(); setPeek(c) } : undefined}
               onTouchStart={canSwipe ? (e) => beginRowSwipe(e, c.id) : undefined}
               onTouchMove={canSwipe ? (e) => moveRowSwipe(e, c.id) : undefined}
@@ -1333,7 +1374,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 ungelesen = Akzent-Rahmen, Name extra fett, Zeit in Akzent, Punkt rechts */}
             <button data-swipe-front className="tm-press" onClick={() => { if (peekJustOpened.current) { peekJustOpened.current = false; return } if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
               width: '100%', textAlign: 'left', cursor: 'pointer',
-              padding: '12px 14px', borderRadius: 16,
+              padding: '10px 12px', borderRadius: 16,
               border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
               background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
               boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
@@ -1344,7 +1385,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             }}>
               {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) */}
               <div style={{
-                width: 44, height: 44, borderRadius: 14, flexShrink: 0, overflow: 'hidden',
+                width: 40, height: 40, borderRadius: 13, flexShrink: 0, overflow: 'hidden',
                 background: portalColor(c.platform), color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', userSelect: 'none',
@@ -1356,7 +1397,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                     {partner(c)}
                   </span>
                   <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -1369,12 +1410,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
                 </div>
                 {(c.listing_title || range) && (
-                  <div className="tm-num" style={{ fontSize: 12.5, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                  <div className="tm-num" style={{ fontSize: 12, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
                     {c.listing_title ?? '—'}{range ? ` · ${range}` : ''}
                   </div>
                 )}
                 {c.lastPreview && (
-                  <div style={{ fontSize: 13, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
+                  <div style={{ fontSize: 12.5, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
                     {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
                     {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 12 }}>📞 </span>}
                     {c.lastSender === 'host' && <span style={{ color: 'var(--tm-muted2, #959ca7)' }}>Du: </span>}
@@ -1382,7 +1423,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </div>
                 )}
                 {(c.platform || c.guestStatus || (c.guestLang && c.guestLang !== 'de')) && (
-                  <div style={{ marginTop: 7, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     {c.guestLang && c.guestLang !== 'de' && (
                       <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 13, lineHeight: 1 }}>{flag(c.guestLang)}</span>
                     )}
@@ -1689,7 +1730,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           }}
           onTouchStart={stopPin}
           onWheel={stopPin}
-          style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: 'var(--tm-card)', position: 'relative' }}
+          style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: 'var(--tm-card)', position: 'relative', transition: 'opacity .18s var(--tm-ease, ease)' }}
         >
           {msgs.length === 0 && calls.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
