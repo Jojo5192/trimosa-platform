@@ -8,8 +8,11 @@
  *    Inhalt scrollt dahinter durch (--tm-nav-pad in den Panel-Scrollern)
  *  · am Rechner (≥1000px) wird die Leiste zur Seitenleiste links
  *  · Ladestreifen oben während eines Abgleichs, Toast-Host, Such-Ebene
- * Tabs: team (admin|host|staff) 💬 Chat · 💼 Intern · 📅 Belegung · ✅ Aufgaben · ⋯ Mehr
- *       provider (Dienstleister) ohne Gäste-Chat.
+ * Tabs (§277): 🏠 Heute · 💬 Inbox · 📅 Belegung · ✅ Aufgaben · ⋯ Mehr.
+ *   Die Inbox vereint Gäste-Chat und Intern-Messenger: Segment-Pille
+ *   „Gäste · n | Intern · n" unter der Kopfleiste, Wahl wird gemerkt
+ *   (localStorage), beim Betreten landet man auf der Seite mit Ungelesenem.
+ *   Dienstleister sehen in der Inbox nur Intern (kein Segment).
  * ChatPanel/InternPanel bleiben gemountet (Polling/State), die anderen Tabs
  * werden per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
  * Der frühere Reiter „Offen" (Karten-Stapel, §155) lebt weiter unter Mehr.
@@ -25,21 +28,25 @@ import SettingsPanel from '@/components/team/SettingsPanel'
 import SearchOverlay from '@/components/team/SearchOverlay'
 import HeutePanel from '@/components/team/HeutePanel'
 
-type Tab = 'heute' | 'chat' | 'offen' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
+type Tab = 'heute' | 'inbox' | 'offen' | 'aufgaben' | 'kalender' | 'einstellungen'
+/** Inbox-Segment: Gäste-Chat (ChatPanel) oder Intern-Messenger (InternPanel) */
+type Seg = 'gaeste' | 'intern'
+const SEG_KEY = 'trimosa-inbox-seg'
 
 /** Reiter der Leiste (Reihenfolge = Pascal-Spec, „Offen" ist kein Reiter mehr) */
 const TABS: { id: Tab; label: string }[] = [
   { id: 'heute', label: 'Heute' },
-  { id: 'chat', label: 'Chat' },
-  { id: 'intern', label: 'Intern' },
+  { id: 'inbox', label: 'Inbox' },
   { id: 'kalender', label: 'Kalender' },
   { id: 'aufgaben', label: 'Aufgaben' },
   { id: 'einstellungen', label: 'Mehr' },
 ]
 /** Bereichs-Name in der Kopfleiste (springt beim Reiterwechsel um) */
 const TITLES: Record<Tab, string> = {
-  heute: 'Heute', chat: 'Chat', offen: 'Offen', intern: 'Intern', aufgaben: 'Aufgaben', kalender: 'Belegung', einstellungen: 'Mehr',
+  heute: 'Heute', inbox: 'Inbox', offen: 'Offen', aufgaben: 'Aufgaben', kalender: 'Belegung', einstellungen: 'Mehr',
 }
+/** Alt-Reiter-Namen (Deep-Links, Events, Suche) → Inbox-Segment */
+const segFor = (id: string): Seg | null => id === 'chat' ? 'gaeste' : id === 'intern' ? 'intern' : null
 
 function fmtSync(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -69,13 +76,41 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   /** §274: /team?task=<id> (Push-Deep-Link der Überbuchungs-Aufgabe) */
   initialTaskId?: string | null
 }) {
-  const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat') : TABS
-  const allowed = (id: string): id is Tab => tabs.some((t) => t.id === id) || (role === 'team' && id === 'offen')
-  // Die App startet immer auf „Heute" (Pascal-Spec)
+  const tabs = TABS
+  /** Reiter-Name (auch Alt-Namen chat/intern → inbox) → gültiger Tab oder null */
+  const normTab = (id: string): Tab | null => {
+    if (segFor(id)) return 'inbox'
+    if (tabs.some((t) => t.id === id) || (role === 'team' && id === 'offen')) return id as Tab
+    return null
+  }
+  // Die App startet immer auf „Heute" (Pascal-Spec) — außer ein Deep-Link
+  // (Push-Tap: ?conv= / ?chat= / ?task=) verlangt ein Ziel
   const fallback: Tab = 'heute'
   const [tab, setTab] = useState<Tab>(
-    initialTaskId ? 'aufgaben' : initialTab && allowed(initialTab) ? (initialTab as Tab) : fallback
+    initialTaskId ? 'aufgaben'
+      : initialConvId || initialInternChatId ? 'inbox'
+      : (initialTab && normTab(initialTab)) || fallback
   )
+  // Inbox-Segment: Deep-Link gewinnt, sonst die gemerkte Wahl (wird nach dem
+  // Mount aus localStorage gelesen — SSR kennt keinen Speicher); Dienstleister
+  // haben nur Intern.
+  const [seg, setSegState] = useState<Seg>(() =>
+    role === 'provider' || initialInternChatId ? 'intern'
+      : initialConvId ? 'gaeste'
+      : (initialTab && segFor(initialTab)) || 'gaeste'
+  )
+  const setSeg = useCallback((s: Seg) => {
+    setSegState(s)
+    try { localStorage.setItem(SEG_KEY, s) } catch { /* privater Modus */ }
+  }, [])
+  useEffect(() => {
+    if (role !== 'team' || initialConvId || initialInternChatId || (initialTab && segFor(initialTab))) return
+    try {
+      const v = localStorage.getItem(SEG_KEY)
+      if (v === 'gaeste' || v === 'intern') setSegState(v)
+    } catch { /* egal */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [internUnread, setInternUnread] = useState(0)
   const [guestUnread, setGuestUnread] = useState(0)
   const [offenCount, setOffenCount] = useState(0)
@@ -83,7 +118,21 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // Mobil in einem Thread: Kopfleiste + Tab-Bar versteckt (WhatsApp-Verhalten, §98)
   const [chatThread, setChatThread] = useState(false)
   const [internThread, setInternThread] = useState(false)
-  const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
+  const navHidden = tab === 'inbox' && (seg === 'gaeste' && role === 'team' ? chatThread : internThread)
+
+  // Pascal-Spec: Beim Betreten der Inbox landet man im gemerkten Segment —
+  // hat nur EINE Seite Ungelesenes, dort. (Nur beim Betreten, nie während
+  // des Lesens — sonst springt die Ansicht unter den Fingern um.)
+  const unreadRef = useRef({ g: 0, i: 0 })
+  unreadRef.current = { g: guestUnread, i: internUnread }
+  const skipAutoPick = useRef(!!(initialConvId || initialInternChatId))
+  useEffect(() => {
+    if (tab !== 'inbox' || role !== 'team') return
+    if (skipAutoPick.current) { skipAutoPick.current = false; return }
+    const { g, i } = unreadRef.current
+    if (g > 0 && i === 0) setSegState('gaeste')
+    else if (i > 0 && g === 0) setSegState('intern')
+  }, [tab, role])
 
   // Rechner (≥1000px): Seitenleiste statt schwebender Tab-Leiste
   const [isDesktop, setIsDesktop] = useState(false)
@@ -105,10 +154,14 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       setTaskFocus(id)
       setTab('aufgaben')
     }
-    // Mehr → „Offen"-Karten-Stapel (kein Reiter mehr, §276)
+    // Mehr → „Offen"-Karten-Stapel (kein Reiter mehr, §276); Heute → „chat"
+    // landet in der Inbox auf dem Gäste-Segment (§277)
     const onOpenTab = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
-      if (allowed(id)) setTab(id)
+      const sg = segFor(id)
+      if (sg) setSeg(sg)
+      const t = normTab(id)
+      if (t) setTab(t)
     }
     window.addEventListener('trimosa-open-task', onOpenTask)
     window.addEventListener('trimosa-open-tab', onOpenTab)
@@ -277,16 +330,21 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       return
     }
     if (conv && role === 'team') {
-      setTab('chat')
+      setSeg('gaeste'); setTab('inbox')
       window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: conv } }))
       return
     }
     if (chat) {
-      setTab('intern')
+      setSeg('intern'); setTab('inbox')
       window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: chat } }))
       return
     }
-    if (wunschTab && allowed(wunschTab)) setTab(wunschTab)
+    if (wunschTab) {
+      const sg = segFor(wunschTab)
+      if (sg) setSeg(sg)
+      const t = normTab(wunschTab)
+      if (t) setTab(t)
+    }
   }
   const applyPushUrlRef = useRef(applyPushUrl)
   applyPushUrlRef.current = applyPushUrl
@@ -307,15 +365,44 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 
   /* Treffer der Such-Ebene → Ziel öffnen */
   const openHit = (h: { id: string; group: 'chat' | 'intern' | 'task' }) => {
-    if (h.group === 'chat') { setTab('chat'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: h.id } })) }
-    else if (h.group === 'intern') { setTab('intern'); window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: h.id } })) }
+    if (h.group === 'chat') { setSeg('gaeste'); setTab('inbox'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: h.id } })) }
+    else if (h.group === 'intern') { setSeg('intern'); setTab('inbox'); window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: h.id } })) }
     else { setTaskFocus(h.id); setTab('aufgaben') }
   }
 
   const goTab = (id: Tab) => { haptic(); setTab(id) }
-  // Sync-Stand am Handy nur auf Chat/Intern (lange Titel sonst abgeschnitten)
-  const showSync = !!lastSync && (isDesktop || tab === 'heute' || tab === 'chat' || tab === 'intern')
-  const badgeFor = (id: Tab) => id === 'intern' ? internUnread : id === 'chat' ? guestUnread : id === 'heute' ? heuteCount : 0
+  // Sync-Stand am Handy nur auf Heute/Inbox (lange Titel sonst abgeschnitten)
+  const showSync = !!lastSync && (isDesktop || tab === 'heute' || tab === 'inbox')
+  // Inbox-Zähler = ungelesene Chats beider Seiten (Pascal-Spec)
+  const badgeFor = (id: Tab) => id === 'inbox' ? (role === 'team' ? guestUnread : 0) + internUnread : id === 'heute' ? heuteCount : 0
+
+  /* ── Segment-Pille „Gäste · n | Intern · n" (nur Team, unter der Kopfleiste) ── */
+  const segmented = (
+    <div style={{ flexShrink: 0, padding: '8px 16px 4px' }}>
+      <div role="tablist" style={{
+        display: 'flex', padding: 3, borderRadius: 999, maxWidth: 420,
+        background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)',
+      }}>
+        {([['gaeste', 'Gäste', guestUnread], ['intern', 'Intern', internUnread]] as const).map(([id, label, n]) => {
+          const on = seg === id
+          return (
+            <button key={id} role="tab" aria-selected={on} className="tm-press-btn" onClick={() => { haptic(); setSeg(id) }} style={{
+              flex: 1, border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 999,
+              background: on ? 'var(--tm-card)' : 'transparent',
+              boxShadow: on ? 'var(--tm-shadow)' : 'none',
+              color: on ? 'var(--tm-text)' : 'var(--tm-muted)',
+              fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap',
+              transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            }}>
+              {label}
+              {n > 0 && <span className="tm-num" style={{ fontSize: 11.5, color: on ? 'var(--tm-accent-dark)' : 'var(--tm-muted2)' }}>· {n}</span>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   /* ── Kopfleiste ── */
   const header = (
@@ -438,18 +525,27 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!navHidden && header}
+        {tab === 'inbox' && role === 'team' && !navHidden && segmented}
 
         {/* Content */}
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {wrap('heute', <HeutePanel role={role} visible={tab === 'heute'} onCount={setHeuteCount} />, true)}
-          {role === 'team' && wrap('chat',
-            <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
+          {/* §277 Inbox = Gäste-Chat + Intern in EINEM Reiter, beide dauerhaft
+              gemountet (Polling/Deep-Links), per Segment umgeschaltet */}
+          {wrap('inbox',
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              {role === 'team' && (
+                <div style={{ flex: 1, minHeight: 0, display: seg === 'gaeste' ? 'block' : 'none' }}>
+                  <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
+                </div>
+              )}
+              <div style={{ flex: 1, minHeight: 0, display: seg === 'intern' || role !== 'team' ? 'block' : 'none' }}>
+                <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} initialChatId={initialInternChatId ?? null} />
+              </div>
+            </div>
           )}
           {role === 'team' && wrap('offen',
             <OffenPanel visible={tab === 'offen'} onCount={setOffenCount} />, true
-          )}
-          {wrap('intern',
-            <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} initialChatId={initialInternChatId ?? null} />
           )}
           {tab === 'aufgaben' && wrap('aufgaben',
             <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true

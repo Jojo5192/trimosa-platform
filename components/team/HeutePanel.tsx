@@ -313,7 +313,7 @@ export default function HeutePanel({ role, visible, onCount }: {
         {/* Datumszeile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="tm-press-btn" aria-label="Vorheriger Tag" onClick={() => { haptic(); setTag(addDays(tag, -1)) }} style={{ width: 34, height: 34, borderRadius: 12, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', boxShadow: 'var(--tm-shadow)', cursor: 'pointer', color: 'var(--tm-text)', fontSize: 18, lineHeight: 1, padding: 0 }}>‹</button>
-          <button className="tm-press-btn" onClick={() => { haptic(); setTag(heute) }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', cursor: 'pointer', padding: '6px 0', fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <button className="tm-press-btn" onClick={() => { haptic(); setTag(heute) }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', cursor: 'pointer', padding: '6px 0', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {dateLabel(tag, heute)}
           </button>
           <button className="tm-press-btn" aria-label="Nächster Tag" onClick={() => { haptic(); setTag(addDays(tag, 1)) }} style={{ width: 34, height: 34, borderRadius: 12, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', boxShadow: 'var(--tm-shadow)', cursor: 'pointer', color: 'var(--tm-text)', fontSize: 18, lineHeight: 1, padding: 0 }}>›</button>
@@ -330,7 +330,7 @@ export default function HeutePanel({ role, visible, onCount }: {
             </div>
             <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 30, fontWeight: 800, letterSpacing: '7px', marginTop: 8, lineHeight: 1.1 }}>{code.code}</div>
             <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 6 }}>
-              {code.listings.length ? `${code.listings.length} Wohnung${code.listings.length === 1 ? '' : 'en'} · ${code.listings.join(' · ')}` : 'Alle Schlösser'} · dauerhaft gültig
+              {code.listings.length >= 7 ? 'Alle Wohnungen' : code.listings.length ? code.listings.join(' · ') : 'Alle Schlösser'} · dauerhaft gültig
             </div>
           </section>
         ) : !loading && (

@@ -109,6 +109,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   initialChatId?: string | null
 }) {
   const [chats, setChats] = useState<TeamChat[]>([])
+  const [internFilter, setInternFilter] = useState<string>('alle') // §277: Alle · Ungelesen · g:<Gruppe>
   const [directory, setDirectory] = useState<Directory[]>([])
   const [canCreate, setCanCreate] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -607,9 +608,19 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     )
   }
 
+  /* §277 Filter-Chips + gefilterte Gruppen (Pascal-Spec: „Alle · Reinigung · Chefs") */
+  const internChips: { id: string; label: string; count?: number }[] = [
+    { id: 'alle', label: 'Alle' },
+    { id: 'ungelesen', label: 'Ungelesen', count: chats.filter((c) => c.unread > 0).length },
+    ...chats.map((c) => ({ id: `g:${c.id}`, label: `${c.emoji} ${c.name}` })),
+  ]
+  const visibleChats = internFilter === 'alle' ? chats
+    : internFilter === 'ungelesen' ? chats.filter((c) => c.unread > 0)
+    : chats.filter((c) => `g:${c.id}` === internFilter)
+
   /* ── Chat-Liste ── */
   const List = (
-    <div ref={internListRef} style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined, paddingBottom: 'var(--tm-nav-pad)' }}>
+    <div ref={internListRef} style={{ width: isMobile ? '100%' : 'var(--tm-list-w, 290px)', flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid var(--tm-line, rgba(60,60,67,0.12))', overflowY: 'auto', background: 'var(--tm-bg, #f3f4f6)', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined, paddingBottom: 'var(--tm-nav-pad)' }}>
       {/* §276: Titel sitzt in der Shell-Kopfleiste — hier nur Werkzeugzeile */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -626,6 +637,23 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           }}>+</button>
         )}
       </div>
+      {chats.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, padding: '2px 12px 8px', overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0 }}>
+          {internChips.map((f) => {
+            const activeF = internFilter === f.id
+            if (f.id === 'ungelesen' && !f.count && !activeF) return null
+            return (
+              <button key={f.id} className="tm-press-btn" onClick={() => { haptic(); setInternFilter(f.id) }} style={{
+                flexShrink: 0, padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+                border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, #e3e6ea)'}`,
+                background: activeF ? 'var(--tm-text, #171a1f)' : 'var(--tm-card, #fff)',
+                color: activeF ? '#fff' : 'var(--tm-muted, #646b76)',
+              }}>{f.label}{f.count ? ` · ${f.count}` : ''}</button>
+            )
+          })}
+        </div>
+      )}
       <PullHint pull={internPtr.pull} busy={internPtr.busy} />
       {loading && <SkeletonRows kind="chat" count={6} />}
       {error && !loading && (
@@ -642,27 +670,43 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           </div>
         </div>
       )}
-      {chats.map((c) => (
-        <button key={c.id} onClick={() => openChat(c)} style={{
-          display: 'flex', alignItems: 'center', gap: 11, padding: '11px 14px', border: 'none', textAlign: 'left',
-          background: !isMobile && active?.id === c.id ? '#F2F2F7' : '#fff',
-          boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.12)`, cursor: 'pointer',
+      {!loading && !error && chats.length > 0 && visibleChats.length === 0 && (
+        <div style={{ padding: '36px 24px', textAlign: 'center', fontSize: 13, color: 'var(--tm-muted2, #959ca7)' }}>Nichts Ungelesenes.</div>
+      )}
+      {visibleChats.map((c) => {
+        const isSel = !isMobile && active?.id === c.id
+        const unread = c.unread > 0
+        return (
+        <button key={c.id} className="tm-press" onClick={() => openChat(c)} style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', textAlign: 'left',
+          margin: '0 12px 8px', borderRadius: 16, cursor: 'pointer', flexShrink: 0,
+          border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, #e3e6ea)'}`,
+          background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
+          boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
         }}>
-          <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#F2EFE8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, flexShrink: 0 }}>{c.emoji}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontSize: 14.5, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-              {c.lastAt && <span style={{ fontSize: 11, color: '#A9A499', flexShrink: 0 }}>{fmtTime(c.lastAt)}</span>}
-            </div>
-            <div style={{ fontSize: 12, color: '#8A857B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-              {c.lastPreview ? `${c.lastFromMe ? 'Du: ' : ''}${c.lastPreview}` : c.members.map((m) => m.name).join(', ')}
-            </div>
+          {/* §277 Gruppen-Quadrat in neutraler Teamfarbe + Mitglieder-Zähler als Gruppen-Symbol */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, #e3e6ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
+            <span title={`${c.members.length} Mitglieder`} style={{ position: 'absolute', right: -4, bottom: -4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: 'var(--tm-text, #171a1f)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px var(--tm-card, #fff)' }}>{c.members.length}</span>
           </div>
-          {c.unread > 0 && (
-            <span style={{ minWidth: 20, height: 20, borderRadius: 10, background: '#12222E', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', flexShrink: 0 }}>{c.unread}</span>
-          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>{c.name}</span>
+              {c.lastAt && <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtTime(c.lastAt)}</span>}
+              {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+              {c.members.map((m) => m.name.split(' ')[0]).join(', ')}
+            </div>
+            {c.lastPreview && (
+              <div style={{ fontSize: 13, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', fontWeight: unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 3 }}>
+                {c.lastFromMe ? 'Du: ' : ''}{c.lastPreview}
+              </div>
+            )}
+          </div>
         </button>
-      ))}
+        )
+      })}
       {/* §266e: Neue-Gruppe-Aktion lebt jetzt als +-Kreis im Header */}
     </div>
   )

@@ -94,7 +94,7 @@ type ListingRow = {
   cleaning_minutes: number | null; locks: LockRef[] | null; cleaning_responsible: string | null
 }
 type BookingRow = {
-  id: string; listing_id: string; check_in: string; check_out: string; guest_name: string | null
+  id: string; listing_id: string; check_in: string; check_out: string; guest_name: string | null; guest_id: string | null
   channel: string | null; source: string | null; payment_status: string | null
   adults: number | null; children: number | null; door_code: string | null
 }
@@ -143,15 +143,25 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   /* An-/Abreisen des Tages + Folgetag */
   const { data: bks } = await supabaseAdmin
     .from('bookings')
-    .select('id, listing_id, check_in, check_out, guest_name, channel, source, payment_status, adults, children, door_code')
+    .select('id, listing_id, check_in, check_out, guest_name, guest_id, channel, source, payment_status, adults, children, door_code')
     .eq('status', 'confirmed')
     .or(`check_in.eq.${tag},check_in.eq.${tag1},check_out.eq.${tag},check_out.eq.${tag1}`)
   const rows = ((bks ?? []) as BookingRow[]).filter(sichtbar)
+  // Website-Gäste tragen den Namen im PROFIL, nicht auf der Buchung (wie die Inbox)
+  const nameByGuest = new Map<string, string>()
+  const guestIds = [...new Set(rows.filter((b) => !b.guest_name && b.guest_id).map((b) => b.guest_id as string))]
+  if (guestIds.length) {
+    const { data: gp } = await supabaseAdmin.from('profiles').select('id, display_name, guest_first_name, guest_last_name, company_name').in('id', guestIds)
+    for (const p of (gp ?? []) as { id: string; display_name: string | null; guest_first_name: string | null; guest_last_name: string | null; company_name: string | null }[]) {
+      const n = (p.display_name ?? '').trim() || [p.guest_first_name, p.guest_last_name].filter(Boolean).join(' ').trim() || (p.company_name ?? '').trim()
+      if (n) nameByGuest.set(p.id, n)
+    }
+  }
   const toStay = (b: BookingRow): HeuteStay => ({
     bookingId: b.id,
     listingId: b.listing_id,
     listingTitle: byId.get(b.listing_id)?.title ?? 'Wohnung',
-    guestName: auth.role === 'provider' ? null : (b.guest_name ?? null),
+    guestName: auth.role === 'provider' ? null : (b.guest_name ?? (b.guest_id ? nameByGuest.get(b.guest_id) ?? null : null) ?? 'Gast'),
     checkIn: b.check_in,
     checkOut: b.check_out,
     persons: ((b.adults ?? 0) + (b.children ?? 0)) || null,

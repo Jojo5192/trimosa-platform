@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type TouchEvent as ReactTouchEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { haptic, usePullToRefresh, PullHint, SkeletonRows, portalOf, portalColor, initials } from '@/components/team/ux'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 
 /** ☎️ §227d: Anruf-Eintrag für die Inline-Anzeige im Verlauf */
@@ -49,19 +49,53 @@ const SWIPE_W = 132
  *  Senden automatisch in die Gastsprache übersetzt). */
 const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt — ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
 
-type InboxFilter = 'alle' | 'unbeantwortet' | 'ungelesen' | 'vorort' | 'kommend'
-const INBOX_FILTERS: { id: InboxFilter; label: string }[] = [
+/** §277 Inbox-Filter (Pascal-Spec): Alle · Offen · Ungelesen · Aktuell zu Gast ·
+ *  Dringend · Kommend · je Portal · Erledigt. Portal-Chips heißen `p:<Portal>`;
+ *  Chips ohne Treffer bleiben ausgeblendet (außer „Alle"). */
+type InboxFilter = 'alle' | 'offen' | 'ungelesen' | 'vorort' | 'dringend' | 'kommend' | 'erledigt' | `p:${string}`
+const INBOX_FILTERS: { id: InboxFilter; label: string; count?: boolean }[] = [
   { id: 'alle', label: 'Alle' },
-  { id: 'unbeantwortet', label: 'Unbeantwortet' },
-  { id: 'ungelesen', label: 'Ungelesen' },
-  { id: 'vorort', label: 'Vor Ort' },
+  { id: 'offen', label: 'Offen', count: true },
+  { id: 'ungelesen', label: 'Ungelesen', count: true },
+  { id: 'vorort', label: 'Aktuell zu Gast' },
+  { id: 'dringend', label: 'Dringend', count: true },
   { id: 'kommend', label: 'Kommend' },
+  { id: 'p:Booking.com', label: 'Booking.com' },
+  { id: 'p:Airbnb', label: 'Airbnb' },
+  { id: 'p:FeWo-direkt', label: 'FeWo-direkt' },
+  { id: 'p:HomeToGo', label: 'HomeToGo' },
+  { id: 'p:Website', label: 'Website' },
+  { id: 'erledigt', label: 'Erledigt' },
 ]
+/** Offen = letzte Nachricht vom Gast, weder ✓ noch 📞 markiert */
+function isOffen(c: Conversation): boolean {
+  return c.lastSender === 'guest' && !c.noReplyNeeded && !c.phoneResolved
+}
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000)
+}
+/** Dringend (eigene Auslegung, §277): offen UND der Gast ist vor Ort oder
+ *  reist in ≤ 2 Tagen an — die Antwort entscheidet über den Aufenthalt. */
+function isDringend(c: Conversation): boolean {
+  if (!isOffen(c)) return false
+  if (c.guestStatus === 'current') return true
+  const d = daysUntil(c.check_in)
+  return c.guestStatus === 'upcoming' && d != null && d <= 2
+}
+/** Portal-Schlüssel für die Chips: Direkt/TRIMOSA zählen zu „Website" */
+function portalKey(c: Conversation): string {
+  const p = portalOf(c.platform)
+  return p === 'Direkt' || p === 'TRIMOSA' ? 'Website' : p
+}
 function matchesFilter(c: Conversation, f: InboxFilter): boolean {
-  if (f === 'unbeantwortet') return c.lastSender === 'guest' && !c.noReplyNeeded && !c.phoneResolved
+  if (f === 'offen') return isOffen(c)
   if (f === 'ungelesen') return c.unread > 0
   if (f === 'vorort') return c.guestStatus === 'current'
+  if (f === 'dringend') return isDringend(c)
   if (f === 'kommend') return c.guestStatus === 'upcoming'
+  if (f === 'erledigt') return c.lastSender === 'guest' && (!!c.noReplyNeeded || !!c.phoneResolved)
+  if (f.startsWith('p:')) return portalKey(c) === f.slice(2)
   return true
 }
 
@@ -89,23 +123,24 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
   } as unknown as Conversation
 }
 
-/* ── Badges (platform + guest status), team inbox only ── */
-const PLATFORM_COLORS: Record<string, string> = {
-  TRIMOSA: '#A8862F', Airbnb: '#FF5A5F', 'Booking.com': '#003580', Booking: '#003580',
-  'FeWo-direkt': '#245ABC', Vrbo: '#245ABC', Smoobu: '#5A6B7B', Direktbuchung: '#A8862F',
-}
-function statusInfo(c: Conversation): { dot: string; label: string } | null {
+/* ── Badges (Reise-Status + Portal), team inbox only ── */
+/** Reise-Status (Pascal-Spec: „Aktuell zu Gast", „Anreise in 5 Tagen", „Abreise heute") */
+function statusInfo(c: Conversation): { tone: 'accent' | 'red' | 'muted'; label: string } | null {
   if (!c.guestStatus) return null
-  if (c.guestStatus === 'cancelled') return { dot: '#EF4444', label: 'Storniert' }
-  if (c.guestStatus === 'current') return { dot: '#22C55E', label: 'Vor Ort' }
-  if (c.guestStatus === 'upcoming') {
-    const days = c.check_in ? Math.ceil((new Date(c.check_in).getTime() - Date.now()) / 86400000) : null
-    return { dot: '#3B82F6', label: days != null && days >= 0 ? `Anreise in ${days} Tg.` : 'Kommend' }
+  if (c.guestStatus === 'cancelled') return { tone: 'red', label: 'Storniert' }
+  if (c.guestStatus === 'current') {
+    const d = daysUntil(c.check_out)
+    return { tone: 'accent', label: d === 0 ? 'Abreise heute' : d === 1 ? 'Abreise morgen' : 'Aktuell zu Gast' }
   }
-  return { dot: '#9CA3AF', label: 'Ehemalig' }
+  if (c.guestStatus === 'upcoming') {
+    const d = daysUntil(c.check_in)
+    if (d == null || d < 0) return { tone: 'accent', label: 'Kommend' }
+    return { tone: 'accent', label: d === 0 ? 'Anreise heute' : d === 1 ? 'Anreise morgen' : `Anreise in ${d} Tagen` }
+  }
+  return { tone: 'muted', label: 'Ehemalig' }
 }
 // Lange Smoobu-Kanalnamen („FeWo-direkt / HomeAway") kompakt anzeigen —
-// normalisiert auch auf die Farb-Schlüssel in PLATFORM_COLORS
+// (Portal-Erkennung für den Booking-Hinweis; Farben kommen seit §277 aus ux.tsx portalColor)
 function shortPlatform(p: string): string {
   if (/fewo|homeaway|vrbo|abritel/i.test(p)) return 'FeWo-direkt'
   // VOR dem booking-Match: Smoobus Direktkanal heißt „Direct booking" —
@@ -145,26 +180,31 @@ function linkify(text: string, isMe: boolean): React.ReactNode {
   return out.length ? out : text
 }
 
-function ThreadBadges({ c, size = 10 }: { c: Conversation; size?: number }) {
+/** Pillen-Badge in „soft"-Farbe (Pascal-Spec: klein, fett) */
+function Pill({ children, bg, color, size = 10.5 }: { children: ReactNode; bg: string; color: string; size?: number }) {
+  return (
+    <span style={{
+      fontSize: size, fontWeight: 700, color, background: bg, lineHeight: 1,
+      padding: '4px 8px', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-block',
+      maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.01em',
+    }}>{children}</span>
+  )
+}
+const PILL_TONES = {
+  accent: { bg: 'var(--tm-accent-soft, rgba(174,141,45,.13))', color: 'var(--tm-accent-dark, #8A7020)' },
+  red: { bg: 'var(--tm-red-soft, rgba(220,61,61,.13))', color: 'var(--tm-red, #dc3d3d)' },
+  muted: { bg: 'var(--tm-surface2, #f4f5f7)', color: 'var(--tm-muted, #646b76)' },
+} as const
+/** Status-Pille (Akzent-soft) · Portal-Pille (Portalfarbe) · „dringend" (rot) */
+function ThreadBadges({ c, size = 10.5 }: { c: Conversation; size?: number }) {
   if (!c.platform && !c.guestStatus) return null
   const st = statusInfo(c)
-  const label = c.platform ? shortPlatform(c.platform) : null
-  const pc = label ? (PLATFORM_COLORS[label] ?? '#5A6B7B') : null
+  const portal = c.platform ? portalOf(c.platform) : null
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
-      {label && pc && (
-        <span style={{
-          fontSize: size, fontWeight: 800, color: '#fff', background: pc,
-          padding: '2px 7px', borderRadius: 999, letterSpacing: '0.02em', whiteSpace: 'nowrap',
-          display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{label}</span>
-      )}
-      {st && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: size, fontWeight: 600, color: '#777', whiteSpace: 'nowrap' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: st.dot, display: 'inline-block' }} />
-          {st.label}
-        </span>
-      )}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+      {st && <Pill size={size} bg={PILL_TONES[st.tone].bg} color={PILL_TONES[st.tone].color}>{st.label}</Pill>}
+      {portal && <Pill size={size} bg={portalColor(c.platform)} color="#fff">{portal}</Pill>}
+      {isDringend(c) && <Pill size={size} bg="var(--tm-red, #dc3d3d)" color="#fff">dringend</Pill>}
     </span>
   )
 }
@@ -228,6 +268,12 @@ function fmtDateRange(checkIn: string | null, checkOut: string | null) {
   if (!checkIn || !checkOut) return null
   const fmt = (s: string) => new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
   return `${fmt(checkIn)} – ${fmt(checkOut)}`
+}
+/** „09.09.–13.09." für die Inbox-Karten (Pascal-Spec, ohne Jahr) */
+function fmtRangeShort(checkIn: string | null, checkOut: string | null) {
+  if (!checkIn || !checkOut) return null
+  const fmt = (s: string) => new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+  return `${fmt(checkIn)}–${fmt(checkOut)}`
 }
 
 /* ── Avatar ── */
@@ -360,8 +406,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const [busy, setBusy]         = useState(false)
   const [aiBusy, setAiBusy]     = useState(false)
 
-  // 📱 §209 iOS-Feeling: Suche + Swipe-Aktionen + Pull-to-Refresh der Liste
-  const [searchQ, setSearchQ] = useState('')
+  // 📱 §209 iOS-Feeling: Swipe-Aktionen + Pull-to-Refresh der Liste
+  // (die Suche lebt seit §277 in der Such-Ebene der Shell — Lupe/⌘K)
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null)
   const swipeInfo = useRef<{ x: number; y: number; id: string; el: HTMLElement | null; locked: '' | 'h' | 'v' } | null>(null)
   const listScrollRef = useRef<HTMLDivElement | null>(null)
@@ -806,12 +852,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.visualViewport?.removeEventListener('resize', grow)
   }, [draft])
 
-  /* Gäste-„zu bearbeiten"-Zähler an die Team-Shell melden (Pascal 19.7.):
-     ungelesene ODER unbeantwortete Threads — das App-Icon-Badge berechnet
-     die Shell zentral (Intern + Gäste, gefiltert nach den Push-Einstellungen) */
+  /* Ungelesene Gäste-Threads an die Team-Shell melden (§277, Pascal-Spec:
+     Inbox-Zähler = Summe der UNGELESENEN Chats beider Seiten; die offenen
+     Antworten leben auf „Heute" und im Filter-Chip „Offen · n"). Das
+     App-Icon-Badge rechnet die Shell zentral (nach Push-Einstellungen). */
   useEffect(() => {
     if (!team || !onUnread) return
-    onUnread(convs.filter((c) => (c.unread ?? 0) > 0 || matchesFilter(c, 'unbeantwortet')).length)
+    onUnread(convs.filter((c) => (c.unread ?? 0) > 0).length)
   }, [convs, team, onUnread])
   useEffect(() => {
     if (variant !== 'overlay' || !onClose) return
@@ -1089,30 +1136,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
      CONVERSATION LIST (shared between mobile list view + desktop sidebar)
   ═══════════════════════════════════════════════════════════ */
   function ConvList({ fullWidth = false }: { fullWidth?: boolean }) {
-    // 🔍 §209: Die Suche (nur Team) filtert über Gast, Wohnung, Vorschau und
-    // Plattform — und ignoriert dabei den aktiven Filter-Chip.
-    const q = searchQ.trim().toLowerCase()
-    const matchesQ = (c: Conversation) =>
-      [partner(c), c.listing_title, c.lastPreview, c.platform]
-        .some(v => String(v ?? '').toLowerCase().includes(q))
-    const searching = team && q.length > 0
-    const filtered = team
-      ? (searching ? convs.filter(matchesQ) : convs.filter(c => matchesFilter(c, inboxFilter)))
-      : convs
-    // Nachgeladene ältere Chats (§129) — im „Alle"-Filter unterhalb der
-    // Live-Liste; bei aktiver Suche werden sie mitdurchsucht
+    const filtered = team ? convs.filter(c => matchesFilter(c, inboxFilter)) : convs
+    // Nachgeladene ältere Chats (§129) — nur im „Alle"-Filter unterhalb der Live-Liste
     const archivBase = team && archivThreads ? archivThreads.filter(a => !convs.some(cc => cc.id === a.id)) : []
-    const archivExtra = searching ? archivBase.filter(matchesQ) : (inboxFilter === 'alle' ? archivBase : [])
+    const archivExtra = inboxFilter === 'alle' ? archivBase : []
     type ListRow = Conversation | { divider: string }
     const rows: ListRow[] = archivExtra.length
       ? [...filtered, { divider: `📁 Ältere Chats (${archivExtra.length})` }, ...archivExtra]
       : filtered
     return (
       <div ref={listScrollRef} style={{
-        width: fullWidth ? '100%' : 270,
+        // §277: am Rechner 390 px (Pascal-Spec) — --tm-list-w aus globals ab 1000px
+        width: fullWidth ? '100%' : 'var(--tm-list-w, 270px)',
         flexShrink: fullWidth ? undefined : 0,
-        background: '#fff',
-        borderRight: fullWidth ? 'none' : '1px solid rgba(60,60,67,0.12)',
+        background: team ? 'var(--tm-bg, #f3f4f6)' : '#fff',
+        borderRight: fullWidth ? 'none' : '1px solid var(--tm-line, rgba(60,60,67,0.12))',
         overflowY: 'auto',
         // §276: Inhalt läuft hinter der schwebenden Tab-Leiste durch
         paddingBottom: variant === 'app' ? 'var(--tm-nav-pad)' : undefined,
@@ -1120,48 +1158,37 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         flex: fullWidth ? 1 : undefined,
       }}>
         {team && (
-          <div style={{ flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)', position: 'sticky', top: 0, zIndex: 2 }}>
-          <div style={{ display: 'flex', gap: 6, padding: '10px 12px 4px', overflowX: 'auto' }}>
-            {INBOX_FILTERS.map(f => {
-              const count = f.id === 'alle' ? convs.length : convs.filter(c => matchesFilter(c, f.id)).length
-              const activeF = inboxFilter === f.id
-              if (f.id !== 'alle' && count === 0 && !activeF) return null
-              return (
-                <button key={f.id} onClick={() => setInboxFilter(f.id)} style={{
-                  flexShrink: 0, padding: '5px 11px', borderRadius: 999, cursor: 'pointer',
-                  fontSize: 11.5, fontWeight: 700,
-                  border: activeF ? '1px solid transparent' : '1px solid #E5E1D6',
-                  background: activeF ? '#12222E' : '#fff',
-                  color: activeF ? '#fff' : '#6B6455',
-                }}>
-                  {f.label}{count > 0 && f.id !== 'alle' ? ` ${count}` : ''}
-                </button>
-              )
-            })}
-          </div>
-          {/* 🔍 §209 Suche über alle Threads (Gast · Wohnung · Nachricht · Plattform) */}
-          <div style={{ padding: '7px 12px 9px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#EFEDE7', borderRadius: 10, padding: '0 10px' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth={2.4} strokeLinecap="round" style={{ flexShrink: 0 }}>
-                <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>
-              </svg>
-              <input
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                placeholder="Suchen…"
-                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, padding: '7px 0', color: '#1A1814' }}
-              />
-              {searchQ && (
-                <button onClick={() => setSearchQ('')} style={{ border: 'none', background: '#C9C5BB', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: 11, cursor: 'pointer', padding: 0, lineHeight: '18px', flexShrink: 0 }}>✕</button>
-              )}
+          <div style={{
+            flexShrink: 0, position: 'sticky', top: 0, zIndex: 2,
+            background: 'var(--tm-glass, rgba(255,255,255,0.85))',
+            backdropFilter: 'blur(16px) saturate(1.5)', WebkitBackdropFilter: 'blur(16px) saturate(1.5)',
+            borderBottom: '1px solid var(--tm-line, rgba(60,60,67,0.15))',
+          }}>
+            {/* §277 Filter-Chips — keine Suchleiste mehr (Lupe/⌘K in der Kopfleiste) */}
+            <div style={{ display: 'flex', gap: 6, padding: '8px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {INBOX_FILTERS.map(f => {
+                const count = f.id === 'alle' ? convs.length : convs.filter(c => matchesFilter(c, f.id)).length
+                const activeF = inboxFilter === f.id
+                if (f.id !== 'alle' && count === 0 && !activeF) return null
+                return (
+                  <button key={f.id} className="tm-press-btn" onClick={() => { haptic(); setInboxFilter(f.id) }} style={{
+                    flexShrink: 0, padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                    fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+                    border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, #e3e6ea)'}`,
+                    background: activeF ? 'var(--tm-text, #171a1f)' : 'var(--tm-card, #fff)',
+                    color: activeF ? '#fff' : 'var(--tm-muted, #646b76)',
+                  }}>
+                    {f.label}{f.count && count > 0 ? ` · ${count}` : ''}
+                  </button>
+                )
+              })}
             </div>
-          </div>
           </div>
         )}
         <PullHint pull={listPtr.pull} busy={listPtr.busy} />
         {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
             das Team weiß, dass ✓/📞 die Antwortzeit im Wochenbericht sauber hält */}
-        {team && inboxFilter === 'unbeantwortet' && !loading && filtered.length > 0 && (
+        {team && inboxFilter === 'offen' && !loading && filtered.length > 0 && (
           <div style={{
             margin: '10px 12px 2px', padding: '9px 12px', borderRadius: 12, flexShrink: 0,
             background: '#FAF5E4', border: '1px solid #EADFB8',
@@ -1172,17 +1199,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           </div>
         )}
         {loading && <SkeletonRows kind="chat" count={7} />}
-        {!loading && filtered.length === 0 && searching && archivExtra.length === 0 && (
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: '#A9A499', fontSize: 13.5, lineHeight: 1.5 }}>
-            Keine Treffer für <strong>„{searchQ.trim()}"</strong>
-          </div>
-        )}
-        {!loading && filtered.length === 0 && !searching && (
+        {!loading && filtered.length === 0 && (
           <div style={{ padding: '64px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#555' }}>{t(uiLang, 'Keine Nachrichten')}</div>
             <div style={{ fontSize: 13, color: '#AAA', marginTop: 6, lineHeight: 1.5 }}>
-              Gäste können über die Inseratsseite schreiben.
+              {team && inboxFilter !== 'alle' ? 'Kein Chat passt zu diesem Filter.' : 'Gäste können über die Inseratsseite schreiben.'}
             </div>
           </div>
         )}
@@ -1199,8 +1221,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           // Swipe-Aktionen nur für Team-Threads, deren letzte Nachricht vom
           // Gast kommt (dort machen ✓/📞 überhaupt Sinn — wie im Thread-Kopf)
           const canSwipe = team && c.lastSender === 'guest'
+          const unread = (c.unread ?? 0) > 0
+          const range = fmtRangeShort(c.check_in, c.check_out)
           return (
-            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y' }}
+            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 8px', borderRadius: 16 }}
               onTouchStart={canSwipe ? (e) => beginRowSwipe(e, c.id) : undefined}
               onTouchMove={canSwipe ? (e) => moveRowSwipe(e, c.id) : undefined}
               onTouchEnd={canSwipe ? () => endRowSwipe(c.id) : undefined}
@@ -1224,90 +1248,83 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </button>
                 </div>
               )}
-            <button data-swipe-front onClick={() => { if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
-              width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-              padding: fullWidth ? '13px 16px' : '12px 14px',
-              borderBottom: 'none',
-              boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
-              borderLeft: isSel ? '3px solid #12222E' : '3px solid transparent',
-              background: isSel ? '#F2F2F7' : '#fff',
-              display: 'flex', alignItems: 'center', gap: 12,
+            {/* §277 Chat-KARTE (Pascal-Spec): 16px Radius, hairline, weicher Schatten;
+                ungelesen = Akzent-Rahmen, Name extra fett, Zeit in Akzent, Punkt rechts */}
+            <button data-swipe-front className="tm-press" onClick={() => { if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
+              width: '100%', textAlign: 'left', cursor: 'pointer',
+              padding: '12px 14px', borderRadius: 16,
+              border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, #e3e6ea)'}`,
+              background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
+              boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
+              display: 'flex', alignItems: 'flex-start', gap: 12,
               position: 'relative',
               transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
               transition: 'transform .22s ease, background .12s',
-            }}
-              onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = '#F3F0EA' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = '#fff' }}
-            >
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                <Av name={partner(c)} src={partnerAvatar(c)} size={fullWidth ? 48 : 42} />
-                {c.unread > 0 && (
-                  <span style={{
-                    position: 'absolute', top: -2, right: -2,
-                    minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9,
-                    background: '#12222E', border: '2px solid #fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800, color: '#fff',
-                  }}>
-                    {c.unread > 9 ? '9+' : c.unread}
-                  </span>
-                )}
+            }}>
+              {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) */}
+              <div style={{
+                width: 44, height: 44, borderRadius: 14, flexShrink: 0, overflow: 'hidden',
+                background: portalColor(c.platform), color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', userSelect: 'none',
+              }}>
+                {partnerAvatar(c)
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={partnerAvatar(c) ?? undefined} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  : initials(partner(c))}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                  <span style={{ fontSize: fullWidth ? 15 : 13, fontWeight: c.unread ? 700 : 500, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: fullWidth ? 200 : 130 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                     {partner(c)}
                   </span>
-                  <span style={{ fontSize: 11, color: '#AAA', flexShrink: 0, marginLeft: 8 }}>
+                  <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {c.last_message_at
                       ? fmtTime(c.last_message_at, uiLang)
                       : c.check_in
                         ? `ab ${new Date(c.check_in).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
                         : ''}
                   </span>
+                  {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
                 </div>
+                {(c.listing_title || range) && (
+                  <div className="tm-num" style={{ fontSize: 12.5, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                    {c.listing_title ?? '—'}{range ? ` · ${range}` : ''}
+                  </div>
+                )}
                 {c.lastPreview && (
-                  <div style={{ fontSize: fullWidth ? 12.5 : 11.5, color: c.unread ? '#3A3427' : '#8A857B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: c.unread ? 600 : 400, marginBottom: 2 }}>
-                    {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: '#34A853', fontWeight: 700 }}>✓ </span>}
-                    {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 11 }}>📞 </span>}
-                    {c.lastSender === 'host' && <span style={{ color: '#B5A97F' }}>Du: </span>}
+                  <div style={{ fontSize: 13, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
+                    {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
+                    {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 12 }}>📞 </span>}
+                    {c.lastSender === 'host' && <span style={{ color: 'var(--tm-muted2, #959ca7)' }}>Du: </span>}
                     {c.lastPreview}
                   </div>
                 )}
-                <div style={{ fontSize: fullWidth ? 12 : 10.5, color: '#A9A499', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.listing_title ?? '—'}
-                  {fmtDateRange(c.check_in, c.check_out) && <span style={{ color: '#B5A97F' }}> · {fmtDateRange(c.check_in, c.check_out)}</span>}
-                </div>
                 {(c.platform || c.guestStatus || (c.guestLang && c.guestLang !== 'de')) && (
-                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <ThreadBadges c={c} />
+                  <div style={{ marginTop: 7, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     {c.guestLang && c.guestLang !== 'de' && (
-                      <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 12 }}>{flag(c.guestLang)}</span>
+                      <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 13, lineHeight: 1 }}>{flag(c.guestLang)}</span>
                     )}
+                    <ThreadBadges c={c} />
                   </div>
                 )}
               </div>
-              {fullWidth && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CCC" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              )}
             </button>
             </div>
           )
         })}
         {/* „Ältere Chats laden" — einmalige Nachladung der Archiv-Threads (§129) */}
-        {team && (inboxFilter === 'alle' || searching) && !loading && archivThreads === null && convs.length > 0 && (
+        {team && inboxFilter === 'alle' && !loading && archivThreads === null && convs.length > 0 && (
           <button
             onClick={loadArchiv}
             disabled={archivLoading}
             style={{
               margin: '14px 16px 20px', padding: '11px 16px', borderRadius: 12,
-              border: '1px solid #E5E1D6', background: '#FAF8F3', cursor: archivLoading ? 'default' : 'pointer',
+              border: '1px solid var(--tm-line, #E5E1D6)', background: 'var(--tm-card, #FAF8F3)', cursor: archivLoading ? 'default' : 'pointer',
               fontSize: 13, fontWeight: 700, color: '#6B6455', flexShrink: 0,
             }}
           >
-            {archivLoading ? 'Lädt ältere Chats…' : (searching ? '📁 Auch in älteren Chats suchen' : '📁 Ältere Chats laden')}
+            {archivLoading ? 'Lädt ältere Chats…' : '📁 Ältere Chats laden'}
           </button>
         )}
         {team && inboxFilter === 'alle' && archivThreads !== null && archivThreads.length === 0 && (

@@ -754,8 +754,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color-scheme: dark;
 }
 @media (min-width: 1000px) {
-  /* Rechner: Tab-Leiste ist Seitenleiste → nur normale Luft unten */
-  .team-shell { --tm-nav-pad: 24px; }
+  /* Rechner: Tab-Leiste ist Seitenleiste → nur normale Luft unten;
+     Inbox-Liste 390 px neben dem Chat (Pascal-Spec, §277) */
+  .team-shell { --tm-nav-pad: 24px; --tm-list-w: 390px; }
 }
 
 /* Karten, Chips, Abschnittstitel */
