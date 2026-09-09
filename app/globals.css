@@ -830,3 +830,111 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .tm-enter, .tm-slide-in, .tm-sheet-in, .tm-pop-in, .tm-msg-in, .tm-spin-once, .tm-toast { animation: none; }
   .tm-loadbar::before { animation: none; left: 0; width: 100%; opacity: 0.5; }
 }
+
+/* ═══════════ 🎬 Start-Vorhang (§281, Pascal 8.9.) ═══════════
+   Alle Ebenen als CSS-Animationen; Kurve überall cubic-bezier(.22,1,.36,1).
+   Farben: Marke #AE8D2D · heller Markenton #E3C878 · Anthrazit #12222E;
+   hell/dunkel nach System. */
+@property --tm-ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.tm-curtain {
+  --c-brand: #AE8D2D; --c-brand2: #E3C878; --c-dark: #12222E;
+  --c-text: #171a1f; --c-muted: #646b76; --c-bg: #f3f4f6;
+  --c-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: fixed; inset: 0; z-index: 1000; overflow: hidden;
+  background: var(--c-bg); color: var(--c-text);
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent; cursor: default; user-select: none;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+@media (prefers-color-scheme: dark) {
+  .tm-curtain { --c-bg: #0f1115; --c-text: #f2f3f5; --c-muted: #9aa1ab; --c-dark: #AE8D2D; }
+}
+.tm-curtain.is-leaving { animation: tmCurtainOut 0.8s var(--c-ease) both; pointer-events: none; }
+@keyframes tmCurtainOut { to { opacity: 0; transform: scale(1.03); } }
+
+/* 1 Lichtkreise */
+.tm-curtain .c-orb { position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%; filter: blur(60px); opacity: 0.5; will-change: transform; }
+.tm-curtain .o1 { background: var(--c-brand); top: -14vmax; left: -12vmax; animation: tmOrb1 9s ease-in-out infinite alternate; }
+.tm-curtain .o2 { background: var(--c-brand2); bottom: -18vmax; right: -14vmax; animation: tmOrb2 8s ease-in-out infinite alternate; }
+.tm-curtain .o3 { background: var(--c-dark); width: 30vmax; height: 30vmax; top: 42%; left: 56%; opacity: 0.16; animation: tmOrb3 8.5s ease-in-out infinite alternate; }
+@keyframes tmOrb1 { to { transform: translate(10vmax, 12vmax); } }
+@keyframes tmOrb2 { to { transform: translate(-12vmax, -10vmax); } }
+@keyframes tmOrb3 { to { transform: translate(-16vmax, -20vmax); } }
+
+/* 2 Gitter: 44 px, Marke 9 %, zur Mitte maskiert, leuchtet kurz auf, bleibt 35 % */
+.tm-curtain .c-grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(174,141,45,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(174,141,45,0.09) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 0 16%, #000 72%);
+  mask-image: radial-gradient(ellipse at center, transparent 0 16%, #000 72%);
+  animation: tmGrid 2.6s var(--c-ease) both;
+}
+@keyframes tmGrid { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0.35; } }
+
+/* 3 Leuchtender Rand: Verlauf läuft einmal um die abgerundete Kante (Masken-Trick) */
+.tm-curtain .c-edge {
+  position: absolute; inset: 0; border-radius: 28px; padding: 4px; opacity: 0;
+  background: conic-gradient(from var(--tm-ang), transparent 0 58%, var(--c-brand) 76%, var(--c-brand2) 86%, #fffaf0 92%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  animation: tmEdge 5.6s var(--c-ease) 0.2s both, tmSpin 5.6s linear 0.2s both;
+}
+.tm-curtain .c-edge.glow { filter: blur(10px); }
+.tm-curtain .c-edge.sharp { padding: 1.5px; }
+@keyframes tmEdge { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes tmSpin { to { --tm-ang: 360deg; } }
+
+/* 4 Halo: rotierender Lichtkegel hinter der Marke */
+.tm-curtain .c-halo {
+  position: absolute; width: 300px; height: 300px; border-radius: 50%; opacity: 0;
+  background: conic-gradient(from 0deg, transparent 0 38%, rgba(174,141,45,0.6) 55%, transparent 72%);
+  filter: blur(30px); will-change: transform;
+  animation: tmFadeIn 1.6s var(--c-ease) 0.4s forwards, tmRotate 6s linear infinite;
+}
+@keyframes tmFadeIn { to { opacity: 1; } }
+@keyframes tmRotate { to { transform: rotate(360deg); } }
+
+/* 5 Wortmarke */
+.tm-curtain .c-center { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 24px; }
+.tm-curtain .c-mark { display: flex; align-items: center; gap: 14px; }
+.tm-curtain .c-logo { position: relative; width: 44px; height: 44px; opacity: 0; animation: tmFadeIn 1s var(--c-ease) 1s forwards; }
+.tm-curtain .c-logo img { width: 100%; height: 100%; display: block; animation: tmPulse 2s ease-in-out 2.4s infinite; }
+.tm-curtain .c-logo svg { position: absolute; inset: -7px; width: calc(100% + 14px); height: calc(100% + 14px); }
+.tm-curtain .c-logo circle { fill: none; stroke: var(--c-brand); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 189; stroke-dashoffset: 189; transform: rotate(-90deg); transform-origin: center; animation: tmDraw 1.4s var(--c-ease) 1s forwards; }
+@keyframes tmDraw { to { stroke-dashoffset: 0; } }
+@keyframes tmPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+.tm-curtain .c-word { display: inline-flex; font-size: clamp(38px, 12vw, 52px); font-weight: 800; letter-spacing: 0.08em; line-height: 1; color: var(--c-text); }
+.tm-curtain .c-word span { display: inline-block; opacity: 0; filter: blur(12px); transform: translateY(14px); animation: tmLetter 1s var(--c-ease) forwards; }
+@keyframes tmLetter { to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+
+/* 6 Akzent-Strich */
+.tm-curtain .c-line { width: 64px; height: 2px; margin-top: 18px; background: linear-gradient(90deg, transparent, var(--c-brand), transparent); opacity: 0; transform: scaleX(0); animation: tmLine 3s var(--c-ease) 1.6s forwards; }
+@keyframes tmLine { 0% { opacity: 0; transform: scaleX(0); } 40% { opacity: 1; transform: scaleX(1); } 100% { opacity: 1; transform: scaleX(1.25); } }
+
+/* 7 Begrüßung (+ Schimmer) · 8 Spruch Wort für Wort */
+.tm-curtain .c-greet { margin: 26px 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.01em; opacity: 0; filter: blur(10px); transform: translateY(8px); animation: tmBlurIn 1s var(--c-ease) 2.5s forwards; }
+.tm-curtain .c-greet .shimmer {
+  background: linear-gradient(100deg, var(--c-text) 0 42%, var(--c-brand) 50%, var(--c-text) 58% 100%);
+  background-size: 250% 100%; background-position: 100% 0;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: tmShimmer 2s var(--c-ease) 3.7s 1 both;
+}
+@keyframes tmShimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes tmBlurIn { to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+.tm-curtain .c-say { margin: 10px 0 0; font-size: 15px; color: var(--c-muted); display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.3em; max-width: 320px; }
+.tm-curtain .c-say span { display: inline-block; opacity: 0; filter: blur(8px); transform: translateY(6px); animation: tmBlurIn 0.7s var(--c-ease) forwards; }
+
+/* 9 Punkte */
+.tm-curtain .c-dots { position: absolute; bottom: calc(34px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 7px; }
+.tm-curtain .c-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c-brand); opacity: 0.3; animation: tmDot 1.2s ease-in-out infinite; }
+.tm-curtain .c-dots i:nth-child(2) { animation-delay: 0.2s; }
+.tm-curtain .c-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes tmDot { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 1; transform: scale(1.25); } }
+
+/* Reduced Motion: statisch, nur weiches Ausblenden (Komponente beendet nach 3 s) */
+@media (prefers-reduced-motion: reduce) {
+  .tm-curtain * { animation-duration: 0.01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  .tm-curtain .c-orb, .tm-curtain .c-halo, .tm-curtain .c-edge { display: none; }
+  .tm-curtain.is-leaving { animation: tmCurtainOut 0.5s ease both; }
+}
