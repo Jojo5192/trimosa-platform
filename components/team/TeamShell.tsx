@@ -227,35 +227,17 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // App-Icon-Badge ZENTRAL (Pascal 19.7.): folgt den Push-Einstellungen —
-  // Gäste stumm ⇒ nur Intern-Threads zählen (und umgekehrt). Zahlen = THREADS
-  // (Gäste: ungelesen ODER unbeantwortet · Intern: ungelesen).
-  const [badgePrefs, setBadgePrefs] = useState<{ guestChats: boolean; teamChats: boolean } | null>(null)
-  useEffect(() => {
-    const loadPrefs = () => {
-      fetch('/api/push/prefs', { cache: 'no-store' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (d) setBadgePrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false }) })
-        .catch(() => {})
-    }
-    loadPrefs()
-    const onVis = () => { if (document.visibilityState === 'visible') loadPrefs() }
-    window.addEventListener('trimosa-prefs-changed', loadPrefs)
-    document.addEventListener('visibilitychange', onVis)
-    return () => {
-      window.removeEventListener('trimosa-prefs-changed', loadPrefs)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [])
+  // App-Icon-Badge ZENTRAL — §291 (Pascal 9.9. 15:12): dieselbe Zahl wie am Heute-Reiter
+  // (Sofort-Aufgaben + heute geplante Aufgaben + offene Gast-Nachrichten + Anreisen mit
+  // fehlendem Häkchen). Die frühere Kopplung an die Push-Einstellungen (19.7.) entfällt;
+  // Intern-Ungelesenes zeigt der Inbox-Reiter, Push-Mitteilungen kommen weiterhin.
   useEffect(() => {
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
-    const total = (badgePrefs?.guestChats !== false ? guestUnread : 0)
-      + (badgePrefs?.teamChats !== false ? internUnread : 0)
     try {
-      if (total > 0) nav.setAppBadge?.(total)?.catch(() => {})
+      if (heuteCount > 0) nav.setAppBadge?.(heuteCount)?.catch(() => {})
       else nav.clearAppBadge?.()?.catch(() => {})
     } catch { /* Badging API nicht verfügbar */ }
-  }, [guestUnread, internUnread, badgePrefs])
+  }, [heuteCount])
 
   // Tastatur-Pinning (iOS-26-fest): iOS verschiebt bei offener Tastatur den
   // sichtbaren Ausschnitt — je nach Build via window-Scroll ODER visualViewport-
