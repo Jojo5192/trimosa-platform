@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
 import { usePullToRefresh, PullHint, SkeletonRows, Segmented } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
+import KennzahlenCard from '@/components/team/KennzahlenCard'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null; totalPrice?: number | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean; assigneeName?: string | null }
@@ -395,6 +396,8 @@ export default function CalendarPanel() {
             Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
             Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: '#1A4FA0', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#8B5CF6', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: '#8A7020', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
           </p>
+          {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
+          <KennzahlenCard />
         </div>
       ) : (
         <div style={{ padding: '12px 16px 40px' }}>
