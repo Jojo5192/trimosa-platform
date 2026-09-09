@@ -15,7 +15,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { askClaude, FAST_MODEL } from '@/lib/ai'
-import { updateReservation } from '@/lib/smoobu'
+import { updateReservation, getRawReservation } from '@/lib/smoobu'
 
 export interface InboundMailInput {
   from: string
@@ -481,6 +481,37 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
 }
 
 /** Der komplette Klassifikations-Flow für EINE Mail (beide Zubringer). */
+/**
+ * Paragraph 298: Smoobu ignoriert Gastfelder (Name/E-Mail/Telefon) bei KANAL-Reservierungen still -
+ * Antwort "Resource updated successfully", Feld bleibt leer (Test 9.9. an 135034132, beide Schreibweisen).
+ * Die Reservierungs-NOTIZ uebernimmt Smoobu sehr wohl - dort landen die Werte als eine Zeile
+ * "TRIMOSA-App · Gast: ... · E-Mail (FeWo-Messenger): ... · Tel: ..." (idempotent: Zeile wird ersetzt).
+ * Liefert 'notiz' | 'felder ok' | 'nichts' | Fehlertext.
+ */
+export async function noteGuestDataInSmoobu(smoobuId: number, want: { name?: string | null; email?: string | null; phone?: string | null }): Promise<string> {
+  const name = (want.name ?? '').replace(/\s+/g, ' ').trim()
+  const email = (want.email ?? '').trim()
+  const phone = (want.phone ?? '').trim()
+  if (!name.includes(' ') && !email && !phone) return 'nichts'
+  const raw = await getRawReservation(smoobuId)
+  if (!raw) return 'smoobu liefert nichts'
+  const has = (v: unknown) => typeof v === 'string' && v.trim().length > 0
+  const nameMissing = name.includes(' ') && !has(raw.lastname)
+  const mailMissing = !!email && !has(raw.email)
+  const telMissing = !!phone && !has(raw.phone)
+  if (!nameMissing && !mailMissing && !telMissing) return 'felder ok'
+  const parts: string[] = []
+  if (name) parts.push(`Gast: ${name}`)
+  if (email) parts.push(`E-Mail (FeWo-Messenger): ${email}`)
+  if (phone) parts.push(`Tel: ${phone}`)
+  const line = `TRIMOSA-App · ${parts.join(' · ')}`
+  const cur = String(raw.notice ?? '').split('\n').filter((l) => !l.trim().startsWith('TRIMOSA-App')).join('\n').trim()
+  const notice = cur ? `${cur}\n${line}` : line
+  if (String(raw.notice ?? '').trim() === notice) return 'notiz (unveraendert)'
+  const err = await updateReservation(smoobuId, { notice })
+  return err ? `notiz-fehler: ${err}` : 'notiz'
+}
+
 export async function processInboundMail(input: InboundMailInput, opts: { belegeOnly?: boolean } = {}): Promise<Record<string, unknown>> {
   const { from, subject, rawText, attachments } = input
   const mailOpts = { mailbox: input.mailbox, mailKey: input.mailKey }
@@ -590,6 +621,11 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
               ? await updateReservation(Number(b.smoobu_reservation_id), { email: relayEmail })
               : 'keine smoobu_reservation_id'
             : 'keine relay-adresse'
+          // Paragraph 298: Smoobu verwirft das E-Mail-Feld bei Kanal-Buchungen -> Relay in die Notiz
+          if (relayEmail && b.smoobu_reservation_id) {
+            try { await noteGuestDataInSmoobu(Number(b.smoobu_reservation_id), { name: b.guest_name, email: relayEmail }) }
+            catch (e) { console.error('[inbound-mail] Smoobu-Notiz:', String(e).slice(0, 120)) }
+          }
           const saved = msgText.length >= 3 ? await saveGuestMessage(b.id, b.guest_name, msgText) : false
           console.log('[inbound-mail] Gastnachricht/Relay:', { booking: b.id, relayEmail: relayEmail || '—', nachricht: saved, smoobu: sm ?? 'ok' })
           return { ok: true, bookingId: b.id, relay: relayEmail || null, nachricht: saved, smoobu: sm ?? 'ok' }
@@ -658,6 +694,7 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
 
   // ── Preis/Gäste/Telefon auch in SMOOBU nachtragen ──
   let smoobu: string | null = 'keine smoobu_reservation_id'
+  let notiz = '-'
   if (booking.smoobu_reservation_id) {
     const fields: Record<string, unknown> = {}
     if (preis) fields.price = preis
@@ -670,6 +707,14 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     smoobu = Object.keys(fields).length
       ? await updateReservation(Number(booking.smoobu_reservation_id), fields)
       : 'nichts zu übertragen'
+    // Paragraph 298: Gastdaten, die Smoobu in den Feldern verwirft, in die Reservierungs-Notiz
+    try {
+      notiz = await noteGuestDataInSmoobu(Number(booking.smoobu_reservation_id), {
+        name: typeof upd.guest_name === 'string' ? upd.guest_name : booking.guest_name,
+        email: typeof parsed.email === 'string' && parsed.email.includes('@') ? parsed.email : booking.guest_email,
+        phone: typeof parsed.telefon === 'string' && parsed.telefon.length > 5 ? parsed.telefon : null,
+      })
+    } catch (e) { notiz = `notiz-fehler: ${String(e).slice(0, 80)}` }
   }
 
   // Persönliche Gast-Nachricht (z. B. Anfrage-Mails MIT Zeitraum) → Chat-Thread
@@ -681,7 +726,7 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     booking: booking.id, felder: Object.keys(upd), smoobu: smoobu ?? 'ok',
     portal: parsed.portal, preis, nachricht: savedMsg,
   })
-  return { ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok' }
+  return { ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok', notiz }
 }
 
 /**
