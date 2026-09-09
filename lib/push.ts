@@ -195,7 +195,10 @@ export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cance
       guest = (gp?.display_name ?? '').trim()
     }
     const fmtD = (iso: string) => { const [, m, d] = String(iso).split('-'); return `${Number(d)}.${Number(m)}.` }
-    const channel = (b.channel as string | null) ?? (b.source === 'trimosa' ? 'Website' : 'Smoobu')
+    // §274: Website-Buchungen tragen intern channel 'direct' — im Push soll
+    // der Kanal sprechend heißen (Dominik: „Portale benennen")
+    const rawChannel = (b.channel as string | null) ?? (b.source === 'trimosa' ? 'Website' : 'Smoobu')
+    const channel = b.source === 'trimosa' || /^(direct|trimosa)$/i.test(rawChannel) ? 'Website (trimosa.de)' : rawChannel
     // „Anfrage" nur für Website-Buchungen — externe sind immer fix (§139)
     const isRequest = b.source === 'trimosa' && (b.booking_type === 'request' || b.status === 'pending')
     const title = kind === 'cancelled'

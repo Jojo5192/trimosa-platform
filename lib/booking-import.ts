@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { listReservations } from '@/lib/smoobu'
 import { sendNewBookingPush, sendPushToTeam } from '@/lib/push'
+import { reportOverbooking, resolveOverbooking } from '@/lib/overbooking'
 
 /**
  * 🛟 Buchungs-Sicherheitsnetz (§137): importiert Smoobu-Reservierungen,
@@ -68,6 +69,17 @@ export async function importMissingReservations(
       console.log('[booking-import] verpasste Buchung importiert:', r.id, r.guestName, r.arrival)
       // Buchungs-Push nachholen — await Pflicht (§135)
       await sendNewBookingPush(inserted.id).catch((e) => console.error('[booking-import] push:', e))
+      // §274 Entwarnung: Der Import gelingt erst, wenn der Zeitraum bei uns
+      // frei ist (EXCLUDE) — eine dafür gemeldete Überbuchung ist damit
+      // aufgelöst (Fall Margit/Heidi 27.8.: Website-Checkout verfallen →
+      // Booking-Reservierung nachgeholt).
+      const importedListing = r.apartmentId != null ? bySmoobuId.get(r.apartmentId) : undefined
+      if (importedListing) {
+        await resolveOverbooking({
+          listingId: importedListing, checkIn: r.arrival, checkOut: r.departure,
+          grund: `Reservierung ${r.guestName ?? r.id} (${r.channelName ?? 'Smoobu'}) wurde nachträglich sauber importiert — der Zeitraum war wieder frei.`,
+        }).catch((e) => console.error('[booking-import] overbooking resolve:', e))
+      }
     }
     if (!hasMore) break
     if (p === maxPages && hasMore) windowComplete = false
@@ -95,7 +107,7 @@ export async function importMissingReservations(
       list.push(r)
       byApt.set(r.apartmentId as number, list)
     }
-    const conflicts: { key: string; text: string }[] = []
+    const conflicts: { key: string; a: Res; b: Res }[] = []
     for (const [, list] of byApt) {
       list.sort((a, b) => String(a.arrival).localeCompare(String(b.arrival)))
       for (let i = 0; i < list.length; i++) {
@@ -103,10 +115,7 @@ export async function importMissingReservations(
           const a = list[i], b = list[j]
           if (String(b.arrival) >= String(a.departure)) break // sortiert — keine Überlappung mehr möglich
           const key = `${a.apartmentId}:${Math.min(a.id, b.id)}:${Math.max(a.id, b.id)}`
-          conflicts.push({
-            key,
-            text: `${a.guestName || a.id} (${a.arrival}–${a.departure}) ↔ ${b.guestName || b.id} (${b.arrival}–${b.departure})`,
-          })
+          conflicts.push({ key, a, b })
         }
       }
     }
@@ -118,16 +127,25 @@ export async function importMissingReservations(
       for (const c of fresh) {
         const aptId = Number(c.key.split(':')[0])
         const listingId = bySmoobuId.get(aptId)
-        const { data: lst } = listingId
-          ? await supabaseAdmin.from('listings').select('title').eq('id', listingId).maybeSingle()
-          : { data: null }
-        const title = (lst?.title as string | undefined) ?? `Apartment ${aptId}`
-        console.error('[booking-import] 🚨 ÜBERBUCHUNG erkannt:', title, c.text)
-        await sendPushToTeam(
-          `🚨 ÜBERBUCHUNG · ${title}`,
-          `${c.text} — sofort klären (Smoobu/Portal)!`,
-          '/team?tab=kalender', { category: 'system' },
-        ).catch((e) => console.error('[booking-import] overbooking push:', e))
+        // §274: die JÜNGERE Reservierung (höhere Smoobu-Nr.) ist die „neue",
+        // die ältere die Gegenseite — beide Seiten aus Smoobu-Daten, damit
+        // die Aufgabe auch Überbuchungen beschreibt, die nie in unserer DB lagen
+        const [alt, neu] = c.a.id < c.b.id ? [c.a, c.b] : [c.b, c.a]
+        const side = (r: Res) => ({
+          name: r.guestName, checkIn: String(r.arrival), checkOut: String(r.departure),
+          channel: r.channelName, smoobuId: r.id, bookedAt: r.createdAt, price: r.price,
+        })
+        console.error('[booking-import] 🚨 ÜBERBUCHUNG erkannt:', listingId ?? `Apartment ${aptId}`, neu.guestName, neu.arrival, '↔', alt.guestName, alt.arrival)
+        if (listingId) {
+          await reportOverbooking({ listingId, neu: side(neu), gegen: side(alt), quelle: 'Smoobu-Abgleich (2×/Std)' })
+            .catch((e) => console.error('[booking-import] overbooking report:', e))
+        } else {
+          await sendPushToTeam(
+            `🚨 ÜBERBUCHUNG · Apartment ${aptId}`,
+            `${neu.guestName || neu.id} (${neu.arrival}–${neu.departure}) ↔ ${alt.guestName || alt.id} (${alt.arrival}–${alt.departure}) — sofort klären (Smoobu/Portal)!`,
+            '/team?tab=kalender', { category: 'system' },
+          ).catch((e) => console.error('[booking-import] overbooking push:', e))
+        }
         alerted.add(c.key)
         overbookings++
       }

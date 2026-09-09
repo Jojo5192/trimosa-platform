@@ -3,6 +3,8 @@ import { sendNewBookingPush } from '@/lib/push'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
+import { claimSmoobuPush, releaseSmoobuPush } from '@/lib/smoobu-claim'
+import { resolveOverbooking } from '@/lib/overbooking'
 import { sendBookingEmail, sendHostBookingAlert, sendBookingCancelledEmail } from '@/lib/email'
 
 /**
@@ -72,8 +74,16 @@ export async function POST(req: NextRequest) {
       console.error('[Webhook] booking push failed (non-fatal):', err)
     )
 
-    // For instant bookings: push to Smoobu immediately
-    if (bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id) {
+    // For instant bookings: push to Smoobu immediately.
+    // §274: Claim ZUERST — die Erfolgsseite pusht sonst parallel (Doppel-
+    // Push-Race, Pisulla-Fall 7.9.). 'taken' = der andere Pfad ist dran.
+    const smoobuClaim = (bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id)
+      ? await claimSmoobuPush(bookingId)
+      : 'taken'
+    if (smoobuClaim === 'taken' && bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id) {
+      console.log('[Webhook] Smoobu-Push übersprungen — anderer Pfad (Erfolgsseite) hat den Claim:', bookingId)
+    }
+    if (bookingType === 'instant' && listing?.smoobu_id && !booking.smoobu_reservation_id && smoobuClaim !== 'taken') {
       try {
         // Load host's own Smoobu credentials (per-host support)
         const { data: hostSmoobu } = await supabaseAdmin
@@ -193,6 +203,8 @@ export async function POST(req: NextRequest) {
         await supabaseAdmin.from('bookings').update({ smoobu_reservation_id: smoobuId }).eq('id', bookingId)
       } catch (err) {
         console.error('[Webhook] Smoobu push failed:', err)
+        // Claim freigeben — sonst blockiert er 2 Min lang den Fallback
+        if (smoobuClaim === 'claimed') await releaseSmoobuPush(bookingId).catch(() => {})
       }
     }
 
@@ -233,7 +245,7 @@ export async function POST(req: NextRequest) {
 
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('id, payment_status')
+      .select('id, payment_status, listing_id, check_in, check_out')
       .eq('id', bookingId)
       .maybeSingle()
 
@@ -244,6 +256,15 @@ export async function POST(req: NextRequest) {
         .from('bookings')
         .update({ status: 'cancelled' })
         .eq('id', bookingId)
+      // §274 Entwarnung (Fall Margit/Heidi 27.8.): Der unbezahlte Website-
+      // Checkout blockte den Zeitraum und löste gegen eine Portal-Buchung
+      // den Überbuchungs-Alarm aus — mit dem Verfall ist der Konflikt weg.
+      if (booking.listing_id && booking.check_in && booking.check_out) {
+        await resolveOverbooking({
+          listingId: booking.listing_id, checkIn: booking.check_in, checkOut: booking.check_out,
+          grund: 'Die unbezahlte Website-Buchung ist verfallen (Checkout nicht abgeschlossen) — der Zeitraum ist wieder frei.',
+        }).catch((e) => console.error('[Webhook] overbooking resolve:', e))
+      }
     }
 
     return NextResponse.json({ ok: true })

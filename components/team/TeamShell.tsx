@@ -27,17 +27,20 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'einstellungen', icon: '⚙️', label: 'Mehr' },
 ]
 
-export default function TeamShell({ userId, role, initialConvId, initialTab, initialInternChatId }: {
+export default function TeamShell({ userId, role, initialConvId, initialTab, initialInternChatId, initialTaskId }: {
   userId: string
   role: 'team' | 'provider'
   initialConvId: string | null
   initialTab?: string
   initialInternChatId?: string | null
+  /** §274: /team?task=<id> (Push-Deep-Link der Überbuchungs-Aufgabe) */
+  initialTaskId?: string | null
 }) {
   const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat' && t.id !== 'offen') : TABS
   const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
   const [tab, setTab] = useState<Tab>(
-    tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
+    initialTaskId ? 'aufgaben'
+      : tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
   const [guestUnread, setGuestUnread] = useState(0)
@@ -50,7 +53,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // §162: Klick auf eine Aufgabe im Kalender → Aufgaben-Tab öffnen und die
   // Aufgabe fokussieren (Event aus CalendarPanel; TasksPanel ist nur bei
   // aktivem Tab gemountet, darum vermittelt die Shell per Prop)
-  const [taskFocus, setTaskFocus] = useState<string | null>(null)
+  const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null)
   useEffect(() => {
     const onOpenTask = (e: Event) => {
       const id = (e as CustomEvent<{ id: string | null }>).detail?.id ?? null
@@ -157,7 +160,14 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     if (!u.pathname.startsWith('/team')) { window.location.href = url; return }
     const conv = u.searchParams.get('conv')
     const chat = u.searchParams.get('chat')
+    const task = u.searchParams.get('task')
     const wunschTab = u.searchParams.get('tab')
+    // §274: Überbuchungs-Push → direkt auf die Aufgabe (Fokus + Scroll)
+    if (task && tabs.some((t) => t.id === 'aufgaben')) {
+      setTaskFocus(task)
+      setTab('aufgaben')
+      return
+    }
     if (conv && role === 'team') {
       setTab('chat')
       window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: conv } }))

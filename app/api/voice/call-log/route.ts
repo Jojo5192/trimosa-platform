@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { findBookingByPhone, findBookingByDetails, pushOncall } from '@/lib/voice'
 import { askClaude, FAST_MODEL } from '@/lib/ai'
+import { parseJsonLoose } from '@/lib/beleg-ki'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -106,16 +107,41 @@ export async function POST(request: Request) {
     rueckruf_zugesagt?: boolean; rueckrufnummer?: string | null
     wohnung?: string | null; anreise?: string | null; abreise?: string | null; vorname?: string | null
   } = {}
-  try {
-    const rawOut = await askClaude(
-      'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "notfall": true|false (true = Gast steht vor der Tür und kommt nicht in die Wohnung, Code funktioniert nicht, Wasserschaden/Strom/Verletzung, ODER das Problem war am Gesprächsende ersichtlich NICHT gelöst), "rueckruf_zugesagt": true|false (true = die Assistentin hat zugesagt, eine Nachricht/Meldung ans Team weiterzugeben, einen Rückruf zu veranlassen oder dass sich das Team beim Anrufer meldet), "rueckrufnummer": "im Gespräch vom Anrufer GENANNTE Rückrufnummer oder null", "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte.',
-      transcript,
-      1000,
-      FAST_MODEL,
-    )
-    const m = rawOut.match(/\{[\s\S]*\}/)
-    if (m) info = JSON.parse(m[0])
-  } catch (e) { console.error('[call-log] analyse:', e) }
+  const analysePrompt = 'Du analysierst das Transkript eines Telefonats der TRIMOSA-Ferienwohnungs-Assistentin. Antworte NUR mit einem JSON-Objekt: {"zusammenfassung": "2-4 Sätze auf Deutsch, was der Anrufer wollte und was vereinbart/beantwortet wurde", "gast_anfrage": true|false (true = Anliegen eines Gasts zu Buchung/Aufenthalt; false = Vertrieb, Verwählt, allgemeine Verfügbarkeitsanfrage ohne bestehende Buchung, Test), "notfall": true|false (true = Gast steht vor der Tür und kommt nicht in die Wohnung, Code funktioniert nicht, Wasserschaden/Strom/Verletzung, ODER das Problem war am Gesprächsende ersichtlich NICHT gelöst), "rueckruf_zugesagt": true|false (true = die Assistentin hat zugesagt, eine Nachricht/Meldung ans Team weiterzugeben, einen Rückruf zu veranlassen oder dass sich das Team beim Anrufer meldet), "rueckrufnummer": "im Gespräch vom Anrufer GENANNTE Rückrufnummer oder null", "wohnung": "genannter Wohnungsname oder null", "anreise": "JJJJ-MM-TT oder null (Jahr aus Kontext, aktuell 2026)", "abreise": "JJJJ-MM-TT oder null", "vorname": "Name des Anrufers oder null"}. KEINE weiteren Texte, kein Markdown, keine Anführungszeichen im Text der Zusammenfassung außer JSON-escaped.'
+  // §274: Die Analyse des 6.9.-Anrufs (Sweet Spot, Früh-Check-in) scheiterte
+  // STILL am JSON-Parse — damit waren ALLE Netze blind (Zusagen-Netz feuerte
+  // nicht, obwohl der Bot „Team ist informiert" behauptete). Jetzt: robuster
+  // Parser, ein Retry, und als letzte Stufe eine REGEL-basierte Erkennung
+  // der Zusage-/Notfall-Phrasen direkt im Transkript — modellunabhängig.
+  let analyseOk = false
+  for (let attempt = 0; attempt < 2 && !analyseOk; attempt++) {
+    try {
+      const rawOut = await askClaude(
+        analysePrompt,
+        attempt === 0 ? transcript : `${transcript}\n\nWICHTIG: Antworte AUSSCHLIESSLICH mit dem JSON-Objekt (beginnt mit { und endet mit }), sonst nichts.`,
+        1600,
+        FAST_MODEL,
+      )
+      info = parseJsonLoose(rawOut) as typeof info
+      analyseOk = typeof info.zusammenfassung === 'string' && info.zusammenfassung.trim().length > 0
+      if (!analyseOk) console.warn('[call-log] analyse: JSON ohne Zusammenfassung (Versuch', attempt + 1, '):', rawOut.slice(0, 300))
+    } catch (e) {
+      console.error('[call-log] analyse (Versuch', attempt + 1, '):', e instanceof Error ? e.message : e)
+    }
+  }
+  if (!analyseOk) {
+    const assistantText = turns.filter((t) => t.role !== 'user').map((t) => String(t.message ?? '')).join(' ')
+    const zusage = /(geb|leit|reich)e?[^.]{0,40}weiter|team (ist|wird|hat)[^.]{0,25}(informiert|bescheid)|meld(et|en) sich|nachricht ist raus|ich (habe|hab)[^.]{0,30}notiert|r(ü|ue)ckruf/i.test(assistantText)
+    const notfall = /komm(e|st|en|t) nicht (rein|in die wohnung)|ausgesperrt|code (funktioniert|geht|klappt) nicht|(steh|stehe|stehen) vor der t(ü|ue)r|wasserschaden|stromausfall/i.test(transcript)
+    info = {
+      ...info,
+      zusammenfassung: `⚠️ KI-Analyse fehlgeschlagen — Transkript-Auszug: ${transcript.replace(/\s+/g, ' ').slice(0, 300)}…`,
+      gast_anfrage: info.gast_anfrage ?? false,
+      notfall: info.notfall ?? notfall,
+      rueckruf_zugesagt: info.rueckruf_zugesagt ?? zusage,
+    }
+    console.warn('[call-log] analyse: Regel-Fallback aktiv — zusage:', zusage, 'notfall:', notfall, convId)
+  }
 
   // Buchung zuordnen: Nummer → Gesprächsdaten (gleiche Kette wie take-message)
   let booking = caller ? await findBookingByPhone(caller).catch(() => null) : null

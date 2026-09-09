@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TRIMOSA E-Mail-Signatur</title>
+<style>
+  :root { --navy: #12222E; --gold: #AE8D2D; --gold-dark: #8A7020; --bg: #F5F5F7; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 18px 60px; }
+  h1 { font-size: 24px; letter-spacing: -0.3px; margin: 0 0 4px; }
+  .sub { color: #6B7280; font-size: 14px; margin: 0 0 22px; }
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 22px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: #fff; border-radius: 18px; box-shadow: inset 0 0 0 0.5px rgba(60,60,67,0.12), 0 1px 3px rgba(0,0,0,0.05); padding: 18px; }
+  .card h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #8E8E93; margin: 0 0 12px; }
+  label { display: block; font-size: 12px; color: #6B7280; margin: 10px 0 4px; }
+  input { width: 100%; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(60,60,67,0.2); background: #fff; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .chip { border: 0; background: #F2F2F7; color: #111; font-size: 13px; padding: 7px 12px; border-radius: 999px; cursor: pointer; }
+  .chip.on { background: var(--navy); color: #fff; }
+  .btn { display: inline-block; border: 0; border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 650; cursor: pointer; }
+  .btn.primary { background: var(--navy); color: #fff; }
+  .btn.gold { background: var(--gold); color: #fff; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 12px 18px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .preview-frame { background: #fff; border-radius: 14px; padding: 22px; border: 1px dashed rgba(60,60,67,0.25); overflow-x: auto; }
+  ol { padding-left: 20px; font-size: 14px; line-height: 1.55; color: #374151; }
+  ol li { margin-bottom: 6px; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+  textarea { width: 100%; height: 160px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; border-radius: 10px; border: 1px solid rgba(60,60,67,0.2); padding: 10px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TRIMOSA E-Mail-Signatur</h1>
+  <p class="sub">Daten eintragen, Vorschau prüfen, kopieren, in Outlook einfügen. Logo und Farben sind fest hinterlegt.</p>
+  <div class="grid">
+    <div class="card">
+      <h2>Person</h2>
+      <div class="presets" id="presets"></div>
+      <label>Name</label><input id="f-name" placeholder="Vorname Nachname">
+      <label>Position</label><input id="f-role" placeholder="Gründer &amp; Gastgeber">
+      <label>Mobil (optional)</label><input id="f-mobile" placeholder="+49 170 …">
+      <label>Telefon (Büro)</label><input id="f-phone" value="+49 651 43614036">
+      <label>E-Mail</label><input id="f-mail" placeholder="name@trimosa.de">
+      <div class="row">
+        <button class="btn primary" id="copy">In Zwischenablage kopieren</button>
+        <button class="btn gold" id="open">Nur Signatur öffnen</button>
+      </div>
+      <details>
+        <summary>So kommt sie nach Outlook</summary>
+        <ol>
+          <li>Oben „In Zwischenablage kopieren" drücken (kopiert die Signatur als formatiertes HTML).</li>
+          <li><strong>Outlook für Mac (neu):</strong> Outlook → Einstellungen → Signaturen → „+" → Namen vergeben → in das Textfeld klicken → ⌘V → Speichern. Dann unter „Standardsignaturen" dem Konto zuweisen.</li>
+          <li><strong>Outlook im Browser / Windows:</strong> Zahnrad → Konto → Signaturen → neue Signatur → einfügen → Speichern.</li>
+          <li><strong>iPhone-Outlook:</strong> Einstellungen → Signatur — dort ist nur Text möglich; „Nur Signatur öffnen" zeigt die Textfassung zum Kopieren.</li>
+        </ol>
+        <p style="font-size:12px;color:#6B7280;margin:6px 0 0">Das Logo wird von trimosa.de geladen und erscheint beim Empfänger, sobald Bilder zugelassen sind — genau wie bei jeder Firmen-Signatur.</p>
+      </details>
+      <details>
+        <summary>HTML-Quelltext (für Baukästen)</summary>
+        <textarea id="src" readonly></textarea>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Vorschau</h2>
+      <div class="preview-frame" id="preview"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Kopiert ✓</div>
+<script>
+(function () {
+  var PRESETS = [
+    { key: 'johannes', name: 'Johannes Görgen', role: 'Gründer & Gastgeber', mail: 'goergen@trimosa.de' },
+    { key: 'pascal', name: 'Pascal Junk', role: 'Gründer & Gastgeber', mail: 'junk@trimosa.de' },
+    { key: 'dominik', name: 'Dominik Palzer', role: 'Gründer & Gastgeber', mail: 'palzer@trimosa.de' },
+    { key: 'vanessa', name: 'Vanessa Wagner', role: 'Gästebetreuung & Housekeeping', mail: 'vanessa@trimosa.de' },
+    { key: 'team', name: 'Dein TRIMOSA-Team', role: 'Apartments & Homes', mail: 'mail@trimosa.de' },
+  ];
+  var $ = function (id) { return document.getElementById(id); };
+  var fields = { name: $('f-name'), role: $('f-role'), mobile: $('f-mobile'), phone: $('f-phone'), mail: $('f-mail') };
+  var GOLD = '#AE8D2D', NAVY = '#12222E', GREY = '#6B7280', LINE = '#E5E7EB';
+  var BASE = 'https://trimosa.de';
+
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function telHref(s) { return 'tel:' + String(s || '').replace(/[^+\d]/g, ''); }
+
+  function build(v) {
+    var contact = [];
+    if (v.mobile) contact.push('<span style="color:' + GREY + '">Mobil</span> <a href="' + telHref(v.mobile) + '" style="color:' + NAVY + ';text-decoration:none">' + esc(v.mobile) + '</a>');
+    if (v.phone) contact.push('<span style="color:' + GREY + '">Tel.</span> <a href="' + telHref(v.phone) + '" style="color:' + NAVY + ';text-decoration:none">' + esc(v.phone) + '</a>');
+    if (v.mail) contact.push('<span style="color:' + GREY + '">E-Mail</span> <a href="mailto:' + esc(v.mail) + '" style="color:' + NAVY + ';text-decoration:none">' + esc(v.mail) + '</a>');
+    var contactHtml = contact.join('<span style="color:' + LINE + ';padding:0 7px">|</span>');
+    var font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;";
+    return '' +
+'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;' + font + 'color:#111;max-width:560px">' +
+'<tr><td style="padding:0 0 10px 0">' +
+  '<a href="' + BASE + '" style="text-decoration:none"><img src="' + BASE + '/logo.png" width="220" alt="TRIMOSA Apartments &amp; Homes" style="display:block;width:220px;height:auto;border:0"></a>' +
+'</td></tr>' +
+'<tr><td style="padding:0;border-top:2px solid ' + GOLD + ';font-size:0;line-height:0;height:0">&nbsp;</td></tr>' +
+'<tr><td style="padding:14px 0 0 0">' +
+  '<div style="' + font + 'font-size:16px;font-weight:700;color:' + NAVY + ';letter-spacing:-0.2px">' + esc(v.name) + '</div>' +
+  (v.role ? '<div style="' + font + 'font-size:13px;color:' + GOLD + ';margin-top:2px;letter-spacing:0.02em">' + esc(v.role) + '</div>' : '') +
+  '<div style="' + font + 'font-size:12.5px;color:' + GREY + ';margin-top:2px">TRIMOSA Apartments &amp; Homes</div>' +
+'</td></tr>' +
+'<tr><td style="padding:10px 0 0 0;' + font + 'font-size:13px;line-height:1.7;color:#111">' + contactHtml +
+  '<br><span style="color:' + GREY + '">Web</span> <a href="' + BASE + '" style="color:' + NAVY + ';text-decoration:none;font-weight:600">www.trimosa.de</a>' +
+'</td></tr>' +
+'<tr><td style="padding:16px 0 0 0">' +
+  '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' +
+  '<td bgcolor="' + GOLD + '" style="background:' + GOLD + ';border-radius:8px;mso-padding-alt:0;">' +
+  '<a href="' + BASE + '/?utm_source=signatur" style="display:inline-block;padding:10px 18px;' + font + 'font-size:13px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.02em">Unsere Apartments entdecken&nbsp;→</a>' +
+  '</td></tr></table>' +
+'</td></tr>' +
+'<tr><td style="padding:14px 0 0 0;' + font + 'font-size:11.5px;line-height:1.6;color:' + GREY + '">' +
+  'Direkt buchen auf <a href="' + BASE + '" style="color:' + GOLD + ';text-decoration:none;font-weight:600">trimosa.de</a> — immer zum besten Preis, ohne Portalgebühren.<br>' +
+  'Reiseführer &amp; Tipps deiner Gastgeber: <a href="' + BASE + '/region/trier" style="color:' + GOLD + ';text-decoration:none">Trier</a> · <a href="' + BASE + '/region/bitburg" style="color:' + GOLD + ';text-decoration:none">Bitburg</a> · <a href="' + BASE + '/region/suedeifel" style="color:' + GOLD + ';text-decoration:none">Südeifel</a> · <a href="' + BASE + '/region/saar" style="color:' + GOLD + ';text-decoration:none">Saar</a>' +
+'</td></tr>' +
+'<tr><td style="padding:12px 0 0 0;' + font + 'font-size:10.5px;line-height:1.5;color:#9CA3AF">' +
+  'TRIMOSA Apartments &amp; Homes eGbR · Feldkirchener Str. 18a · 85622 Weißenfeld · Gesellschaftsregister Amtsgericht München GsR 2785<br>' +
+  '<a href="' + BASE + '/impressum" style="color:#9CA3AF;text-decoration:underline">Impressum</a> · <a href="' + BASE + '/datenschutz" style="color:#9CA3AF;text-decoration:underline">Datenschutz</a>' +
+'</td></tr>' +
+'</table>';
+  }
+
+  function plain(v) {
+    return [v.name, (v.role ? v.role + ' · ' : '') + 'TRIMOSA Apartments & Homes', v.mobile ? 'Mobil ' + v.mobile : '', v.phone ? 'Tel. ' + v.phone : '', v.mail ? 'E-Mail ' + v.mail : '', 'www.trimosa.de — direkt buchen, immer zum besten Preis', '', 'TRIMOSA Apartments & Homes eGbR · Feldkirchener Str. 18a · 85622 Weißenfeld'].filter(Boolean).join('\n');
+  }
+
+  function values() {
+    return { name: fields.name.value.trim() || 'Vorname Nachname', role: fields.role.value.trim(), mobile: fields.mobile.value.trim(), phone: fields.phone.value.trim(), mail: fields.mail.value.trim() };
+  }
+  function render() {
+    var html = build(values());
+    $('preview').innerHTML = html;
+    $('src').value = html;
+    try { localStorage.setItem('trimosa-sig', JSON.stringify(values())); } catch (e) {}
+  }
+  function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 1800); }
+
+  var presetsEl = $('presets');
+  PRESETS.forEach(function (p) {
+    var b = document.createElement('button'); b.className = 'chip'; b.textContent = p.name.split(' ')[0] === 'Dein' ? 'Team' : p.name.split(' ')[0];
+    b.onclick = function () {
+      fields.name.value = p.name; fields.role.value = p.role; fields.mail.value = p.mail;
+      Array.prototype.forEach.call(presetsEl.children, function (c) { c.classList.remove('on'); }); b.classList.add('on');
+      render();
+    };
+    presetsEl.appendChild(b);
+  });
+  Object.keys(fields).forEach(function (k) { fields[k].addEventListener('input', render); });
+
+  $('copy').onclick = function () {
+    var html = build(values()), text = plain(values());
+    var done = function () { toast('Signatur kopiert ✓ — jetzt in Outlook einfügen'); };
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        var item = new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) });
+        navigator.clipboard.write([item]).then(done, fallback);
+        return;
+      } catch (e) { /* fallback */ }
+    }
+    fallback();
+    function fallback() {
+      var range = document.createRange(); range.selectNodeContents($('preview'));
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand('copy'); done(); } catch (e) { toast('Bitte Vorschau markieren und ⌘C drücken'); }
+      sel.removeAllRanges();
+    }
+  };
+  $('open').onclick = function () {
+    var v = values(); var w = window.open('', '_blank');
+    if (!w) return toast('Popup blockiert — bitte erlauben');
+    w.document.write('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Signatur ' + esc(v.name) + '</title></head><body style="margin:24px;background:#fff">' + build(v) + '<pre style="margin-top:28px;font:12px/1.5 ui-monospace,Menlo,monospace;color:#6B7280;white-space:pre-wrap">' + esc(plain(v)) + '</pre></body></html>');
+    w.document.close();
+  };
+
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem('trimosa-sig') || 'null'); } catch (e) {}
+  if (saved && saved.name && saved.name !== 'Vorname Nachname') {
+    fields.name.value = saved.name; fields.role.value = saved.role || ''; fields.mobile.value = saved.mobile || ''; fields.phone.value = saved.phone || '+49 651 43614036'; fields.mail.value = saved.mail || '';
+  } else {
+    presetsEl.children[1] && presetsEl.children[1].click();
+  }
+  render();
+})();
+</script>
+</body>
+</html>

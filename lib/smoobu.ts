@@ -405,7 +405,7 @@ export async function listReservations(
   page: number,
   pageSize = 25,
   apiKey?: string,
-): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; adults: number | null; children: number | null; cancelled: boolean; blocked: boolean }[]; hasMore: boolean; ok: boolean }> {
+): Promise<{ reservations: { id: number; apartmentId: number | null; arrival: string | null; departure: string | null; guestName: string | null; channelName: string | null; price: number | null; adults: number | null; children: number | null; cancelled: boolean; blocked: boolean; createdAt: string | null }[]; hasMore: boolean; ok: boolean }> {
   const params = new URLSearchParams({
     from: fromIso,
     to: toIso,
@@ -447,6 +447,10 @@ export async function listReservations(
       children: typeof obj.children === 'number' ? obj.children : null,
       cancelled: String(obj.type ?? '').toLowerCase().includes('cancel'),
       blocked: obj['is-blocked-booking'] === true,
+      // §274: Buchungszeitpunkt (Smoobu „created-at", sekundengenau) für die
+      // Überbuchungs-Aufgabe — defensiv, Feldname kann variieren
+      createdAt: typeof obj['created-at'] === 'string' ? (obj['created-at'] as string)
+        : typeof obj.createdAt === 'string' ? (obj.createdAt as string) : null,
     }
   }).filter((r) => Number.isFinite(r.id))
   return { reservations, hasMore: pageCount > page, ok: true }

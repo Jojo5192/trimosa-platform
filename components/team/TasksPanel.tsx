@@ -487,11 +487,15 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 )}
               </div>
               {t.description && (
-                <p style={{ fontSize: 13, color: '#6B7280', margin: '5px 0 0 19px', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                  {t.description.length > 140 && manage ? t.description.slice(0, 140) + '…' : t.description}
+                <p style={{ fontSize: 13, color: t.source === 'ueberbuchung' ? '#374151' : '#6B7280', margin: '5px 0 0 19px', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                  {/* §274: Überbuchungs-Aufgaben zeigen IMMER alle Daten beider Buchungen (kein 140-Zeichen-Schnitt) */}
+                  {t.description.length > 140 && manage && t.source !== 'ueberbuchung' ? t.description.slice(0, 140) + '…' : t.description}
                 </p>
               )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, marginLeft: 19, alignItems: 'center' }}>
+                {t.source === 'ueberbuchung' && (
+                  <span style={{ ...CHIP, background: '#FEE2E2', color: '#B91C1C', fontWeight: 700 }}>🚨 Überbuchung</span>
+                )}
                 <span style={CHIP}>{scopeChip(t)}</span>
                 {manage && (
                   <span style={{ ...CHIP, color: '#6B7280' }}>

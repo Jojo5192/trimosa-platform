@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { stripe } from '@/lib/stripe'
 import { createReservation, sendMessageToGuest } from '@/lib/smoobu'
+import { claimSmoobuPush, releaseSmoobuPush } from '@/lib/smoobu-claim'
 import Link from 'next/link'
 
 export default async function BookingSuccessPage({ searchParams }: { searchParams: Promise<{ session_id?: string }> }) {
@@ -70,7 +71,14 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
             shouldPush: shouldPushToSmoobu,
           })
 
-          if (shouldPushToSmoobu && l?.smoobu_id) {
+          // §274: Claim gegen den Stripe-Webhook — der pusht parallel; nur
+          // EIN Pfad darf (Doppel-Push-Race, Pisulla-Fall 7.9.). 'taken' =
+          // der Webhook ist gerade dran oder hat es schon erledigt.
+          const successClaim = shouldPushToSmoobu && l?.smoobu_id ? await claimSmoobuPush(bookingId) : 'taken'
+          if (shouldPushToSmoobu && successClaim === 'taken') {
+            console.log('[SuccessPage] Smoobu push skipped — Webhook hat den Claim:', bookingId)
+          }
+          if (shouldPushToSmoobu && l?.smoobu_id && successClaim !== 'taken') {
             try {
               // Load host's Smoobu credentials (per-host support)
               const { data: hostSmoobu } = await supabaseAdmin
@@ -214,6 +222,7 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
               const errMsg = err instanceof Error ? err.message : String(err)
               console.error('[SuccessPage] ❌ Smoobu push FAILED:', errMsg)
               smoobuError = errMsg
+              if (successClaim === 'claimed') await releaseSmoobuPush(bookingId).catch(() => {})
             }
           } else {
             // Smoobu already synced or not needed — just find the conversation
