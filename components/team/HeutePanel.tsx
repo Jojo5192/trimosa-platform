@@ -22,7 +22,14 @@ type Thread = {
 type Task = {
   id: string; title: string; prio: 'hoch' | 'mittel' | 'niedrig'; status: string
   due_date: string | null; listing_id: string | null; location_group: string | null
+  /** manuell | ki_nachricht | ki_bewertung | anruf | qs | system (Migration 20260716) */
+  source?: string | null
 }
+/** Pascal 9.9. (Chefsache): „Sofort" = nur das, was die KI als unmittelbar erkannt hat —
+ *  Rückrufe (anruf) und dringende Gast-Anliegen aus dem Chat (ki_nachricht, Prio hoch).
+ *  Von Hand angelegte Prio-hoch-Aufgaben ohne Termin gehören NICHT auf Heute. */
+const istSofort = (t: Task) => (t.status === 'offen' || t.status === 'in_arbeit')
+  && (t.source === 'anruf' || (t.source === 'ki_nachricht' && t.prio === 'hoch'))
 
 const SNAP_KEY = 'trimosa-heute-v1'
 const CODE_KEY = 'trimosa-door-code'
@@ -206,14 +213,13 @@ export default function HeutePanel({ role, visible, onCount }: {
 
   const d = data[tag]
   const istHeute = tag === heute
+  // Pascal 9.9.: „Aufgaben heute" NUR mit Termin genau an diesem Tag (Überfälliges bleibt im
+  // Aufgaben-Reiter), „Sofort" nur KI-erkannte Unmittelbares — nichts steht doppelt.
   const dayTasks = useMemo(() => {
     const open = tasks.filter((t) => t.status === 'offen' || t.status === 'in_arbeit')
-    const list = istHeute
-      ? open.filter((t) => !!t.due_date && t.due_date <= heute)
-      : open.filter((t) => t.due_date === tag)
-    return list.sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
-  }, [tasks, istHeute, heute, tag])
-  const sofort = useMemo(() => istHeute ? tasks.filter((t) => t.prio === 'hoch' && (t.status === 'offen' || t.status === 'in_arbeit')) : [], [tasks, istHeute])
+    return open.filter((t) => t.due_date === tag).sort((a, b) => a.title.localeCompare(b.title, 'de'))
+  }, [tasks, tag])
+  const sofort = useMemo(() => istHeute ? tasks.filter((t) => istSofort(t) && t.due_date !== heute) : [], [tasks, istHeute, heute])
   const warten = useMemo(() => role === 'team' && istHeute
     ? threads.filter((t) => t.lastSender === 'guest' && !t.noReplyNeeded && !t.phoneResolved)
       .sort((a, b) => String(b.lastMessageAt ?? '').localeCompare(String(a.lastMessageAt ?? '')))
@@ -222,9 +228,9 @@ export default function HeutePanel({ role, visible, onCount }: {
   // Roter Zähler am Reiter: Anreisen heute + Sofort-Aufgaben + heute geplante
   const heuteData = data[heute]
   useEffect(() => {
-    const planned = tasks.filter((t) => (t.status === 'offen' || t.status === 'in_arbeit') && !!t.due_date && t.due_date <= heute)
-    const s = tasks.filter((t) => t.prio === 'hoch' && (t.status === 'offen' || t.status === 'in_arbeit'))
-    onCount((heuteData?.anreisen.length ?? 0) + s.length + planned.filter((t) => !s.includes(t)).length)
+    const planned = tasks.filter((t) => (t.status === 'offen' || t.status === 'in_arbeit') && t.due_date === heute)
+    const s = tasks.filter((t) => istSofort(t) && t.due_date !== heute)
+    onCount((heuteData?.anreisen.length ?? 0) + s.length + planned.length)
   }, [heuteData, tasks, heute, onCount])
 
   /* Ziele öffnen */
