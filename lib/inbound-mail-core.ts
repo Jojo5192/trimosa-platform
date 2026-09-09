@@ -630,6 +630,14 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   if (typeof parsed.erwachsene === 'number' && parsed.erwachsene > 0 && (booking.adults == null || booking.adults <= 1)) upd.adults = parsed.erwachsene
   if (typeof parsed.kinder === 'number' && (booking.children == null || booking.children === 0) && parsed.kinder > 0) upd.children = parsed.kinder
   if (typeof parsed.email === 'string' && parsed.email.includes('@') && !booking.guest_email) upd.guest_email = parsed.email
+  // §293 (Pascal): VOLLER Name aus der Buchungsmail — Portale liefern oft nur den Vornamen
+  const fullName = String(parsed.gast_name ?? '').replace(/\s+/g, ' ').trim()
+  const oursName = (booking.guest_name ?? '').trim()
+  const nameParts = fullName.split(' ')
+  if (nameParts.length >= 2 && fullName.length <= 80
+    && (!oursName || (oursName.split(' ').length === 1 && fullName.toLowerCase().startsWith(oursName.toLowerCase())))) {
+    upd.guest_name = fullName
+  }
   if (Object.keys(upd).length) {
     await supabaseAdmin.from('bookings').update(upd).eq('id', booking.id)
   }
@@ -643,6 +651,7 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     if (typeof parsed.kinder === 'number' && parsed.kinder >= 0) fields.children = parsed.kinder
     if (typeof parsed.telefon === 'string' && parsed.telefon.length > 5) fields.phone = parsed.telefon
     if (typeof parsed.email === 'string' && parsed.email.includes('@')) fields.email = parsed.email
+    if (typeof upd.guest_name === 'string') { fields.firstname = nameParts[0]; fields.lastname = nameParts.slice(1).join(' ') }
     smoobu = Object.keys(fields).length
       ? await updateReservation(Number(booking.smoobu_reservation_id), fields)
       : 'nichts zu übertragen'
@@ -658,4 +667,44 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     portal: parsed.portal, preis, nachricht: savedMsg,
   })
   return { ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok' }
+}
+
+/**
+ * §293 (Pascal 9.9.): FeWo-direkt-Buchungen, die 2 h nach Anlage noch ohne E-Mail (= ohne Chat-Kanal)
+ * sind, bekommen EINE offene Aufgabe „Gastdaten fehlen" fürs Team — statt still leer zu bleiben.
+ * Idempotent über source='system' + source_ref='fewo-daten:<booking>'. Läuft am Ende jedes Mail-Scans.
+ */
+export async function ensureFewoDataTasks(): Promise<number> {
+  const now = Date.now()
+  const { data: bks } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name, guest_email, check_in, check_out, channel, created_at, listing_id, listings(title)')
+    .eq('status', 'confirmed')
+    .gte('created_at', new Date(now - 7 * 86400_000).toISOString())
+    .lte('created_at', new Date(now - 2 * 3600_000).toISOString())
+    .gte('check_out', new Date(now).toISOString().slice(0, 10))
+    .limit(200)
+  const cands = ((bks ?? []) as { id: string; guest_name: string | null; guest_email: string | null; check_in: string; check_out: string; channel: string | null; listing_id: string | null; listings: { title: string } | { title: string }[] | null }[])
+    .filter((b) => /fewo|homeaway|vrbo/i.test(b.channel ?? '') && !(b.guest_email ?? '').includes('@'))
+  let created = 0
+  for (const b of cands) {
+    const ref = `fewo-daten:${b.id}`
+    const { data: existing } = await supabaseAdmin
+      .from('tasks').select('id').eq('source', 'system').eq('source_ref', ref).limit(1).maybeSingle()
+    if (existing?.id) continue
+    const title = ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? 'Wohnung'
+    const dd = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`
+    const { error } = await supabaseAdmin.from('tasks').insert({
+      title: `📮 FeWo-direkt: Gastdaten fehlen — ${b.guest_name || 'Gast'} · ${title} · ${dd(b.check_in)}–${dd(b.check_out)}`.slice(0, 120),
+      description: `Die FeWo-direkt-Buchung hat bei uns keine E-Mail-Adresse (und meist keine Personenzahl/keinen Nachnamen) — Smoobu hat sie nicht geliefert und die Buchungsbestätigungs-Mail wurde bislang keiner Buchung zugeordnet. Ohne E-Mail gehen KEINE Auto-Nachrichten (Anreise-Infos, Früh-Check-in) raus.\n\nBitte prüfen: Liegt die Bestätigungsmail („Sofortbuchung von …" / „Reservierung für …") in fewo@trimosa.de? Dann wird sie beim nächsten Mail-Scan automatisch zugeordnet. Sonst Gastdaten in Smoobu nachtragen oder den Gast über den FeWo-direkt-Messenger anschreiben.\n\nBuchung: ${b.id}`,
+      source: 'system', source_ref: ref,
+      listing_id: b.listing_id, is_general: !b.listing_id,
+      prio: 'hoch', status: 'offen', visibility: 'team',
+      due_date: new Date(now).toISOString().slice(0, 10),
+    })
+    if (error) console.error('[inbound-mail] fewo-daten-aufgabe:', error.message)
+    else created++
+  }
+  if (created) console.log('[inbound-mail] FeWo-Gastdaten-Aufgaben angelegt:', created)
+  return created
 }

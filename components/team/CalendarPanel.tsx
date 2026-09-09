@@ -391,7 +391,7 @@ export default function CalendarPanel() {
           <OccupancyGrid stays={stays} listings={listings} />
           <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '10px 4px 0', lineHeight: 1.5 }}>
             Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
-            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: 'var(--tm-blue)', fontWeight: 700 }}>Booking</span> · <span style={{ color: 'var(--tm-purple)', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
+            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: 'var(--tm-blue)', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#0EA5E9', fontWeight: 700 }}>FeWo-direkt</span> · <span style={{ color: 'var(--tm-purple)', fontWeight: 700 }}>HomeToGo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
           </p>
           {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
           <KennzahlenCard />

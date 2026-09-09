@@ -16,7 +16,7 @@
  * Outlook-Regeln entfallen.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { processInboundMail, stripHtml } from '@/lib/inbound-mail-core'
+import { processInboundMail, stripHtml, ensureFewoDataTasks } from '@/lib/inbound-mail-core'
 
 const GRAPH = 'https://graph.microsoft.com/v1.0'
 
@@ -64,6 +64,9 @@ export interface GraphMailState {
   mailboxes: string[]
   cursor: Record<string, string>
   processed: string[]
+  /** §293: Buchungsmails, zu denen es (noch) keine Buchung gab (Wettlauf mit dem Smoobu-Import) —
+   *  werden bis `until` bei jedem Lauf erneut geprüft */
+  pending: { id: string; mailbox: string; until: string; subject: string }[]
 }
 
 export async function getGraphMailState(): Promise<GraphMailState> {
@@ -75,12 +78,13 @@ export async function getGraphMailState(): Promise<GraphMailState> {
     mailboxes: Array.isArray(v.mailboxes) ? v.mailboxes.map(String) : [],
     cursor: (v.cursor && typeof v.cursor === 'object') ? v.cursor as Record<string, string> : {},
     processed: Array.isArray(v.processed) ? v.processed.map(String) : [],
+    pending: Array.isArray(v.pending) ? (v.pending as GraphMailState['pending']).filter((x) => x && typeof x.id === 'string') : [],
   }
 }
 
 export async function saveGraphMailState(s: GraphMailState): Promise<void> {
   await supabaseAdmin.from('app_settings').upsert(
-    { key: 'graph_mail', value: { ...s, processed: s.processed.slice(-500) } },
+    { key: 'graph_mail', value: { ...s, processed: s.processed.slice(-500), pending: (s.pending ?? []).slice(-50) } },
     { onConflict: 'key' },
   )
 }
@@ -110,6 +114,16 @@ export async function listInboxMessages(mailbox: string, sinceIso: string, top =
     url = maxTotal > 0 && out.length < maxTotal ? data['@odata.nextLink'] ?? null : null
   }
   return maxTotal > 0 ? out.slice(0, maxTotal) : out
+}
+
+/** §293: eine einzelne Mail erneut holen (für die pending-Wiederholung). */
+async function getMessage(mailbox: string, messageId: string): Promise<GraphMsg | null> {
+  try {
+    return await graphJson<GraphMsg>(`/users/${encodeURIComponent(mailbox)}/messages/${messageId}?$select=id,subject,receivedDateTime,hasAttachments,from,replyTo,body`)
+  } catch (e) {
+    console.error('[graph-mail] Einzelabruf:', String(e).slice(0, 160))
+    return null
+  }
 }
 
 async function listAttachments(mailbox: string, messageId: string): Promise<Record<string, unknown>[]> {
@@ -148,6 +162,36 @@ export interface MailScanReport {
  * eigene Absender (@trimosa.de) werden übersprungen — sonst würde der
  * Poller unsere eigenen System-Mails klassifizieren.
  */
+/** Eine Mail durch die Pipeline schieben (Teil des Scans; §293 auch für die pending-Wiederholung). */
+async function handleMessage(m: GraphMsg, mailbox: string, state: GraphMailState, report: MailScanReport, opts: { force?: boolean; belegeOnly?: boolean }): Promise<Record<string, unknown> | null> {
+  const from = fromString(m)
+  const subject = String(m.subject ?? '')
+  // Eigene System-/Team-Mails überspringen
+  if (/@trimosa\.de|@olkiifalon\.resend\.app/i.test(from)) {
+    if (!opts.belegeOnly && !state.processed.includes(m.id)) state.processed.push(m.id)
+    report.uebersprungen++
+    return null
+  }
+  const bodyRaw = String(m.body?.content ?? '')
+  const rawText = m.body?.contentType === 'html' ? stripHtml(bodyRaw) : bodyRaw
+  // Relay-Ernte (§128) direkt aus dem Graph-replyTo — besser als jede Regel
+  const replyAddrs = (m.replyTo ?? []).map((r) => r.emailAddress?.address ?? '').join(' ')
+  const relayMatch = replyAddrs.match(/[\w.+-]+@messages\.homeaway\.com/i)
+  const relayEmail = relayMatch && !/^(sender|no-?reply)@/i.test(relayMatch[0]) ? relayMatch[0] : ''
+  const attachments = m.hasAttachments ? await listAttachments(mailbox, m.id) : []
+  try {
+    const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id }, { belegeOnly: opts.belegeOnly === true })
+    report.verarbeitet.push({
+      mailbox, from: from.slice(0, 60), subject: subject.slice(0, 90),
+      ergebnis: String(result.skipped ?? (result.ok ? Object.keys(result).filter((k) => k !== 'ok').join('+') || 'ok' : result.error ?? 'fehler')).slice(0, 120),
+    })
+    return result
+  } catch (e) {
+    report.fehler.push({ mailbox, error: `${subject.slice(0, 60)}: ${String(e).slice(0, 150)}` })
+    return null
+  }
+}
+
 export async function runMailScan(opts: { hours?: number; force?: boolean; belegeOnly?: boolean; sinceIso?: string; untilIso?: string } = {}): Promise<MailScanReport> {
   const state = await getGraphMailState()
   const report: MailScanReport = {
@@ -156,6 +200,20 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
   }
   if (!graphConfigured()) { report.fehler.push({ mailbox: '—', error: 'MS_TENANT_ID/MS_CLIENT_ID/MS_CLIENT_SECRET fehlen (Vercel-Env).' }); return report }
   if (!state.mailboxes.length) { report.fehler.push({ mailbox: '—', error: 'Keine Postfächer konfiguriert (action mailboxes).' }); return report }
+
+  // §293: wartende Buchungsmails erneut versuchen (Buchung inzwischen da?)
+  if (!opts.belegeOnly && state.pending.length) {
+    const keep: GraphMailState['pending'] = []
+    for (const pend of state.pending) {
+      if (pend.until < new Date().toISOString()) { console.log('[mail-scan] pending verfallen:', pend.subject); continue }
+      const m = await getMessage(pend.mailbox, pend.id)
+      if (!m) { keep.push(pend); continue }
+      const result = await handleMessage(m, pend.mailbox, state, report, opts)
+      if (result && result.skipped === 'keine passende Buchung gefunden') keep.push(pend)
+      else console.log('[mail-scan] pending erledigt:', pend.subject, result?.skipped ?? 'ok')
+    }
+    state.pending = keep
+  }
 
   const fallbackHours = Math.min(Math.max(Number(opts.hours) || 24, 1), 24 * 45)
   for (const mailbox of state.mailboxes) {
@@ -174,34 +232,16 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
         // force = Kalibrier-Rescan: bereits verarbeitete Mails erneut durch
         // die Pipeline (alle Pfade sind idempotent — Content-Dedupe etc.)
         if (!opts.belegeOnly && !opts.force && state.processed.includes(m.id)) { report.uebersprungen++; continue }
-        const from = fromString(m)
-        const subject = String(m.subject ?? '')
-        // Eigene System-/Team-Mails überspringen
-        if (/@trimosa\.de|@olkiifalon\.resend\.app/i.test(from)) {
-          if (!opts.belegeOnly) state.processed.push(m.id)
-          report.uebersprungen++
-          continue
-        }
-        const bodyRaw = String(m.body?.content ?? '')
-        const rawText = m.body?.contentType === 'html' ? stripHtml(bodyRaw) : bodyRaw
-        // Relay-Ernte (§128) direkt aus dem Graph-replyTo — besser als jede Regel
-        const replyAddrs = (m.replyTo ?? []).map((r) => r.emailAddress?.address ?? '').join(' ')
-        const relayMatch = replyAddrs.match(/[\w.+-]+@messages\.homeaway\.com/i)
-        const relayEmail = relayMatch && !/^(sender|no-?reply)@/i.test(relayMatch[0]) ? relayMatch[0] : ''
-        const attachments = m.hasAttachments ? await listAttachments(mailbox, m.id) : []
-        try {
-          const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id }, { belegeOnly: opts.belegeOnly === true })
-          report.verarbeitet.push({
-            mailbox, from: from.slice(0, 60), subject: subject.slice(0, 90),
-            ergebnis: String(result.skipped ?? (result.ok ? Object.keys(result).filter((k) => k !== 'ok').join('+') || 'ok' : result.error ?? 'fehler')).slice(0, 120),
-          })
-        } catch (e) {
-          report.fehler.push({ mailbox, error: `${subject.slice(0, 60)}: ${String(e).slice(0, 150)}` })
-        }
+        const result = await handleMessage(m, mailbox, state, report, opts)
         if (!opts.belegeOnly) {
           if (!state.processed.includes(m.id)) state.processed.push(m.id)
           if (m.receivedDateTime && (!state.cursor[mailbox] || m.receivedDateTime > state.cursor[mailbox])) {
             state.cursor[mailbox] = m.receivedDateTime
+          }
+          // §293: Buchungsmail ohne passende Buchung (Smoobu-Import kommt oft Minuten bis Stunden
+          // später) → bis 72 h bei jedem Lauf erneut prüfen statt still zu vergessen
+          if (result && result.skipped === 'keine passende Buchung gefunden' && !state.pending.some((x) => x.id === m.id)) {
+            state.pending.push({ id: m.id, mailbox, until: new Date(Date.now() + 72 * 3600_000).toISOString(), subject: String(m.subject ?? '').slice(0, 90) })
           }
         }
       }
@@ -211,7 +251,11 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
       report.fehler.push({ mailbox, error: String(e instanceof Error ? e.message : e).slice(0, 250) })
     }
   }
-  if (!opts.belegeOnly) await saveGraphMailState(state)
+  if (!opts.belegeOnly) {
+    await saveGraphMailState(state)
+    // §293: FeWo-direkt-Buchungen, die nach 2 h noch ohne Gastdaten sind → Aufgabe fürs Team
+    try { await ensureFewoDataTasks() } catch (e) { console.error('[mail-scan] fewo-daten-aufgaben:', String(e).slice(0, 160)) }
+  }
   // Zusammenfassung ins Function-Log — der lange Scan überlebt kein
   // Client-Timeout, das Log ist dann die einzige Report-Quelle
   console.log('[mail-scan] Report:', JSON.stringify({

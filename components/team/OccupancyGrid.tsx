@@ -37,12 +37,13 @@ function dayDiff(a: string, b: string): number {
 function channelColor(channel?: string | null): string {
   const c = (channel ?? '').toLowerCase()
   if (c.includes('airbnb')) return '#E0565B'
-  if (c.includes('fewo') || c.includes('vrbo') || c.includes('homeaway')) return '#8B5CF6'
+  // Pascal 9.9. 15:29: FeWo-direkt hellblau, HomeToGo lila (vorher umgekehrt — wirkte, als fehlten HomeToGo-Buchungen)
+  if (c.includes('fewo') || c.includes('vrbo') || c.includes('homeaway')) return '#0EA5E9'
   // VOR dem booking-Match: „Direct booking" (Smoobu-Direktkanal) ist Gold,
   // der Substring „booking" färbte die Balken sonst fälschlich navy
   if (c.includes('direct') || c.includes('direkt')) return 'var(--gold, #AE8D2D)'
   if (c.includes('booking')) return '#1A4FA0'
-  if (c.includes('hometogo')) return '#0EA5E9'
+  if (c.includes('hometogo')) return '#8B5CF6'
   return 'var(--gold, #AE8D2D)'
 }
 

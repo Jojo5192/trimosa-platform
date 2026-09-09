@@ -112,6 +112,11 @@ export default function KennzahlenCard() {
   const [showInfo, setShowInfo] = useState(false)
   const [stamm, setStamm] = useState<Stammgaeste | null>(null)
   const [stammAlle, setStammAlle] = useState(false)
+  // Pascal 9.9. 15:23: Stammgäste standardmäßig eingeklappt, kleiner Pfeil, Zustand gemerkt
+  const [stammOpen, setStammOpen] = useState(false)
+  useEffect(() => {
+    try { if (localStorage.getItem('trimosa-kz-stamm') === '1') setStammOpen(true) } catch { /* egal */ }
+  }, [])
   const stammLoaded = useRef(false)
 
   useEffect(() => {
@@ -273,10 +278,11 @@ export default function KennzahlenCard() {
           {/* ⭐ §290 Stammgäste (Dominik 9.9.): wer kam 2×, 3×, 4+× */}
           {stamm && (
             <>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text, #171a1f)' }}>⭐ Stammgäste</span>
+              <button type="button" onClick={() => { haptic(); setStammOpen((v) => { try { localStorage.setItem('trimosa-kz-stamm', v ? '0' : '1') } catch { /* egal */ } return !v }) }} style={{ width: '100%', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 18, marginBottom: stammOpen ? 8 : 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text, #171a1f)' }}><span style={{ display: 'inline-block', width: 14, fontSize: 11, color: 'var(--tm-accent-dark, #8A7020)' }}>{stammOpen ? '▾' : '▸'}</span>⭐ Stammgäste</span>
                 <span className="tm-num" style={{ fontSize: 11.5, color: 'var(--tm-muted2, #959ca7)' }}>{stamm.wiederkehrer} von {stamm.gesamtGaeste} Gästen · {stamm.quote.toLocaleString('de-DE')} %</span>
-              </div>
+              </button>
+              {stammOpen && (<>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 <Tile num={stamm.zwei} format={(n) => String(Math.round(n))} label="2× gebucht" />
                 <Tile num={stamm.drei} format={(n) => String(Math.round(n))} label="3× gebucht" />
@@ -305,6 +311,7 @@ export default function KennzahlenCard() {
               <p style={{ margin: '8px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--tm-muted2, #959ca7)' }}>
                 Zusammengeführt über Website-Konto, echte E-Mail oder vollen Namen. Gäste nur mit Vornamen (oft Airbnb) sind nicht als Wiederkehrer erkennbar.
               </p>
+              </>)}
             </>
           )}
 
