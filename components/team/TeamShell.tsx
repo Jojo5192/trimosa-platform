@@ -633,7 +633,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
             <div className="tm-toast" role="status" style={{
               position: 'absolute', left: '50%', zIndex: 60,
               bottom: navHidden || isDesktop ? 'calc(20px + env(safe-area-inset-bottom))' : 'calc(var(--tm-nav-pad) + 6px)',
-              background: '#171a1f', color: '#fff', fontSize: 13, fontWeight: 600,
+              background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 13, fontWeight: 600,
               borderRadius: 999, padding: '10px 16px', boxShadow: 'var(--tm-shadow-float)',
               whiteSpace: 'nowrap', maxWidth: 'calc(100% - 32px)', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>{toast}</div>

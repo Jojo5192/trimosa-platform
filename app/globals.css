@@ -730,6 +730,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-nav-glass: rgba(247, 248, 250, 0.9);
   /* Primär-Knöpfe (Senden, Speichern): Navy hell, im Dunkeln aufgehellt */
   --tm-navy: #12222E;
+  /* Semantik-Blau/-Lila (Links, KI, FeWo) — im Dunkeln aufgehellt */
+  --tm-blue: #1d4ed8;
+  --tm-purple: #6d28d9;
   --tm-r-card: 18px;
   --tm-shadow: 0 1px 2px rgba(23, 26, 31, 0.04), 0 2px 8px rgba(23, 26, 31, 0.04);
   --tm-shadow-float: 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06);
@@ -754,6 +757,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-glass-soft: rgba(15, 17, 20, 0.55);
   --tm-nav-glass: rgba(22, 25, 29, 0.92);
   --tm-navy: #2b4257;
+  --tm-blue: #8ab4ff;
+  --tm-purple: #b39cff;
   --tm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
   --tm-shadow-float: 0 10px 30px rgba(0, 0, 0, 0.5);
   color-scheme: dark;

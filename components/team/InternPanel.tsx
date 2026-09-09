@@ -649,7 +649,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           </div>
           <button onClick={create} disabled={!name.trim() || saving} style={{
             width: '100%', padding: '13px 0', borderRadius: 999, border: 'none',
-            background: name.trim() && !saving ? 'var(--tm-navy)' : '#E5E1D6',
+            background: name.trim() && !saving ? 'var(--tm-navy)' : 'var(--tm-surface2)',
             color: name.trim() && !saving ? '#fff' : 'var(--tm-muted)', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
           }}>{saving ? 'Erstellt…' : 'Gruppe erstellen'}</button>
         </div>
@@ -697,7 +697,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                 fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
                 border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, var(--tm-line))'}`,
                 background: activeF ? 'var(--tm-text, #171a1f)' : 'var(--tm-card, #fff)',
-                color: activeF ? '#fff' : 'var(--tm-muted, #646b76)',
+                color: activeF ? 'var(--tm-bg, #f3f4f6)' : 'var(--tm-muted, #646b76)',
               }}>{f.label}{f.count ? ` · ${f.count}` : ''}</button>
             )
           })}
@@ -730,7 +730,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           {/* §277 Gruppen-Quadrat in neutraler Teamfarbe + Mitglieder-Zähler als Gruppen-Symbol */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
-            <span title={`${c.members.length} Mitglieder`} style={{ position: 'absolute', right: -4, bottom: -4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: 'var(--tm-text, #171a1f)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px var(--tm-card, #fff)' }}>{c.members.length}</span>
+            <span title={`${c.members.length} Mitglieder`} style={{ position: 'absolute', right: -4, bottom: -4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: 'var(--tm-text, #171a1f)', color: 'var(--tm-bg, #f3f4f6)', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px var(--tm-card, #fff)' }}>{c.members.length}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -814,7 +814,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         {grouped.map((g) => (
           <div key={g.day}>
             <div style={{ textAlign: 'center', margin: '10px 0' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--tm-muted)', background: '#F5F3EE', borderRadius: 999, padding: '3px 11px' }}>{g.day}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '3px 11px' }}>{g.day}</span>
             </div>
             {g.items.map((m, idx) => {
               const mine = m.senderId === userId
@@ -888,7 +888,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                     )}
                     <div style={{
                       borderRadius: radius, padding: m.attachmentUrl && !m.content ? 4 : '8px 13px',
-                      background: mine ? 'var(--tm-navy)' : '#E9E9EB',
+                      background: mine ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: mine ? '#fff' : 'var(--tm-text)', overflow: 'hidden', position: 'relative',
                     }}>
                       {/* ↩︎ Zitat der beantworteten Nachricht — Tap springt zum Original */}
@@ -1273,7 +1273,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button onClick={saveMembers} disabled={saving || selected.size === 0} style={{
                   flex: 1, padding: '10px 0', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
-                  background: selected.size ? 'var(--tm-navy)' : '#E5E1D6',
+                  background: selected.size ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                   color: selected.size ? '#fff' : 'var(--tm-muted)', cursor: 'pointer',
                 }}>{saving ? 'Speichert…' : 'Speichern'}</button>
                 <button onClick={() => { setEditMembers(false); setSelected(new Set(chat.members.map((m) => m.id))) }} style={{

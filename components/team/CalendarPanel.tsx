@@ -296,7 +296,7 @@ export default function CalendarPanel() {
                   {e.wechsel && (
                     <span style={{
                       marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
-                      background: 'var(--tm-surface2)', color: '#6D28D9', verticalAlign: 'middle',
+                      background: 'var(--tm-surface2)', color: 'var(--tm-purple)', verticalAlign: 'middle',
                     }}>WECHSEL</span>
                   )}
                 </p>
@@ -394,7 +394,7 @@ export default function CalendarPanel() {
           <OccupancyGrid stays={stays} listings={listings} />
           <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '10px 4px 0', lineHeight: 1.5 }}>
             Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
-            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: '#1A4FA0', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#8B5CF6', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
+            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: 'var(--tm-blue)', fontWeight: 700 }}>Booking</span> · <span style={{ color: 'var(--tm-purple)', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
           </p>
           {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
           <KennzahlenCard />
@@ -513,7 +513,7 @@ export default function CalendarPanel() {
           {/* 🧠 Planungs-Vorschläge: kommende Frei-Fenster mit passenden Aufgaben */}
           {planningVisible.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 13, fontWeight: 800, color: '#0369A1', margin: '0 0 8px' }}>🧠 Planungs-Vorschläge</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-blue)', margin: '0 0 8px' }}>🧠 Planungs-Vorschläge</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {planningVisible.map((p) => (
                   <div key={p.id} style={{
@@ -522,7 +522,7 @@ export default function CalendarPanel() {
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>{p.title}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#0369A1', flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-blue)', flexShrink: 0 }}>
                         {p.slot.nights != null
                           ? `Fenster ${fmtShort(p.slot.from)}–${fmtShort(p.slot.to!)} · ${p.slot.nights} ${p.slot.nights === 1 ? 'Nacht' : 'Nächte'}`
                           : `frei ab ${fmtShort(p.slot.from)} — nichts geplant`}

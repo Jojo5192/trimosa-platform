@@ -17,9 +17,9 @@ interface Point { listingId: string; source: string; score: number; count: numbe
 const SOURCES: { id: string; label: string; color: string }[] = [
   { id: 'overall', label: 'Gesamt', color: 'var(--tm-accent)' },
   { id: 'airbnb', label: 'Airbnb', color: '#E0565B' },
-  { id: 'booking', label: 'Booking', color: '#2E7CF6' },
+  { id: 'booking', label: 'Booking', color: 'var(--tm-blue)' },
   { id: 'google', label: 'Google', color: '#34A853' },
-  { id: 'vrbo', label: 'FeWo', color: '#8B5CF6' },
+  { id: 'vrbo', label: 'FeWo', color: 'var(--tm-purple)' },
 ]
 const RANGES: { id: number; label: string }[] = [
   { id: 30, label: '30 Tage' },

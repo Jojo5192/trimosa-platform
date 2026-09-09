@@ -76,7 +76,7 @@ const PRIO_META: Record<string, { label: string; color: string; bg: string }> = 
   niedrig: { label: 'Niedrig', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
 }
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  vorschlag: { label: 'Vorschlag', color: '#6D28D9', bg: 'rgba(109,40,217,0.10)' },
+  vorschlag: { label: 'Vorschlag', color: 'var(--tm-purple)', bg: 'rgba(109,40,217,0.10)' },
   offen: { label: 'Offen', color: '#5B5E66', bg: 'var(--tm-surface2)' },
   in_arbeit: { label: 'In Arbeit', color: 'var(--tm-red)', bg: 'rgba(255,159,10,0.15)' },
   erledigt: { label: 'Erledigt', color: '#248A3D', bg: 'rgba(52,199,89,0.15)' },
@@ -402,12 +402,12 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
       {apiRole === 'admin' && filter === 'vorschlaege' && (
         <div style={{ padding: '12px 16px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: suggestions.length ? 8 : 0 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#6D28D9', margin: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-purple)', margin: 0 }}>
               🤖 Vorschläge{suggestions.length ? ` (${suggestions.length})` : ''}
             </p>
             <button onClick={analyze} disabled={analyzing} style={{
               padding: '5px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
-              background: 'var(--tm-surface2)', color: '#6D28D9', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
+              background: 'var(--tm-surface2)', color: 'var(--tm-purple)', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
             }}>{analyzing ? 'Analysiere… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
           </div>
           {aiNote && <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: '0 0 8px' }}>{aiNote}</p>}
@@ -1286,7 +1286,7 @@ function CallCard({ task, onDone, onError }: {
           Leitplanke §175: startet NUR über diesen Klick, nie automatisch. */}
       {callOpen && (
         <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(29,78,216,0.3)' }}>
-          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', margin: '0 0 7px' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--tm-blue)', margin: '0 0 7px' }}>
             🤖 Was soll die KI dem Anrufer ausrichten? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(sie ruft {phone} an)</span>
           </p>
           {callResult ? (

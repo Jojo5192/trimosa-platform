@@ -169,7 +169,7 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
                           disabled={busy}
                           style={{
                             border: 'none', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 700,
-                            background: busy ? '#E5E5EA' : 'var(--tm-navy)', color: busy ? 'var(--tm-muted)' : '#fff', cursor: busy ? 'default' : 'pointer',
+                            background: busy ? 'var(--tm-surface2)' : 'var(--tm-navy)', color: busy ? 'var(--tm-muted)' : '#fff', cursor: busy ? 'default' : 'pointer',
                           }}>
                           {busy ? 'Öffne…' : 'Aufschließen'}
                         </button>

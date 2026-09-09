@@ -33,8 +33,8 @@ const STATE_META: Record<string, { label: string; bg: string; color: string }> =
   stopping: { label: 'Stoppt…', bg: 'var(--tm-yellow-soft)', color: 'var(--tm-yellow)' },
   completed: { label: '✓ Beendet', bg: 'var(--tm-surface2)', color: 'var(--tm-muted)' },
   stopped: { label: '✓ Beendet', bg: 'var(--tm-surface2)', color: 'var(--tm-muted)' },
-  scheduled: { label: '🕐 Geplant', bg: 'var(--tm-surface2)', color: '#3B5BDB' },
-  reserved: { label: 'Reserviert', bg: 'var(--tm-surface2)', color: '#3B5BDB' },
+  scheduled: { label: '🕐 Geplant', bg: 'var(--tm-surface2)', color: 'var(--tm-blue)' },
+  reserved: { label: 'Reserviert', bg: 'var(--tm-surface2)', color: 'var(--tm-blue)' },
 }
 
 function fmtWhen(iso: string | null): string {

@@ -555,7 +555,7 @@ export default function OffenPanel({ visible, onCount }: {
                     <div style={{
                       maxWidth: '85%', padding: '8px 12px', borderRadius: 15, fontSize: 13, lineHeight: 1.5,
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      background: m.ours ? 'var(--tm-navy)' : '#E9E9EB',
+                      background: m.ours ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: m.ours ? '#fff' : 'var(--tm-text)',
                     }}>
                       {m.text}
@@ -585,7 +585,7 @@ export default function OffenPanel({ visible, onCount }: {
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" onClick={send} disabled={sending || !draft.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
-                      background: draft.trim() ? 'var(--tm-navy)' : '#E5E1D6',
+                      background: draft.trim() ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{sending ? 'Sendet…' : current.guestLang && current.guestLang !== 'de' ? `Senden (übersetzt ${LANG_FLAGS[current.guestLang] ?? ''})` : 'Senden'}</button>
                     <button type="button" onClick={suggest} disabled={aiBusy} title="Neuen Vorschlag" style={{

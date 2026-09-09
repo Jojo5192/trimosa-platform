@@ -115,7 +115,7 @@ export default function HeutePanel({ role, visible, onCount }: {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [storedCode, setStoredCode] = useState<{ code: string; listings: string[]; firstName: string | null } | null>(null)
+  const [storedCode, setStoredCode] = useState<{ code: string; listings: string[]; firstName: string | null; roleLabel?: string | null } | null>(null)
   const lastLoad = useRef<Record<string, number>>({})
   const inflight = useRef<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -164,7 +164,7 @@ export default function HeutePanel({ role, visible, onCount }: {
       if (t === d.heute) {
         try {
           localStorage.setItem(SNAP_KEY, JSON.stringify({ data: d, tasks: (tj.tasks ?? []).slice(0, 80), threads: (ij.threads ?? []).slice(0, 60) }))
-          if (d.doorCode) localStorage.setItem(CODE_KEY, JSON.stringify({ ...d.doorCode, firstName: d.firstName }))
+          if (d.doorCode) localStorage.setItem(CODE_KEY, JSON.stringify({ ...d.doorCode, firstName: d.firstName, roleLabel: d.roleLabel }))
           else localStorage.removeItem(CODE_KEY)
         } catch { /* quota */ }
       }
@@ -239,6 +239,7 @@ export default function HeutePanel({ role, visible, onCount }: {
 
   const code = d?.doorCode ?? heuteData?.doorCode ?? (storedCode ? { code: storedCode.code, listings: storedCode.listings } : null)
   const firstName = d?.firstName ?? heuteData?.firstName ?? storedCode?.firstName ?? null
+  const roleLabel = d?.roleLabel ?? heuteData?.roleLabel ?? storedCode?.roleLabel ?? null
   const copyCode = async () => {
     if (!code) return
     haptic()
@@ -324,13 +325,17 @@ export default function HeutePanel({ role, visible, onCount }: {
         {/* 🔑 Türcode — bleibt an jedem Tag oben stehen */}
         {code ? (
           <section style={{ borderRadius: 22, padding: '14px 16px 15px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
+            {/* Pascal 9.9. (Chefsache): kein Schlüssel-Symbol; Name größer mit Rolle dahinter,
+                „TÜRCODE" als eigene Zeile, Code etwas kleiner — ruhig und symmetrisch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                🔑 Türcode{firstName ? ` · ${firstName}` : ''}{role === 'provider' ? ' · Team' : ''}
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName ?? 'Team'}</span>
+                {roleLabel && <span style={{ fontSize: 14, fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>· {roleLabel}</span>}
               </span>
-              <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)' }}>Kopieren</button>
+              <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)', flexShrink: 0 }}>Kopieren</button>
             </div>
-            <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 30, fontWeight: 800, letterSpacing: '7px', marginTop: 8, lineHeight: 1.1 }}>{code.code}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', opacity: 0.8, marginTop: 12 }}>Türcode</div>
+            <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 26, fontWeight: 800, letterSpacing: '6px', marginTop: 3, lineHeight: 1.1 }}>{code.code}</div>
             <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 6 }}>
               {code.listings.length >= 7 ? 'Alle Wohnungen' : code.listings.length ? code.listings.join(' · ') : 'Alle Schlösser'} · dauerhaft gültig
             </div>

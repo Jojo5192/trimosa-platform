@@ -151,7 +151,7 @@ export function Segmented({ options, value, onChange, accent }: {
   accent?: Record<string, string>
 }) {
   return (
-    <div style={{ display: 'flex', background: 'rgba(118,118,128,0.14)', borderRadius: 10, padding: 2, gap: 2 }}>
+    <div style={{ display: 'flex', background: 'var(--tm-surface2, rgba(118,118,128,0.14))', borderRadius: 10, padding: 2, gap: 2 }}>
       {options.map(([v, label]) => {
         const active = value === v
         return (
@@ -160,8 +160,8 @@ export function Segmented({ options, value, onChange, accent }: {
             fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             overflow: 'hidden', textOverflow: 'ellipsis',
             transition: 'background .15s, color .15s, box-shadow .15s',
-            background: active ? '#fff' : 'transparent',
-            color: active ? (accent?.[v] ?? '#111') : 'rgba(60,60,67,0.72)',
+            background: active ? 'var(--tm-card, #fff)' : 'transparent',
+            color: active ? (accent?.[v] ?? 'var(--tm-text, #111)') : 'var(--tm-muted, rgba(60,60,67,0.72))',
             boxShadow: active ? '0 1px 4px rgba(0,0,0,0.14)' : 'none',
             WebkitTapHighlightColor: 'transparent',
           }}>{label}</button>

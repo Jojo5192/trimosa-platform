@@ -1261,7 +1261,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
                     border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, var(--tm-line))'}`,
                     background: activeF ? 'var(--tm-text, #171a1f)' : 'var(--tm-card, #fff)',
-                    color: activeF ? '#fff' : 'var(--tm-muted, #646b76)',
+                    color: activeF ? 'var(--tm-bg, #f3f4f6)' : 'var(--tm-muted, #646b76)',
                   }}>
                     {f.label}{f.count && count > 0 ? ` · ${count}` : ''}
                   </button>
@@ -1674,7 +1674,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {bookingHintFor === active?.id && (
           <div style={{
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
-            background: 'var(--tm-surface2)', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: '#1D4FA3',
+            background: 'var(--tm-surface2)', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: 'var(--tm-blue)',
           }}>
             ✓ Erledigt — <strong>denk dran:</strong> Bei Booking.com-Gästen den Haken „Keine Antwort nötig" zusätzlich in der Booking-App setzen (zählt für eure Antwortquote).
           </div>
@@ -1726,7 +1726,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 15 }}>☎️</span>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: '#2C5282' }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--tm-blue)' }}>
                               Telefonat · {fmtMsgT(msg.created_at, uiLang)}
                             </span>
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tm-muted)' }}>NUR INTERN</span>
@@ -1833,7 +1833,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                   }}>📞 {c.caller}</a>
                                   <button onClick={() => { setCbFor(cbFor === c.id ? null : c.id); setCbNote(null) }} style={{
                                     flex: '1 1 130px', border: '1px solid var(--tm-line)', background: 'var(--tm-card)',
-                                    color: '#2C5282', borderRadius: 10, padding: '9px 12px',
+                                    color: 'var(--tm-blue)', borderRadius: 10, padding: '9px 12px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                                   }}>🤖 KI ruft zurück</button>
                                 </div>
@@ -1863,7 +1863,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                   </div>
                                 )}
                                 {cbNote && cbFor !== c.id && (
-                                  <div style={{ fontSize: 12, color: '#2C5282', marginTop: 6 }}>{cbNote}</div>
+                                  <div style={{ fontSize: 12, color: 'var(--tm-blue)', marginTop: 6 }}>{cbNote}</div>
                                 )}
                               </div>
                             )}
@@ -1885,7 +1885,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
                       <div style={{
                         maxWidth: '86%', padding: '9px 13px', borderRadius: 12,
-                        background: istTest ? '#FFF7E6' : '#F4F3EF',
+                        background: istTest ? 'var(--tm-yellow-soft)' : 'var(--tm-surface2)',
                         border: `1px solid ${istTest ? '#E8CE96' : '#E2DED4'}`,
                         fontSize: 13, lineHeight: 1.45, color: 'var(--tm-muted)', whiteSpace: 'pre-wrap',
                       }}>
@@ -1949,7 +1949,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         borderRadius,
                         background: isMe
                           ? 'var(--tm-navy)'
-                          : '#E9E9EB',
+                          : 'var(--tm-surface2)',
                         color: isMe ? '#fff' : 'var(--tm-text)',
                         fontSize: 15.5, lineHeight: 1.4,
                         boxShadow: 'none',
@@ -2246,7 +2246,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   ) : (
                     <button onClick={submitRecipient} disabled={invForm.busy || !invForm.name.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer',
-                      background: invForm.name.trim() && !invForm.busy ? 'var(--tm-navy)' : '#E5E1D6',
+                      background: invForm.name.trim() && !invForm.busy ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{invForm.busy ? '⏳ Speichert…' : '💾 Übernehmen'}</button>
                   )}

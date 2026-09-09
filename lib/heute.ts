@@ -83,6 +83,8 @@ export interface HeuteDaten {
   heute: string
   stand: string
   firstName: string | null
+  /** Pascal 9.9. (Chefsache): Rolle hinter dem Namen auf der Türcode-Karte — CEO · Reinigung · Handwerker · Team */
+  roleLabel: string | null
   doorCode: { code: string; listings: string[] } | null
   anreisen: HeuteAnreise[]
   abreisen: HeuteStay[]
@@ -123,6 +125,10 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   const listings = (listingsRes.data ?? []) as ListingRow[]
   const byId = new Map(listings.map((l) => [l.id, l]))
   const firstName = (meRes.data?.display_name ?? '').trim().split(/\s+/)[0] || null
+  // Rolle für die Türcode-Karte (Pascal 9.9.): Admin/Gastgeber = CEO; wer für Reinigung
+  // verantwortlich ist = Reinigung; sonstige Dienstleister = Handwerker; sonstige Mitarbeiter = Team
+  const cleans = listings.some((l) => l.cleaning_responsible === auth.userId)
+  const roleLabel = auth.role === 'admin' ? 'CEO' : cleans ? 'Reinigung' : auth.role === 'provider' ? 'Handwerker' : 'Team'
 
   /* Sichtbarkeit — höchste Rolle gewinnt (wie /api/team/calendar) */
   let visible: Set<string> | null = null
@@ -282,7 +288,7 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     if (sc?.code) doorCode = { code: sc.code, listings: sc.listingIds.map((id) => byId.get(id)?.title ?? '').filter(Boolean) }
   } catch { /* fail-soft */ }
 
-  const data: HeuteDaten = { tag, heute, stand: new Date().toISOString(), firstName, doorCode, anreisen, abreisen, vorschau }
+  const data: HeuteDaten = { tag, heute, stand: new Date().toISOString(), firstName, roleLabel, doorCode, anreisen, abreisen, vorschau }
   cache.__heuteCache!.set(key, { at: Date.now(), data })
   return data
 }
