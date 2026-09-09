@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { findLegacySevInvoice } from '@/lib/sevdesk-legacy'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getInvoicePdf } from '@/lib/lexoffice'
@@ -27,8 +28,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   }
 
   const { data: b } = await supabaseAdmin
-    .from('bookings').select('id, status, check_in').eq('portal_token', token).maybeSingle()
+    .from('bookings').select('id, status, check_in, smoobu_reservation_id').eq('portal_token', token).maybeSingle()
   if (!b || b.status === 'cancelled') return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
+
+  // Paragraph 300: Alt-Buchung mit sevdesk-Rechnung aus dem Jahres-Neuaufbau -> sevdesk-PDF liefern
+  // (lexoffice antwortet seit dem Umzug 401; Zengler 13.-16.4. bekam deshalb monatelang keinen Download)
+  if (String(b.check_in) < SEV_ENGINE_STICHTAG) {
+    const sev = await findLegacySevInvoice(b.id, b.smoobu_reservation_id as number | null)
+    if (sev?.sevdesk_id) {
+      const pdf = await getSevInvoicePdf(sev.sevdesk_id)
+      if (pdf.ok && pdf.pdf) {
+        const name = `Rechnung${sev.invoice_number ? `-${sev.invoice_number}` : ''}.pdf`.replace(/[^\w.-]/g, '_')
+        return pdfResponse(pdf.pdf, name)
+      }
+      console.error('[rechnung] sevdesk-PDF (Alt-Buchung):', pdf.error)
+    }
+  }
 
   if (String(b.check_in) >= SEV_ENGINE_STICHTAG) {
     const { data: inv } = await supabaseAdmin

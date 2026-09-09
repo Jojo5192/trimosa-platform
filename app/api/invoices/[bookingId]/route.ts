@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { findLegacySevInvoice } from '@/lib/sevdesk-legacy'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createInvoiceForBooking, saveRecipient, sanitizeRecipient, stornoInvoice } from '@/lib/lexoffice'
@@ -45,7 +46,7 @@ type InvoiceState = {
 
 async function loadState(bookingId: string): Promise<InvoiceState | null> {
   const { data: b } = await supabaseAdmin
-    .from('bookings').select('id, check_in, portal_token, status').eq('id', bookingId).maybeSingle()
+    .from('bookings').select('id, check_in, portal_token, status, smoobu_reservation_id').eq('id', bookingId).maybeSingle()
   if (!b) return null
   const url = b.portal_token ? `/api/rechnung/${b.portal_token}` : null
   const isSev = String(b.check_in) >= SEV_ENGINE_STICHTAG
@@ -59,6 +60,12 @@ async function loadState(bookingId: string): Promise<InvoiceState | null> {
     if (inv?.status === 'fehler') return { status: 'fehler', url: null, error: inv.error, checkIn: b.check_in, engine }
     return { status: 'keine', url: null, checkIn: b.check_in, engine }
   }
+
+  // Paragraph 300 (Zengler-Fall): Alt-Buchung (vor Stichtag), aber die Rechnung existiert in sevdesk -
+  // Jahres-Neuaufbau (Paragraph 234) legte sie per smoobu_reservation_id an, teils ohne booking_id.
+  // lexoffice antwortet seit dem Umzug nur noch 401 - deshalb sevdesk ZUERST, booking_id nachverknuepfen.
+  const sev = await findLegacySevInvoice(b.id, b.smoobu_reservation_id as number | null)
+  if (sev?.sevdesk_id) return { status: 'bereit', url, voucherNumber: sev.invoice_number, checkIn: b.check_in, engine: 'sevdesk' }
 
   const { data: inv } = await supabaseAdmin
     .from('lexoffice_invoices').select('lexoffice_id, voucher_number, status, error').eq('booking_id', bookingId).maybeSingle()
