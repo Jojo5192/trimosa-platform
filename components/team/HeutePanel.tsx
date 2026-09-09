@@ -303,6 +303,11 @@ export default function HeutePanel({ role, visible, onCount }: {
             </div>
           </div>
         )}
+        {a.earlyBlock && (
+          <div style={{ margin: '0 14px 8px 60px', padding: '6px 10px', borderRadius: 11, background: 'var(--tm-surface2)', fontSize: 12, lineHeight: 1.4, color: 'var(--tm-yellow)', fontWeight: 600 }}>
+            🔧 Early Check-in gesperrt — {a.earlyBlock}
+          </div>
+        )}
         {a.reinigung && !last && <div style={{ height: 1, background: 'var(--tm-line)', margin: '0 14px' }} />}
       </div>
     )

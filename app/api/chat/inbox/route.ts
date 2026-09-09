@@ -419,6 +419,17 @@ export async function GET(request: Request) {
       const r = t.kind === 'booking' ? muteMap.get(String(t.id)) : undefined
       if (r) Object.assign(t as unknown as Record<string, unknown>, { msgMute: r.msg_mute, msgMuteReason: r.msg_mute_reason })
     }
+    // Paragraph 309: Early-Check-in-Sperre (eigene Abfrage, deploy-sicher)
+    try {
+      const blocked = new Set<string>()
+      for (let i = 0; i < muteIds.length; i += 300) {
+        const { data: rows, error } = await supabaseAdmin
+          .from('bookings').select('id').in('id', muteIds.slice(i, i + 300)).eq('early_checkin_blocked', true)
+        if (error) break
+        for (const r of rows ?? []) blocked.add(String(r.id))
+      }
+      for (const t of threads) if (t.kind === 'booking' && blocked.has(String(t.id))) Object.assign(t as unknown as Record<string, unknown>, { earlyBlocked: true })
+    } catch { /* Spalte fehlt noch */ }
   } catch { /* Spalte fehlt noch */ }
   return NextResponse.json({ userId: user.id, threads, teamNames })
 }
@@ -440,6 +451,18 @@ export async function PATCH(req: Request) {
   }
   const { kind, id, value, field } = await req.json()
   // Paragraph 305 (Pascal): Stummschalter je Buchung - value '' | 'alle' | 'bewertung'
+  // Paragraph 309: Early-Check-in-Sperre je Buchung (boolean)
+  if (field === 'early_block') {
+    if (kind !== 'booking' || typeof id !== 'string' || typeof value !== 'boolean') {
+      return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
+    }
+    const { data: me } = await supabaseAdmin.from('profiles').select('display_name').eq('id', user.id).maybeSingle()
+    const who = String((me as { display_name?: string | null } | null)?.display_name ?? '').split(' ')[0] || 'Team'
+    const { error } = await supabaseAdmin.from('bookings')
+      .update({ early_checkin_blocked: value, early_checkin_block_reason: value ? `manuell gesperrt (${who})` : null }).eq('id', id)
+    if (error) return NextResponse.json({ error: `Speichern fehlgeschlagen (${error.message.slice(0, 80)}) — Migration 20260910_early_checkin_block.sql ausgeführt?` }, { status: 500 })
+    return NextResponse.json({ ok: true, earlyBlocked: value })
+  }
   if (field === 'mute') {
     if (kind !== 'booking' || typeof id !== 'string' || typeof value !== 'string' || !['', 'alle', 'bewertung'].includes(value)) {
       return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })

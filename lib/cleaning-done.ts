@@ -253,7 +253,11 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
         .maybeSingle()
       const paidOk = arr && (arr.source !== 'trimosa' || arr.payment_status === 'paid')
       const checkInTime = (l.check_in_time ?? '16:00').slice(0, 5)
-      if (arr && paidOk && now.hm < checkInTime) {
+      // Paragraph 309: Early-Check-in-Sperre (manuell / Arbeiten am Anreisetag) - dann keine Frueh-Check-in-Nachricht
+      const { earlyCheckinBlock } = await import('@/lib/early-checkin')
+      const blk = arr ? await earlyCheckinBlock({ id: arr.id, listing_id: l.id, check_in: arr.check_in }) : { blocked: false, reason: null }
+      if (arr && blk.blocked) console.log('[cleaning-done] Early Check-in gesperrt, keine Nachricht:', arr.id, blk.reason)
+      if (arr && paidOk && !blk.blocked && now.hm < checkInTime) {
         const { getAutoSendEnabled } = await import('@/lib/auto-messages-engine')
         const rendered = (await getAutoSendEnabled())
           ? await renderEarlyCheckinText(l.id, l.title ?? 'Wohnung', arr, checkInTime, now.hour)

@@ -9,6 +9,7 @@
  * NIE Gastnamen. Server-Cache 2 Min je Nutzer+Tag.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { earlyCheckinBlock } from '@/lib/early-checkin'
 import { getStaffCodes, firstCleaningOpenAt, firstGuestOpenAt, type LockRef } from '@/lib/locks'
 import type { TaskAuth } from '@/lib/tasks'
 import { loadStayIndex } from '@/lib/stammgaeste'
@@ -86,6 +87,8 @@ export interface HeuteAnreise extends HeuteStay {
   checkin: { status: 'green' | 'yellow' | 'red' | 'grey'; text: string } | null
   /** Paragraph 308: erste Tuer-Oeffnung mit Gast-Code heute (ISO) = eingecheckt, Wohnung belegt */
   eingecheckt: string | null
+  /** Paragraph 309: Early-Check-in gesperrt (Grund) - dann keine Frueh-Check-in-Nachricht */
+  earlyBlock: string | null
 }
 export interface HeuteDaten {
   tag: string
@@ -251,6 +254,12 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
 
   // Paragraph 308: „eingecheckt" = erste Oeffnung mit Gast-Code heute ab 10:00 (Schlossprotokoll, je Wohnung max. 6 s)
   const guestOpen = new Map<string, string | null>()
+  // Paragraph 309: Early-Check-in-Sperre je Anreise (manuell oder Arbeiten eingeplant)
+  const earlyBlk = new Map<string, string | null>()
+  await Promise.all(arrivals.map(async (b) => {
+    const r = await earlyCheckinBlock({ id: b.id, listing_id: b.listing_id, check_in: b.check_in }).catch(() => ({ blocked: false, reason: null }))
+    earlyBlk.set(b.id, r.blocked ? r.reason ?? 'gesperrt' : null)
+  }))
   if (istHeute) {
     await Promise.all(arrivals.filter((b) => b.door_code).map(async (b) => {
       const l = byId.get(b.listing_id)
@@ -304,7 +313,7 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
       else if (!wechsel) checkin = { status: 'grey', text: `ab ${ci} · Vornacht war frei` }
       else checkin = { status: 'grey', text: `ab ${ci}` }
     }
-    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin, eingecheckt: guestOpen.get(b.listing_id) ?? null }
+    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin, eingecheckt: guestOpen.get(b.listing_id) ?? null, earlyBlock: earlyBlk.get(b.id) ?? null }
   }).sort(byTitle)
 
   /* Eigener Türcode (§141) — nur der eigene, nie fremde */

@@ -23,6 +23,7 @@ import {
 import { translateOutgoing } from '@/lib/translate'
 import { sendMessageToGuest } from '@/lib/smoobu'
 import { isFewoRelayEmail } from '@/lib/fewo'
+import { earlyCheckinBlock } from '@/lib/early-checkin'
 import { ensureDoorCode, getLockSettings } from '@/lib/locks'
 import { loadStayIndex } from '@/lib/stammgaeste'
 import { sendAutoMessageEmail } from '@/lib/email'
@@ -344,6 +345,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         // Paragraph 295: nie ab der regulaeren Check-in-Zeit - eine Nachzustellung um 16 Uhr waere sinnlos
         const ciHour = Number(String(listings.get(b.listing_id)?.check_in_time ?? '16:00').slice(0, 2)) || 16
         if (hour >= ciHour) continue
+        // Paragraph 309: Early-Check-in-Sperre (manuell oder Arbeiten am Anreisetag eingeplant)
+        if ((await earlyCheckinBlock(b)).blocked) continue
       } else if (t.trigger_type === 'nach_buchung') {
         if (Date.now() - new Date(b.created_at).getTime() > NEW_BOOKING_WINDOW_MS) continue
       } else {

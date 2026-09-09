@@ -38,6 +38,8 @@ interface Conversation {
   /** Paragraph 305: Auto-Nachrichten stumm ('alle' = nur Check-out) bzw. keine Bewertungsbitte */
   msgMute?: 'alle' | 'bewertung' | null
   msgMuteReason?: string | null
+  /** Paragraph 309: Early-Check-in manuell gesperrt */
+  earlyBlocked?: boolean
   adults?: number | null
   children?: number | null
   guestLang?: string | null
@@ -122,6 +124,7 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     phoneResolved: (t.phoneResolved as boolean) ?? false,
     msgMute: (t.msgMute as 'alle' | 'bewertung' | null | undefined) ?? null,
     msgMuteReason: (t.msgMuteReason as string | null | undefined) ?? null,
+    earlyBlocked: (t.earlyBlocked as boolean | undefined) ?? false,
     adults: (t.adults as number | null) ?? null,
     children: (t.children as number | null) ?? null,
     guestLang: t.guestLang ?? null,
@@ -189,6 +192,7 @@ function ThreadBadges({ c, size = 10.5 }: { c: Conversation; size?: number }) {
       {portal && <Pill size={size} bg={portalColor(c.platform)} color="#fff">{portal}</Pill>}
       {isDringend(c) && <Pill size={size} bg="var(--tm-red, #dc3d3d)" color="#fff">dringend</Pill>}
       {c.msgMute && <Pill size={size} bg="var(--tm-surface2, #ECEAE4)" color="var(--tm-muted, #6B6B6B)">{c.msgMute === 'alle' ? '🔕 stumm' : '🔕 keine Bewertungsbitte'}</Pill>}
+      {c.earlyBlocked && <Pill size={size} bg="var(--tm-surface2, #ECEAE4)" color="var(--tm-muted, #6B6B6B)">🔧 kein Early Check-in</Pill>}
       {/* §290 Stammgast (Dominik): ab dem zweiten Aufenthalt */}
       {(c.stays ?? 1) >= 2 && <Pill size={size} bg="var(--tm-yellow-soft, rgba(217,133,6,0.13))" color="var(--tm-yellow, #d98506)">⭐ {c.stayNr}. Aufenthalt</Pill>}
     </span>
@@ -425,6 +429,25 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: prev } : x))
       setActive(a => (a && a.id === c.id ? { ...a, msgMute: prev } : a))
+      tmToast(String(e instanceof Error ? e.message : e).slice(0, 90))
+    }
+  }
+
+  // Paragraph 309: Early-Check-in fuer diese Buchung sperren/freigeben (z. B. Arbeiten am Anreisetag)
+  async function toggleEarlyBlock(c: Conversation) {
+    const next = !c.earlyBlocked
+    setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: next } : x))
+    setActive(a => (a && a.id === c.id ? { ...a, earlyBlocked: next } : a))
+    try {
+      const res = await fetch('/api/chat/inbox', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'booking', id: c.id, value: next, field: 'early_block' }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
+      tmToast(next ? 'Early Check-in gesperrt — keine Frueh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
+    } catch (e) {
+      setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: !next } : x))
+      setActive(a => (a && a.id === c.id ? { ...a, earlyBlocked: !next } : a))
       tmToast(String(e instanceof Error ? e.message : e).slice(0, 90))
     }
   }
@@ -1281,6 +1304,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             ...((c.kind ?? 'direct') === 'booking' ? [
               ['🔕', c.msgMute === 'alle' ? 'Auto-Nachrichten wieder einschalten' : 'Auto-Nachrichten stumm (nur noch Check-out)', () => { setPeek(null); muteConv(c, c.msgMute === 'alle' ? '' : 'alle') }],
               ['⭐', c.msgMute === 'bewertung' ? 'Bewertungsbitte wieder erlauben' : 'Keine Bewertungsbitte für diesen Gast', () => { setPeek(null); muteConv(c, c.msgMute === 'bewertung' ? '' : 'bewertung') }],
+              ['🔧', c.earlyBlocked ? 'Early Check-in wieder erlauben' : 'Early Check-in sperren (Arbeiten geplant)', () => { setPeek(null); toggleEarlyBlock(c) }],
             ] as [string, string, () => void][] : []),
             ['🧾', 'Buchung & Gast', () => { setPeek(null); selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
             ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); window.open(c.mappeUrl!, '_blank', 'noopener') }]] : []),
