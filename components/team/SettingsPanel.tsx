@@ -68,7 +68,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   const isDark = useIsDark()
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
-  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean } | null>(null)
+  const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean; tv: boolean } | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
@@ -101,7 +101,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, material: d.material !== false, system: d.system !== false }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, material: d.material !== false, system: d.system !== false, tv: d.tv !== false }) })
       .catch(() => {})
     fetch('/api/admin/oncall', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -171,7 +171,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
     } finally { setBusy(false) }
   }
 
-  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'tasks' | 'reinigung' | 'calls' | 'buchhaltung' | 'material' | 'system') {
+  async function togglePref(key: 'guestChats' | 'teamChats' | 'bookings' | 'tasks' | 'reinigung' | 'calls' | 'buchhaltung' | 'material' | 'system' | 'tv') {
     if (!prefs) return
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
@@ -437,7 +437,10 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               <Switch on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />
             </Row>
           )}
-          <Row title="🔧 System & Betrieb" subtitle="TV, Türschlösser, Überbuchungen, Buchungs-Abgleich" last={!belegeOk && !wb}>
+          <Row title="📺 TV-Boxen & TV-Server" subtitle="Ausfälle und Entwarnungen der TV-Systeme (Sweet Spot & Co.)">
+            <Switch on={prefs?.tv ?? true} disabled={!prefs} onChange={() => togglePref('tv')} />
+          </Row>
+          <Row title="🔧 System & Betrieb" subtitle="Türschlösser, Überbuchungen, Buchungs-Abgleich" last={!belegeOk && !wb}>
             <Switch on={prefs?.system ?? true} disabled={!prefs} onChange={() => togglePref('system')} />
           </Row>
           {belegeOk && (

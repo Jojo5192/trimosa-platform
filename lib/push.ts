@@ -22,7 +22,8 @@ export type PushCategory =
   | 'buchhaltung'  // 💶 Buchhaltung (Belege) — ohnehin nur Admins
   | 'wallbox'      // ⚡ Wallbox (Ladevorgänge)
   | 'material'     // 🛒 Material & Bestellungen (Bedarf gemeldet, Bestellung fällig)
-  | 'system'       // 🔧 System & Betrieb (TV, Boxen, Türschlösser, Überbuchung, Import)
+  | 'system'       // 🔧 System & Betrieb (Türschlösser, Überbuchung, Import)
+  | 'tv'           // 📺 TV-Boxen & TV-Server (Ausfälle/Entwarnung) — eigener Schalter (Inhaber 9.9., §301)
 
 const LEGACY_COLS: Partial<Record<PushCategory, string>> = {
   guestChats: 'push_guest_chats',

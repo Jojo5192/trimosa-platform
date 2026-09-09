@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     // Ziel-URL: interne /team-URLs erlaubt, sonst neutral auf /team.
     const url = p.url && p.url.startsWith('/') ? p.url : '/team'
     try {
-      // §254: Kategorie 'system' (TV & Betrieb) — abschaltbar im ⚙️-Center.
-      await sendPushToTeam(title, alertBody || title, url, { category: 'system' })
+      // §254/§301: Kategorie 'tv' (TV-Boxen & TV-Server) — eigener Schalter im ⚙️-Center.
+      await sendPushToTeam(title, alertBody || title, url, { category: 'tv' })
       return NextResponse.json({ ok: true })
     } catch (e) {
       return NextResponse.json({ ok: false, error: `Push-Fehler: ${e}` }, { status: 502 })
