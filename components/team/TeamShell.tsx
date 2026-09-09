@@ -23,11 +23,13 @@ import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
 import SearchOverlay from '@/components/team/SearchOverlay'
+import HeutePanel from '@/components/team/HeutePanel'
 
-type Tab = 'chat' | 'offen' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
+type Tab = 'heute' | 'chat' | 'offen' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
 
 /** Reiter der Leiste (Reihenfolge = Pascal-Spec, „Offen" ist kein Reiter mehr) */
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'heute', label: 'Heute' },
   { id: 'chat', label: 'Chat' },
   { id: 'intern', label: 'Intern' },
   { id: 'kalender', label: 'Kalender' },
@@ -36,7 +38,7 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 /** Bereichs-Name in der Kopfleiste (springt beim Reiterwechsel um) */
 const TITLES: Record<Tab, string> = {
-  chat: 'Chat', offen: 'Offen', intern: 'Intern', aufgaben: 'Aufgaben', kalender: 'Belegung', einstellungen: 'Mehr',
+  heute: 'Heute', chat: 'Chat', offen: 'Offen', intern: 'Intern', aufgaben: 'Aufgaben', kalender: 'Belegung', einstellungen: 'Mehr',
 }
 
 function fmtSync(d: Date) {
@@ -69,13 +71,15 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 }) {
   const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat') : TABS
   const allowed = (id: string): id is Tab => tabs.some((t) => t.id === id) || (role === 'team' && id === 'offen')
-  const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
+  // Die App startet immer auf „Heute" (Pascal-Spec)
+  const fallback: Tab = 'heute'
   const [tab, setTab] = useState<Tab>(
     initialTaskId ? 'aufgaben' : initialTab && allowed(initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
   const [guestUnread, setGuestUnread] = useState(0)
   const [offenCount, setOffenCount] = useState(0)
+  const [heuteCount, setHeuteCount] = useState(0)
   // Mobil in einem Thread: Kopfleiste + Tab-Bar versteckt (WhatsApp-Verhalten, §98)
   const [chatThread, setChatThread] = useState(false)
   const [internThread, setInternThread] = useState(false)
@@ -310,8 +314,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 
   const goTab = (id: Tab) => { haptic(); setTab(id) }
   // Sync-Stand am Handy nur auf Chat/Intern (lange Titel sonst abgeschnitten)
-  const showSync = !!lastSync && (isDesktop || tab === 'chat' || tab === 'intern')
-  const badgeFor = (id: Tab) => id === 'intern' ? internUnread : id === 'chat' ? guestUnread : 0
+  const showSync = !!lastSync && (isDesktop || tab === 'heute' || tab === 'chat' || tab === 'intern')
+  const badgeFor = (id: Tab) => id === 'intern' ? internUnread : id === 'chat' ? guestUnread : id === 'heute' ? heuteCount : 0
 
   /* ── Kopfleiste ── */
   const header = (
@@ -437,6 +441,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 
         {/* Content */}
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {wrap('heute', <HeutePanel role={role} visible={tab === 'heute'} onCount={setHeuteCount} />, true)}
           {role === 'team' && wrap('chat',
             <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
           )}

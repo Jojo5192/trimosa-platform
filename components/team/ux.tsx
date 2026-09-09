@@ -233,3 +233,34 @@ export function IconRefresh({ size = 18 }: { size?: number }) {
 export function tmToast(text: string) {
   try { window.dispatchEvent(new CustomEvent('trimosa-toast', { detail: { text } })) } catch { /* SSR */ }
 }
+
+/** 🎨 Portalfarben (Pascal-Spec) für Avatare, Badges, Belegungsbalken. */
+export const PORTAL_COLORS: Record<string, string> = {
+  'Booking.com': '#1d5bc4',
+  'Airbnb': '#ff385c',
+  'FeWo-direkt': '#f0a11f',
+  'HomeToGo': '#e11d48',
+  'Website': '#12a89a',
+  'Direkt': '#12a89a',
+  'TRIMOSA': '#12a89a',
+}
+/** Kanal-Normalisierung — §140/§262-Substring-Falle: fewo VOR direkt VOR booking */
+export function portalOf(raw?: string | null): string {
+  const v = (raw ?? '').toLowerCase()
+  if (/fewo|homeaway|vrbo|abritel/.test(v)) return 'FeWo-direkt'
+  if (/website|trimosa/.test(v)) return 'Website'
+  if (/direct|direkt/.test(v)) return 'Direkt'
+  if (/airbnb/.test(v)) return 'Airbnb'
+  if (/booking/.test(v)) return 'Booking.com'
+  if (/hometogo/.test(v)) return 'HomeToGo'
+  return raw?.trim() || 'Direkt'
+}
+export function portalColor(raw?: string | null): string {
+  return PORTAL_COLORS[portalOf(raw)] ?? '#646b76'
+}
+/** „Thomas Seggelmann" → „TS" */
+export function initials(name?: string | null): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return '·'
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
+}

@@ -272,6 +272,11 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
           const { deliverToGuest } = await import('@/lib/voice')
           const res = await deliverToGuest(arr.id, rendered.text, { testMode: false })
           earlyCheckinSent = res.delivery === 'smoobu' || res.delivery === 'email'
+          // §277: echtes Ergebnis ins Log — der Heute-Bildschirm liest daraus
+          // „bereit · HH:MM gemeldet" (grün) bzw. „Meldung nicht zugestellt" (rot)
+          await supabaseAdmin.from('auto_message_log')
+            .update({ channel: earlyCheckinSent ? `reinigung-event (${res.delivery})` : `fehler: nicht zustellbar (${res.detail ?? res.delivery})`.slice(0, 160) })
+            .match({ auto_message_id: rendered.templateId, booking_id: arr.id })
         }
       }
     } catch (e) {

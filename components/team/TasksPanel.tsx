@@ -135,6 +135,12 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   const [highlightId, setHighlightId] = useState<string | null>(null)
   useEffect(() => {
     if (!focusTaskId || loading) return
+    // §277: „＋ Neu" vom Heute-Bildschirm → direkt das Formular öffnen
+    if (focusTaskId === 'new') {
+      if (manage) setEditing('new')
+      onFocusConsumed?.()
+      return
+    }
     const t = tasks.find((x) => x.id === focusTaskId)
     if (t) {
       personTouched.current = true
