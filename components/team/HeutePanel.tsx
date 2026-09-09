@@ -52,7 +52,7 @@ function dateLabel(tag: string, heute: string): string {
 const CARD: CSSProperties = { background: 'var(--tm-card)', border: '1px solid var(--tm-line)', borderRadius: 20, boxShadow: 'var(--tm-shadow)', overflow: 'hidden' }
 function Card({ title, count, right, children }: { title: string; count?: number; right?: ReactNode; children: ReactNode }) {
   return (
-    <section style={CARD}>
+    <section className="tm-stagger" style={CARD}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px 6px' }}>
         <span style={{ flex: 1, fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.01em' }}>{title}</span>
         {right}

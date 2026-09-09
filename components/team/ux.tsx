@@ -13,10 +13,13 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
  *  User-Geste, also aus onClick/onTouch-Handlern heraus — genau da rufen
  *  wir auf). Ohne Support passiert einfach nichts. */
 let hapticEl: HTMLLabelElement | null = null
-export function haptic() {
+/** §282.12 Muster: tap = leicht · success = doppelter Puls · error = langer Puls */
+export type HapticKind = 'tap' | 'success' | 'error'
+const VIBRATE: Record<HapticKind, number | number[]> = { tap: 10, success: [12, 60, 12], error: 45 }
+export function haptic(kind: HapticKind = 'tap') {
   try {
-    const nav = navigator as Navigator & { vibrate?: (pattern: number) => boolean }
-    if (typeof nav.vibrate === 'function' && nav.vibrate(10)) return
+    const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }
+    if (typeof nav.vibrate === 'function' && nav.vibrate(VIBRATE[kind])) return
     if (!hapticEl || !document.body.contains(hapticEl)) {
       hapticEl = document.createElement('label')
       hapticEl.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;overflow:hidden;'
@@ -27,6 +30,12 @@ export function haptic() {
       document.body.appendChild(hapticEl)
     }
     hapticEl.click()
+    // iOS kennt nur das eine System-Tick: Erfolg = zwei Ticks, Fehler = drei
+    if (kind !== 'tap') {
+      const el = hapticEl
+      setTimeout(() => el.click(), 70)
+      if (kind === 'error') setTimeout(() => el.click(), 140)
+    }
   } catch { /* Haptik ist nice-to-have */ }
 }
 
@@ -83,21 +92,23 @@ export function usePullToRefresh(ref: RefObject<HTMLElement | null>, onRefresh: 
   return { pull, busy }
 }
 
-/** Indikator-Zeile zum Pull-to-Refresh-Hook. */
+/** Indikator-Zeile zum Pull-to-Refresh-Hook — §282.5: der Ring aus der Marke
+ *  zieht sich beim Herunterziehen zu (Bogen wächst mit) und dreht sich beim Laden. */
 export function PullHint({ pull, busy }: { pull: number; busy: boolean }) {
   if (pull <= 0 && !busy) return null
+  const R = 9, C = 2 * Math.PI * R
+  const progress = busy ? 0.28 : Math.min(1, pull / 56)
   return (
     <div style={{
       height: busy ? 48 : pull, display: 'flex', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden', transition: busy ? 'none' : 'height .18s', flexShrink: 0,
     }}>
-      <span
-        className={busy ? 'team-ptr-spin' : undefined}
-        style={{
-          fontSize: 17, color: '#8A8065', display: 'inline-block',
-          transform: busy ? undefined : `rotate(${Math.min(180, pull * 3)}deg)`,
-        }}
-      >{busy ? '⟳' : '↓'}</span>
+      <svg width="26" height="26" viewBox="0 0 26 26" className={busy ? 'tm-ring-spin' : undefined} style={{ opacity: busy ? 1 : 0.4 + 0.6 * progress }} aria-hidden="true">
+        <circle cx="13" cy="13" r={R} fill="none" stroke="var(--tm-accent-soft, rgba(174,141,45,0.2))" strokeWidth="2" />
+        <circle cx="13" cy="13" r={R} fill="none" stroke="var(--tm-accent, #AE8D2D)" strokeWidth="2" strokeLinecap="round"
+          strokeDasharray={C} strokeDashoffset={C * (1 - progress)} transform="rotate(-90 13 13)" />
+        <circle cx="13" cy="13" r="2.2" fill="var(--tm-accent, #AE8D2D)" />
+      </svg>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { haptic, tmToast } from '@/components/team/ux'
 
 /**
@@ -60,10 +60,34 @@ function fmtStand(iso: string): string {
   return d && m ? `${d}.${m}.` : iso
 }
 
-function Tile({ value, label }: { value: string; label: string }) {
+/** §282.3: Zahl rollt in 0,6 s vom letzten Stand (anfangs 0) zum Zielwert hoch. */
+function useCountUp(target: number, ms = 600): number {
+  const [val, setVal] = useState(0)
+  const fromRef = useRef(0)
+  useEffect(() => {
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    const from = fromRef.current
+    let raf = 0
+    if (reduce || !Number.isFinite(target)) { fromRef.current = target; raf = requestAnimationFrame(() => setVal(target)); return () => cancelAnimationFrame(raf) }
+    const t0 = performance.now()
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms)
+      const e = 1 - Math.pow(1 - k, 3)
+      setVal(from + (target - from) * e)
+      if (k < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, ms])
+  return val
+}
+
+function Tile({ num, format, label }: { num: number; format: (n: number) => string; label: string }) {
+  const shown = useCountUp(num)
   return (
     <div style={{ background: 'var(--tm-surface2, #f4f5f7)', borderRadius: 12, padding: '12px 10px', textAlign: 'center', minWidth: 0 }}>
-      <div className="tm-num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text, #171a1f)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      <div className="tm-num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text, #171a1f)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{format(shown)}</div>
       <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--tm-muted, #646b76)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
     </div>
   )
@@ -160,10 +184,10 @@ export default function KennzahlenCard() {
         <>
           {/* Vier Kacheln */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-            <Tile value={fmtEur(s.umsatz)} label="Umsatz netto" />
-            <Tile value={`${Math.round(s.auslastung)}%`} label="Auslastung" />
-            <Tile value={s.oNacht != null ? fmtEur(s.oNacht) : '—'} label="Ø / Nacht netto" />
-            <Tile value={String(s.naechte)} label={`Nächte · ${s.buchungen} ${s.buchungen === 1 ? 'Buchung' : 'Buchungen'}`} />
+            <Tile num={s.umsatz} format={fmtEur} label="Umsatz netto" />
+            <Tile num={s.auslastung} format={(n) => `${Math.round(n)}%`} label="Auslastung" />
+            <Tile num={s.oNacht ?? 0} format={s.oNacht != null ? fmtEur : () => '—'} label="Ø / Nacht netto" />
+            <Tile num={s.naechte} format={(n) => String(Math.round(n))} label={`Nächte · ${s.buchungen} ${s.buchungen === 1 ? 'Buchung' : 'Buchungen'}`} />
           </div>
 
           {/* Je Wohnung — standardmäßig ausgeklappt, Zustand gemerkt */}
@@ -172,14 +196,14 @@ export default function KennzahlenCard() {
             {showDetails ? 'Details ausblenden' : 'Je Wohnung anzeigen'}
           </button>
           {showDetails && (
-            <div style={{ borderTop: '1px solid var(--tm-line, #e3e6ea)' }}>
+            <div key={data!.monat} style={{ borderTop: '1px solid var(--tm-line, #e3e6ea)' }}>
               {data!.wohnungen.length === 0 ? (
                 <p style={{ margin: 0, padding: '12px 0 4px', fontSize: 12.5, color: 'var(--tm-muted, #646b76)' }}>Keine Buchungen in diesem Monat.</p>
               ) : data!.wohnungen.map((w) => (
                 <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--tm-line, #e3e6ea)' }}>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text, #171a1f)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.title}</span>
                   <span style={{ width: 64, height: 8, borderRadius: 999, background: 'var(--tm-surface2, #f4f5f7)', overflow: 'hidden', flexShrink: 0 }}>
-                    <span style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, w.auslastung))}%`, borderRadius: 999, background: 'var(--tm-accent, #AE8D2D)', transition: 'width 0.4s var(--tm-ease, ease)' }} />
+                    <span className="tm-grow" style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, w.auslastung))}%`, borderRadius: 999, background: 'var(--tm-accent, #AE8D2D)', transition: 'width 0.4s var(--tm-ease, ease)' }} />
                   </span>
                   <span className="tm-num" style={{ width: 38, textAlign: 'right', fontSize: 12.5, color: 'var(--tm-muted, #646b76)', flexShrink: 0 }}>{Math.round(w.auslastung)}%</span>
                   <span className="tm-num" style={{ width: 66, textAlign: 'right', fontSize: 13.5, fontWeight: 800, color: 'var(--tm-text, #171a1f)', flexShrink: 0, opacity: w.umsatz / maxUmsatz < 0.02 && w.umsatz === 0 ? 0.5 : 1 }}>{fmtEur(w.umsatz)}</span>
@@ -210,7 +234,7 @@ export default function KennzahlenCard() {
                     {m.lead >= 2 && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 1 }}>+{m.lead} Mon.</span>}
                   </span>
                   <span style={{ flex: 1, minWidth: 0, height: 26, borderRadius: 999, background: 'var(--tm-surface2, #f4f5f7)', position: 'relative', overflow: 'hidden' }}>
-                    <span style={{ position: 'absolute', inset: 0, width: `${width}%`, borderRadius: 999, background: erreicht ? 'var(--tm-green, #1a9d57)' : 'var(--tm-accent, #AE8D2D)', transition: 'width 0.4s var(--tm-ease, ease)' }} />
+                    <span className="tm-grow" style={{ position: 'absolute', inset: 0, width: `${width}%`, borderRadius: 999, background: erreicht ? 'var(--tm-green, #1a9d57)' : 'var(--tm-accent, #AE8D2D)', transition: 'width 0.4s var(--tm-ease, ease)' }} />
                     <span className="tm-num" style={{
                       position: 'absolute', top: 0, bottom: 0, display: 'flex', alignItems: 'center', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
                       ...(innen ? { left: 10, color: '#fff' } : { right: 10, color: erreicht ? 'var(--tm-green, #1a9d57)' : 'var(--tm-accent-dark, #8A7020)' }),

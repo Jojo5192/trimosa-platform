@@ -938,3 +938,41 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .tm-curtain .c-orb, .tm-curtain .c-halo, .tm-curtain .c-edge { display: none; }
   .tm-curtain.is-leaving { animation: tmCurtainOut 0.5s ease both; }
 }
+
+/* ═══════════ §282 Design-Liste (Pascal 8.9.) — erste Welle ═══════════ */
+/* 4 Gestaffeltes Erscheinen: direkte Kinder kommen nacheinander (40 ms) aus der Unschärfe */
+@keyframes tmStagger { from { opacity: 0; filter: blur(6px); transform: translateY(6px); } to { opacity: 1; filter: blur(0); transform: none; } }
+.tm-stagger > * { animation: tmStagger 0.38s var(--tm-ease) backwards; }
+.tm-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.tm-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.tm-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.tm-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.tm-stagger > *:nth-child(6) { animation-delay: 200ms; }
+.tm-stagger > *:nth-child(7) { animation-delay: 240ms; }
+.tm-stagger > *:nth-child(8) { animation-delay: 280ms; }
+.tm-stagger > *:nth-child(9) { animation-delay: 320ms; }
+.tm-stagger > *:nth-child(10) { animation-delay: 360ms; }
+.tm-stagger > *:nth-child(11) { animation-delay: 400ms; }
+.tm-stagger > *:nth-child(12) { animation-delay: 440ms; }
+/* 3 Balken wachsen mit den Zahlen */
+@keyframes tmGrow { from { transform: scaleX(0); } }
+.tm-grow { transform-origin: left center; animation: tmGrow 0.6s var(--tm-ease) backwards; }
+/* 11 Live-Punkt in der Kopfleiste (grün pulsierend = verbunden) */
+@keyframes tmLive { 0%, 100% { box-shadow: 0 0 0 0 rgba(26,157,87,0.4); } 60% { box-shadow: 0 0 0 5px rgba(26,157,87,0); } }
+.tm-live { animation: tmLive 2.4s ease-in-out infinite; }
+/* 1 Großer Titel, der beim Scrollen zusammenfährt */
+.tm-title { transition: font-size 0.28s var(--tm-ease), letter-spacing 0.28s var(--tm-ease); }
+/* 5 Pull-to-Refresh: Logo-Ring dreht sich beim Laden */
+@keyframes tmRingSpin { to { transform: rotate(360deg); } }
+.tm-ring-spin { animation: tmRingSpin 0.9s linear infinite; transform-origin: center; }
+/* 2 Progressive Unschärfe: Inhalt verschwimmt weich in die Tab-Leiste */
+.tm-fade-bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 39;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%); mask-image: linear-gradient(to bottom, transparent, #000 60%);
+  background: linear-gradient(to bottom, rgba(243,244,246,0), rgba(243,244,246,0.45));
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-stagger > *, .tm-grow, .tm-live, .tm-ring-spin { animation: none; }
+  .tm-title { transition: none; }
+}

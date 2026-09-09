@@ -1037,12 +1037,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         body: JSON.stringify(payload),
       })
       if (r.ok) {
+        haptic('success')
         setDraft('')
         await getMsgs(active.id, active.kind); getConvs()
       } else if (r.status === 401 || r.status === 403) {
         setAuthExpired(true)
       } else {
         const d = await r.json().catch(() => null)
+        haptic('error')
         setSendError(d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
       }
     } catch (e) {
@@ -1171,7 +1173,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       ? [...filtered, { divider: `📁 Ältere Chats (${archivExtra.length})` }, ...archivExtra]
       : filtered
     return (
-      <div ref={listScrollRef} style={{
+      <div ref={listScrollRef} className="tm-stagger" style={{
         // §277: am Rechner 390 px (Pascal-Spec) — --tm-list-w aus globals ab 1000px
         width: fullWidth ? '100%' : 'var(--tm-list-w, 270px)',
         flexShrink: fullWidth ? undefined : 0,

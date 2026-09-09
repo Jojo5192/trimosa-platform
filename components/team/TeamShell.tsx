@@ -420,8 +420,20 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   }
 
   const goTab = (id: Tab) => { haptic(); setTab(id) }
-  // Sync-Stand am Handy nur auf Heute/Inbox (lange Titel sonst abgeschnitten)
-  const showSync = !!lastSync && (isDesktop || tab === 'heute' || tab === 'inbox')
+  // §282.11 Live-Punkt statt Uhrzeit: grün pulsierend = verbunden, grau = offline;
+  // die Sync-Zeit bleibt als Tooltip (und am Rechner als Text daneben)
+  const showSync = !!lastSync && isDesktop
+  /* §282.1 Großer Titel: fährt beim Scrollen des sichtbaren Panels zusammen —
+     Scroll-Ereignisse der Panels kommen per Capture an der Inhaltsfläche an;
+     gemerkt wird der Reiter, für den eingeklappt ist (Wechsel ⇒ wieder groß). */
+  const [collapsedFor, setCollapsedFor] = useState<Tab | null>(null)
+  const collapsed = collapsedFor === tab
+  const onContentScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement | null
+    if (!el || typeof el.scrollTop !== 'number' || el.clientHeight < 240 || el.scrollHeight <= el.clientHeight) return
+    const next = el.scrollTop > 24 ? tab : null
+    setCollapsedFor((c) => (c === next ? c : next))
+  }
   // Inbox-Zähler = ungelesene Chats beider Seiten (Pascal-Spec)
   const badgeFor = (id: Tab) => id === 'inbox' ? (role === 'team' ? guestUnread : 0) + internUnread : id === 'heute' ? heuteCount : 0
 
@@ -459,9 +471,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       flexShrink: 0, position: 'relative', zIndex: 30,
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '9px 16px 9px',
-      background: 'var(--tm-glass)',
+      // §282.1: groß = fast transparent, eingeklappt = richtig Glas
+      background: isDesktop || collapsed ? 'var(--tm-glass)' : 'rgba(243,244,246,0.55)',
       backdropFilter: 'blur(18px) saturate(1.5)', WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
-      borderBottom: '1px solid var(--tm-line)',
+      borderBottom: `1px solid ${isDesktop || collapsed ? 'var(--tm-line)' : 'transparent'}`,
+      transition: 'background .28s var(--tm-ease), border-color .28s var(--tm-ease)',
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {tab === 'offen' ? (
@@ -472,8 +486,9 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
         ) : (
           <>
             {!isDesktop && <Wordmark />}
-            <div key={tab} className="tm-enter" style={{
-              fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--tm-text)',
+            <div key={tab} className="tm-enter tm-title" style={{
+              fontSize: isDesktop ? 22 : collapsed ? 19 : 30, fontWeight: 800,
+              letterSpacing: isDesktop || collapsed ? '-0.02em' : '-0.03em', color: 'var(--tm-text)',
               lineHeight: 1.15, marginTop: isDesktop ? 0 : 3,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>{TITLES[tab]}</div>
@@ -483,6 +498,12 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       {showSync && lastSync && (
         <span className="tm-num" style={{ fontSize: 11.5, color: 'var(--tm-muted2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtSync(lastSync)}</span>
       )}
+      <span
+        className={online ? 'tm-live' : undefined}
+        title={online ? `Verbunden${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
+        aria-label={online ? 'Verbunden' : 'Offline'}
+        style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginRight: 2, background: online ? 'var(--tm-green)' : 'var(--tm-muted2)', transition: 'background .3s var(--tm-ease)' }}
+      />
       <button className="tm-iconbtn tm-press-btn" onClick={() => { haptic(); setSearchOpen(true) }} aria-label="Suchen" title="Suchen (⌘K)">
         <IconSearch />
       </button>
@@ -578,7 +599,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
         {offlineBar}
 
         {/* Content */}
-        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }} onScrollCapture={onContentScroll}>
           {wrap('heute', <HeutePanel role={role} visible={tab === 'heute'} onCount={setHeuteCount} />, true)}
           {/* §277 Inbox = Gäste-Chat + Intern in EINEM Reiter, beide dauerhaft
               gemountet (Polling/Deep-Links), per Segment umgeschaltet */}
@@ -603,6 +624,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
           {tab === 'kalender' && wrap('kalender', <CalendarPanel />, true)}
           {tab === 'einstellungen' && wrap('einstellungen', <SettingsPanel role={role} />, true)}
 
+          {/* §282.2 Progressive Unschärfe: Inhalt verschwimmt weich in die Tab-Leiste */}
+          {!isDesktop && !navHidden && <div aria-hidden="true" className="tm-fade-bottom" style={{ height: 'calc(var(--tm-nav-pad, 92px) + 8px)' }} />}
           {/* Schwebende Tab-Leiste — im offenen Thread (mobil) ausgeblendet */}
           {!isDesktop && !navHidden && floatingNav}
 

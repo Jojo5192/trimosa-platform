@@ -353,12 +353,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         body: JSON.stringify(body),
       })
       if (r.ok) {
+        haptic('success')
         setDraft('')
         setReplyTo(null)
         if (composerRef.current) composerRef.current.style.height = 'auto'
         await loadMsgs(active.id)
         loadChats()
       } else {
+        haptic('error')
         tmToast(`Senden fehlgeschlagen (HTTP ${r.status}) — Entwurf bleibt erhalten.`)
       }
     } catch (e) {
@@ -665,7 +667,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
 
   /* ── Chat-Liste ── */
   const List = (
-    <div ref={internListRef} style={{ width: isMobile ? '100%' : 'var(--tm-list-w, 290px)', flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid var(--tm-line, rgba(60,60,67,0.12))', overflowY: 'auto', background: 'var(--tm-bg, #f3f4f6)', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined, paddingBottom: 'var(--tm-nav-pad)' }}>
+    <div ref={internListRef} className="tm-stagger" style={{ width: isMobile ? '100%' : 'var(--tm-list-w, 290px)', flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid var(--tm-line, rgba(60,60,67,0.12))', overflowY: 'auto', background: 'var(--tm-bg, #f3f4f6)', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined, paddingBottom: 'var(--tm-nav-pad)' }}>
       {/* §276: Titel sitzt in der Shell-Kopfleiste — hier nur Werkzeugzeile */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',

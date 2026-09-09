@@ -287,7 +287,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   }
 
   async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
-    haptic()
+    haptic(status === 'erledigt' ? 'success' : 'tap')
     setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status } : t))
     const res = await fetch(`/api/tasks/${task.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -457,7 +457,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
 
       {/* Liste (nicht im Vorschläge-Reiter) */}
       {filter !== 'vorschlaege' && (
-      <div style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="tm-stagger" style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
           <SkeletonRows kind="card" count={5} />
         ) : visible.length === 0 ? (
@@ -1160,6 +1160,7 @@ function CallCard({ task, onDone, onError }: {
   }
 
   async function saveDone(withSolution: boolean) {
+    haptic('success')
     if (doneBusy) return
     setDoneBusy(true)
     try {
