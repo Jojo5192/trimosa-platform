@@ -134,6 +134,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const [showInfo, setShowInfo] = useState(false)
   const [reactFor, setReactFor] = useState<string | null>(null)
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** §289 (Dominik): Bildschirm-Punkt, an dem das Tapback-Menü aufgeht — fixed positioniert,
+   *  damit es auch bei langen Blasen (Oberkante außerhalb) sichtbar bleibt */
+  const pickerPos = useRef<{ x: number; y: number } | null>(null)
   const [recording, setRecording] = useState(false)
   const [recSec, setRecSec] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -419,11 +422,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const pressPos = useRef<{ x: number; y: number } | null>(null)
   const lastTap = useRef<{ id: string; t: number } | null>(null)
 
-  function handleBubbleTap(msgId: string) {
+  function handleBubbleTap(msgId: string, at?: { x: number; y: number }) {
     const now = Date.now()
     if (lastTap.current && lastTap.current.id === msgId && now - lastTap.current.t < 320) {
       lastTap.current = null
       window.getSelection?.()?.removeAllRanges()
+      pickerPos.current = at ?? null
       setReactFor(msgId)
       return
     }
@@ -459,6 +463,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     pressPos.current = t ? { x: t.clientX, y: t.clientY } : null
     pressTimer.current = setTimeout(() => {
       window.getSelection?.()?.removeAllRanges()
+      pickerPos.current = pressPos.current
+      haptic()
       setReactFor(msgId)
     }, 420)
   }
@@ -841,13 +847,16 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                       onTouchMove={movePress}
                       onTouchEnd={cancelPress}
                       onTouchCancel={cancelPress}
-                      onClick={() => handleBubbleTap(m.id)}
-                      onContextMenu={(e) => { e.preventDefault(); setReactFor(m.id) }}
+                      onClick={(e) => handleBubbleTap(m.id, { x: e.clientX, y: e.clientY })}
+                      onContextMenu={(e) => { e.preventDefault(); pickerPos.current = { x: e.clientX, y: e.clientY }; setReactFor(m.id) }}
                     >
-                    {/* Tapback-Picker (Long-Press / Rechtsklick) */}
+                    {/* Tapback-Picker (Long-Press / Rechtsklick / Doppeltipp) — §289: am Fingerpunkt
+                        fixiert, damit er auch bei langen Blasen im Bild bleibt */}
                     {reactFor === m.id && (
                       <div style={{
-                        position: 'absolute', top: -48, ...(mine ? { right: 0 } : { left: 0 }), zIndex: 6,
+                        ...(pickerPos.current
+                          ? { position: 'fixed' as const, top: Math.max(8, Math.min(pickerPos.current.y - 64, window.innerHeight - 70)), left: Math.max(8, Math.min(pickerPos.current.x - 130, window.innerWidth - 300)), zIndex: 1200 }
+                          : { position: 'absolute' as const, top: -48, ...(mine ? { right: 0 } : { left: 0 }), zIndex: 6 }),
                         display: 'flex', gap: 2, background: 'var(--tm-card)', borderRadius: 999, padding: '5px 7px',
                         boxShadow: '0 6px 20px rgba(0,0,0,0.18), inset 0 0 0 0.5px var(--tm-line)',
                       }}>
@@ -865,6 +874,13 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                           width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
                           background: 'var(--tm-surface2)', fontSize: 16, cursor: 'pointer', color: 'var(--tm-muted)',
                         }}>↩︎</button>
+                        {/* §289: Kopieren — Blasen sind nicht markierbar (Long-Press gehört dem Menü) */}
+                        {m.content && (
+                          <button title="Text kopieren" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); navigator.clipboard?.writeText(m.content).then(() => tmToast('Kopiert')).catch(() => tmToast('Kopieren nicht möglich')) }} style={{
+                            width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
+                            background: 'var(--tm-surface2)', fontSize: 15, cursor: 'pointer', color: 'var(--tm-muted)',
+                          }}>📋</button>
+                        )}
                       </div>
                     )}
                     {/* Reaktions-Badges an der oberen Ecke (zur Bildschirm-Mitte) */}
