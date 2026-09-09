@@ -212,6 +212,13 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const internListRef = useRef<HTMLDivElement | null>(null)
   const internPtr = usePullToRefresh(internListRef, loadChats)
 
+  // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
+  useEffect(() => {
+    const h = () => { loadChats() }
+    window.addEventListener('trimosa-refresh', h)
+    return () => window.removeEventListener('trimosa-refresh', h)
+  }, [loadChats])
+
   // Poll-Diffing (Ruckel-Fix 19.7.): setMsgs NUR bei echter Änderung — sonst
   // re-rendert das 5s-Polling den ganzen Thread und der Scroll-Effect feuert
   // mitten in Gesten (Long-Press „fror ein")
@@ -602,16 +609,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
 
   /* ── Chat-Liste ── */
   const List = (
-    <div ref={internListRef} style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined }}>
+    <div ref={internListRef} style={{ width: isMobile ? '100%' : 290, flexShrink: 0, borderRight: isMobile ? 'none' : '1px solid rgba(60,60,67,0.12)', overflowY: 'auto', background: '#fff', display: 'flex', flexDirection: 'column', flex: isMobile ? 1 : undefined, paddingBottom: 'var(--tm-nav-pad)' }}>
+      {/* §276: Titel sitzt in der Shell-Kopfleiste — hier nur Werkzeugzeile */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: isMobile ? '14px 16px 10px' : '14px 14px 10px', flexShrink: 0,
+        padding: isMobile ? '8px 16px 4px' : '8px 14px 4px', flexShrink: 0,
       }}>
-        <span style={{ fontSize: isMobile ? 28 : 22, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>
-          Intern
-          {chats.length > 0 && (
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#8E8E93', marginLeft: 8, letterSpacing: 0 }}>{chats.length} {chats.length === 1 ? 'Gruppe' : 'Gruppen'}</span>
-          )}
+        <span className="tm-eyebrow">
+          {chats.length > 0 ? `${chats.length} ${chats.length === 1 ? 'Gruppe' : 'Gruppen'}` : ''}
         </span>
         {canCreate && (
           <button onClick={() => { haptic(); setShowCreate(true) }} aria-label="Neue Gruppe" style={{
@@ -676,6 +681,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     </div>
   ) : (
     <div
+      className={isMobile ? 'tm-slide-in' : undefined}
       ref={isMobile ? swipe.ref : undefined}
       onTouchStart={isMobile ? swipe.onTouchStart : undefined}
       onTouchMove={isMobile ? swipe.onTouchMove : undefined}

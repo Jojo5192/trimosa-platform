@@ -1,31 +1,62 @@
 'use client'
 
 /**
- * Die Team-App-Shell: Bottom-Tabs wie WhatsApp/iOS.
- *  team (admin|host|staff): 💬 Chat (Gäste) · 💼 Intern · ✅ Aufgaben · 📅 Kalender
- *  provider (Dienstleister): 💼 Intern · ✅ Aufgaben · 📅 Kalender (KEIN Gäste-Chat)
+ * Die Team-App-Shell — §276 Design-System (Pascals JUPAS-Referenz, 9.9.2026):
+ *  · Glas-Kopfleiste auf jedem Bildschirm: Wortmarke klein, Bereichs-Name
+ *    groß, Sync-Stand, Lupe + Aktualisieren als runde Icon-Knöpfe
+ *  · schwebende Tab-Leiste unten (Glas, Strich-Icons, aktive Pille), der
+ *    Inhalt scrollt dahinter durch (--tm-nav-pad in den Panel-Scrollern)
+ *  · am Rechner (≥1000px) wird die Leiste zur Seitenleiste links
+ *  · Ladestreifen oben während eines Abgleichs, Toast-Host, Such-Ebene
+ * Tabs: team (admin|host|staff) 💬 Chat · 💼 Intern · 📅 Belegung · ✅ Aufgaben · ⋯ Mehr
+ *       provider (Dienstleister) ohne Gäste-Chat.
  * ChatPanel/InternPanel bleiben gemountet (Polling/State), die anderen Tabs
  * werden per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
+ * Der frühere Reiter „Offen" (Karten-Stapel, §155) lebt weiter unter Mehr.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
-import { haptic, TabIcon } from '@/components/team/ux'
+import { haptic, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
+import SearchOverlay from '@/components/team/SearchOverlay'
 
 type Tab = 'chat' | 'offen' | 'intern' | 'aufgaben' | 'kalender' | 'einstellungen'
 
-const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'chat', icon: '💬', label: 'Chat' },
-  { id: 'offen', icon: '📥', label: 'Offen' },
-  { id: 'intern', icon: '💼', label: 'Intern' },
-  { id: 'aufgaben', icon: '✅', label: 'Aufgaben' },
-  { id: 'kalender', icon: '📅', label: 'Kalender' },
-  { id: 'einstellungen', icon: '⚙️', label: 'Mehr' },
+/** Reiter der Leiste (Reihenfolge = Pascal-Spec, „Offen" ist kein Reiter mehr) */
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'intern', label: 'Intern' },
+  { id: 'kalender', label: 'Kalender' },
+  { id: 'aufgaben', label: 'Aufgaben' },
+  { id: 'einstellungen', label: 'Mehr' },
 ]
+/** Bereichs-Name in der Kopfleiste (springt beim Reiterwechsel um) */
+const TITLES: Record<Tab, string> = {
+  chat: 'Chat', offen: 'Offen', intern: 'Intern', aufgaben: 'Aufgaben', kalender: 'Belegung', einstellungen: 'Mehr',
+}
+
+function fmtSync(d: Date) {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `Sync ${p(d.getDate())}.${p(d.getMonth() + 1)}., ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** Wortmarke: Gold-Emblem (= Markenteil in Akzentfarbe) + TRIMOSA gesperrt */
+function Wordmark({ big = false }: { big?: boolean }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: big ? 7 : 5, lineHeight: 1 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/icon.png" alt="" width={big ? 16 : 11} height={big ? 16 : 11} style={{ display: 'block' }} />
+      <span style={{
+        fontSize: big ? 13 : 10.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
+        color: 'var(--tm-muted)',
+      }}>TRIMOSA</span>
+    </span>
+  )
+}
 
 export default function TeamShell({ userId, role, initialConvId, initialTab, initialInternChatId, initialTaskId }: {
   userId: string
@@ -36,19 +67,29 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   /** §274: /team?task=<id> (Push-Deep-Link der Überbuchungs-Aufgabe) */
   initialTaskId?: string | null
 }) {
-  const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat' && t.id !== 'offen') : TABS
+  const tabs = role === 'provider' ? TABS.filter((t) => t.id !== 'chat') : TABS
+  const allowed = (id: string): id is Tab => tabs.some((t) => t.id === id) || (role === 'team' && id === 'offen')
   const fallback: Tab = role === 'provider' ? 'intern' : 'chat'
   const [tab, setTab] = useState<Tab>(
-    initialTaskId ? 'aufgaben'
-      : tabs.some((t) => t.id === initialTab) ? (initialTab as Tab) : fallback
+    initialTaskId ? 'aufgaben' : initialTab && allowed(initialTab) ? (initialTab as Tab) : fallback
   )
   const [internUnread, setInternUnread] = useState(0)
   const [guestUnread, setGuestUnread] = useState(0)
   const [offenCount, setOffenCount] = useState(0)
-  // Mobil in einem Thread: Tab-Bar versteckt (WhatsApp-Verhalten, §98-Feedback)
+  // Mobil in einem Thread: Kopfleiste + Tab-Bar versteckt (WhatsApp-Verhalten, §98)
   const [chatThread, setChatThread] = useState(false)
   const [internThread, setInternThread] = useState(false)
   const navHidden = (tab === 'chat' && chatThread) || (tab === 'intern' && internThread)
+
+  // Rechner (≥1000px): Seitenleiste statt schwebender Tab-Leiste
+  const [isDesktop, setIsDesktop] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)')
+    const apply = () => setIsDesktop(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
 
   // §162: Klick auf eine Aufgabe im Kalender → Aufgaben-Tab öffnen und die
   // Aufgabe fokussieren (Event aus CalendarPanel; TasksPanel ist nur bei
@@ -60,8 +101,71 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       setTaskFocus(id)
       setTab('aufgaben')
     }
+    // Mehr → „Offen"-Karten-Stapel (kein Reiter mehr, §276)
+    const onOpenTab = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      if (allowed(id)) setTab(id)
+    }
     window.addEventListener('trimosa-open-task', onOpenTask)
-    return () => window.removeEventListener('trimosa-open-task', onOpenTask)
+    window.addEventListener('trimosa-open-tab', onOpenTab)
+    return () => {
+      window.removeEventListener('trimosa-open-task', onOpenTask)
+      window.removeEventListener('trimosa-open-tab', onOpenTab)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ── Sync-Stand, Ladestreifen, Aktualisieren ── */
+  const [lastSync, setLastSync] = useState<Date | null>(null)
+  const [syncing, setSyncing] = useState(true)
+  const [spin, setSpin] = useState(0)
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    const onSynced = () => {
+      setLastSync(new Date())
+      setSyncing(false)
+      if (syncTimer.current) { clearTimeout(syncTimer.current); syncTimer.current = null }
+    }
+    window.addEventListener('trimosa-synced', onSynced)
+    // Start-Abgleich: spätestens nach 4 s ist der Streifen weg (Panels ohne Event)
+    syncTimer.current = setTimeout(() => setSyncing(false), 4000)
+    return () => {
+      window.removeEventListener('trimosa-synced', onSynced)
+      if (syncTimer.current) clearTimeout(syncTimer.current)
+    }
+  }, [])
+  const refresh = useCallback(() => {
+    haptic()
+    setSpin((k) => k + 1)
+    setSyncing(true)
+    window.dispatchEvent(new Event('trimosa-refresh'))
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(() => setSyncing(false), 3000)
+  }, [])
+
+  /* ── Toast-Host (tmToast aus ux.tsx) ── */
+  const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    const onToast = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text
+      if (!text) return
+      setToast(text)
+      if (t) clearTimeout(t)
+      t = setTimeout(() => setToast(null), 2000)
+    }
+    window.addEventListener('trimosa-toast', onToast)
+    return () => { window.removeEventListener('trimosa-toast', onToast); if (t) clearTimeout(t) }
+  }, [])
+
+  /* ── Suche (Lupe · ⌘K) ── */
+  const [searchOpen, setSearchOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   // App-Icon-Badge ZENTRAL (Pascal 19.7.): folgt den Push-Einstellungen —
@@ -135,11 +239,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   }, [])
 
   // iOS 26: Statusbar-Farbe = Seiten-Hintergrund — zusätzlich zum CSS-:has()
-  // hart auf Weiß setzen (Gürtel + Hosenträger)
+  // hart auf den App-Hintergrund setzen (Gürtel + Hosenträger, §98/§276)
   useEffect(() => {
     const html = document.documentElement
     const prev = html.style.backgroundColor
-    html.style.backgroundColor = '#ffffff'
+    html.style.backgroundColor = '#f3f4f6'
     return () => { html.style.backgroundColor = prev }
   }, [])
 
@@ -178,7 +282,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: chat } }))
       return
     }
-    if (wunschTab && tabs.some((t) => t.id === wunschTab)) setTab(wunschTab as Tab)
+    if (wunschTab && allowed(wunschTab)) setTab(wunschTab)
   }
   const applyPushUrlRef = useRef(applyPushUrl)
   applyPushUrlRef.current = applyPushUrl
@@ -197,88 +301,177 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     return () => navigator.serviceWorker.removeEventListener('message', onMsg)
   }, [])
 
+  /* Treffer der Such-Ebene → Ziel öffnen */
+  const openHit = (h: { id: string; group: 'chat' | 'intern' | 'task' }) => {
+    if (h.group === 'chat') { setTab('chat'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: h.id } })) }
+    else if (h.group === 'intern') { setTab('intern'); window.dispatchEvent(new CustomEvent('trimosa-open-intern', { detail: { id: h.id } })) }
+    else { setTaskFocus(h.id); setTab('aufgaben') }
+  }
+
+  const goTab = (id: Tab) => { haptic(); setTab(id) }
+  // Sync-Stand am Handy nur auf Chat/Intern (lange Titel sonst abgeschnitten)
+  const showSync = !!lastSync && (isDesktop || tab === 'chat' || tab === 'intern')
+  const badgeFor = (id: Tab) => id === 'intern' ? internUnread : id === 'chat' ? guestUnread : 0
+
+  /* ── Kopfleiste ── */
+  const header = (
+    <header style={{
+      flexShrink: 0, position: 'relative', zIndex: 30,
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '9px 16px 9px',
+      background: 'var(--tm-glass)',
+      backdropFilter: 'blur(18px) saturate(1.5)', WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
+      borderBottom: '1px solid var(--tm-line)',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {tab === 'offen' ? (
+          <button className="tm-press-btn" onClick={() => goTab('einstellungen')} style={{
+            border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--tm-accent-dark)', fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2,
+          }}><span style={{ fontSize: 22, lineHeight: 1, marginTop: -2 }}>‹</span> Mehr</button>
+        ) : (
+          <>
+            {!isDesktop && <Wordmark />}
+            <div key={tab} className="tm-enter" style={{
+              fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--tm-text)',
+              lineHeight: 1.15, marginTop: isDesktop ? 0 : 3,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{TITLES[tab]}</div>
+          </>
+        )}
+      </div>
+      {showSync && lastSync && (
+        <span className="tm-num" style={{ fontSize: 11.5, color: 'var(--tm-muted2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtSync(lastSync)}</span>
+      )}
+      <button className="tm-iconbtn tm-press-btn" onClick={() => { haptic(); setSearchOpen(true) }} aria-label="Suchen" title="Suchen (⌘K)">
+        <IconSearch />
+      </button>
+      <button className="tm-iconbtn tm-press-btn" onClick={refresh} aria-label="Aktualisieren" title="Aktualisieren">
+        <span key={spin} className={spin > 0 ? 'tm-spin-once' : undefined} style={{ display: 'inline-flex' }}><IconRefresh /></span>
+      </button>
+    </header>
+  )
+
+  /* ── Tab-Knopf (Leiste + Seitenleiste) ── */
+  const tabButton = (t: { id: Tab; label: string }, sidebar: boolean) => {
+    const active = tab === t.id
+    const badge = badgeFor(t.id)
+    return (
+      <button key={t.id} className="tm-press-tab" onClick={() => goTab(t.id)} aria-current={active ? 'page' : undefined} style={{
+        border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        background: active ? 'var(--tm-accent-soft)' : 'transparent',
+        color: active ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
+        borderRadius: sidebar ? 12 : 22,
+        transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
+        ...(sidebar
+          ? { display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 12px', textAlign: 'left' as const }
+          : { flex: 1, minWidth: 0, height: 62, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0 2px' }),
+      }}>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <TabStrokeIcon name={t.id} size={sidebar ? 22 : 27} active={active} />
+          {badge > 0 && (
+            <span style={{
+              position: 'absolute', top: -5, right: -10, minWidth: 17, height: 17, borderRadius: 9,
+              background: 'var(--tm-red)', color: '#fff', fontSize: 9.5, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
+              boxShadow: '0 0 0 2px var(--tm-card)',
+            }}>{badge > 99 ? '99+' : badge}</span>
+          )}
+        </span>
+        <span style={{ fontSize: sidebar ? 14.5 : 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{t.label}</span>
+      </button>
+    )
+  }
+
+  /* ── Schwebende Tab-Leiste (Handy/Tablet) ── */
+  const floatingNav = (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 40, pointerEvents: 'none',
+      padding: '0 12px calc(12px + env(safe-area-inset-bottom))',
+    }}>
+      <nav style={{
+        pointerEvents: 'auto', height: 76, borderRadius: 28,
+        background: 'var(--tm-nav-glass)',
+        backdropFilter: 'blur(22px) saturate(1.6)', WebkitBackdropFilter: 'blur(22px) saturate(1.6)',
+        border: '1px solid var(--tm-line)', boxShadow: 'var(--tm-shadow-float)',
+        display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px',
+      }}>
+        {tabs.map((t) => tabButton(t, false))}
+      </nav>
+    </div>
+  )
+
+  /* ── Seitenleiste (Rechner) ── */
+  const sidebar = (
+    <aside style={{
+      width: 224, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4,
+      padding: '20px 12px', background: 'var(--tm-card)', borderRight: '1px solid var(--tm-line)',
+    }}>
+      <div style={{ padding: '2px 12px 18px' }}><Wordmark big /></div>
+      {tabs.map((t) => tabButton(t, true))}
+    </aside>
+  )
+
+  const wrap = (id: Tab, node: React.ReactNode, centered = false) => (
+    <div key={id} className={tab === id ? 'tm-enter' : undefined} style={{ height: '100%', display: tab === id ? 'block' : 'none' }}>
+      {centered && isDesktop
+        ? <div style={{ height: '100%', maxWidth: 1100, margin: '0 auto' }}>{node}</div>
+        : node}
+    </div>
+  )
+
   return (
     <div ref={shellRef} className="team-shell" style={{
-      height: '100dvh', display: 'flex', flexDirection: 'column',
-      background: '#fff', overflow: 'hidden', overscrollBehavior: 'none',
+      height: '100dvh', display: 'flex', flexDirection: isDesktop ? 'row' : 'column',
+      background: 'var(--tm-bg)', color: 'var(--tm-text)', overflow: 'hidden', overscrollBehavior: 'none',
       position: 'relative', top: 0,
       // viewport-fit=cover: falls die App unter der Statusbar beginnt, hält
       // das Padding den Inhalt frei (0 bei opaker Statusbar — harmlos)
       paddingTop: 'env(safe-area-inset-top)',
     }}>
-      {/* Content */}
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {role === 'team' && (
-          <div style={{ height: '100%', display: tab === 'chat' ? 'block' : 'none' }}>
+      {syncing && <div className="tm-loadbar" aria-hidden="true" />}
+      {isDesktop && sidebar}
+
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {!navHidden && header}
+
+        {/* Content */}
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {role === 'team' && wrap('chat',
             <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
-          </div>
-        )}
-        {role === 'team' && (
-          <div style={{ height: '100%', display: tab === 'offen' ? 'block' : 'none' }}>
-            <OffenPanel visible={tab === 'offen'} onCount={setOffenCount} />
-          </div>
-        )}
-        <div style={{ height: '100%', display: tab === 'intern' ? 'block' : 'none' }}>
-          <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} initialChatId={initialInternChatId ?? null} />
+          )}
+          {role === 'team' && wrap('offen',
+            <OffenPanel visible={tab === 'offen'} onCount={setOffenCount} />, true
+          )}
+          {wrap('intern',
+            <InternPanel userId={userId} onUnread={setInternUnread} onMobileThread={setInternThread} initialChatId={initialInternChatId ?? null} />
+          )}
+          {tab === 'aufgaben' && wrap('aufgaben',
+            <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true
+          )}
+          {tab === 'kalender' && wrap('kalender', <CalendarPanel />, true)}
+          {tab === 'einstellungen' && wrap('einstellungen', <SettingsPanel role={role} />, true)}
+
+          {/* Schwebende Tab-Leiste — im offenen Thread (mobil) ausgeblendet */}
+          {!isDesktop && !navHidden && floatingNav}
+
+          {toast && (
+            <div className="tm-toast" role="status" style={{
+              position: 'absolute', left: '50%', zIndex: 60,
+              bottom: navHidden || isDesktop ? 'calc(20px + env(safe-area-inset-bottom))' : 'calc(var(--tm-nav-pad) + 6px)',
+              background: '#171a1f', color: '#fff', fontSize: 13, fontWeight: 600,
+              borderRadius: 999, padding: '10px 16px', boxShadow: 'var(--tm-shadow-float)',
+              whiteSpace: 'nowrap', maxWidth: 'calc(100% - 32px)', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{toast}</div>
+          )}
         </div>
-        {tab === 'aufgaben' && (
-          <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />
-        )}
-        {tab === 'kalender' && <CalendarPanel />}
-        {tab === 'einstellungen' && <SettingsPanel role={role} />}
       </div>
 
-      {/* Bottom-Tab-Bar — im offenen Thread (mobil) ausgeblendet */}
-      {!navHidden && (
-      <nav style={{
-        display: 'flex', flexShrink: 0,
-        background: 'rgba(249,249,249,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
-        boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.2)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      }}>
-        {tabs.map((t) => {
-          const active = tab === t.id
-          return (
-            <button key={t.id} onClick={() => { haptic(); setTab(t.id) }} style={{
-              flex: 1, border: 'none', background: 'none', cursor: 'pointer',
-              padding: '7px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              WebkitTapHighlightColor: 'transparent',
-            }}>
-              {/* §243ag: SF-Symbol-artige SVG-Icons statt Emojis — getintet
-                  über currentColor (aktiv Gold, inaktiv iOS-Grau) */}
-              <span style={{
-                position: 'relative', display: 'inline-flex',
-                color: active ? '#12222E' : '#999BA0',
-                transition: 'color .15s',
-              }}>
-                <TabIcon name={t.id} />
-                {t.id === 'intern' && internUnread > 0 && (
-                  <span style={{
-                    position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
-                    background: '#DC2626', color: '#fff', fontSize: 9.5, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
-                    filter: 'none',
-                  }}>{internUnread > 9 ? '9+' : internUnread}</span>
-                )}
-                {t.id === 'offen' && offenCount > 0 && (
-                  <span style={{
-                    position: 'absolute', top: -3, right: -9, minWidth: 16, height: 16, borderRadius: 8,
-                    background: '#12222E', color: '#fff',
-                    fontSize: 9.5, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
-                    filter: 'none',
-                  }}>{offenCount > 9 ? '9+' : offenCount}</span>
-                )}
-              </span>
-              <span style={{
-                fontSize: 10, fontWeight: active ? 700 : 500,
-                color: active ? '#12222E' : '#8E8E93',
-              }}>{t.label}</span>
-            </button>
-          )
-        })}
-      </nav>
+      {searchOpen && (
+        <SearchOverlay role={role} isDesktop={isDesktop} onClose={() => setSearchOpen(false)} onOpen={openHit} />
       )}
+      {/* offenCount wird bis zum Heute-Tab (Baustein 2) nicht angezeigt */}
+      <span hidden>{offenCount}</span>
     </div>
   )
 }

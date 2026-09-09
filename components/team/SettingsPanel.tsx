@@ -179,14 +179,27 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#F2F2F7', WebkitOverflowScrolling: 'touch' }}>
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '18px 16px 40px' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: '#1A1814', margin: '4px 2px 18px' }}>Einstellungen</h1>
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch' }}>
+      {/* §276: Titel „Mehr" steht in der Shell-Kopfleiste */}
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 16px', paddingBottom: 'var(--tm-nav-pad)' }}>
 
         {role === 'team' && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BEREICHE</div>
             <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+              {/* §276: „Offen"-Karten-Stapel ist kein Reiter mehr — hier erreichbar */}
+              <button onClick={() => window.dispatchEvent(new CustomEvent('trimosa-open-tab', { detail: 'offen' }))} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+              }}>
+                <span style={{ fontSize: 19 }}>📥</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Offen abarbeiten</span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel — Antwort, ✓, 📞, Aufgabe</span>
+                </span>
+                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+              </button>
               <button onClick={() => setShowTrends(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
                 background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',

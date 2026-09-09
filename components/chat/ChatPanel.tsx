@@ -620,6 +620,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
       convsRef.current = data
       applyPending(data)
+      // §276: Sync-Stand + Ladestreifen der Shell
+      window.dispatchEvent(new Event('trimosa-synced'))
       return data
     }
     const r = await fetch('/api/chat')
@@ -646,6 +648,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   // ⬇️ §209 Pull-to-Refresh der Thread-Liste (Ziehen am Listenanfang lädt neu)
   const listPtr = usePullToRefresh(listScrollRef, getConvs)
+
+  // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
+  useEffect(() => {
+    const h = () => { if (variant === 'app') getConvs() }
+    window.addEventListener('trimosa-refresh', h)
+    return () => window.removeEventListener('trimosa-refresh', h)
+  }, [getConvs, variant])
 
   // Ältere Chats einmalig nachladen (§129) — dedupe gegen die Live-Liste
   // passiert beim Rendern, damit der 20s-Poll die Archiv-Daten nie anfasst
@@ -1105,6 +1114,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         background: '#fff',
         borderRight: fullWidth ? 'none' : '1px solid rgba(60,60,67,0.12)',
         overflowY: 'auto',
+        // §276: Inhalt läuft hinter der schwebenden Tab-Leiste durch
+        paddingBottom: variant === 'app' ? 'var(--tm-nav-pad)' : undefined,
         display: 'flex', flexDirection: 'column',
         flex: fullWidth ? 1 : undefined,
       }}>
@@ -1323,6 +1334,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
     return (
       <div
+        className={showBack ? 'tm-slide-in' : undefined}
         ref={showBack ? swipe.ref : undefined}
         onTouchStart={showBack ? swipe.onTouchStart : undefined}
         onTouchMove={showBack ? swipe.onTouchMove : undefined}

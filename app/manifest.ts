@@ -11,9 +11,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Gäste-Kommunikation von TRIMOSA Apartments & Homes',
     start_url: '/team',
     display: 'standalone',
-    background_color: '#ffffff',
-    // Statusbar-Zone (Uhrzeit/Batterie) weiß, nahtlos zum App-Header
-    theme_color: '#ffffff',
+    // §276: App-Hintergrund (Tokens) — Statusbar-Zone nahtlos zur Glas-Kopfleiste
+    background_color: '#f3f4f6',
+    theme_color: '#f3f4f6',
     icons: [
       { src: '/icon.png', sizes: '512x512', type: 'image/png' },
       { src: '/apple-icon.png', sizes: '180x180', type: 'image/png' },

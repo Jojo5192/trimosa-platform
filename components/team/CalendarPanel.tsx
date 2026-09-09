@@ -126,6 +126,13 @@ export default function CalendarPanel() {
   // ⬇️ §209 Pull-to-Refresh: am Listenanfang ziehen lädt den Kalender neu
   const calScrollRef = useRef<HTMLDivElement | null>(null)
   const calPtr = usePullToRefresh(calScrollRef, load)
+
+  // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
+  useEffect(() => {
+    const h = () => { load() }
+    window.addEventListener('trimosa-refresh', h)
+    return () => window.removeEventListener('trimosa-refresh', h)
+  }, [load])
   useEffect(() => { load() }, [load])
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') load() }
@@ -313,16 +320,15 @@ export default function CalendarPanel() {
   )
 
   return (
-    <div ref={calScrollRef} style={{ height: '100%', overflowY: 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={calScrollRef} style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch', paddingBottom: 'var(--tm-nav-pad)' }}>
       <PullHint pull={calPtr.pull} busy={calPtr.busy} />
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        // Safe-Area oben liefert seit viewport-fit=cover die TeamShell zentral
-        padding: '14px 16px 10px',
+        // §276: Titel „Belegung" steht in der Shell-Kopfleiste (keine doppelten Titel)
+        padding: '10px 16px 10px',
         boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
       }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 11px', color: '#111', letterSpacing: '-0.6px' }}>Kalender</h1>
         {/* Ansichts-Umschalter: Belegung · Agenda · Reinigungsplaner —
             §243ag als echtes iOS-Segmented-Control */}
         <Segmented

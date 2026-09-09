@@ -29,7 +29,7 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
   if (!role) notFound()
 
   return (
-    <main style={{ height: '100dvh', overflow: 'hidden', background: '#fff' }}>
+    <main style={{ height: '100dvh', overflow: 'hidden', background: '#f3f4f6' }}>
       <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} initialTaskId={task ?? null} />
     </main>
   )

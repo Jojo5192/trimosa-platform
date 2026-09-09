@@ -19,7 +19,7 @@ export const viewport: Viewport = {
   // und der Composer klebt in den runden Display-Ecken
   viewportFit: 'cover',
   // Statusbar-Fläche (Uhrzeit/Batterie) weiß — nahtlos zum App-Header
-  themeColor: '#ffffff',
+  themeColor: '#f3f4f6',
 }
 
 export default function TeamLayout({ children }: { children: ReactNode }) {

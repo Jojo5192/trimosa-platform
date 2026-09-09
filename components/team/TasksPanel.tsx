@@ -191,6 +191,13 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   // ⬇️ §209 Pull-to-Refresh: am Listenanfang ziehen lädt die Aufgaben neu
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const ptr = usePullToRefresh(scrollRef, load)
+
+  // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
+  useEffect(() => {
+    const h = () => { load() }
+    window.addEventListener('trimosa-refresh', h)
+    return () => window.removeEventListener('trimosa-refresh', h)
+  }, [load])
   useEffect(() => { load() }, [load])
   // App kommt aus dem Hintergrund zurück ODER Netz kehrt zurück → frisch laden
   useEffect(() => {
@@ -313,17 +320,16 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     <div style={{ height: '100%', position: 'relative' }}>
     {/* Hintergrund-Scroll sperren, solange das Sheet offen ist — sonst
         scrollt iOS beim Wischen im Sheet die Liste dahinter (Scroll-Chaining) */}
-    <div ref={scrollRef} style={{ height: '100%', overflowY: (editing || completing) ? 'hidden' : 'auto', background: '#F7F7F8', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={scrollRef} style={{ height: '100%', overflowY: (editing || completing) ? 'hidden' : 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch', paddingBottom: 'var(--tm-nav-pad)' }}>
       <PullHint pull={ptr.pull} busy={ptr.busy} />
       {/* Header + Filter */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        // Safe-Area oben liefert seit viewport-fit=cover die TeamShell zentral
-        padding: '14px 16px 10px',
+        // §276: Titel „Aufgaben" steht in der Shell-Kopfleiste (keine doppelten Titel)
+        padding: '10px 16px 10px',
         boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.15)`,
       }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 11px', color: '#111', letterSpacing: '-0.6px' }}>Aufgaben</h1>
         {/* §243ag: echtes iOS-Segmented-Control statt Pill-Reihe */}
         <Segmented
           options={[
@@ -593,8 +599,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
 
       {/* FAB (nur mit Anlegen-Recht) — außerhalb des Scrollers, im Content-Bereich */}
       {manage && filter !== 'vorschlaege' && (
-        <button onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
-          position: 'absolute', right: 18, bottom: 18, width: 54, height: 54, borderRadius: '50%',
+        <button className="tm-press-btn" onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
+          position: 'absolute', right: 18, bottom: 'calc(var(--tm-nav-pad) + 6px)', width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
           boxShadow: '0 6px 18px rgba(0,0,0,0.22)',

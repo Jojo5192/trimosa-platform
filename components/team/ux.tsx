@@ -179,3 +179,57 @@ export function SkeletonRows({ kind, count = 6 }: { kind: 'chat' | 'card'; count
     </div>
   )
 }
+
+/* ═══════════════ §276 Design-System-Bausteine (JUPAS-Referenz) ═══════════════ */
+
+/** 🖊 Strich-Icons (Stroke, 24er-Viewbox) für die schwebende Tab-Leiste und
+ *  die Seitenleiste — aktiv dicker (2.3) als inaktiv (1.9). */
+const STROKE_PATHS: Record<string, string> = {
+  // Haus (Heute)
+  heute: 'M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-6h4v6',
+  // Sprechblase (Chat/Inbox)
+  chat: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5v-7z',
+  inbox: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5v-7z',
+  // Aktentasche (Intern)
+  intern: 'M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M4 9.5A2.5 2.5 0 0 1 6.5 7h11A2.5 2.5 0 0 1 20 9.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17V9.5zM4 12.5h16',
+  // Ablage (Offen)
+  offen: 'M4 13.5V17a2.5 2.5 0 0 0 2.5 2.5h11A2.5 2.5 0 0 0 20 17v-3.5M4 13.5 6.2 6.2A1.5 1.5 0 0 1 7.6 5h8.8a1.5 1.5 0 0 1 1.4 1.2L20 13.5M4 13.5h4.5l1 2h5l1-2H20',
+  // Haken im Quadrat (Aufgaben)
+  aufgaben: 'M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 17.5v-11zM8.5 12.2l2.4 2.4 4.7-5',
+  // Kalender
+  kalender: 'M5 7.5A1.5 1.5 0 0 1 6.5 6h11A1.5 1.5 0 0 1 19 7.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 17.5v-10zM5 10.5h14M9 4v4M15 4v4',
+  // Raster (Mehr)
+  einstellungen: 'M5 5h5.5v5.5H5V5zM13.5 5H19v5.5h-5.5V5zM5 13.5h5.5V19H5v-5.5zM13.5 13.5H19V19h-5.5v-5.5z',
+}
+export function TabStrokeIcon({ name, size = 27, active = false }: { name: string; size?: number; active?: boolean }) {
+  const d = STROKE_PATHS[name]
+  if (!d) return null
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={active ? 2.3 : 1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>
+      <path d={d} />
+    </svg>
+  )
+}
+
+/** Lupe / Aktualisieren / Zurück — Kopfleisten-Icons. */
+export function IconSearch({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" /><line x1="20" y1="20" x2="15.8" y2="15.8" />
+    </svg>
+  )
+}
+export function IconRefresh({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 4.5v4.5H15" />
+    </svg>
+  )
+}
+
+/** 🍞 Toast: dunkle Pille unten mittig über der Tab-Leiste, 2 s.
+ *  Aufruf von überall — die TeamShell rendert den Host. */
+export function tmToast(text: string) {
+  try { window.dispatchEvent(new CustomEvent('trimosa-toast', { detail: { text } })) } catch { /* SSR */ }
+}

@@ -139,6 +139,13 @@ export default function OffenPanel({ visible, onCount }: {
   }, [visible, load])
   useEffect(() => { onCount(queue.length) }, [queue.length, onCount])
 
+  // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
+  useEffect(() => {
+    const h = () => { if (visible) load() }
+    window.addEventListener('trimosa-refresh', h)
+    return () => window.removeEventListener('trimosa-refresh', h)
+  }, [visible, load])
+
   /* ── Verlauf der aktuellen Karte (letzte Nachrichten) ── */
   useEffect(() => {
     if (!current) { setMsgs([]); return }
@@ -416,25 +423,16 @@ export default function OffenPanel({ visible, onCount }: {
   const platform = current ? shortPlatform(current.platform) : ''
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#F2F2F7', overflow: 'hidden' }}>
-      {/* Kopf */}
-      <div style={{
-        padding: '14px 16px 10px', background: 'rgba(249,249,249,0.92)',
-        backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.2)', flexShrink: 0,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: 28, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>Offen</span>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--tm-bg)', overflow: 'hidden', paddingBottom: 'var(--tm-nav-pad)' }}>
+      {/* §276: Titel + Aktualisieren sitzen in der Shell-Kopfleiste — hier nur der Zähler */}
+      <div style={{ padding: '8px 16px 2px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span className="tm-eyebrow">Karten-Stapel</span>
         {loaded && queue.length > 0 && (
           <span style={{
             fontSize: 12.5, fontWeight: 800, color: '#fff', background: '#12222E',
             borderRadius: 999, padding: '3px 10px',
           }}>{queue.length}</span>
         )}
-        <button type="button" onClick={load} title="Aktualisieren" style={{
-          marginLeft: 'auto', border: 'none', background: 'rgba(118,118,128,0.12)', borderRadius: 999,
-          width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#666',
-        }}>↻</button>
       </div>
 
       {toast && (

@@ -89,7 +89,7 @@ html {
    im globalen Grau (#ECEEF4). */
 html:has(.team-shell),
 html:has(.team-shell) body {
-  background-color: #ffffff;
+  background-color: #f3f4f6;
 }
 
 body {
@@ -698,4 +698,134 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .mat-pop { animation: mat-pop 0.28s ease; }
 @media (prefers-reduced-motion: reduce) {
   .mat-tap, .mat-pop { transition: none; animation: none; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   §276 TEAM-APP DESIGN-SYSTEM (Pascals JUPAS-Referenz, 9.9.2026)
+   Tokens leben auf .team-shell (NICHT :root — die Website behält ihre
+   eigene Optik). Portale tragen die Klasse ebenfalls (§100) und erben so.
+   Dark Mode ist vorbereitet (.tm-dark), wird aber erst automatisch aktiv,
+   wenn alle Alt-Panels auf Tokens migriert sind — sonst Mischbild.
+   ═══════════════════════════════════════════════════════════════════════ */
+.team-shell {
+  --tm-bg: #f3f4f6;
+  --tm-card: #ffffff;
+  --tm-surface2: #f4f5f7;
+  --tm-line: #e3e6ea;
+  --tm-text: #171a1f;
+  --tm-muted: #646b76;
+  --tm-muted2: #959ca7;
+  --tm-accent: #AE8D2D;
+  --tm-accent-dark: #8A7020;
+  --tm-accent-soft: rgba(174, 141, 45, 0.13);
+  --tm-green: #1a9d57;
+  --tm-green-soft: rgba(26, 157, 87, 0.13);
+  --tm-yellow: #d98506;
+  --tm-yellow-soft: rgba(217, 133, 6, 0.13);
+  --tm-red: #dc3d3d;
+  --tm-red-soft: rgba(220, 61, 61, 0.13);
+  --tm-glass: rgba(243, 244, 246, 0.82);
+  --tm-nav-glass: rgba(247, 248, 250, 0.9);
+  --tm-r-card: 18px;
+  --tm-shadow: 0 1px 2px rgba(23, 26, 31, 0.04), 0 2px 8px rgba(23, 26, 31, 0.04);
+  --tm-shadow-float: 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06);
+  --tm-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Unterrand-Padding der Scroller: Inhalt läuft hinter der schwebenden
+     Tab-Leiste durch (76px Leiste + 12px Abstand + Luft + Safe-Area) */
+  --tm-nav-pad: calc(100px + env(safe-area-inset-bottom));
+  color-scheme: light;
+}
+.team-shell.tm-dark {
+  --tm-bg: #0f1114;
+  --tm-card: #1a1d22;
+  --tm-surface2: #22262c;
+  --tm-line: #262b32;
+  --tm-text: #eef0f3;
+  --tm-muted: #9aa3ad;
+  --tm-muted2: #6b7480;
+  --tm-accent: #C9A44A;
+  --tm-accent-dark: #E3C878;
+  --tm-accent-soft: rgba(201, 164, 74, 0.18);
+  --tm-glass: rgba(15, 17, 20, 0.82);
+  --tm-nav-glass: rgba(22, 25, 29, 0.92);
+  --tm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --tm-shadow-float: 0 10px 30px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+@media (min-width: 1000px) {
+  /* Rechner: Tab-Leiste ist Seitenleiste → nur normale Luft unten */
+  .team-shell { --tm-nav-pad: 24px; }
+}
+
+/* Karten, Chips, Abschnittstitel */
+.tm-card {
+  background: var(--tm-card);
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-card);
+  box-shadow: var(--tm-shadow);
+}
+.tm-eyebrow {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--tm-muted);
+}
+.tm-num { font-variant-numeric: tabular-nums; }
+.tm-iconbtn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--tm-card); border: 1px solid var(--tm-line);
+  box-shadow: var(--tm-shadow); color: var(--tm-text);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Druck-Feedback — jede Karte/jeder Knopf reagiert wie ein echter Knopf */
+.tm-press, .tm-press-btn, .tm-press-tab {
+  transition: transform 0.14s var(--tm-ease), filter 0.14s var(--tm-ease), opacity 0.14s var(--tm-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-press:active { transform: scale(0.99); filter: brightness(0.97); }
+.tm-press-btn:active { transform: scale(0.96); }
+.tm-press-tab:active { transform: scale(0.93); }
+
+/* Bildschirmwechsel, Chat-Slide, Blätter, Menüs */
+@keyframes tmEnter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tm-enter { animation: tmEnter 0.36s var(--tm-ease) both; }
+@keyframes tmSlideIn { from { opacity: 0.5; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+.tm-slide-in { animation: tmSlideIn 0.3s var(--tm-ease) both; }
+@keyframes tmSheetIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+.tm-sheet-in { animation: tmSheetIn 0.36s var(--tm-ease) both; }
+@keyframes tmPopIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+.tm-pop-in { animation: tmPopIn 0.22s var(--tm-ease) both; transform-origin: top right; }
+@keyframes tmMsgIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.tm-msg-in { animation: tmMsgIn 0.22s var(--tm-ease) both; }
+.tm-spin-once { animation: teamPtrSpin 0.7s var(--tm-ease) 1; }
+
+/* Ladestreifen ganz oben: Verlauf transparent → Akzent → transparent,
+   38 % breit, läuft in 1,1 s durch, solange ein Abgleich läuft */
+.tm-loadbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  overflow: hidden; z-index: 95; pointer-events: none;
+}
+.tm-loadbar::before {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 38%; left: -38%;
+  background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+  animation: tmLoadbar 1.1s linear infinite;
+}
+@keyframes tmLoadbar { to { left: 100%; } }
+
+/* Toast: dunkle Pille unten mittig über der Tab-Leiste */
+@keyframes tmToast { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.tm-toast { animation: tmToast 0.22s var(--tm-ease) both; }
+
+/* Skeleton in Token-Farben */
+.team-shell .team-skel {
+  background: linear-gradient(90deg, var(--tm-surface2) 25%, var(--tm-card) 50%, var(--tm-surface2) 75%);
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-press, .tm-press-btn, .tm-press-tab { transition: none; }
+  .tm-enter, .tm-slide-in, .tm-sheet-in, .tm-pop-in, .tm-msg-in, .tm-spin-once, .tm-toast { animation: none; }
+  .tm-loadbar::before { animation: none; left: 0; width: 100%; opacity: 0.5; }
 }
