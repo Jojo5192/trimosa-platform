@@ -304,7 +304,8 @@ export default function HeutePanel({ role, visible, onCount }: {
     )
   }
 
-  const nothing = !!d && d.anreisen.length === 0 && d.abreisen.length === 0 && dayTasks.length === 0 && sofort.length === 0 && warten.length === 0
+  // Pascal 9.9.: Warten- und Aufgaben-Karte stehen immer — der Leerzustand gilt nur noch für An-/Abreisen
+  const nothing = !!d && d.anreisen.length === 0 && d.abreisen.length === 0
 
   return (
     <div ref={scrollRef} style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch', paddingBottom: 'var(--tm-nav-pad)' }}>
@@ -350,13 +351,28 @@ export default function HeutePanel({ role, visible, onCount }: {
 
         {d && nothing && (
           <section style={CARD}>
-            <EmptyState icon="check" title={istHeute ? 'Heute ist nichts offen.' : 'Keine An- oder Abreisen an diesem Tag.'} />
+            <EmptyState icon="house" title={istHeute ? 'Heute keine An- oder Abreisen.' : 'Keine An- oder Abreisen an diesem Tag.'} />
           </section>
         )}
 
-        {/* 💬 Warten auf Antwort */}
-        {warten.length > 0 && (
+        {/* 🔑 Anreisen */}
+        {d && d.anreisen.length > 0 && (
+          <Card title="🔑 Anreisen" count={d.anreisen.length}>
+            {d.anreisen.map((a, i) => arrivalRow(a, i, d.anreisen))}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 18, padding: '10px 12px 12px', margin: '0 16px', boxShadow: 'inset 0 1px 0 var(--tm-line)', fontSize: 11.5, color: 'var(--tm-muted)', flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="grey">✉</Dot> Infos raus</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="grey">🔑</Dot> Türcode da</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="green">✓</Dot> „fertig“ gemeldet</span>
+            </div>
+          </Card>
+        )}
+
+        {/* 💬 Warten auf Antwort — IMMER sichtbar (Pascal 9.9.: offene Nachrichten
+            gehören aufs Home-Fenster; leer = „alles beantwortet"), Reihenfolge wie
+            in Pascals Stand: Anreisen → Warten → Abreisen → Aufgaben */}
+        {d && (
           <Card title="💬 Warten auf Antwort" count={warten.length}>
+            {warten.length === 0 && <Empty text="Keine offenen Nachrichten – alles beantwortet." />}
             {warten.slice(0, 6).map((t, i, arr) => (
               <Row key={t.id} last={i === arr.length - 1 && warten.length <= 6} onClick={() => { openTab('chat'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: t.id } })) }}>
                 <Avatar name={t.guestName} platform={t.platform} />
@@ -372,18 +388,6 @@ export default function HeutePanel({ role, visible, onCount }: {
                 Alle {warten.length} in der Inbox ›
               </button>
             )}
-          </Card>
-        )}
-
-        {/* 🔑 Anreisen */}
-        {d && d.anreisen.length > 0 && (
-          <Card title="🔑 Anreisen" count={d.anreisen.length}>
-            {d.anreisen.map((a, i) => arrivalRow(a, i, d.anreisen))}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 18, padding: '10px 12px 12px', margin: '0 16px', boxShadow: 'inset 0 1px 0 var(--tm-line)', fontSize: 11.5, color: 'var(--tm-muted)', flexWrap: 'wrap' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="grey">✉</Dot> Infos raus</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="grey">🔑</Dot> Türcode da</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Dot tone="green">✓</Dot> „fertig“ gemeldet</span>
-            </div>
           </Card>
         )}
 

@@ -472,7 +472,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '9px 16px 9px',
       // §282.1: groß = fast transparent, eingeklappt = richtig Glas
-      background: isDesktop || collapsed ? 'var(--tm-glass)' : 'rgba(243,244,246,0.55)',
+      // eingeklappt: Glas mit zartem Gold-Hauch (Pascals Stand 9.9.: getönte Kopfleiste)
+      background: isDesktop ? 'var(--tm-glass)' : collapsed ? 'linear-gradient(180deg, rgba(174,141,45,0.16), rgba(243,244,246,0.86) 70%)' : 'rgba(243,244,246,0.55)',
       backdropFilter: 'blur(18px) saturate(1.5)', WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
       borderBottom: `1px solid ${isDesktop || collapsed ? 'var(--tm-line)' : 'transparent'}`,
       transition: 'background .28s var(--tm-ease), border-color .28s var(--tm-ease)',
