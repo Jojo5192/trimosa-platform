@@ -24,12 +24,16 @@ type Task = {
   due_date: string | null; listing_id: string | null; location_group: string | null
   /** manuell | ki_nachricht | ki_bewertung | anruf | qs | system (Migration 20260716) */
   source?: string | null
+  description?: string | null
 }
-/** Pascal 9.9. (Chefsache): „Sofort" = nur das, was die KI als unmittelbar erkannt hat —
- *  Rückrufe (anruf) und dringende Gast-Anliegen aus dem Chat (ki_nachricht, Prio hoch).
- *  Von Hand angelegte Prio-hoch-Aufgaben ohne Termin gehören NICHT auf Heute. */
-const istSofort = (t: Task) => (t.status === 'offen' || t.status === 'in_arbeit')
-  && (t.source === 'anruf' || (t.source === 'ki_nachricht' && t.prio === 'hoch'))
+/** Pascal 9.9. (Chefsache): „Sofort" = nur Unmittelbares wie Rückruf oder Rechnung ausstellen —
+ *  Büro-Handlungen, keine Reparaturen (Jalousie, Verdunkelung → nur Aufgaben-Reiter).
+ *  Regel: Rückruf-Aufgaben (source anruf) immer; sonst Prio hoch UND Titel/Beschreibung nennt
+ *  eine solche Handlung; nie, wenn ein Termin in der Zukunft steht. */
+const SOFORT_RE = /rechnung|r[üu]ckruf|zur[üu]ckrufen|storn|zahlung|erstatt|gutschrift|[üu]berweis|mahnung|check-?in|zugang|t[üu]rcode|schl[üu]ssel|wlan|parkplatz/i
+const istSofort = (t: Task, heute: string) => (t.status === 'offen' || t.status === 'in_arbeit')
+  && (!t.due_date || t.due_date <= heute)
+  && (t.source === 'anruf' || (t.prio === 'hoch' && SOFORT_RE.test(`${t.title} ${t.description ?? ''}`)))
 
 const SNAP_KEY = 'trimosa-heute-v1'
 const CODE_KEY = 'trimosa-door-code'
@@ -219,7 +223,7 @@ export default function HeutePanel({ role, visible, onCount }: {
     const open = tasks.filter((t) => t.status === 'offen' || t.status === 'in_arbeit')
     return open.filter((t) => t.due_date === tag).sort((a, b) => a.title.localeCompare(b.title, 'de'))
   }, [tasks, tag])
-  const sofort = useMemo(() => istHeute ? tasks.filter((t) => istSofort(t) && t.due_date !== heute) : [], [tasks, istHeute, heute])
+  const sofort = useMemo(() => istHeute ? tasks.filter((t) => istSofort(t, heute) && t.due_date !== heute) : [], [tasks, istHeute, heute])
   const warten = useMemo(() => role === 'team' && istHeute
     ? threads.filter((t) => t.lastSender === 'guest' && !t.noReplyNeeded && !t.phoneResolved)
       .sort((a, b) => String(b.lastMessageAt ?? '').localeCompare(String(a.lastMessageAt ?? '')))
@@ -229,7 +233,7 @@ export default function HeutePanel({ role, visible, onCount }: {
   const heuteData = data[heute]
   useEffect(() => {
     const planned = tasks.filter((t) => (t.status === 'offen' || t.status === 'in_arbeit') && t.due_date === heute)
-    const s = tasks.filter((t) => istSofort(t) && t.due_date !== heute)
+    const s = tasks.filter((t) => istSofort(t, heute) && t.due_date !== heute)
     onCount((heuteData?.anreisen.length ?? 0) + s.length + planned.length)
   }, [heuteData, tasks, heute, onCount])
 
