@@ -75,31 +75,31 @@ export default function CallsPanel({ onClose, bookingId, title }: {
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7',
+      position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#fff',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
         <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#1A1814', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           ☎️ {title ?? 'Telefonate'}
         </div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: '#B0AA9C' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 14px 40px' }}>
           {error && (
-            <div style={{ padding: '11px 14px', borderRadius: 12, background: '#FEF2F2', color: '#B91C1C', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {error}
             </div>
           )}
           {!loading && !error && calls.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#8A8578', fontSize: 14, padding: '40px 0' }}>
+            <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '40px 0' }}>
               {bookingId ? 'Zu dieser Buchung gibt es keine Telefonate.' : 'Noch keine Telefonate aufgezeichnet.'}
             </div>
           )}
@@ -108,24 +108,24 @@ export default function CallsPanel({ onClose, bookingId, title }: {
             const open = openId === c.id
             return (
               <div key={c.id} style={{
-                background: '#fff', borderRadius: 14, marginBottom: 10, overflow: 'hidden',
-                boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+                background: 'var(--tm-card)', borderRadius: 14, marginBottom: 10, overflow: 'hidden',
+                boxShadow: '0 0 0 0.5px var(--tm-line)',
               }}>
                 <button onClick={() => setOpenId(open ? null : c.id)} style={{
                   width: '100%', textAlign: 'left', border: 'none', background: 'none',
                   padding: '12px 14px', cursor: 'pointer',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1A1814' }}>{fmtWhen(c.createdAt)}</span>
-                    {c.caller && <span style={{ fontSize: 12, color: '#6B675E' }}>{c.caller}</span>}
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--tm-text)' }}>{fmtWhen(c.createdAt)}</span>
+                    {c.caller && <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>{c.caller}</span>}
                     <span style={{
                       fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                      background: c.guestInquiry ? '#DCFCE7' : '#F2F2F7',
-                      color: c.guestInquiry ? '#16A34A' : '#8A8578',
+                      background: c.guestInquiry ? 'var(--tm-green-soft)' : 'var(--tm-surface2)',
+                      color: c.guestInquiry ? 'var(--tm-green)' : 'var(--tm-muted)',
                     }}>
                       {c.guestInquiry ? 'Gast-Anliegen' : 'Sonstiges'}
                     </span>
-                    <span style={{ marginLeft: 'auto', color: '#C7C7CC', fontSize: 13 }}>{open ? '▾' : '▸'}</span>
+                    <span style={{ marginLeft: 'auto', color: 'var(--tm-muted2)', fontSize: 13 }}>{open ? '▾' : '▸'}</span>
                   </div>
                   {(c.guest || c.apartment) && (
                     <div style={{ fontSize: 12, color: 'var(--gold-dark)', fontWeight: 700, marginTop: 5 }}>
@@ -133,13 +133,13 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                     </div>
                   )}
                   {c.summary && (
-                    <div style={{ fontSize: 13, color: '#4A463E', lineHeight: 1.5, marginTop: 5 }}>{c.summary}</div>
+                    <div style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.5, marginTop: 5 }}>{c.summary}</div>
                   )}
                   {/* §247: erfasste Lösung — erfassen/ändern läuft im Gast-Thread */}
                   {c.solution && (
                     <div style={{
-                      marginTop: 7, background: '#F0FDF4', border: '1px solid #BBF7D0',
-                      borderRadius: 9, padding: '7px 10px', fontSize: 12.5, lineHeight: 1.5, color: '#166534',
+                      marginTop: 7, background: 'var(--tm-green-soft)', border: '1px solid var(--tm-line)',
+                      borderRadius: 9, padding: '7px 10px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--tm-green)',
                     }}>
                       <span style={{ fontWeight: 800 }}>✅ Gelöst: </span>{c.solution}
                     </div>
@@ -147,7 +147,7 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                 </button>
 
                 {open && (
-                  <div style={{ padding: '0 14px 14px', borderTop: '0.5px solid rgba(60,60,67,0.12)' }}>
+                  <div style={{ padding: '0 14px 14px', borderTop: '0.5px solid var(--tm-line)' }}>
                     {/* 🎧 Audio */}
                     {c.hasAudio && !audioErr[c.id] && (
                       <audio
@@ -159,7 +159,7 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                       />
                     )}
                     {(!c.hasAudio || audioErr[c.id]) && (
-                      <div style={{ fontSize: 12, color: '#8A8578', marginTop: 12 }}>🎧 Kein Audio verfügbar.</div>
+                      <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 12 }}>🎧 Kein Audio verfügbar.</div>
                     )}
 
                     {/* 📝 Transkript */}
@@ -169,8 +169,8 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                           <div key={i} style={{
                             alignSelf: t.who === 'bot' ? 'flex-end' : 'flex-start',
                             maxWidth: '88%',
-                            background: t.who === 'bot' ? '#12222E' : '#E9E9EB',
-                            color: t.who === 'bot' ? '#fff' : '#1A1814',
+                            background: t.who === 'bot' ? 'var(--tm-navy)' : '#E9E9EB',
+                            color: t.who === 'bot' ? '#fff' : 'var(--tm-text)',
                             borderRadius: 14, padding: '7px 11px', fontSize: 13, lineHeight: 1.45,
                           }}>
                             {t.text}
@@ -178,7 +178,7 @@ export default function CallsPanel({ onClose, bookingId, title }: {
                         ))}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: '#8A8578', marginTop: 10 }}>Kein Transkript vorhanden.</div>
+                      <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 10 }}>Kein Transkript vorhanden.</div>
                     )}
                   </div>
                 )}

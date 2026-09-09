@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
 import { haptic, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
 import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
+import { applyTheme, useIsDark } from '@/lib/theme'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
@@ -298,12 +299,10 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
 
   // iOS 26: Statusbar-Farbe = Seiten-Hintergrund — zusätzlich zum CSS-:has()
   // hart auf den App-Hintergrund setzen (Gürtel + Hosenträger, §98/§276)
-  useEffect(() => {
-    const html = document.documentElement
-    const prev = html.style.backgroundColor
-    html.style.backgroundColor = '#f3f4f6'
-    return () => { html.style.backgroundColor = prev }
-  }, [])
+  // 🌗 §284: Klasse tm-dark + Seitenhintergrund + theme-color nach Modus —
+  // folgt auch dem System-Wechsel (useIsDark abonniert die Media Query)
+  const isDark = useIsDark()
+  useEffect(() => { applyTheme() }, [isDark])
 
   // Service Worker früh registrieren (Push-Empfang + §280 Offline-Cache) — die
   // Einstellungen dazu liegen im ⚙️-Tab; so bekommen auch Dienstleister ohne
@@ -473,7 +472,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       padding: '9px 16px 9px',
       // §282.1: groß = fast transparent, eingeklappt = richtig Glas
       // eingeklappt: Glas mit zartem Gold-Hauch (Pascals Stand 9.9.: getönte Kopfleiste)
-      background: isDesktop ? 'var(--tm-glass)' : collapsed ? 'linear-gradient(180deg, rgba(174,141,45,0.16), rgba(243,244,246,0.86) 70%)' : 'rgba(243,244,246,0.55)',
+      background: isDesktop ? 'var(--tm-glass)' : collapsed ? 'linear-gradient(180deg, var(--tm-accent-soft), var(--tm-glass) 70%)' : 'var(--tm-glass-soft)',
       backdropFilter: 'blur(18px) saturate(1.5)', WebkitBackdropFilter: 'blur(18px) saturate(1.5)',
       borderBottom: `1px solid ${isDesktop || collapsed ? 'var(--tm-line)' : 'transparent'}`,
       transition: 'background .28s var(--tm-ease), border-color .28s var(--tm-ease)',

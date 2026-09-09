@@ -44,7 +44,7 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
   const spruch = pickSpruch(now, jar.get(COOKIE_SPRUCH)?.value ?? null)
 
   return (
-    <main style={{ height: '100dvh', overflow: 'hidden', background: '#f3f4f6' }}>
+    <main className="team-page" style={{ height: '100dvh', overflow: 'hidden' }}>
       <StartCurtain initialShow={showCurtain} firstName={firstName} initialGreeting={greeting} initialSpruch={spruch} />
       <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} initialTaskId={task ?? null} />
     </main>

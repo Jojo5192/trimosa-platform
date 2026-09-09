@@ -15,10 +15,10 @@ import DocScanner from '@/components/DocScanner'
  * Portal-Root trägt team-shell (Zoom-Sperre/16px-Inputs).
  */
 
-const NAVY = '#12222E'
+const NAVY = 'var(--tm-navy)'
 const GOLD = '#B0912B'
-const INK = '#1A1814'
-const SUB = '#8A8578'
+const INK = 'var(--tm-text)'
+const SUB = 'var(--tm-muted)'
 
 export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
   const [orte, setOrte] = useState<string[]>(['Allgemein'])
@@ -95,7 +95,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
 
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7', display: 'flex', flexDirection: 'column' }}>
+    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column' }}>
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>🧾 Beleg einreichen</div>
         <div style={{ flex: 1 }} />
@@ -105,7 +105,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 16px calc(30px + env(safe-area-inset-bottom))' }}>
         <div style={{ maxWidth: 560, margin: '0 auto', display: 'grid', gap: 14 }}>
           {fertig ? (
-            <div style={{ background: '#fff', borderRadius: 14, padding: '38px 22px', textAlign: 'center', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+            <div style={{ background: 'var(--tm-card)', borderRadius: 14, padding: '38px 22px', textAlign: 'center', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
               <div style={{ fontSize: 44 }}>✅</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: INK, marginTop: 10 }}>Danke — Beleg eingereicht!</div>
               <div style={{ fontSize: 14, color: SUB, marginTop: 6, lineHeight: 1.5 }}>Die Buchhaltung übernimmt ab hier. Du musst nichts weiter tun.</div>
@@ -116,9 +116,9 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <label style={{
-                background: '#fff', borderRadius: 14, padding: '22px 18px', textAlign: 'center',
-                boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', cursor: busy ? 'wait' : 'pointer',
-                border: files.length ? `1.5px solid ${GOLD}` : '1.5px dashed rgba(60,60,67,0.25)',
+                background: 'var(--tm-card)', borderRadius: 14, padding: '22px 18px', textAlign: 'center',
+                boxShadow: '0 0 0 0.5px var(--tm-line)', cursor: busy ? 'wait' : 'pointer',
+                border: files.length ? `1.5px solid ${GOLD}` : '1.5px dashed var(--tm-line)',
                 WebkitTapHighlightColor: 'transparent', display: 'block',
               }}>
                 <div style={{ fontSize: 34 }}>📸</div>
@@ -144,12 +144,12 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                   }} />
               </label>
 
-              <div style={{ background: '#fff', borderRadius: 14, padding: 16, display: 'grid', gap: 13, boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+              <div style={{ background: 'var(--tm-card)', borderRadius: 14, padding: 16, display: 'grid', gap: 13, boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: SUB, letterSpacing: '0.04em', margin: '0 2px 5px' }}>WOFÜR IST DER BELEG?</div>
                   <select value={ort} onChange={(e) => setOrt(e.target.value)} style={{
                     width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '11px 12px',
-                    borderRadius: 11, border: '0.5px solid rgba(60,60,67,0.25)', background: '#fff', color: INK,
+                    borderRadius: 11, border: '0.5px solid var(--tm-line)', background: 'var(--tm-card)', color: INK,
                   }}>
                     {orte.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
@@ -160,14 +160,14 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                     placeholder="z. B. Ersatzteil für die Spülmaschine, gekauft bei Bauhaus"
                     style={{
                       width: '100%', boxSizing: 'border-box', fontSize: 16, padding: '11px 12px',
-                      borderRadius: 11, border: '0.5px solid rgba(60,60,67,0.25)', background: '#fff',
+                      borderRadius: 11, border: '0.5px solid var(--tm-line)', background: 'var(--tm-card)',
                       color: INK, resize: 'vertical', fontFamily: 'inherit',
                     }} />
                 </div>
               </div>
 
               {err && (
-                <div style={{ background: '#FFEBE9', color: '#D70015', borderRadius: 12, padding: '11px 14px', fontSize: 14 }}>{err}</div>
+                <div style={{ background: '#FFEBE9', color: 'var(--tm-red)', borderRadius: 12, padding: '11px 14px', fontSize: 14 }}>{err}</div>
               )}
 
               <button onClick={senden} disabled={busy || !files.length} style={{

@@ -172,7 +172,7 @@ export async function flushOutbox(): Promise<void> {
  *  und Service-Worker-Caches löschen. */
 export async function clearOfflineData(): Promise<void> {
   try {
-    Object.keys(localStorage).filter((k) => k.startsWith('trimosa-')).forEach((k) => localStorage.removeItem(k))
+    Object.keys(localStorage).filter((k) => k.startsWith('trimosa-') && k !== 'trimosa-theme').forEach((k) => localStorage.removeItem(k))
   } catch { /* egal */ }
   try { window.dispatchEvent(new Event(OUTBOX_EVENT)) } catch { /* SSR */ }
   try { navigator.serviceWorker?.controller?.postMessage({ type: 'trimosa-clear' }) } catch { /* egal */ }

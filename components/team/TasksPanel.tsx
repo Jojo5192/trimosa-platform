@@ -65,26 +65,26 @@ const VIS_META: Record<string, string> = {
 type Person = { id: string; name: string; isProvider: boolean }
 type ListingOpt = { id: string; title: string }
 
-const HAIR = '0.5px solid rgba(60,60,67,0.15)'
+const HAIR = '0.5px solid var(--tm-line)'
 // §243ag Apple-Redesign: iOS-Systemfarben als dezente Tints statt knalliger
 // Web-Chips; die Priorität wird zusätzlich als Reminders-Punkt vor dem Titel
 // gezeigt (PRIO_DOT)
 const PRIO_DOT: Record<string, string> = { hoch: '#FF3B30', mittel: '#FF9F0A', niedrig: '#C7C7CC' }
 const PRIO_META: Record<string, { label: string; color: string; bg: string }> = {
-  hoch: { label: 'Hoch', color: '#D70015', bg: 'rgba(255,59,48,0.12)' },
-  mittel: { label: 'Mittel', color: '#C2410C', bg: 'rgba(255,159,10,0.15)' },
-  niedrig: { label: 'Niedrig', color: '#6B7280', bg: 'rgba(118,118,128,0.12)' },
+  hoch: { label: 'Hoch', color: 'var(--tm-red)', bg: 'rgba(255,59,48,0.12)' },
+  mittel: { label: 'Mittel', color: 'var(--tm-red)', bg: 'rgba(255,159,10,0.15)' },
+  niedrig: { label: 'Niedrig', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
 }
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   vorschlag: { label: 'Vorschlag', color: '#6D28D9', bg: 'rgba(109,40,217,0.10)' },
-  offen: { label: 'Offen', color: '#5B5E66', bg: 'rgba(118,118,128,0.12)' },
-  in_arbeit: { label: 'In Arbeit', color: '#C2410C', bg: 'rgba(255,159,10,0.15)' },
+  offen: { label: 'Offen', color: '#5B5E66', bg: 'var(--tm-surface2)' },
+  in_arbeit: { label: 'In Arbeit', color: 'var(--tm-red)', bg: 'rgba(255,159,10,0.15)' },
   erledigt: { label: 'Erledigt', color: '#248A3D', bg: 'rgba(52,199,89,0.15)' },
-  verworfen: { label: 'Verworfen', color: '#6B7280', bg: 'rgba(118,118,128,0.12)' },
+  verworfen: { label: 'Verworfen', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
 }
 const CHIP: CSSProperties = {
   fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
-  background: '#F2F2F7', color: '#3C3C43',
+  background: 'var(--tm-surface2)', color: 'var(--tm-muted)',
 }
 
 function todayIso(): string {
@@ -334,7 +334,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
       <PullHint pull={ptr.pull} busy={ptr.busy} />
       {/* Header + Filter */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
+        position: 'sticky', top: 0, zIndex: 5, background: 'var(--tm-glass)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         // §276: Titel „Aufgaben" steht in der Shell-Kopfleiste (keine doppelten Titel)
         padding: '10px 16px 10px',
@@ -358,8 +358,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
               <button key={id || 'alle'} onClick={() => { personTouched.current = true; setPersonFilter(id) }} style={{
                 padding: '5px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0,
-                background: personFilter === id ? '#12222E' : 'rgba(120,120,128,0.12)',
-                color: personFilter === id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+                background: personFilter === id ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+                color: personFilter === id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',
               }}>{id && id !== 'none' ? `👤 ${label}` : label}</button>
             ))}
           </div>
@@ -367,13 +367,13 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
       </div>
 
       {error && (
-        <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{error}</span>
           <button onClick={() => { setLoading(true); setError(null); load() }} style={{
             border: 'none', background: '#B91C1C', color: '#fff', borderRadius: 999,
             padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
           }}>Erneut laden</button>
-          <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+          <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
 
@@ -381,7 +381,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
           erscheint nur bei BEREITSCHAFT (§175, Admin-steuerbar) */}
       {oncall && filter !== 'vorschlaege' && filter !== 'erledigt' && calls.length > 0 && (
         <div style={{ padding: '12px 16px 0' }}>
-          <p style={{ fontSize: 13, fontWeight: 800, color: '#B91C1C', margin: '0 0 8px' }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-red)', margin: '0 0 8px' }}>
             ☎️ Telefonische Meldungen ({calls.length}) — Gast wartet auf Rückmeldung
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -407,14 +407,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             </p>
             <button onClick={analyze} disabled={analyzing} style={{
               padding: '5px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
-              background: '#EDE9FE', color: '#6D28D9', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
+              background: 'var(--tm-surface2)', color: '#6D28D9', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
             }}>{analyzing ? 'Analysiere… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
           </div>
-          {aiNote && <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 8px' }}>{aiNote}</p>}
+          {aiNote && <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: '0 0 8px' }}>{aiNote}</p>}
           {suggestions.length === 0 && !analyzing && (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#8E8E93' }}>
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--tm-muted)' }}>
               <p style={{ fontSize: 36, margin: '0 0 8px' }}>🤖</p>
-              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine offenen Vorschläge.</p>
+              <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Keine offenen Vorschläge.</p>
               <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Der tägliche Lauf (4:45 Uhr) analysiert neue Gastnachrichten & Bewertungen automatisch.</p>
             </div>
           )}
@@ -422,21 +422,21 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {suggestions.map((t) => (
                 <div key={t.id} style={{
-                  background: 'linear-gradient(135deg, #FDFCFF, #F5F1FE)', borderRadius: 16, padding: '13px 15px',
+                  background: 'var(--tm-surface2)', borderRadius: 16, padding: '13px 15px',
                   boxShadow: 'inset 0 0 0 1px #DDD0F5',
                 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: '#111', margin: 0 }}>{t.title}</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-text)', margin: 0 }}>{t.title}</p>
                   {t.description && (
-                    <p style={{ fontSize: 12.5, color: '#6B7280', margin: '4px 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{t.description}</p>
+                    <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '4px 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{t.description}</p>
                   )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: (PRIO_META[t.prio] ?? PRIO_META.mittel).bg, color: (PRIO_META[t.prio] ?? PRIO_META.mittel).color }}>
                       {(PRIO_META[t.prio] ?? PRIO_META.mittel).label}
                     </span>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: '#F3F4F6', color: '#374151' }}>{scopeChip(t)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: 'var(--tm-bg)', color: 'var(--tm-text)' }}>{scopeChip(t)}</span>
                     <span style={{
                       fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
-                      background: t.source === 'qs' ? '#EFFAF7' : '#EDE9FE',
+                      background: t.source === 'qs' ? 'var(--tm-green-soft)' : 'var(--tm-surface2)',
                       color: t.source === 'qs' ? '#0F766E' : '#6D28D9',
                     }}>
                       {t.source === 'qs' ? '🧾 aus QS-Protokoll' : t.source === 'ki_bewertung' ? 'aus Bewertung' : 'aus Nachricht'}
@@ -448,8 +448,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                       color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}>✓ Annehmen</button>
                     <button onClick={() => discardSuggestion(t)} style={{
-                      flex: 1, padding: '9px 0', borderRadius: 12, border: HAIR, background: '#fff',
-                      color: '#6B7280', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      flex: 1, padding: '9px 0', borderRadius: 12, border: HAIR, background: 'var(--tm-card)',
+                      color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}>✕ Verwerfen</button>
                   </div>
                 </div>
@@ -475,11 +475,11 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
             <div key={t.id} id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
               onClick={manage && t.editable !== false ? () => setEditing(t) : undefined}
               style={{
-                background: '#fff', borderRadius: 18, padding: '13px 15px', position: 'relative',
+                background: 'var(--tm-card)', borderRadius: 18, padding: '13px 15px', position: 'relative',
                 boxShadow: t.id === highlightId
-                  ? 'inset 0 0 0 2px #12222E, 0 0 0 4px rgba(18,34,46,0.18)'
-                  : overdue ? 'inset 0 0 0 1.5px #FF3B30, 0 1px 3px rgba(0,0,0,0.05)'
-                  : 'inset 0 0 0 0.5px rgba(60,60,67,0.1), 0 1px 3px rgba(0,0,0,0.05)',
+                  ? 'inset 0 0 0 2px var(--tm-accent), 0 0 0 4px rgba(18,34,46,0.18)'
+                  : overdue ? 'inset 0 0 0 1.5px var(--tm-red), 0 1px 3px rgba(0,0,0,0.05)'
+                  : 'inset 0 0 0 0.5px var(--tm-line), 0 1px 3px rgba(0,0,0,0.05)',
                 cursor: manage && t.editable !== false ? 'pointer' : 'default',
                 opacity: done ? 0.6 : 1,
                 transition: 'box-shadow .3s',
@@ -493,7 +493,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                   width: 10, height: 10, borderRadius: '50%', flexShrink: 0, marginTop: 5,
                   background: done ? '#C7C7CC' : (PRIO_DOT[t.prio] ?? PRIO_DOT.mittel),
                 }} />
-                <span style={{ fontSize: 15, fontWeight: 650, color: '#111', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
+                <span style={{ fontSize: 15, fontWeight: 650, color: 'var(--tm-text)', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
                   {t.title}
                 </span>
                 {t.status !== 'offen' && (
@@ -501,18 +501,18 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 )}
               </div>
               {t.description && (
-                <p style={{ fontSize: 13, color: t.source === 'ueberbuchung' ? '#374151' : '#6B7280', margin: '5px 0 0 19px', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                <p style={{ fontSize: 13, color: t.source === 'ueberbuchung' ? 'var(--tm-text)' : 'var(--tm-muted)', margin: '5px 0 0 19px', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                   {/* §274: Überbuchungs-Aufgaben zeigen IMMER alle Daten beider Buchungen (kein 140-Zeichen-Schnitt) */}
                   {t.description.length > 140 && manage && t.source !== 'ueberbuchung' ? t.description.slice(0, 140) + '…' : t.description}
                 </p>
               )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, marginLeft: 19, alignItems: 'center' }}>
                 {t.source === 'ueberbuchung' && (
-                  <span style={{ ...CHIP, background: '#FEE2E2', color: '#B91C1C', fontWeight: 700 }}>🚨 Überbuchung</span>
+                  <span style={{ ...CHIP, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontWeight: 700 }}>🚨 Überbuchung</span>
                 )}
                 <span style={CHIP}>{scopeChip(t)}</span>
                 {manage && (
-                  <span style={{ ...CHIP, color: '#6B7280' }}>
+                  <span style={{ ...CHIP, color: 'var(--tm-muted)' }}>
                     {VIS_META[t.visibility ?? 'admin']}
                   </span>
                 )}
@@ -530,9 +530,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                   </span>
                 )}
                 {t.assignee_id && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: '#374151' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--tm-text)' }}>
                     <span style={{
-                      width: 20, height: 20, borderRadius: '50%', background: '#12222E',
+                      width: 20, height: 20, borderRadius: '50%', background: 'var(--tm-navy)',
                       color: '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     }}>{initials(personName.get(t.assignee_id) ?? '?')}</span>
                     {(personName.get(t.assignee_id) ?? '').split(/\s+/)[0]}
@@ -549,7 +549,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                     </a>
                   ))}
                   {(t.photos?.length ?? 0) > 4 && (
-                    <span style={{ alignSelf: 'center', fontSize: 11, fontWeight: 700, color: '#8A7020' }}>+{(t.photos ?? []).length - 4}</span>
+                    <span style={{ alignSelf: 'center', fontSize: 11, fontWeight: 700, color: 'var(--tm-accent-dark)' }}>+{(t.photos ?? []).length - 4}</span>
                   )}
                 </div>
               )}
@@ -558,12 +558,12 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               <div style={{ display: 'flex', gap: 8, marginTop: 10, marginLeft: 19 }} onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)} style={{
                   padding: '6px 13px', borderRadius: 999, border: 'none',
-                  background: openComments === t.id ? 'rgba(174,141,45,0.16)' : '#F2F2F7',
-                  color: openComments === t.id ? '#8A7020' : '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: openComments === t.id ? 'rgba(174,141,45,0.16)' : 'var(--tm-surface2)',
+                  color: openComments === t.id ? 'var(--tm-accent-dark)' : 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>💬 {commentCounts[t.id] ?? 0}</button>
                 <label style={{
-                  padding: '6px 13px', borderRadius: 999, border: 'none', background: '#F2F2F7',
-                  color: '#3C3C43', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  padding: '6px 13px', borderRadius: 999, border: 'none', background: 'var(--tm-surface2)',
+                  color: 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>
                   {uploadingFor === t.id ? '⏳ lädt…' : '📷 Foto'}
                   <input type="file" accept="image/*" style={{ display: 'none' }}
@@ -582,7 +582,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
                       flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'rgba(255,159,10,0.15)',
-                      color: '#C2410C', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                      color: 'var(--tm-red)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                     }}>▶ In Arbeit</button>
                   )}
                   <button onClick={() => setCompleting(t)} style={{
@@ -593,8 +593,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               )}
               {(!manage || t.editable === false) && done && (t.assignee_id === userId || t.created_by === userId || manage) && (
                 <button onClick={() => providerStatus(t, 'offen')} style={{
-                  marginTop: 10, padding: '7px 14px', borderRadius: 10, border: HAIR, background: '#fff',
-                  color: '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  marginTop: 10, padding: '7px 14px', borderRadius: 10, border: HAIR, background: 'var(--tm-card)',
+                  color: 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>↩︎ Wieder öffnen</button>
               )}
             </div>
@@ -657,22 +657,22 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 560, background: '#F7F7F8', borderRadius: '20px 20px 0 0',
+        width: '100%', maxWidth: 560, background: 'var(--tm-surface2)', borderRadius: '20px 20px 0 0',
         padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
-        <h2 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px', color: '#111' }}>✓ „{task.title}" erledigen</h2>
-        <p style={{ fontSize: 12.5, color: '#8E8E93', margin: '0 0 10px' }}>Kurz festhalten, was gemacht wurde (optional):</p>
+        <h2 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px', color: 'var(--tm-text)' }}>✓ „{task.title}" erledigen</h2>
+        <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '0 0 10px' }}>Kurz festhalten, was gemacht wurde (optional):</p>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
           placeholder="z. B. Duschkopf getauscht, Dichtung erneuert…"
           style={{
             width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12,
-            border: '1px solid #E0DDD5', fontSize: 14, background: '#fff', resize: 'vertical',
+            border: '1px solid var(--tm-line)', fontSize: 14, background: 'var(--tm-card)', resize: 'vertical',
             overscrollBehavior: 'contain',
           }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={onClose} style={{
-            flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: '#fff',
-            color: '#3C3C43', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: 'var(--tm-card)',
+            color: 'var(--tm-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>Abbrechen</button>
           <button onClick={() => onDone(note)} style={{
             flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: '#16A34A',
@@ -713,16 +713,16 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
   }
 
   return (
-    <div style={{ marginTop: 9, padding: '10px 12px', borderRadius: 12, background: '#F7F7F8' }}>
-      {loading ? <p style={{ fontSize: 12, color: '#8E8E93', margin: 0 }}>Laden…</p> : (
+    <div style={{ marginTop: 9, padding: '10px 12px', borderRadius: 12, background: 'var(--tm-surface2)' }}>
+      {loading ? <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Laden…</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {comments.length === 0 && <p style={{ fontSize: 12, color: '#8E8E93', margin: 0 }}>Noch keine Kommentare.</p>}
+          {comments.length === 0 && <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Noch keine Kommentare.</p>}
           {comments.map((c) => (
             <div key={c.id}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: c.mine ? '#8A7020' : '#6B7280', margin: '0 0 2px' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: c.mine ? 'var(--tm-accent-dark)' : 'var(--tm-muted)', margin: '0 0 2px' }}>
                 {c.author} · {new Date(c.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}, {new Date(c.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
               </p>
-              <p style={{ fontSize: 13, color: '#111', margin: 0, whiteSpace: 'pre-wrap' }}>{c.content}</p>
+              <p style={{ fontSize: 13, color: 'var(--tm-text)', margin: 0, whiteSpace: 'pre-wrap' }}>{c.content}</p>
             </div>
           ))}
         </div>
@@ -731,10 +731,10 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') send() }}
           placeholder="Kommentar schreiben…"
-          style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid #E0DDD5', fontSize: 13, background: '#fff' }} />
+          style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid var(--tm-line)', fontSize: 13, background: 'var(--tm-card)' }} />
         <button onClick={send} disabled={sending || !text.trim()} style={{
           width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: text.trim() ? '#12222E' : '#D1D5DB',
+          background: text.trim() ? 'var(--tm-navy)' : '#D1D5DB',
           color: '#fff', fontSize: 15, fontWeight: 700, cursor: text.trim() ? 'pointer' : 'default',
         }}>↑</button>
       </div>
@@ -821,18 +821,18 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
   }
 
   const inputStyle: CSSProperties = {
-    width: '100%', padding: '11px 13px', borderRadius: 12, border: '1px solid #E0DDD5',
-    fontSize: 14, background: '#fff', color: '#111', boxSizing: 'border-box',
+    width: '100%', padding: '11px 13px', borderRadius: 12, border: '1px solid var(--tm-line)',
+    fontSize: 14, background: 'var(--tm-card)', color: 'var(--tm-text)', boxSizing: 'border-box',
   }
-  const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 700, color: '#6B7280', margin: '0 0 5px', display: 'block' }
+  const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', margin: '0 0 5px', display: 'block' }
 
   function Segmented({ options, value, onChange }: { options: [string, string][]; value: string; onChange: (v: string) => void }) {
     return (
-      <div style={{ display: 'flex', gap: 4, background: 'rgba(120,120,128,0.12)', borderRadius: 11, padding: 3 }}>
+      <div style={{ display: 'flex', gap: 4, background: 'var(--tm-surface2)', borderRadius: 11, padding: 3 }}>
         {options.map(([v, label]) => (
           <button key={v} type="button" onClick={() => onChange(v)} style={{
             flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12.5, fontWeight: 600,
-            background: value === v ? '#fff' : 'transparent', color: '#111',
+            background: value === v ? 'var(--tm-card)' : 'transparent', color: 'var(--tm-text)',
             boxShadow: value === v ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', cursor: 'pointer',
           }}>{label}</button>
         ))}
@@ -848,14 +848,14 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
       <div onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560, maxHeight: '88dvh', overflowY: 'auto',
         overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
-        background: '#F7F7F8', borderRadius: '20px 20px 0 0', padding: '18px 18px',
+        background: 'var(--tm-surface2)', borderRadius: '20px 20px 0 0', padding: '18px 18px',
         paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: '#111' }}>
+          <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: 'var(--tm-text)' }}>
             {task ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}
           </h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'rgba(120,120,128,0.12)', width: 30, height: 30, borderRadius: '50%', fontSize: 14, color: '#3C3C43', cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ border: 'none', background: 'var(--tm-surface2)', width: 30, height: 30, borderRadius: '50%', fontSize: 14, color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -952,7 +952,7 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
                 {isIOS && !dueDate && (
                   <span style={{
                     position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)',
-                    fontSize: 14, color: '#9CA3AF', pointerEvents: 'none',
+                    fontSize: 14, color: 'var(--tm-muted)', pointerEvents: 'none',
                   }}>Datum wählen…</span>
                 )}
               </div>
@@ -984,18 +984,18 @@ function TaskSheet({ task, people, listings, groups, onClose, onSaved }: {
             </div>
           )}
 
-          {err && <p style={{ margin: 0, fontSize: 13, color: '#B91C1C', fontWeight: 600 }}>{err}</p>}
+          {err && <p style={{ margin: 0, fontSize: 13, color: 'var(--tm-red)', fontWeight: 600 }}>{err}</p>}
 
           <button onClick={save} disabled={saving} style={{
             padding: '13px 0', borderRadius: 999, border: 'none', fontSize: 15, fontWeight: 700,
-            background: '#12222E', color: '#fff',
+            background: 'var(--tm-navy)', color: '#fff',
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
           }}>{saving ? 'Speichern…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
 
           {task && (
             <button onClick={remove} disabled={saving} style={{
               padding: '10px 0', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600,
-              background: 'transparent', color: '#B91C1C', cursor: 'pointer',
+              background: 'transparent', color: 'var(--tm-red)', cursor: 'pointer',
             }}>Aufgabe löschen</button>
           )}
         </div>
@@ -1183,71 +1183,71 @@ function CallCard({ task, onDone, onError }: {
 
   return (
     <div style={{
-      background: urgent ? 'linear-gradient(135deg, #FFF5F5, #FEE9E7)' : 'linear-gradient(135deg, #FFFDF9, #FFF3EC)',
+      background: urgent ? 'var(--tm-red-soft)' : 'var(--tm-yellow-soft)',
       borderRadius: 16, padding: '13px 15px',
-      boxShadow: urgent ? 'inset 0 0 0 1.5px #EF4444' : 'inset 0 0 0 1px #F3C9B4',
+      boxShadow: urgent ? 'inset 0 0 0 1.5px var(--tm-red)' : 'inset 0 0 0 1px var(--tm-line)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--tm-text)' }}>
           {urgent ? '🚨 ' : '☎️ '}{callerName}
         </span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: '#8E8E93', flexShrink: 0 }}>{relTime(task.created_at)}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--tm-muted)', flexShrink: 0 }}>{relTime(task.created_at)}</span>
       </div>
-      <p style={{ fontSize: 13.5, color: '#3C3C43', margin: '6px 0 0', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{message}</p>
+      <p style={{ fontSize: 13.5, color: 'var(--tm-muted)', margin: '6px 0 0', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{message}</p>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 11, flexWrap: 'wrap', alignItems: 'center' }}>
         {phone && (
           <a href={`tel:${phone.replace(/[^+\d]/g, '')}`} style={{
             padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, textDecoration: 'none',
-            background: '#111', color: '#fff',
+            background: 'var(--tm-text)', color: 'var(--tm-bg)',
           }}>📞 Zurückrufen</a>
         )}
         <button onClick={toggleAi} style={{
           ...goldBtn,
-          background: open ? '#12222E' : 'rgba(18,34,46,0.08)',
-          color: open ? '#fff' : '#12222E',
+          background: open ? 'var(--tm-navy)' : 'rgba(18,34,46,0.08)',
+          color: open ? '#fff' : 'var(--tm-text)',
         }}>✨ Lösungen</button>
         {phone && (
           <button onClick={openCall} style={{
             ...goldBtn,
-            background: callOpen ? '#1D4ED8' : 'rgba(29,78,216,0.1)',
+            background: callOpen ? '#1D4ED8' : 'var(--tm-surface2)',
             color: callOpen ? '#fff' : '#1D4ED8',
           }}>🤖 KI ruft zurück</button>
         )}
-        <button onClick={openDone} style={{ ...goldBtn, background: 'rgba(120,120,128,0.12)', color: '#3C3C43' }}>✓ Erledigt</button>
+        <button onClick={openDone} style={{ ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-muted)' }}>✓ Erledigt</button>
       </div>
 
       {/* ✨ Lösungs-Optionen: anklickbar, ⓘ zeigt die Herleitung */}
       {open && !doneOpen && (
-        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(174,141,45,0.25)' }}>
-          {loadingAi && <p style={{ fontSize: 12.5, color: '#8E8E93', margin: 0 }}>✨ Claude prüft das Anliegen gegen die Wissensbasis…</p>}
+        <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(174,141,45,0.25)' }}>
+          {loadingAi && <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: 0 }}>✨ Claude prüft das Anliegen gegen die Wissensbasis…</p>}
           {!loadingAi && options && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {options.map((o, i) => (
                 <div key={i} style={{
                   borderRadius: 11, padding: '9px 11px', cursor: 'pointer',
-                  background: selected === i ? 'rgba(174,141,45,0.1)' : '#FAFAFA',
-                  boxShadow: selected === i ? 'inset 0 0 0 1.5px #12222E' : 'inset 0 0 0 1px #ECECEC',
+                  background: selected === i ? 'rgba(174,141,45,0.1)' : 'var(--tm-surface2)',
+                  boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--tm-accent)' : 'inset 0 0 0 1px #ECECEC',
                 }} onClick={() => setSelected(selected === i ? null : i)}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 13, color: '#111', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
                       {selected === i ? '✓ ' : ''}{o.text}
                     </span>
                     <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt Claude darauf?" style={{
                       width: 24, height: 24, borderRadius: 999, border: 'none', flexShrink: 0, fontSize: 12, fontWeight: 800,
-                      background: infoOpen === i ? '#12222E' : 'rgba(120,120,128,0.12)',
-                      color: infoOpen === i ? '#fff' : '#6B7280', cursor: 'pointer',
+                      background: infoOpen === i ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+                      color: infoOpen === i ? '#fff' : 'var(--tm-muted)', cursor: 'pointer',
                     }}>i</button>
                   </div>
                   {infoOpen === i && (
-                    <p style={{ fontSize: 12, color: '#6B7280', margin: '7px 0 0', lineHeight: 1.5, fontStyle: 'italic' }}>
+                    <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: '7px 0 0', lineHeight: 1.5, fontStyle: 'italic' }}>
                       💡 {o.reasoning}
                     </p>
                   )}
                 </div>
               ))}
               {selected !== null && (
-                <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '2px 2px 0' }}>
+                <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '2px 2px 0' }}>
                   Gewählte Lösung wird beim ✓ Erledigen automatisch übernommen.
                 </p>
               )}
@@ -1256,7 +1256,7 @@ function CallCard({ task, onDone, onError }: {
           {recording === 'instruction' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               marginTop: 10, width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
-              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}>🔴 Ich höre zu… — zum Fertigstellen antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
@@ -1271,11 +1271,11 @@ function CallCard({ task, onDone, onError }: {
                 onChange={(e) => setInstruction(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && instruction.trim()) fetchOptions(instruction.trim()) }}
                 placeholder="Eigene Lösung / Anweisung…"
-                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff' }}
+                style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)' }}
               />
               <button onClick={() => instruction.trim() && fetchOptions(instruction.trim())} disabled={loadingAi} style={{
                 width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
-                background: '#12222E', color: '#fff', cursor: 'pointer', fontSize: 15,
+                background: 'var(--tm-navy)', color: '#fff', cursor: 'pointer', fontSize: 15,
               }}>✨</button>
             </div>
           )}
@@ -1285,23 +1285,23 @@ function CallCard({ task, onDone, onError }: {
       {/* 🤖 KI-Rückruf-Panel (§224): Anweisung → Bot ruft den Anrufer an.
           Leitplanke §175: startet NUR über diesen Klick, nie automatisch. */}
       {callOpen && (
-        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(29,78,216,0.3)' }}>
+        <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(29,78,216,0.3)' }}>
           <p style={{ fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', margin: '0 0 7px' }}>
-            🤖 Was soll die KI dem Anrufer ausrichten? <span style={{ fontWeight: 400, color: '#6B7280' }}>(sie ruft {phone} an)</span>
+            🤖 Was soll die KI dem Anrufer ausrichten? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(sie ruft {phone} an)</span>
           </p>
           {callResult ? (
-            <p style={{ fontSize: 13, color: '#166534', margin: 0, fontWeight: 600 }}>✅ {callResult}</p>
+            <p style={{ fontSize: 13, color: 'var(--tm-green)', margin: 0, fontWeight: 600 }}>✅ {callResult}</p>
           ) : recording === 'callback' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
-              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}>🔴 Ich höre zu… — Ansage sprechen, dann antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               {speechOk && (
                 <button onClick={() => startDictation('callback')} title="Ansage diktieren" style={{
                   width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
-                  background: 'rgba(29,78,216,0.1)', cursor: 'pointer', fontSize: 15,
+                  background: 'var(--tm-surface2)', cursor: 'pointer', fontSize: 15,
                 }}>🎤</button>
               )}
               <textarea
@@ -1309,7 +1309,7 @@ function CallCard({ task, onDone, onError }: {
                 onChange={(e) => setCallText(e.target.value)}
                 rows={2}
                 placeholder={'z. B. Später Check-in geht klar, Code kommt in die Gästemappe'}
-                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+                style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)', resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>
           )}
@@ -1319,21 +1319,21 @@ function CallCard({ task, onDone, onError }: {
                 ...goldBtn, background: '#1D4ED8', color: '#fff', opacity: callBusy || !callText.trim() ? 0.5 : 1,
               }}>{callBusy ? '⏳ Startet…' : '📞 Anruf starten'}</button>
             )}
-            <button onClick={() => setCallOpen(false)} style={{ ...goldBtn, background: 'none', color: '#8E8E93' }}>✕</button>
+            <button onClick={() => setCallOpen(false)} style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
           </div>
         </div>
       )}
 
       {/* ✓ Erledigt-Panel: Lösung erfassen (tippen, diktieren, oder gewählte Option) */}
       {doneOpen && (
-        <div style={{ marginTop: 11, background: '#fff', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(22,101,52,0.3)' }}>
-          <p style={{ fontSize: 12.5, fontWeight: 700, color: '#166534', margin: '0 0 7px' }}>
-            ✅ Wie wurde das Anliegen gelöst? <span style={{ fontWeight: 400, color: '#6B7280' }}>(fließt in die KI-Wissensbasis)</span>
+        <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(22,101,52,0.3)' }}>
+          <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--tm-green)', margin: '0 0 7px' }}>
+            ✅ Wie wurde das Anliegen gelöst? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(fließt in die KI-Wissensbasis)</span>
           </p>
           {recording === 'solution' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
-              background: '#FEE2E2', color: '#B91C1C', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}>🔴 Ich höre zu… — kurz erklären, dann antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
@@ -1348,7 +1348,7 @@ function CallCard({ task, onDone, onError }: {
                 onChange={(e) => setDoneText(e.target.value)}
                 rows={2}
                 placeholder="Kurz reicht — oder 🎤 antippen und erklären"
-                style={{ flex: 1, minWidth: 0, border: '1px solid #E5E5EA', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: '#111', background: '#fff', resize: 'vertical', fontFamily: 'inherit' }}
+                style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)', resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>
           )}
@@ -1357,9 +1357,9 @@ function CallCard({ task, onDone, onError }: {
               ...goldBtn, background: '#166534', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
             }}>💾 Speichern & Erledigt</button>
             <button onClick={() => { if (confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) saveDone(false) }} disabled={doneBusy} style={{
-              ...goldBtn, background: 'rgba(120,120,128,0.12)', color: '#6B7280',
+              ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-muted)',
             }}>Ohne Lösung</button>
-            <button onClick={() => setDoneOpen(false)} style={{ ...goldBtn, background: 'none', color: '#8E8E93' }}>✕</button>
+            <button onClick={() => setDoneOpen(false)} style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
           </div>
         </div>
       )}

@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom'
 interface Point { listingId: string; source: string; score: number; count: number; date: string }
 
 const SOURCES: { id: string; label: string; color: string }[] = [
-  { id: 'overall', label: 'Gesamt', color: '#AE8D2D' },
+  { id: 'overall', label: 'Gesamt', color: 'var(--tm-accent)' },
   { id: 'airbnb', label: 'Airbnb', color: '#E0565B' },
   { id: 'booking', label: 'Booking', color: '#2E7CF6' },
   { id: 'google', label: 'Google', color: '#34A853' },
@@ -48,7 +48,7 @@ function seriesFor(points: Point[], source: string, listingId: string): { date: 
 
 function deltaChip(curr: number | null, prev: number | null, label: string) {
   if (curr == null || prev == null) {
-    return <span style={{ fontSize: 11.5, color: '#B0AA9C' }}>{label}: —</span>
+    return <span style={{ fontSize: 11.5, color: 'var(--tm-muted2)' }}>{label}: —</span>
   }
   const d = Math.round((curr - prev) * 100) / 100
   const up = d > 0
@@ -56,8 +56,8 @@ function deltaChip(curr: number | null, prev: number | null, label: string) {
   return (
     <span style={{
       fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-      background: same ? '#F2F2F7' : up ? '#DCFCE7' : '#FEE2E2',
-      color: same ? '#8A8578' : up ? '#16A34A' : '#DC2626',
+      background: same ? 'var(--tm-surface2)' : up ? 'var(--tm-green-soft)' : 'var(--tm-red-soft)',
+      color: same ? 'var(--tm-muted)' : up ? 'var(--tm-green)' : 'var(--tm-red)',
     }}>
       {label}: {same ? '±0,00' : `${up ? '▲ +' : '▼ '}${f2(d)}`}
     </span>
@@ -134,17 +134,17 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7',
+      position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-        background: 'rgba(249,249,249,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0,
+        background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: '#AE8D2D', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1A1814', margin: 0, flex: 1 }}>📈 Entwicklung</h2>
+        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>📈 Entwicklung</h2>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 14px 40px' }}>
@@ -155,7 +155,7 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
               <button key={s.id} onClick={() => setSource(s.id)} style={{
                 padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700, flexShrink: 0,
                 background: source === s.id ? s.color : 'rgba(120,120,128,0.12)',
-                color: source === s.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+                color: source === s.id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',
               }}>{s.label}</button>
             ))}
           </div>
@@ -164,7 +164,7 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={listing} onChange={(e) => setListing(e.target.value)} style={{
               fontSize: 13, fontWeight: 600, padding: '7px 10px', borderRadius: 10,
-              border: '0.5px solid rgba(60,60,67,0.25)', background: '#fff', color: '#1A1814', maxWidth: 220,
+              border: '0.5px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-text)', maxWidth: 220,
             }}>
               <option value="">🏠 Alle Wohnungen</option>
               {listings.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
@@ -173,8 +173,8 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
               {RANGES.map((r) => (
                 <button key={r.id} onClick={() => setRange(r.id)} style={{
                   padding: '6px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
-                  background: range === r.id ? '#111' : 'rgba(120,120,128,0.12)',
-                  color: range === r.id ? '#fff' : '#3C3C43', cursor: 'pointer',
+                  background: range === r.id ? 'var(--tm-text)' : 'var(--tm-surface2)',
+                  color: range === r.id ? 'var(--tm-bg)' : 'var(--tm-muted)', cursor: 'pointer',
                 }}>{r.label}</button>
               ))}
             </div>
@@ -182,14 +182,14 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
 
           {/* Aktueller Wert + Deltas */}
           <div style={{
-            marginTop: 14, background: '#fff', borderRadius: 16, padding: '16px 18px',
-            boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+            marginTop: 14, background: 'var(--tm-card)', borderRadius: 16, padding: '16px 18px',
+            boxShadow: '0 0 0 0.5px var(--tm-line)',
           }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 34, fontWeight: 800, color: srcMeta.color, letterSpacing: '-0.5px' }}>
                 {current != null ? `★ ${f2(current)}` : '—'}
               </span>
-              <span style={{ fontSize: 13, color: '#8A8578', fontWeight: 600 }}>
+              <span style={{ fontSize: 13, color: 'var(--tm-muted)', fontWeight: 600 }}>
                 {srcMeta.label} · {listing ? listings.find((l) => l.id === listing)?.title : 'alle Wohnungen'}
               </span>
             </div>
@@ -201,9 +201,9 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
             {/* Chart */}
             <div style={{ marginTop: 14, overflowX: 'auto' }}>
               {loading ? (
-                <p style={{ fontSize: 13, color: '#8A8578', margin: '20px 0' }}>Lädt…</p>
+                <p style={{ fontSize: 13, color: 'var(--tm-muted)', margin: '20px 0' }}>Lädt…</p>
               ) : !chart ? (
-                <p style={{ fontSize: 13, color: '#8A8578', lineHeight: 1.6, margin: '14px 0' }}>
+                <p style={{ fontSize: 13, color: 'var(--tm-muted)', lineHeight: 1.6, margin: '14px 0' }}>
                   Noch keine Datenpunkte für diese Auswahl. Die Historie wächst ab jetzt
                   mit jedem Tag — der nächtliche Bewertungs-Sync speichert täglich einen
                   Snapshot aller Scores.
@@ -230,8 +230,8 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
           {/* Alle Plattformen als Schnellübersicht */}
           {!loading && (
             <div style={{
-              marginTop: 12, background: '#fff', borderRadius: 16, padding: '6px 18px',
-              boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+              marginTop: 12, background: 'var(--tm-card)', borderRadius: 16, padding: '6px 18px',
+              boxShadow: '0 0 0 0.5px var(--tm-line)',
             }}>
               {SOURCES.map((s, i) => {
                 const fs = seriesFor(points, s.id, listing)
@@ -242,11 +242,11 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
                 return (
                   <div key={s.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0',
-                    boxShadow: i < SOURCES.length - 1 ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
+                    boxShadow: i < SOURCES.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
                   }}>
                     <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1A1814', flex: 1 }}>{s.label}</span>
-                    <span style={{ fontSize: 14.5, fontWeight: 800, color: '#1A1814' }}>{cur != null ? f2(cur) : '—'}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--tm-text)', flex: 1 }}>{s.label}</span>
+                    <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--tm-text)' }}>{cur != null ? f2(cur) : '—'}</span>
                     {deltaChip(cur, wk, '7 T')}
                   </div>
                 )

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
+import { THEME_BOOT_SCRIPT } from '@/lib/theme-boot'
 
 /**
  * Team-App-Layout: Zoom-Sperre NUR hier (App-Charakter) — die öffentliche
@@ -23,5 +24,12 @@ export const viewport: Viewport = {
 }
 
 export default function TeamLayout({ children }: { children: ReactNode }) {
-  return children
+  return (
+    <>
+      {/* §284 Dark Mode: Klasse tm-dark vor dem ersten Frame (gespeicherter
+          Modus oder System) — sonst blitzt die helle Seite auf */}
+      <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      {children}
+    </>
+  )
 }

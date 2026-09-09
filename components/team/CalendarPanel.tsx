@@ -62,15 +62,15 @@ function TaskChips({ tasks, max = 3 }: { tasks: CalTask[]; max?: number }) {
       {shown.map((t) => (
         <button key={t.id} type="button" onClick={(e) => { e.stopPropagation(); openTask(t.id) }} style={{
           display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
-          padding: '3px 9px', borderRadius: 999, background: '#fff', color: '#4A4438',
-          boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.2)', border: 'none', cursor: 'pointer',
+          padding: '3px 9px', borderRadius: 999, background: 'var(--tm-card)', color: '#4A4438',
+          boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', border: 'none', cursor: 'pointer',
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: PRIO_DOT[t.prio] ?? '#9CA3AF', flexShrink: 0 }} />
           {t.title.length > 34 ? t.title.slice(0, 34) + '…' : t.title}
-          {t.assigneeName && <span style={{ color: '#8A7020', fontWeight: 700 }}>· {t.assigneeName}</span>}
+          {t.assigneeName && <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>· {t.assigneeName}</span>}
         </button>
       ))}
-      {rest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#8A7020' }}>+{rest} weitere</span>}
+      {rest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-accent-dark)' }}>+{rest} weitere</span>}
     </span>
   )
 }
@@ -267,9 +267,9 @@ export default function CalendarPanel() {
   }
 
   const EVENT_META = {
-    abreise: { icon: '↖', color: '#C2410C', bg: '#FFF7ED', tag: 'Abreise' },
-    anreise: { icon: '↘', color: '#15803D', bg: '#F0FDF4', tag: 'Anreise' },
-    aufgabe: { icon: '✓', color: '#8A7020', bg: '#FAF5E4', tag: 'Aufgabe fällig' },
+    abreise: { icon: '↖', color: 'var(--tm-red)', bg: '#FFF7ED', tag: 'Abreise' },
+    anreise: { icon: '↘', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'Anreise' },
+    aufgabe: { icon: '✓', color: 'var(--tm-accent-dark)', bg: '#FAF5E4', tag: 'Aufgabe fällig' },
     qs: { icon: '🧾', color: '#0F766E', bg: '#EFFAF7', tag: 'QS-Termin' },
   } as const
 
@@ -280,8 +280,8 @@ export default function CalendarPanel() {
         const meta = EVENT_META[e.type]
         return (
           <div key={i} onClick={e.taskId ? () => openTask(e.taskId!) : undefined} style={{
-            background: '#fff', borderRadius: 14, padding: '10px 13px',
-            boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+            background: 'var(--tm-card)', borderRadius: 14, padding: '10px 13px',
+            boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
             cursor: e.taskId ? 'pointer' : 'default',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -291,16 +291,16 @@ export default function CalendarPanel() {
                 fontSize: 16, fontWeight: 800, flexShrink: 0,
               }}>{meta.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13.5, fontWeight: 700, color: '#111', margin: 0 }}>
+                <p style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)', margin: 0 }}>
                   {e.label}
                   {e.wechsel && (
                     <span style={{
                       marginLeft: 7, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999,
-                      background: '#EDE9FE', color: '#6D28D9', verticalAlign: 'middle',
+                      background: 'var(--tm-surface2)', color: '#6D28D9', verticalAlign: 'middle',
                     }}>WECHSEL</span>
                   )}
                 </p>
-                <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '1px 0 0' }}>
+                <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '1px 0 0' }}>
                   {meta.tag}{e.sub ? ` · ${e.sub}` : ''}{e.gapText ? ` · ${e.gapText}` : ''}
                 </p>
               </div>
@@ -308,9 +308,9 @@ export default function CalendarPanel() {
             {e.gapTasks && e.gapTasks.length > 0 && (
               <div style={{
                 marginTop: 9, padding: '8px 11px', borderRadius: 10,
-                background: '#FAF5E4', boxShadow: 'inset 0 0 0 0.5px #E8DCB8',
+                background: 'var(--tm-accent-soft)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
               }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: '#8A7020', marginRight: 7 }}>🛠️ Gelegenheit:</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--tm-accent-dark)', marginRight: 7 }}>🛠️ Gelegenheit:</span>
                 <TaskChips tasks={e.gapTasks} />
               </div>
             )}
@@ -324,11 +324,11 @@ export default function CalendarPanel() {
     <div ref={calScrollRef} style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch', paddingBottom: 'var(--tm-nav-pad)' }}>
       <PullHint pull={calPtr.pull} busy={calPtr.busy} />
       <div style={{
-        position: 'sticky', top: 0, zIndex: 5, background: 'rgba(247,247,248,0.9)',
+        position: 'sticky', top: 0, zIndex: 5, background: 'var(--tm-glass)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         // §276: Titel „Belegung" steht in der Shell-Kopfleiste (keine doppelten Titel)
         padding: '10px 16px 10px',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
       }}>
         {/* Ansichts-Umschalter: Belegung · Agenda · Reinigungsplaner —
             §243ag als echtes iOS-Segmented-Control */}
@@ -342,7 +342,7 @@ export default function CalendarPanel() {
       {/* 👤 Persönlicher Zugangs-Code (§141) — Navy-Karte, nur der EIGENE
           Code; gilt an allen freigegebenen Wohnungen inkl. Haustür */}
       {!loading && !error && myDoorCode && (
-        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: '#12222E' }}>
+        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: 'var(--tm-navy)' }}>
           <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#E3C878', marginBottom: 6 }}>
             👤 Dein Zugangs-Code (Keypad)
           </div>
@@ -360,7 +360,7 @@ export default function CalendarPanel() {
       {/* 🔑 Service-PINs über dem Kalender (Pascal, §99.5) — Navy-Karte,
           erscheint nur, wenn im Admin-Bereich PINs gepflegt sind */}
       {!loading && !error && Object.keys(servicePins).length > 0 && (
-        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: '#12222E' }}>
+        <div style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 14, background: 'var(--tm-navy)' }}>
           <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#E3C878', marginBottom: 8 }}>
             🔑 Service-PINs (Keypad)
           </div>
@@ -378,13 +378,13 @@ export default function CalendarPanel() {
       {loading ? (
         <div style={{ padding: '12px 16px' }}><SkeletonRows kind="card" count={4} /></div>
       ) : error ? (
-        <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 13 }}>{error}</p>
+        <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13 }}>{error}</p>
       ) : view === 'reinigung' ? (
         <div style={{ padding: '12px 16px 40px' }}>
           {cleaning ? (
             <CleaningPlanner stays={stays} listings={listings} cleaning={cleaning} />
           ) : (
-            <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>
+            <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>
               Reinigungsdaten noch nicht verfügbar — im Admin-Bereich unter „🧹 Reinigung" einrichten.
             </p>
           )}
@@ -392,9 +392,9 @@ export default function CalendarPanel() {
       ) : view === 'belegung' ? (
         <div style={{ padding: '12px 12px 40px' }}>
           <OccupancyGrid stays={stays} listings={listings} />
-          <p style={{ fontSize: 11.5, color: '#8E8E93', margin: '10px 4px 0', lineHeight: 1.5 }}>
+          <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '10px 4px 0', lineHeight: 1.5 }}>
             Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
-            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: '#1A4FA0', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#8B5CF6', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: '#8A7020', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
+            Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: '#1A4FA0', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#8B5CF6', fontWeight: 700 }}>FeWo/Vrbo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
           </p>
           {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
           <KennzahlenCard />
@@ -406,8 +406,8 @@ export default function CalendarPanel() {
             {([['liste', '📋 Liste'], ['woche', '📆 Wochenblick']] as const).map(([id, label]) => (
               <button key={id} onClick={() => setAgendaMode(id)} style={{
                 padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-                background: agendaMode === id ? '#1A1814' : 'rgba(120,120,128,0.12)',
-                color: agendaMode === id ? '#fff' : '#3C3C43', cursor: 'pointer',
+                background: agendaMode === id ? 'var(--tm-text)' : 'var(--tm-surface2)',
+                color: agendaMode === id ? 'var(--tm-bg)' : 'var(--tm-muted)', cursor: 'pointer',
               }}>{label}</button>
             ))}
           </div>
@@ -426,15 +426,15 @@ export default function CalendarPanel() {
                     return (
                       <button key={iso} onClick={() => setSelDay(iso)} style={{
                         flexShrink: 0, width: 62, padding: '9px 4px 8px', borderRadius: 14, border: 'none', cursor: 'pointer',
-                        background: sel ? '#1A1814' : '#fff',
+                        background: sel ? 'var(--tm-text)' : 'var(--tm-card)',
                         boxShadow: sel ? 'none' : iso === today
-                          ? 'inset 0 0 0 1.5px #12222E'
-                          : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                          ? 'inset 0 0 0 1.5px var(--tm-accent)'
+                          : 'inset 0 0 0 0.5px var(--tm-line)',
                       }}>
-                        <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: sel ? 'rgba(255,255,255,0.6)' : '#8E8E93' }}>
+                        <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: sel ? 'rgba(255,255,255,0.6)' : 'var(--tm-muted)' }}>
                           {DE_DAYS[d.getUTCDay()].slice(0, 2)}
                         </span>
-                        <span style={{ display: 'block', fontSize: 17, fontWeight: 800, margin: '1px 0 4px', color: sel ? '#fff' : iso === today ? '#8A7020' : '#111' }}>
+                        <span style={{ display: 'block', fontSize: 17, fontWeight: 800, margin: '1px 0 4px', color: sel ? '#fff' : iso === today ? 'var(--tm-accent-dark)' : 'var(--tm-text)' }}>
                           {d.getUTCDate()}
                         </span>
                         <span style={{ display: 'flex', gap: 3, justifyContent: 'center', minHeight: 6 }}>
@@ -448,11 +448,11 @@ export default function CalendarPanel() {
                 </div>
                 <p style={{
                   fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                  color: selDay === today ? 'var(--gold, #AE8D2D)' : '#6B7280',
+                  color: selDay === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
                   textTransform: 'uppercase', letterSpacing: '0.03em',
                 }}>{dayLabel(selDay, today)}</p>
                 {selEvents.length === 0 ? (
-                  <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: '26px 0' }}>Keine Termine an diesem Tag.</p>
+                  <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: '26px 0' }}>Keine Termine an diesem Tag.</p>
                 ) : renderEventCards(selEvents)}
               </div>
             )
@@ -461,20 +461,20 @@ export default function CalendarPanel() {
           {/* Überfällige Aufgaben gesammelt oben */}
           {overdue.length > 0 && (
             <div style={{ marginBottom: 18 }}>
-              <p style={{ fontSize: 13, fontWeight: 800, color: '#B91C1C', margin: '0 0 8px' }}>⚠︎ Überfällig</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-red)', margin: '0 0 8px' }}>⚠︎ Überfällig</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {overdue.map((t) => (
                   <div key={t.id} onClick={() => openTask(t.id)} style={{
-                    background: '#fff', borderRadius: 14, padding: '11px 14px', cursor: 'pointer',
-                    boxShadow: 'inset 0 0 0 1.5px #EF4444', display: 'flex', justifyContent: 'space-between', gap: 10,
+                    background: 'var(--tm-card)', borderRadius: 14, padding: '11px 14px', cursor: 'pointer',
+                    boxShadow: 'inset 0 0 0 1.5px var(--tm-red)', display: 'flex', justifyContent: 'space-between', gap: 10,
                   }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)' }}>
                       {t.title}
-                      <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#8E8E93', marginTop: 1 }}>
+                      <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--tm-muted)', marginTop: 1 }}>
                         👤 {t.assigneeName ?? 'nicht zugewiesen'}
                       </span>
                     </span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C', flexShrink: 0 }}>seit {fmtShort(t.due_date!)}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-red)', flexShrink: 0 }}>seit {fmtShort(t.due_date!)}</span>
                   </div>
                 ))}
               </div>
@@ -484,16 +484,16 @@ export default function CalendarPanel() {
           {/* 🔧 Gerade frei: leere Wohnungen + Aufgaben-Gelegenheiten */}
           {freeNow.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 13, fontWeight: 800, color: '#8A7020', margin: '0 0 8px' }}>🔧 Gerade frei</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-accent-dark)', margin: '0 0 8px' }}>🔧 Gerade frei</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {freeNow.map((f) => (
                   <div key={f.id} style={{
-                    background: 'linear-gradient(135deg, #FDFBF4, #FAF5E4)', borderRadius: 14, padding: '12px 14px',
-                    boxShadow: 'inset 0 0 0 1px #E8DCB8',
+                    background: 'var(--tm-accent-soft)', borderRadius: 14, padding: '12px 14px',
+                    boxShadow: 'inset 0 0 0 1px var(--tm-line)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{f.title}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#8A7020', flexShrink: 0 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>{f.title}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-accent-dark)', flexShrink: 0 }}>
                         {f.nights != null
                           ? `frei bis ${fmtShort(f.nextIn!)} · ${f.nights} ${f.nights === 1 ? 'Nacht' : 'Nächte'}`
                           : 'frei — nichts geplant'}
@@ -517,11 +517,11 @@ export default function CalendarPanel() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {planningVisible.map((p) => (
                   <div key={p.id} style={{
-                    background: 'linear-gradient(135deg, #FAFDFF, #EFF8FF)', borderRadius: 14, padding: '12px 14px',
+                    background: 'var(--tm-surface2)', borderRadius: 14, padding: '12px 14px',
                     boxShadow: 'inset 0 0 0 1px #BAE6FD',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{p.title}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>{p.title}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#0369A1', flexShrink: 0 }}>
                         {p.slot.nights != null
                           ? `Fenster ${fmtShort(p.slot.from)}–${fmtShort(p.slot.to!)} · ${p.slot.nights} ${p.slot.nights === 1 ? 'Nacht' : 'Nächte'}`
@@ -543,7 +543,7 @@ export default function CalendarPanel() {
             <div key={iso} style={{ marginBottom: 16 }}>
               <p style={{
                 fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                color: iso === today ? 'var(--gold, #AE8D2D)' : '#6B7280',
+                color: iso === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
                 textTransform: 'uppercase', letterSpacing: '0.03em',
               }}>{dayLabel(iso, today)}</p>
               {renderEventCards(events)}

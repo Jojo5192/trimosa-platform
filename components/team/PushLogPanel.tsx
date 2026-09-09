@@ -75,23 +75,23 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7',
+      position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#fff',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
         <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#1A1814' }}>🔔 Mitteilungen</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>🔔 Mitteilungen</div>
         <div style={{ flex: 1 }} />
-        {entries === null && !error && <span style={{ fontSize: 12, color: '#B0AA9C' }}>Laden…</span>}
+        {entries === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 14px 40px' }}>
           {error && (
-            <div style={{ padding: '11px 14px', borderRadius: 12, background: '#FEF2F2', color: '#B91C1C', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {error}
             </div>
           )}
@@ -101,15 +101,15 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {entries !== null && entries.length === 0 && !hinweis && (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#8A8578', fontSize: 14 }}>
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14 }}>
               Noch keine Mitteilungen — hier erscheint ab jetzt jede Push, die an dich rausgeht (30 Tage).
             </div>
           )}
 
           {gruppen.map((g) => (
             <div key={g.tag} style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.04em', margin: '0 4px 7px', textTransform: 'uppercase' }}>{g.tag}</div>
-              <div style={{ background: '#fff', borderRadius: 14, overflow: 'clip', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.04em', margin: '0 4px 7px', textTransform: 'uppercase' }}>{g.tag}</div>
+              <div style={{ background: 'var(--tm-card)', borderRadius: 14, overflow: 'clip', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                 {g.items.map((e, i) => (
                   <button
                     key={e.id}
@@ -118,7 +118,7 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
                       width: '100%', display: 'flex', gap: 11, alignItems: 'flex-start', textAlign: 'left',
                       padding: '11px 13px', border: 'none', background: 'none',
                       cursor: e.url ? 'pointer' : 'default', WebkitTapHighlightColor: 'transparent',
-                      boxShadow: i < g.items.length - 1 ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
+                      boxShadow: i < g.items.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
                     }}
                   >
                     <span style={{
@@ -128,8 +128,8 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
                     }}>{KAT_EMOJI[e.category ?? ''] ?? '🔔'}</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                        <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</span>
-                        <span style={{ fontSize: 11.5, color: '#B0AA9C', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{uhrzeit(e.created_at)}</span>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--tm-muted2)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{uhrzeit(e.created_at)}</span>
                       </span>
                       {e.body && (
                         <span style={{
@@ -138,7 +138,7 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
                         }}>{e.body}</span>
                       )}
                     </span>
-                    {e.url && <span style={{ color: '#C7C7CC', fontSize: 15, flexShrink: 0, alignSelf: 'center' }}>›</span>}
+                    {e.url && <span style={{ color: 'var(--tm-muted2)', fontSize: 15, flexShrink: 0, alignSelf: 'center' }}>›</span>}
                   </button>
                 ))}
               </div>

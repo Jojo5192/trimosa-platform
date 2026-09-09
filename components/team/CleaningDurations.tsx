@@ -50,7 +50,7 @@ const trendOf = (chrono: number[]): Trend | null => {
 
 /** Trend-Chip: kürzer geworden = grün ▼, länger = rot ▲, ±5min = stabil. */
 function TrendChip({ t }: { t: Trend | null }) {
-  if (!t) return <span style={{ fontSize: 11, color: '#C7C2B8' }}>—</span>
+  if (!t) return <span style={{ fontSize: 11, color: 'var(--tm-muted2)' }}>—</span>
   const stable = Math.abs(t.deltaMin) < 5
   const faster = t.deltaMin < 0
   const color = stable ? '#8A8578' : faster ? '#16A34A' : '#C0392B'
@@ -141,33 +141,33 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
     }
   }, [alle, filter])
 
-  const card = { borderRadius: 14, background: '#fff', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', overflow: 'clip' as const, marginBottom: 14 }
-  const eyebrow = { fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 4px 8px' }
+  const card = { borderRadius: 14, background: 'var(--tm-card)', boxShadow: '0 0 0 0.5px var(--tm-line)', overflow: 'clip' as const, marginBottom: 14 }
+  const eyebrow = { fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 4px 8px' }
   const chip = (aktiv: boolean) => ({
     flexShrink: 0, padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 700 as const,
     border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', whiteSpace: 'nowrap' as const,
-    background: aktiv ? '#12222E' : '#EFEFF4',
-    color: aktiv ? '#fff' : '#4A463E',
+    background: aktiv ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+    color: aktiv ? '#fff' : 'var(--tm-text)',
   })
-  const kpi = { flex: 1, minWidth: 0, borderRadius: 14, background: '#fff', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', padding: '11px 13px' }
-  const kpiLabel = { fontSize: 10.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em' }
-  const kpiValue = { fontSize: 17, fontWeight: 800, color: '#12222E', marginTop: 2, fontVariantNumeric: 'tabular-nums' as const }
+  const kpi = { flex: 1, minWidth: 0, borderRadius: 14, background: 'var(--tm-card)', boxShadow: '0 0 0 0.5px var(--tm-line)', padding: '11px 13px' }
+  const kpiLabel = { fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em' }
+  const kpiValue = { fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', marginTop: 2, fontVariantNumeric: 'tabular-nums' as const }
 
   const body = (
-    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#fff', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0 }}>
+    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0 }}>
         <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#1A1814' }}>⏱ Reinigungs-Dauer</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⏱ Reinigungs-Dauer</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: '#B0AA9C' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
       </div>
 
       {/* §266b: Wohnungs-Filter — horizontale Chip-Leiste im iOS-Stil */}
       {wohnungsNamen.length > 1 && (
         <div style={{
-          display: 'flex', gap: 8, padding: '10px 14px', background: '#fff', flexShrink: 0,
+          display: 'flex', gap: 8, padding: '10px 14px', background: 'var(--tm-card)', flexShrink: 0,
           overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-          boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+          boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         }}>
           <button style={chip(filter === '')} onClick={() => { haptic(); setFilter('') }}>Alle</button>
           {wohnungsNamen.map((w) => (
@@ -178,10 +178,10 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 14px 40px' }}>
-          {error && <div style={{ padding: '11px 14px', borderRadius: 12, background: '#FEF2F2', color: '#B91C1C', fontSize: 13, marginBottom: 14 }}>⚠️ {error}</div>}
+          {error && <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, marginBottom: 14 }}>⚠️ {error}</div>}
 
           {data && alle.length === 0 && !error && (
-            <div style={{ textAlign: 'center', color: '#8A8578', fontSize: 14, padding: '30px 12px', lineHeight: 1.6 }}>
+            <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '30px 12px', lineHeight: 1.6 }}>
               Noch keine gemessenen Reinigungen.<br />
               Die Dauer entsteht automatisch, sobald eine Reinigung über den NFC-Aufkleber
               als fertig gemeldet wird (Start = erste Türöffnung an dem Tag).
@@ -189,7 +189,7 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
           )}
 
           {data && alle.length > 0 && sicht.count === 0 && (
-            <div style={{ textAlign: 'center', color: '#8A8578', fontSize: 14, padding: '30px 12px' }}>
+            <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '30px 12px' }}>
               Für {filter} gibt es noch keine gemessene Reinigung.
             </div>
           )}
@@ -197,20 +197,20 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
           {data && sicht.count > 0 && (
             <>
               {/* Hero: Median der aktuellen Sicht */}
-              <div style={{ ...card, background: '#12222E', color: '#fff', padding: '16px 18px' }}>
-                <div style={{ fontSize: 12, color: '#C8B98A', fontWeight: 700, letterSpacing: '0.04em' }}>
+              <div style={{ ...card, background: 'var(--tm-navy)', color: '#fff', padding: '16px 18px' }}>
+                <div style={{ fontSize: 12, color: 'var(--tm-muted2)', fontWeight: 700, letterSpacing: '0.04em' }}>
                   {filter ? `${filter.toUpperCase()} · MEDIAN` : 'REINIGUNGS-DAUER (MEDIAN)'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 30, fontWeight: 800 }}>{dur(sicht.medMin)}</span>
-                  <span style={{ fontSize: 13, color: '#9FB0BC' }}>Ø {dur(sicht.avgMin)}</span>
+                  <span style={{ fontSize: 13, color: 'var(--tm-muted)' }}>Ø {dur(sicht.avgMin)}</span>
                   {sicht.trend && (
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: sicht.trend.deltaMin < -5 ? '#7CE0A8' : sicht.trend.deltaMin > 5 ? '#F0A0A0' : '#9FB0BC' }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: sicht.trend.deltaMin < -5 ? '#7CE0A8' : sicht.trend.deltaMin > 5 ? '#F0A0A0' : 'var(--tm-muted)' }}>
                       {sicht.trend.deltaMin < -5 ? '▼' : sicht.trend.deltaMin > 5 ? '▲' : '→'} {Math.abs(sicht.trend.deltaMin) < 5 ? 'stabil' : dur(Math.abs(sicht.trend.deltaMin))}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: '#9FB0BC', marginTop: 3 }}>
+                <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 3 }}>
                   aus {sicht.count} Reinigung{sicht.count === 1 ? '' : 'en'}{filter ? '' : ' (alle Wohnungen)'} · letzte 180 Tage
                 </div>
                 {sicht.verlauf.length >= 2 && (
@@ -226,11 +226,11 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
                 <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                   <div style={kpi}>
                     <div style={kpiLabel}>KÜRZESTE</div>
-                    <div style={{ ...kpiValue, color: '#16A34A' }}>{durKurz(sicht.minMin)}</div>
+                    <div style={{ ...kpiValue, color: 'var(--tm-green)' }}>{durKurz(sicht.minMin)}</div>
                   </div>
                   <div style={kpi}>
                     <div style={kpiLabel}>LÄNGSTE</div>
-                    <div style={{ ...kpiValue, color: '#C0392B' }}>{durKurz(sicht.maxMin)}</div>
+                    <div style={{ ...kpiValue, color: 'var(--tm-red)' }}>{durKurz(sicht.maxMin)}</div>
                   </div>
                   <div style={kpi}>
                     <div style={kpiLabel}>EINSÄTZE</div>
@@ -251,19 +251,19 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
                         style={{
                           width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer',
                           WebkitTapHighlightColor: 'transparent',
-                          padding: '11px 16px', boxShadow: i ? 'inset 0 0.5px 0 rgba(60,60,67,0.1)' : 'none',
+                          padding: '11px 16px', boxShadow: i ? 'inset 0 0.5px 0 var(--tm-line)' : 'none',
                           display: 'flex', alignItems: 'center', gap: 10,
                         }}
                       >
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: '#1A1814' }}>{w.title}</span>
-                          <span style={{ display: 'block', fontSize: 11, color: '#8A8578', marginTop: 1 }}>{w.count}× · Ø {dur(w.avgMin)} · {dur(w.minMin)}–{dur(w.maxMin)}</span>
+                          <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: 'var(--tm-text)' }}>{w.title}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--tm-muted)', marginTop: 1 }}>{w.count}× · Ø {dur(w.avgMin)} · {dur(w.minMin)}–{dur(w.maxMin)}</span>
                         </span>
                         <span style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#12222E' }}>{dur(w.medMin)}</span>
+                          <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: 'var(--tm-text)' }}>{dur(w.medMin)}</span>
                           <TrendChip t={w.trend} />
                         </span>
-                        <span style={{ color: '#C7C7CC', fontSize: 15, flexShrink: 0 }}>›</span>
+                        <span style={{ color: 'var(--tm-muted2)', fontSize: 15, flexShrink: 0 }}>›</span>
                       </button>
                     ))}
                   </div>
@@ -276,11 +276,11 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
                   <div style={eyebrow}>{filter ? `REINIGUNGSKRÄFTE · ${filter.toUpperCase()}` : 'JE REINIGUNGSKRAFT'}</div>
                   <div style={card}>
                     {sicht.personen.map((p, i) => (
-                      <div key={p.name} style={{ padding: '11px 16px', boxShadow: i ? 'inset 0 0.5px 0 rgba(60,60,67,0.1)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ flex: 1, fontSize: 14.5, color: '#1A1814' }}>👤 {p.name}</span>
+                      <div key={p.name} style={{ padding: '11px 16px', boxShadow: i ? 'inset 0 0.5px 0 var(--tm-line)' : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ flex: 1, fontSize: 14.5, color: 'var(--tm-text)' }}>👤 {p.name}</span>
                         <span style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: '#12222E' }}>{dur(p.medMin)}</span>
-                          <span style={{ display: 'block', fontSize: 11, color: '#8A8578' }}>Ø {dur(p.avgMin)} · {p.count}×</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-text)' }}>{dur(p.medMin)}</span>
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--tm-muted)' }}>Ø {dur(p.avgMin)} · {p.count}×</span>
                         </span>
                       </div>
                     ))}
@@ -292,14 +292,14 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
               <div style={eyebrow}>LETZTE REINIGUNGEN</div>
               <div style={card}>
                 {sicht.letzte.map((r, i) => (
-                  <div key={`${r.title}-${r.slotDate}-${i}`} style={{ padding: '10px 16px', boxShadow: i ? 'inset 0 0.5px 0 rgba(60,60,67,0.1)' : 'none' }}>
+                  <div key={`${r.title}-${r.slotDate}-${i}`} style={{ padding: '10px 16px', boxShadow: i ? 'inset 0 0.5px 0 var(--tm-line)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: '#1A1814' }}>
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--tm-text)' }}>
                         {filter ? `${fmtDate(r.slotDate)}${r.person ? ` · ${r.person}` : ''}` : r.title}
                       </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#12222E' }}>{dur(r.durationMin)}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-text)' }}>{dur(r.durationMin)}</span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: 2 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginTop: 2 }}>
                       {filter ? '' : `${fmtDate(r.slotDate)}${r.person ? ` · ${r.person}` : ''} · `}
                       {fmtTime(r.startedAt)}–{fmtTime(r.confirmedAt)} Uhr
                     </div>
@@ -309,10 +309,10 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
             </>
           )}
 
-          <div style={{ marginTop: 16, fontSize: 11.5, color: '#B0AA9C', lineHeight: 1.55, padding: '0 4px' }}>
+          <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--tm-muted2)', lineHeight: 1.55, padding: '0 4px' }}>
             <b>Median</b> = der typische Wert (unempfindlich gegen einzelne Ausreißer), <b>Ø</b> = Durchschnitt.
-            Der <b>Trend</b> vergleicht die neuere mit der älteren Hälfte der Reinigungen — <span style={{ color: '#16A34A' }}>▼ grün</span> heißt schneller geworden,
-            <span style={{ color: '#C0392B' }}> ▲ rot</span> langsamer (ab 4 Messungen).<br />
+            Der <b>Trend</b> vergleicht die neuere mit der älteren Hälfte der Reinigungen — <span style={{ color: 'var(--tm-green)' }}>▼ grün</span> heißt schneller geworden,
+            <span style={{ color: 'var(--tm-red)' }}> ▲ rot</span> langsamer (ab 4 Messungen).<br />
             Gemessen vom ersten Aufschließen der Tür (Schloss-Protokoll, Gäste-Codes ausgenommen)
             bis zur „Fertig"-Meldung am NFC-Aufkleber. Nur sichtbar für Chefs.
           </div>

@@ -430,7 +430,7 @@ export default function OffenPanel({ visible, onCount }: {
         <span className="tm-eyebrow">Karten-Stapel</span>
         {loaded && queue.length > 0 && (
           <span style={{
-            fontSize: 12.5, fontWeight: 800, color: '#fff', background: '#12222E',
+            fontSize: 12.5, fontWeight: 800, color: '#fff', background: 'var(--tm-navy)',
             borderRadius: 999, padding: '3px 10px',
           }}>{queue.length}</span>
         )}
@@ -446,13 +446,13 @@ export default function OffenPanel({ visible, onCount }: {
 
       {/* Karten-Bühne */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', padding: '16px 14px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {!loaded && <p style={{ textAlign: 'center', color: '#999', fontSize: 13, marginTop: 60 }}>Lädt…</p>}
+        {!loaded && <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, marginTop: 60 }}>Lädt…</p>}
 
         {loaded && !current && (
           <div style={{ textAlign: 'center', marginTop: 70 }}>
             <div style={{ fontSize: 52 }}>🎉</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: '#111', marginTop: 10 }}>Alles abgearbeitet!</div>
-            <p style={{ fontSize: 13, color: '#8E8E93', marginTop: 6, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', marginTop: 10 }}>Alles abgearbeitet!</div>
+            <p style={{ fontSize: 13, color: 'var(--tm-muted)', marginTop: 6, lineHeight: 1.6 }}>
               Keine offenen Gäste-Nachrichten.<br />Neue tauchen hier automatisch auf.
             </p>
           </div>
@@ -464,21 +464,21 @@ export default function OffenPanel({ visible, onCount }: {
             {next && (
               <div style={{
                 position: 'absolute', inset: 0, transform: 'scale(0.955) translateY(10px)',
-                background: '#fff', borderRadius: 22, boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                background: 'var(--tm-card)', borderRadius: 22, boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
               }} />
             )}
             {/* aktuelle Karte */}
             <div style={{
-              position: 'relative', background: '#fff', borderRadius: 22,
+              position: 'relative', background: 'var(--tm-card)', borderRadius: 22,
               boxShadow: '0 10px 34px rgba(0,0,0,0.10)', overflow: 'hidden',
               transition: 'transform .26s ease, opacity .26s ease',
               transform: leaving ? `translateX(${leaving === 'right' ? '120%' : '-120%'}) rotate(${leaving === 'right' ? 7 : -7}deg)` : 'none',
               opacity: leaving ? 0 : 1,
             }}>
               {/* Karten-Kopf */}
-              <div style={{ padding: '15px 17px 11px', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)', position: 'relative' }}>
+              <div style={{ padding: '15px 17px 11px', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', paddingRight: current.mappeUrl ? 38 : 0 }}>
-                  <span style={{ fontSize: 16.5, fontWeight: 800, color: '#111' }}>
+                  <span style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>
                     {current.guestLang && current.guestLang !== 'de' ? `${LANG_FLAGS[current.guestLang] ?? '🌐'} ` : ''}{current.guestName}
                   </span>
                   <span style={{
@@ -492,47 +492,47 @@ export default function OffenPanel({ visible, onCount }: {
                   <>
                     <button type="button" onClick={() => setMappeMenu((v) => !v)} title="Gästemappen-Link" style={{
                       position: 'absolute', top: 12, right: 12, width: 32, height: 32, borderRadius: '50%',
-                      border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'rgba(118,118,128,0.10)',
+                      border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)',
                       cursor: 'pointer', fontSize: 15,
                     }}>📖</button>
                     {mappeMenu && (
                       <div style={{
                         position: 'absolute', top: 48, right: 12, zIndex: 30, width: 220,
-                        background: '#fff', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-                        border: '0.5px solid rgba(60,60,67,0.15)', overflow: 'hidden',
+                        background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                        border: '0.5px solid var(--tm-line)', overflow: 'hidden',
                       }}>
                         <button type="button" onClick={() => {
                           const link = `${location.origin}${current.mappeUrl}`
                           setComposer(true)
                           setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + link)
                           setMappeMenu(false)
-                        }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                        }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                           📎 An Antwort anhängen
                         </button>
-                        <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                        <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                           📤 Nur Link senden
                         </button>
                         {/* §158: 🧾 Rechnung */}
                         {invoiceBookingId && (
                           <>
-                            <div style={{ padding: '9px 13px 5px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                            <div style={{ padding: '9px 13px 5px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                               🧾 RECHNUNG
                             </div>
                             {arrivalReached ? (
                               <>
-                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('attach')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('attach')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                                   {invoiceBusy ? '⏳ Erstellt…' : '📎 Rechnungs-Link anhängen'}
                                 </button>
-                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('send')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020' }}>
+                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('send')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)' }}>
                                   {invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}
                                 </button>
                               </>
                             ) : (
-                              <button type="button" onClick={() => { setMappeMenu(false); setComposer(true); setDraft(RECHNUNG_HINWEIS) }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}>
+                              <button type="button" onClick={() => { setMappeMenu(false); setComposer(true); setDraft(RECHNUNG_HINWEIS) }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                                 💬 Hinweis einfügen (ab Anreisetag)
                               </button>
                             )}
-                            <button type="button" onClick={() => { location.href = `/team?conv=${current.id}` }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#8E8E93' }}>
+                            <button type="button" onClick={() => { location.href = `/team?conv=${current.id}` }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--tm-muted)' }}>
                               ✏️ Empfänger erfassen — im Chat öffnen ›
                             </button>
                           </>
@@ -541,22 +541,22 @@ export default function OffenPanel({ visible, onCount }: {
                     )}
                   </>
                 )}
-                <div style={{ fontSize: 12, color: '#8E8E93', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 4 }}>
                   {current.listingTitle ?? '—'} · {fmtD(current.checkIn)}–{fmtD(current.checkOut)}
                   {current.lastMessageAt ? ` · wartet seit ${fmtT(current.lastMessageAt)}` : ''}
                 </div>
               </div>
 
               {/* Mini-Verlauf (öffnet unten — neueste Nachricht sichtbar) */}
-              <div ref={verlaufRef} style={{ padding: '13px 15px', background: '#FAFAF8', minHeight: 120, maxHeight: 300, overflowY: 'auto' }}>
-                {msgsLoading && <p style={{ fontSize: 12, color: '#999', textAlign: 'center' }}>Verlauf lädt…</p>}
+              <div ref={verlaufRef} style={{ padding: '13px 15px', background: 'var(--tm-surface2)', minHeight: 120, maxHeight: 300, overflowY: 'auto' }}>
+                {msgsLoading && <p style={{ fontSize: 12, color: 'var(--tm-muted)', textAlign: 'center' }}>Verlauf lädt…</p>}
                 {!msgsLoading && msgs.map((m) => (
                   <div key={m.id} style={{ display: 'flex', justifyContent: m.ours ? 'flex-end' : 'flex-start', marginBottom: 7 }}>
                     <div style={{
                       maxWidth: '85%', padding: '8px 12px', borderRadius: 15, fontSize: 13, lineHeight: 1.5,
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      background: m.ours ? '#12222E' : '#E9E9EB',
-                      color: m.ours ? '#fff' : '#111',
+                      background: m.ours ? 'var(--tm-navy)' : '#E9E9EB',
+                      color: m.ours ? '#fff' : 'var(--tm-text)',
                     }}>
                       {m.text}
                       <div style={{ fontSize: 9.5, opacity: 0.6, marginTop: 2, textAlign: 'right' }}>{fmtT(m.at)}</div>
@@ -566,35 +566,35 @@ export default function OffenPanel({ visible, onCount }: {
               </div>
 
               {error && (
-                <p style={{ margin: 0, padding: '8px 15px', fontSize: 12, color: '#B91C1C', background: '#FEF2F2' }}>⚠️ {error}</p>
+                <p style={{ margin: 0, padding: '8px 15px', fontSize: 12, color: 'var(--tm-red)', background: 'var(--tm-red-soft)' }}>⚠️ {error}</p>
               )}
 
               {/* ✨-Composer */}
               {composer && (
-                <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                   <textarea
                     value={aiBusy ? '' : draft}
                     placeholder={aiBusy ? '✨ Claude schreibt einen Vorschlag…' : 'Antwort (wird beim Senden automatisch übersetzt)…'}
                     onChange={(e) => setDraft(e.target.value)}
                     rows={4}
                     style={{
-                      width: '100%', boxSizing: 'border-box', borderRadius: 12, border: '1.5px solid #E0DDD6',
+                      width: '100%', boxSizing: 'border-box', borderRadius: 12, border: '1.5px solid var(--tm-line)',
                       padding: '9px 12px', fontSize: 16, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" onClick={send} disabled={sending || !draft.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
-                      background: draft.trim() ? '#12222E' : '#E5E1D6',
+                      background: draft.trim() ? 'var(--tm-navy)' : '#E5E1D6',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{sending ? 'Sendet…' : current.guestLang && current.guestLang !== 'de' ? `Senden (übersetzt ${LANG_FLAGS[current.guestLang] ?? ''})` : 'Senden'}</button>
                     <button type="button" onClick={suggest} disabled={aiBusy} title="Neuen Vorschlag" style={{
-                      border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
-                      background: '#fff', color: '#8A7020', fontSize: 13, fontWeight: 800,
+                      border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
+                      background: 'var(--tm-card)', color: 'var(--tm-accent-dark)', fontSize: 13, fontWeight: 800,
                     }}>✨ Neu</button>
                     <button type="button" onClick={() => { setComposer(false); setDraft(''); setInstruction('') }} style={{
-                      border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
-                      background: '#fff', color: '#999', fontSize: 13, fontWeight: 700,
+                      border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
+                      background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700,
                     }}>✕</button>
                   </div>
                   {/* §157: Werkstatt — Anweisung tippen ODER 🎤 diktieren (wie im Chat) */}
@@ -603,7 +603,7 @@ export default function OffenPanel({ visible, onCount }: {
                       <button type="button" onClick={toggleRecording} className={recording ? 'rec-pulse' : undefined}
                         title={recording ? 'Aufnahme beenden' : 'Anweisung diktieren'} style={{
                         width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-                        background: recording ? '#DC2626' : '#12222E',
+                        background: recording ? '#DC2626' : 'var(--tm-navy)',
                         color: '#fff', fontSize: 15,
                       }}>{recording ? '■' : '🎤'}</button>
                     )}
@@ -613,14 +613,14 @@ export default function OffenPanel({ visible, onCount }: {
                       onKeyDown={(e) => { if (e.key === 'Enter') refine() }}
                       placeholder={refining ? 'Claude schreibt…' : recording ? '🔴 Sprich jetzt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
                       style={{
-                        flex: 1, minWidth: 0, borderRadius: 999, border: recording ? '1.5px solid #DC2626' : '1.5px solid #E0DDD6',
+                        flex: 1, minWidth: 0, borderRadius: 999, border: recording ? '1.5px solid var(--tm-red)' : '1.5px solid var(--tm-line)',
                         padding: '9px 14px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
                       }}
                     />
                     <button type="button" onClick={() => refine()} disabled={refining || !instruction.trim()} title="Anweisung ausführen" style={{
                       width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-                      background: instruction.trim() && !refining ? '#12222E' : '#EDE9E0',
-                      color: instruction.trim() && !refining ? '#fff' : '#BBB',
+                      background: instruction.trim() && !refining ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+                      color: instruction.trim() && !refining ? '#fff' : 'var(--tm-muted2)',
                       fontSize: 15, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
                     }}>{refining ? '⏳' : '✨'}</button>
                   </div>
@@ -629,16 +629,16 @@ export default function OffenPanel({ visible, onCount }: {
 
               {/* Aufgaben-Dialog */}
               {taskOpen && (
-                <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 var(--tm-line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Aufgaben-Titel" style={{
-                    borderRadius: 10, border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
+                    borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
                   }} />
                   <textarea value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} rows={3} placeholder="Beschreibung" style={{
-                    borderRadius: 10, border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
+                    borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
                   }} />
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <select value={taskPrio} onChange={(e) => setTaskPrio(e.target.value)} style={{
-                      borderRadius: 10, border: '1.5px solid #E0DDD6', padding: '9px 10px', fontSize: 16, fontFamily: 'inherit', minWidth: 0,
+                      borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 10px', fontSize: 16, fontFamily: 'inherit', minWidth: 0,
                     }}>
                       <option value="hoch">🔴 Hoch</option>
                       <option value="mittel">🟡 Mittel</option>
@@ -646,11 +646,11 @@ export default function OffenPanel({ visible, onCount }: {
                     </select>
                     <button type="button" onClick={createTask} disabled={taskBusy || !taskTitle.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
-                      background: '#12222E', color: '#fff', fontSize: 13, fontWeight: 800,
+                      background: 'var(--tm-navy)', color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{taskBusy ? 'Erstellt…' : '📋 Aufgabe anlegen'}</button>
                     <button type="button" onClick={() => setTaskOpen(false)} style={{
-                      border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '10px 13px', cursor: 'pointer',
-                      background: '#fff', color: '#999', fontSize: 13, fontWeight: 700,
+                      border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 13px', cursor: 'pointer',
+                      background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700,
                     }}>✕</button>
                   </div>
                 </div>
@@ -676,7 +676,7 @@ export default function OffenPanel({ visible, onCount }: {
               </div>
 
               <div style={{ textAlign: 'center', paddingBottom: 11 }}>
-                <a href={`/team?conv=${current.id}`} style={{ fontSize: 11.5, color: '#8A7020', fontWeight: 700, textDecoration: 'none' }}>
+                <a href={`/team?conv=${current.id}`} style={{ fontSize: 11.5, color: 'var(--tm-accent-dark)', fontWeight: 700, textDecoration: 'none' }}>
                   Im Chat öffnen ›
                 </a>
               </div>

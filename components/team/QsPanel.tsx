@@ -22,7 +22,7 @@ type QsCheck = {
 }
 
 const TEAL = '#0F766E'
-const TEAL_BG = 'linear-gradient(135deg, #F7FDFC, #EFFAF7)'
+const TEAL_BG = 'var(--tm-green-soft)'
 // §243ag: weicher iOS-Look statt hartem Teal-Ring
 const TEAL_RING = 'inset 0 0 0 0.5px rgba(15,118,110,0.3), 0 1px 3px rgba(0,0,0,0.05)'
 
@@ -129,9 +129,9 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
       }}>
         <span style={{ fontSize: 13, fontWeight: 800, color: TEAL }}>🧾 Qualitätssicherung</span>
         {!expanded && (
-          <span style={{ fontSize: 12, color: '#3C3C43', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--tm-muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {overdueCount > 0
-              ? <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠︎ {overdueCount} überfällig</span>
+              ? <span style={{ color: 'var(--tm-red)', fontWeight: 700 }}>⚠︎ {overdueCount} überfällig</span>
               : next ? `${planned.length} anstehend · nächster: ${next.listingTitle} ${fmtDate(next.dueDate)}` : 'alles erledigt'}
           </span>
         )}
@@ -146,16 +146,16 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
           return (
             <div key={c.id} style={{
               background: TEAL_BG, borderRadius: 14, padding: '12px 14px',
-              boxShadow: overdue ? 'inset 0 0 0 1.5px #EF4444' : TEAL_RING,
+              boxShadow: overdue ? 'inset 0 0 0 1.5px var(--tm-red)' : TEAL_RING,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{c.listingTitle}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: overdue ? '#B91C1C' : TEAL, flexShrink: 0 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>{c.listingTitle}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: overdue ? 'var(--tm-red)' : TEAL, flexShrink: 0 }}>
                   {overdue ? `⚠︎ überfällig seit ${fmtDate(c.dueDate)}` : `Termin: ${fmtDate(c.dueDate)}`}
                 </span>
               </div>
               {c.assigneeName && (
-                <p style={{ fontSize: 11.5, color: '#6B7280', margin: '3px 0 0' }}>Halbjahres-Check · zuständig: {c.assigneeName}</p>
+                <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '3px 0 0' }}>Halbjahres-Check · zuständig: {c.assigneeName}</p>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button onClick={() => setOpenCheck(c)} style={{
@@ -167,12 +167,12 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
                     <input
                       type="date" value={moveDate} min={today}
                       onChange={(e) => setMoveDate(e.target.value)}
-                      style={{ WebkitAppearance: 'none', appearance: 'none', display: 'block', border: '1px solid #A7E8DC', borderRadius: 10, padding: '6px 9px', fontSize: 13, background: '#fff', color: '#111', minHeight: 34 }}
+                      style={{ WebkitAppearance: 'none', appearance: 'none', display: 'block', border: '1px solid #A7E8DC', borderRadius: 10, padding: '6px 9px', fontSize: 13, background: 'var(--tm-card)', color: 'var(--tm-text)', minHeight: 34 }}
                     />
-                    <button onClick={() => move(c)} disabled={moving} style={{ padding: '7px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700, background: '#111', color: '#fff', cursor: 'pointer' }}>
+                    <button onClick={() => move(c)} disabled={moving} style={{ padding: '7px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700, background: 'var(--tm-text)', color: 'var(--tm-bg)', cursor: 'pointer' }}>
                       {moving ? '…' : 'OK'}
                     </button>
-                    <button onClick={() => setMoveFor(null)} style={{ border: 'none', background: 'none', color: '#6B7280', fontWeight: 700, cursor: 'pointer' }}>✕</button>
+                    <button onClick={() => setMoveFor(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>✕</button>
                   </span>
                 ) : (
                   <button onClick={() => { setMoveFor(c.id); setMoveDate(c.dueDate) }} style={{
@@ -186,11 +186,11 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
         })}
         {done.map((c) => (
           <button key={c.id} onClick={() => setViewCheck(c)} style={{
-            background: '#fff', borderRadius: 12, padding: '9px 13px', border: 'none', textAlign: 'left',
-            boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)', cursor: 'pointer',
+            background: 'var(--tm-card)', borderRadius: 12, padding: '9px 13px', border: 'none', textAlign: 'left',
+            boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', cursor: 'pointer',
             display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', width: '100%',
           }}>
-            <span style={{ fontSize: 12.5, color: '#3C3C43' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>
               ✅ {c.listingTitle} · {c.completedAt ? fmtDate(c.completedAt.slice(0, 10)) : fmtDate(c.dueDate)}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: TEAL, flexShrink: 0 }}>Ansehen ›</span>
@@ -289,13 +289,13 @@ function QsProtocol({ check, template, onClose }: {
   }
 
   const seg = (id: string, current: QsItemValue | undefined) => (
-    <span style={{ display: 'inline-flex', borderRadius: 999, background: 'rgba(120,120,128,0.12)', padding: 2, flexShrink: 0 }}>
+    <span style={{ display: 'inline-flex', borderRadius: 999, background: 'var(--tm-surface2)', padding: 2, flexShrink: 0 }}>
       {([['ok', '✓ OK', '#15803D'], ['mangel', '⚠ Mangel', '#B91C1C'], ['na', '–', '#6B7280']] as const).map(([val, label, color]) => {
         const active = current?.s === val
         return (
           <button key={val} onClick={() => setItem(id, { s: active ? undefined : val })} style={{
             padding: '5px 10px', borderRadius: 999, border: 'none', fontSize: 11.5, fontWeight: 700,
-            background: active ? '#fff' : 'transparent', color: active ? color : '#8E8E93',
+            background: active ? 'var(--tm-card)' : 'transparent', color: active ? color : 'var(--tm-muted)',
             boxShadow: active ? '0 1px 3px rgba(0,0,0,0.12)' : 'none', cursor: 'pointer', whiteSpace: 'nowrap',
           }}>{label}</button>
         )
@@ -307,23 +307,23 @@ function QsProtocol({ check, template, onClose }: {
     // className team-shell: Portal liegt im body AUSSERHALB der Shell — so
     // gelten Zoom-Sperre + 16px-Input-Regel (iOS-Auto-Zoom) auch hier
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 90, background: '#F7F7F8',
+      position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{
-        padding: '12px 16px', background: 'rgba(255,255,255,0.92)', flexShrink: 0,
+        padding: '12px 16px', background: 'var(--tm-glass)', flexShrink: 0,
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={saveAndClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)', cursor: 'pointer', color: '#3C3C43', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={saveAndClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: '#111' }}>QS-Protokoll</div>
-          <div style={{ fontSize: 11.5, color: '#8E8E93' }}>{check.listingTitle} · {fmtDate(check.dueDate)}</div>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
+          <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>{check.listingTitle} · {fmtDate(check.dueDate)}</div>
         </div>
-        <span style={{ fontSize: 12, fontWeight: 800, color: answered === total ? '#15803D' : TEAL, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: answered === total ? 'var(--tm-green)' : TEAL, flexShrink: 0 }}>
           {answered}/{total}
         </span>
       </div>
@@ -332,26 +332,26 @@ function QsProtocol({ check, template, onClose }: {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '14px 16px 24px' }}>
         {template.map((sec) => (
           <div key={sec.id} style={{ marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>{sec.emoji} {sec.title}</p>
-            <div style={{ background: '#fff', borderRadius: 14, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.12)', overflow: 'hidden' }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>{sec.emoji} {sec.title}</p>
+            <div style={{ background: 'var(--tm-card)', borderRadius: 14, boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', overflow: 'hidden' }}>
               {sec.items.map((item, i) => {
                 const v = items[item.id]
                 return (
-                  <div key={item.id} style={{ padding: '11px 13px', boxShadow: i < sec.items.length - 1 ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none' }}>
+                  <div key={item.id} style={{ padding: '11px 13px', boxShadow: i < sec.items.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{ flex: '1 1 150px', minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{item.label}</div>
-                        {item.hint && <div style={{ fontSize: 11, color: '#8E8E93', marginTop: 1 }}>{item.hint}</div>}
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)' }}>{item.label}</div>
+                        {item.hint && <div style={{ fontSize: 11, color: 'var(--tm-muted)', marginTop: 1 }}>{item.hint}</div>}
                       </div>
                       {seg(item.id, v)}
                     </div>
                     {item.type === 'anzahl' && (
                       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 12, color: '#6B7280' }}>Anzahl:</span>
+                        <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>Anzahl:</span>
                         <input
                           type="number" inputMode="numeric" min={0} value={v?.count ?? ''}
                           onChange={(e) => setItem(item.id, { count: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
-                          style={{ width: 84, border: '1px solid #E0DDD6', borderRadius: 10, padding: '6px 9px', fontSize: 14, background: '#fff', color: '#111' }}
+                          style={{ width: 84, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '6px 9px', fontSize: 14, background: 'var(--tm-card)', color: 'var(--tm-text)' }}
                         />
                       </div>
                     )}
@@ -361,7 +361,7 @@ function QsProtocol({ check, template, onClose }: {
                         onChange={(e) => setItem(item.id, { note: e.target.value })}
                         placeholder="Was ist zu tun? (z. B. „2 Bezüge vergilbt — waschen“)"
                         rows={2}
-                        style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', border: '1px solid #FECACA', background: '#FFFBFA', borderRadius: 10, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', color: '#111', outline: 'none' }}
+                        style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', border: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', borderRadius: 10, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', color: 'var(--tm-text)', outline: 'none' }}
                       />
                     )}
                   </div>
@@ -372,7 +372,7 @@ function QsProtocol({ check, template, onClose }: {
         ))}
 
         {/* Fotos */}
-        <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>📷 Fotos ({photos.length})</p>
+        <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>📷 Fotos ({photos.length})</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           {photos.map((p) => (
             <span key={p.url} style={{ position: 'relative' }}>
@@ -382,12 +382,12 @@ function QsProtocol({ check, template, onClose }: {
               </a>
               <button onClick={() => removePhoto(p.url)} style={{
                 position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
-                border: 'none', background: '#111', color: '#fff', fontSize: 10, cursor: 'pointer', lineHeight: 1,
+                border: 'none', background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 10, cursor: 'pointer', lineHeight: 1,
               }}>✕</button>
             </span>
           ))}
           <label style={{
-            width: 74, height: 74, borderRadius: 10, border: '2px dashed #C9E8E1', background: '#F7FDFC',
+            width: 74, height: 74, borderRadius: 10, border: '2px dashed #C9E8E1', background: 'var(--tm-green-soft)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             fontSize: 22, color: TEAL, opacity: uploading ? 0.5 : 1,
           }}>
@@ -398,11 +398,11 @@ function QsProtocol({ check, template, onClose }: {
         </div>
 
         {/* Gesamtnotiz */}
-        <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>Weitere Anmerkungen</p>
+        <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>Weitere Anmerkungen</p>
         <textarea
           value={note} onChange={(e) => setNote(e.target.value)} rows={3}
           placeholder="Alles, was sonst noch auffällt …"
-          style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #E0DDD6', borderRadius: 12, padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', resize: 'vertical', background: '#fff', color: '#111', outline: 'none' }}
+          style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--tm-line)', borderRadius: 12, padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', resize: 'vertical', background: 'var(--tm-card)', color: 'var(--tm-text)', outline: 'none' }}
         />
       </div>
 
@@ -410,12 +410,12 @@ function QsProtocol({ check, template, onClose }: {
       <div style={{
         flexShrink: 0, display: 'flex', gap: 10, padding: '10px 16px',
         paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.15)',
+        background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: 'inset 0 0.5px 0 var(--tm-line)',
       }}>
         <button onClick={saveAndClose} disabled={saving} style={{
           flex: 1, padding: '12px 0', borderRadius: 999, border: 'none', fontSize: 14, fontWeight: 700,
-          background: 'rgba(120,120,128,0.12)', color: '#3C3C43', cursor: 'pointer',
+          background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer',
         }}>{saving ? 'Speichert…' : 'Zwischenspeichern'}</button>
         <button onClick={finish} disabled={completing} style={{
           flex: 1.4, padding: '12px 0', borderRadius: 999, border: 'none', fontSize: 14, fontWeight: 800,
@@ -460,11 +460,11 @@ export function QsView({ check, template, onClose }: {
 
   const statusChip = (v: QsItemValue | undefined) => {
     const map = {
-      ok: { label: '✓ OK', color: '#15803D', bg: '#F0FDF4' },
-      mangel: { label: '⚠ Mangel', color: '#B91C1C', bg: '#FEF2F2' },
-      na: { label: 'n. geprüft', color: '#6B7280', bg: 'rgba(120,120,128,0.1)' },
+      ok: { label: '✓ OK', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)' },
+      mangel: { label: '⚠ Mangel', color: 'var(--tm-red)', bg: '#FEF2F2' },
+      na: { label: 'n. geprüft', color: 'var(--tm-muted)', bg: 'rgba(120,120,128,0.1)' },
     } as const
-    const m = v?.s ? map[v.s] : { label: '—', color: '#B0AA9C', bg: 'transparent' }
+    const m = v?.s ? map[v.s] : { label: '—', color: 'var(--tm-muted2)', bg: 'transparent' }
     return (
       <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: m.bg, borderRadius: 999, padding: '4px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>
         {m.label}
@@ -474,24 +474,24 @@ export function QsView({ check, template, onClose }: {
 
   const overlay = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 95, background: '#F7F7F8',
+      position: 'fixed', inset: 0, zIndex: 95, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       <div style={{
-        padding: '12px 16px', background: 'rgba(255,255,255,0.92)', flexShrink: 0,
+        padding: '12px 16px', background: 'var(--tm-glass)', flexShrink: 0,
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)', cursor: 'pointer', color: '#3C3C43', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: '#111' }}>QS-Protokoll</div>
-          <div style={{ fontSize: 11.5, color: '#8E8E93' }}>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
+          <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>
             {check.listingTitle} · {check.completedAt ? fmtDate(check.completedAt.slice(0, 10)) : fmtDate(check.dueDate)}
             {check.completedByName ? ` · geprüft von ${check.completedByName}` : ''}
           </div>
         </div>
-        <span style={{ fontSize: 12, fontWeight: 800, color: countMaengel(check.report) ? '#B91C1C' : '#15803D', flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: countMaengel(check.report) ? 'var(--tm-red)' : 'var(--tm-green)', flexShrink: 0 }}>
           {countMaengel(check.report) ? maengelLabel(countMaengel(check.report)) : 'ohne Mängel'}
         </span>
       </div>
@@ -499,23 +499,23 @@ export function QsView({ check, template, onClose }: {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '14px 16px 24px' }}>
         {template.map((sec) => (
           <div key={sec.id} style={{ marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>{sec.emoji} {sec.title}</p>
-            <div style={{ background: '#fff', borderRadius: 14, boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.12)', overflow: 'hidden' }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>{sec.emoji} {sec.title}</p>
+            <div style={{ background: 'var(--tm-card)', borderRadius: 14, boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', overflow: 'hidden' }}>
               {sec.items.map((item, i) => {
                 const v = items[item.id]
                 return (
-                  <div key={item.id} style={{ padding: '10px 13px', boxShadow: i < sec.items.length - 1 ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none' }}>
+                  <div key={item.id} style={{ padding: '10px 13px', boxShadow: i < sec.items.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111', minWidth: 0 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', minWidth: 0 }}>
                         {item.label}
                         {item.type === 'anzahl' && v?.count != null && (
-                          <span style={{ fontWeight: 700, color: '#6B7280' }}> · {v.count} Stk.</span>
+                          <span style={{ fontWeight: 700, color: 'var(--tm-muted)' }}> · {v.count} Stk.</span>
                         )}
                       </span>
                       {statusChip(v)}
                     </div>
                     {v?.note && (
-                      <p style={{ margin: '6px 0 0', padding: '7px 10px', borderRadius: 8, background: '#FFFBFA', boxShadow: 'inset 0 0 0 1px #FECACA', fontSize: 12.5, color: '#7F1D1D', lineHeight: 1.5 }}>
+                      <p style={{ margin: '6px 0 0', padding: '7px 10px', borderRadius: 8, background: 'var(--tm-surface2)', boxShadow: 'inset 0 0 0 1px var(--tm-line)', fontSize: 12.5, color: '#7F1D1D', lineHeight: 1.5 }}>
                         {v.note}
                       </p>
                     )}
@@ -528,7 +528,7 @@ export function QsView({ check, template, onClose }: {
 
         {check.photos.length > 0 && (
           <>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>📷 Fotos ({check.photos.length})</p>
+            <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>📷 Fotos ({check.photos.length})</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
               {check.photos.map((p) => (
                 <a key={p.url} href={p.url} target="_blank" rel="noopener noreferrer">
@@ -542,8 +542,8 @@ export function QsView({ check, template, onClose }: {
 
         {check.report?.note?.trim() && (
           <>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>Weitere Anmerkungen</p>
-            <p style={{ margin: 0, padding: '10px 12px', borderRadius: 12, background: '#fff', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.12)', fontSize: 13.5, color: '#3C3C43', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-text)', margin: '0 0 8px' }}>Weitere Anmerkungen</p>
+            <p style={{ margin: 0, padding: '10px 12px', borderRadius: 12, background: 'var(--tm-card)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', fontSize: 13.5, color: 'var(--tm-muted)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
               {check.report.note}
             </p>
           </>
@@ -552,8 +552,8 @@ export function QsView({ check, template, onClose }: {
 
       <div style={{
         flexShrink: 0, padding: '10px 16px', paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.15)',
+        background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: 'inset 0 0.5px 0 var(--tm-line)',
       }}>
         {pdfUrl ? (
           <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{
@@ -614,17 +614,17 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
 
   const overlay = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 90, background: '#F7F7F8',
+      position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       <div style={{
-        padding: '12px 16px 10px', background: 'rgba(255,255,255,0.92)', flexShrink: 0,
+        padding: '12px 16px 10px', background: 'var(--tm-glass)', flexShrink: 0,
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: apartments.length ? 10 : 0 }}>
-          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(120,120,128,0.12)', cursor: 'pointer', color: '#3C3C43', fontSize: 15, flexShrink: 0 }}>‹</button>
-          <div style={{ fontSize: 16.5, fontWeight: 800, color: '#111' }}>🧾 Qualitätssicherung</div>
+          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+          <div style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>🧾 Qualitätssicherung</div>
         </div>
         {apartments.length > 0 && (
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -632,7 +632,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
               <button key={a.id} onClick={() => setSel(a.id)} style={{
                 padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700, flexShrink: 0,
                 background: sel === a.id ? TEAL : 'rgba(120,120,128,0.12)',
-                color: sel === a.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+                color: sel === a.id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',
               }}>{a.title}</button>
             ))}
           </div>
@@ -641,11 +641,11 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '14px 16px 30px' }}>
         {loading ? (
-          <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14, padding: 40 }}>Laden…</p>
+          <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: 40 }}>Laden…</p>
         ) : apartments.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--tm-muted)' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>🧾</p>
-            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Noch keine QS-Termine.</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Noch keine QS-Termine.</p>
             <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Termine werden automatisch geplant, sobald im Admin-Bereich eine zuständige Person gesetzt ist.</p>
           </div>
         ) : (
@@ -659,7 +659,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
               </div>
             ))}
             {done.length === 0 && (
-              <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: '30px 10px' }}>
+              <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: '30px 10px' }}>
                 Für diese Wohnung gibt es noch kein abgeschlossenes Protokoll.
               </p>
             )}
@@ -671,19 +671,19 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
               return (
                 <div key={c.id}>
                   {showYear && (
-                    <p style={{ fontSize: 12, fontWeight: 800, color: '#6B7280', margin: '14px 0 7px', letterSpacing: '0.04em' }}>{year}</p>
+                    <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--tm-muted)', margin: '14px 0 7px', letterSpacing: '0.04em' }}>{year}</p>
                   )}
                   <button onClick={() => setView(c)} style={{
-                    width: '100%', textAlign: 'left', background: '#fff', borderRadius: 14, padding: '12px 14px',
+                    width: '100%', textAlign: 'left', background: 'var(--tm-card)', borderRadius: 14, padding: '12px 14px',
                     border: 'none', cursor: 'pointer', marginBottom: 8,
-                    boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                    boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
                     display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
                   }}>
                     <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111' }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>
                         {c.completedAt ? fmtDate(c.completedAt.slice(0, 10)) : fmtDate(c.dueDate)}
                       </span>
-                      <span style={{ display: 'block', fontSize: 11.5, color: '#8E8E93', marginTop: 1 }}>
+                      <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tm-muted)', marginTop: 1 }}>
                         {c.completedByName ? `geprüft von ${c.completedByName}` : 'Protokoll'}
                         {c.photos.length ? ` · ${c.photos.length} Fotos` : ''}
                       </span>
@@ -691,9 +691,9 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                       <span style={{
                         fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '4px 10px',
-                        background: m ? '#FEF2F2' : '#F0FDF4', color: m ? '#B91C1C' : '#15803D',
+                        background: m ? 'var(--tm-red-soft)' : 'var(--tm-green-soft)', color: m ? 'var(--tm-red)' : 'var(--tm-green)',
                       }}>{m ? maengelLabel(m) : '✓ ohne Mängel'}</span>
-                      <span style={{ color: '#C7C7CC', fontSize: 15 }}>›</span>
+                      <span style={{ color: 'var(--tm-muted2)', fontSize: 15 }}>›</span>
                     </span>
                   </button>
                 </div>

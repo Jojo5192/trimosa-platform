@@ -27,14 +27,14 @@ const eur = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
 const kwhF = (n: number) => (Math.round(n * 10) / 10).toFixed(1).replace('.', ',')
 
 const STATE_META: Record<string, { label: string; bg: string; color: string }> = {
-  charging: { label: '⚡ Lädt', bg: '#DCFCE7', color: '#16A34A' },
-  starting: { label: '⚡ Startet', bg: '#DCFCE7', color: '#16A34A' },
-  paused: { label: '⏸ Pausiert', bg: '#FEF9C3', color: '#A16207' },
-  stopping: { label: 'Stoppt…', bg: '#FEF9C3', color: '#A16207' },
-  completed: { label: '✓ Beendet', bg: '#F2F2F7', color: '#6B675E' },
-  stopped: { label: '✓ Beendet', bg: '#F2F2F7', color: '#6B675E' },
-  scheduled: { label: '🕐 Geplant', bg: '#E0EAFF', color: '#3B5BDB' },
-  reserved: { label: 'Reserviert', bg: '#E0EAFF', color: '#3B5BDB' },
+  charging: { label: '⚡ Lädt', bg: 'var(--tm-green-soft)', color: 'var(--tm-green)' },
+  starting: { label: '⚡ Startet', bg: 'var(--tm-green-soft)', color: 'var(--tm-green)' },
+  paused: { label: '⏸ Pausiert', bg: 'var(--tm-yellow-soft)', color: 'var(--tm-yellow)' },
+  stopping: { label: 'Stoppt…', bg: 'var(--tm-yellow-soft)', color: 'var(--tm-yellow)' },
+  completed: { label: '✓ Beendet', bg: 'var(--tm-surface2)', color: 'var(--tm-muted)' },
+  stopped: { label: '✓ Beendet', bg: 'var(--tm-surface2)', color: 'var(--tm-muted)' },
+  scheduled: { label: '🕐 Geplant', bg: 'var(--tm-surface2)', color: '#3B5BDB' },
+  reserved: { label: 'Reserviert', bg: 'var(--tm-surface2)', color: '#3B5BDB' },
 }
 
 function fmtWhen(iso: string | null): string {
@@ -88,35 +88,35 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
 
   const tile = (label: string, value: string, accent?: string) => (
     <div key={label} style={{
-      flex: '1 1 105px', minWidth: 0, background: '#fff', borderRadius: 12, padding: '10px 12px',
-      boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+      flex: '1 1 105px', minWidth: 0, background: 'var(--tm-card)', borderRadius: 12, padding: '10px 12px',
+      boxShadow: '0 0 0 0.5px var(--tm-line)',
     }}>
-      <div style={{ fontSize: 11, color: '#8A8578', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 17, fontWeight: 800, color: accent ?? '#1A1814', marginTop: 2, whiteSpace: 'nowrap' }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--tm-muted)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: accent ?? 'var(--tm-text)', marginTop: 2, whiteSpace: 'nowrap' }}>{value}</div>
     </div>
   )
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7',
+      position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#fff',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
         <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: '#1A1814' }}>⚡ Wallbox</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⚡ Wallbox</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: '#B0AA9C' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 620, margin: '0 auto', padding: '14px 14px 40px' }}>
           {error && (
             <div style={{
-              padding: '11px 14px', borderRadius: 12, background: '#FEF2F2', color: '#B91C1C',
+              padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)',
               fontSize: 13, lineHeight: 1.5, marginBottom: 14,
             }}>
               ⚠️ Wallbox-Daten nicht abrufbar: {error}
@@ -130,28 +130,28 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
             {tile('Umsatz', eur(sumRev))}
             {tile('Gewinn ~', eur(sumProfit), sumProfit >= 0 ? '#16A34A' : '#DC2626')}
           </div>
-          <div style={{ fontSize: 11, color: '#8A8578', margin: '-6px 4px 16px' }}>
+          <div style={{ fontSize: 11, color: 'var(--tm-muted)', margin: '-6px 4px 16px' }}>
             Summen über die {charges.length} geladenen Vorgänge · Gewinn = Umsatz − Stromkosten (aus click2charge)
           </div>
 
           {/* Ladehistorie */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 4px 7px' }}>LADEHISTORIE</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 4px 7px' }}>LADEHISTORIE</div>
           {!loading && !error && charges.length === 0 && (
-            <div style={{ padding: '26px 14px', textAlign: 'center', color: '#8A8578', fontSize: 13.5 }}>
+            <div style={{ padding: '26px 14px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5 }}>
               Noch keine Ladevorgänge gefunden.
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {charges.map((c) => {
-              const meta = STATE_META[c.state] ?? { label: c.state || '—', bg: '#F2F2F7', color: '#6B675E' }
+              const meta = STATE_META[c.state] ?? { label: c.state || '—', bg: 'var(--tm-surface2)', color: 'var(--tm-muted)' }
               const dur = fmtDuration(c.startedAt, c.stoppedAt)
               return (
                 <div key={c.id} style={{
-                  background: '#fff', borderRadius: 12, padding: '11px 14px',
-                  boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+                  background: 'var(--tm-card)', borderRadius: 12, padding: '11px 14px',
+                  boxShadow: '0 0 0 0.5px var(--tm-line)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {fmtWhen(c.startedAt)}{c.chargePointName ? ` · ${c.chargePointName}` : ''}
                     </div>
                     <span style={{
@@ -162,10 +162,10 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
                   <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 7, fontSize: 12.5, color: '#4A463C' }}>
                     <span>🔋 <strong>{c.kwh != null ? `${kwhF(c.kwh)} kWh` : '—'}</strong></span>
                     <span>💶 Umsatz <strong>{c.revenueEur != null ? eur(c.revenueEur) : '—'}</strong></span>
-                    <span style={{ color: (c.profitEur ?? 0) >= 0 ? '#16A34A' : '#DC2626' }}>
+                    <span style={{ color: (c.profitEur ?? 0) >= 0 ? 'var(--tm-green)' : 'var(--tm-red)' }}>
                       📈 Gewinn <strong>{c.profitEur != null ? `~${eur(c.profitEur)}` : '—'}</strong>
                     </span>
-                    {dur && <span style={{ color: '#8A8578' }}>⏱ {dur}</span>}
+                    {dur && <span style={{ color: 'var(--tm-muted)' }}>⏱ {dur}</span>}
                   </div>
                 </div>
               )
@@ -177,7 +177,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
               onClick={() => load(page + 1, true)}
               style={{
                 width: '100%', marginTop: 12, padding: '11px', borderRadius: 12,
-                border: '1px solid #E3DCC8', background: '#fff', color: '#6B675E',
+                border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)',
                 fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
               }}
             >Ältere Ladevorgänge laden</button>

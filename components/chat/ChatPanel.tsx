@@ -283,14 +283,14 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
     return (
       <img src={src} alt={name} style={{
         width: size, height: size, borderRadius: '50%', flexShrink: 0,
-        objectFit: 'cover', border: '2px solid #EDE9E0',
+        objectFit: 'cover', border: '2px solid var(--tm-line)',
       }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
     )
   }
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: '#12222E',
+      background: 'var(--tm-navy)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * .37, fontWeight: 700, color: '#fff', userSelect: 'none',
     }}>{ava(name)}</div>
@@ -1234,8 +1234,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         // §277: am Rechner 390 px (Pascal-Spec) — --tm-list-w aus globals ab 1000px
         width: fullWidth ? '100%' : 'var(--tm-list-w, 270px)',
         flexShrink: fullWidth ? undefined : 0,
-        background: team ? 'var(--tm-bg, #f3f4f6)' : '#fff',
-        borderRight: fullWidth ? 'none' : '1px solid var(--tm-line, rgba(60,60,67,0.12))',
+        background: team ? 'var(--tm-bg, #f3f4f6)' : 'var(--tm-card)',
+        borderRight: fullWidth ? 'none' : '1px solid var(--tm-line, var(--tm-line))',
         overflowY: 'auto',
         // §276: Inhalt läuft hinter der schwebenden Tab-Leiste durch
         paddingBottom: variant === 'app' ? 'var(--tm-nav-pad)' : undefined,
@@ -1247,7 +1247,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             flexShrink: 0, position: 'sticky', top: 0, zIndex: 2,
             background: 'var(--tm-glass, rgba(255,255,255,0.85))',
             backdropFilter: 'blur(16px) saturate(1.5)', WebkitBackdropFilter: 'blur(16px) saturate(1.5)',
-            borderBottom: '1px solid var(--tm-line, rgba(60,60,67,0.15))',
+            borderBottom: '1px solid var(--tm-line, var(--tm-line))',
           }}>
             {/* §277 Filter-Chips — keine Suchleiste mehr (Lupe/⌘K in der Kopfleiste) */}
             <div style={{ display: 'flex', gap: 6, padding: '8px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
@@ -1259,7 +1259,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <button key={f.id} className="tm-press-btn" onClick={() => { haptic(); setInboxFilter(f.id) }} style={{
                     flexShrink: 0, padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
                     fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-                    border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, #e3e6ea)'}`,
+                    border: `1px solid ${activeF ? 'transparent' : 'var(--tm-line, var(--tm-line))'}`,
                     background: activeF ? 'var(--tm-text, #171a1f)' : 'var(--tm-card, #fff)',
                     color: activeF ? '#fff' : 'var(--tm-muted, #646b76)',
                   }}>
@@ -1277,8 +1277,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {team && inboxFilter === 'offen' && !loading && filtered.length > 0 && (
           <div style={{
             margin: '10px 12px 2px', padding: '9px 12px', borderRadius: 12, flexShrink: 0,
-            background: '#FAF5E4', border: '1px solid #EADFB8',
-            fontSize: 11.5, lineHeight: 1.55, color: '#6B5D33',
+            background: 'var(--tm-accent-soft)', border: '1px solid var(--tm-line)',
+            fontSize: 11.5, lineHeight: 1.55, color: 'var(--tm-accent-dark)',
           }}>
             Diese Threads zählen im <strong>Wochenbericht</strong> als unbeantwortet.
             Bereits geklärt? Im Thread oben markieren: <strong>📞 telefonisch geklärt</strong> · <strong>✓ keine Antwort nötig</strong> — dann stimmt eure Antwortzeit-Statistik.
@@ -1292,8 +1292,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           if ('divider' in c) return (
             <div key="archiv-divider" style={{
               padding: '14px 16px 6px', fontSize: 11, fontWeight: 800,
-              letterSpacing: '0.06em', textTransform: 'uppercase', color: '#A9A499',
-              borderTop: '0.5px solid rgba(60,60,67,0.15)', marginTop: 8,
+              letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tm-muted)',
+              borderTop: '0.5px solid var(--tm-line)', marginTop: 8,
             }}>{c.divider}</div>
           )
           const isSel = !isMobile && active?.id === c.id
@@ -1334,7 +1334,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             <button data-swipe-front className="tm-press" onClick={() => { if (peekJustOpened.current) { peekJustOpened.current = false; return } if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
               width: '100%', textAlign: 'left', cursor: 'pointer',
               padding: '12px 14px', borderRadius: 16,
-              border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, #e3e6ea)'}`,
+              border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
               background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
               boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
               display: 'flex', alignItems: 'flex-start', gap: 12,
@@ -1402,14 +1402,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             style={{
               margin: '14px 16px 20px', padding: '11px 16px', borderRadius: 12,
               border: '1px solid var(--tm-line, #E5E1D6)', background: 'var(--tm-card, #FAF8F3)', cursor: archivLoading ? 'default' : 'pointer',
-              fontSize: 13, fontWeight: 700, color: '#6B6455', flexShrink: 0,
+              fontSize: 13, fontWeight: 700, color: 'var(--tm-muted)', flexShrink: 0,
             }}
           >
             {archivLoading ? 'Lädt ältere Chats…' : '📁 Ältere Chats laden'}
           </button>
         )}
         {team && inboxFilter === 'alle' && archivThreads !== null && archivThreads.length === 0 && (
-          <div style={{ padding: '12px 16px 20px', fontSize: 12, color: '#A9A499', textAlign: 'center' }}>
+          <div style={{ padding: '12px 16px 20px', fontSize: 12, color: 'var(--tm-muted)', textAlign: 'center' }}>
             Keine älteren Chats gefunden.
           </div>
         )}
@@ -1422,11 +1422,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   ═══════════════════════════════════════════════════════════ */
   function MessagePanel({ showBack = false }: { showBack?: boolean }) {
     if (!active) return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#CCC', background: '#fff' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: 'var(--tm-muted2)', background: 'var(--tm-card)' }}>
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span style={{ fontSize: 14, color: '#BBB' }}>Unterhaltung auswählen</span>
+        <span style={{ fontSize: 14, color: 'var(--tm-muted2)' }}>Unterhaltung auswählen</span>
       </div>
     )
 
@@ -1437,23 +1437,23 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         onTouchStart={showBack ? swipe.onTouchStart : undefined}
         onTouchMove={showBack ? swipe.onTouchMove : undefined}
         onTouchEnd={showBack ? swipe.onTouchEnd : undefined}
-        style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden', background: 'var(--tm-card)' }}
       >
         {/* Chat header: back button on mobile; on the page variant the
             desktop thread shows it too (the overlay has it in its own bar) */}
         {(showBack || variant !== 'overlay') && (
           <div style={{
             display: 'flex', flexDirection: 'column',
-            padding: '10px 14px', background: 'rgba(255,255,255,0.85)',
+            padding: '10px 14px', background: 'var(--tm-glass)',
             backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
-            borderBottom: '0.5px solid rgba(60,60,67,0.15)', flexShrink: 0,
+            borderBottom: '0.5px solid var(--tm-line)', flexShrink: 0,
           }}>
             {/* §247 Zeile 1: VOLLER Name (darf umbrechen) + Aktions-Buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {showBack && (
             <button
               onClick={() => setMobileView('list')}
-              style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: '#F2EFE8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', flexShrink: 0 }}
+              style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)', flexShrink: 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
@@ -1469,9 +1469,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {/* §247: kein nowrap/ellipsis mehr — der ganze Name bleibt lesbar
                   (bei sehr langen Namen bricht er auf zwei Zeilen um). Die
                   Zusatz-Infos wandern in die Mini-Zeile darunter. */}
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1814', lineHeight: 1.25, wordBreak: 'break-word' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text)', lineHeight: 1.25, wordBreak: 'break-word' }}>
                 {partner(active)}
-                {team && <span style={{ fontSize: 10, color: '#B5A97F', marginLeft: 6 }}>{showGuestInfo ? '▲' : '▼'}</span>}
+                {team && <span style={{ fontSize: 10, color: 'var(--tm-muted2)', marginLeft: 6 }}>{showGuestInfo ? '▲' : '▼'}</span>}
               </div>
             </div>
             {/* §247: nur noch die AKTIONEN in Zeile 1 — Plattform/Status/
@@ -1484,7 +1484,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     title="Aufgabe aus diesem Chat erstellen"
                     style={{
                       width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                      background: taskOpen ? '#12222E' : 'rgba(118,118,128,0.12)',
+                      background: taskOpen ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       fontSize: 13, transition: 'all .15s',
                       filter: taskOpen ? 'none' : 'grayscale(1) opacity(0.6)',
@@ -1497,7 +1497,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     title="Telefonate zu dieser Buchung lesen & abhören"
                     style={{
                       height: 30, minWidth: 30, padding: '0 9px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                      background: 'rgba(118,118,128,0.12)', color: '#4A463E',
+                      background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       fontSize: 12, fontWeight: 700, gap: 3,
                     }}
@@ -1510,7 +1510,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                       title={active.phoneResolved ? 'Telefon-Markierung entfernen' : 'Per Telefonat geklärt'}
                       style={{
                         width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                        background: active.phoneResolved ? 'linear-gradient(135deg, #2E7CF6, #1D5FD1)' : 'rgba(118,118,128,0.12)',
+                        background: active.phoneResolved ? 'linear-gradient(135deg, #2E7CF6, #1D5FD1)' : 'var(--tm-surface2)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                         fontSize: 13, transition: 'all .15s',
                         filter: active.phoneResolved ? 'none' : 'grayscale(1) opacity(0.6)',
@@ -1521,8 +1521,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                       title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort erforderlich'}
                       style={{
                         width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                        background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'rgba(118,118,128,0.12)',
-                        color: active.noReplyNeeded ? '#fff' : '#8A8578',
+                        background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'var(--tm-surface2)',
+                        color: active.noReplyNeeded ? '#fff' : 'var(--tm-muted)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                         fontSize: 14, fontWeight: 700, transition: 'all .15s',
                       }}
@@ -1544,10 +1544,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             >
               {guestLang && guestLang !== 'de' && (
                 <span title={`Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}`} style={{ fontSize: 12, flexShrink: 0 }}>
-                  {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 8, color: '#8E8E93', verticalAlign: 'super' }}>~</span> : null}
+                  {flag(guestLang)}{guestLangGuessed ? <span style={{ fontSize: 8, color: 'var(--tm-muted)', verticalAlign: 'super' }}>~</span> : null}
                 </span>
               )}
-              <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              <span style={{ fontSize: 11, color: 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 {active.listing_title}
                 {dateRange && <span style={{ color: 'var(--gold-dark)', fontWeight: 600 }}> · {isMobile ? fmtRangeShort(active.check_in, active.check_out) : dateRange}</span>}
               </span>
@@ -1570,24 +1570,24 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {/* 📋 §183: Aufgabe aus dem Chat — Inline-Panel */}
         {team && taskOpen && active && (
           <div style={{
-            padding: '10px 16px 12px', background: '#FFF9E8', flexShrink: 0,
-            borderBottom: '0.5px solid rgba(60,60,67,0.15)',
+            padding: '10px 16px 12px', background: 'var(--tm-accent-soft)', flexShrink: 0,
+            borderBottom: '0.5px solid var(--tm-line)',
             display: 'flex', flexDirection: 'column', gap: 8,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#8A6D1F', letterSpacing: 0.3 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-accent-dark)', letterSpacing: 0.3 }}>
               📋 AUFGABE AUS DIESEM CHAT{active.listing_title ? ` · ${active.listing_title}` : ''}
             </div>
             <input
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
               placeholder="Titel der Aufgabe"
-              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid #E3DCC8', background: '#fff', minWidth: 0 }}
+              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', minWidth: 0 }}
             />
             <textarea
               value={taskDesc}
               onChange={(e) => setTaskDesc(e.target.value)}
               rows={3}
-              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid #E3DCC8', background: '#fff', resize: 'vertical', overscrollBehavior: 'contain' }}
+              style={{ fontSize: 16, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', resize: 'vertical', overscrollBehavior: 'contain' }}
             />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
@@ -1595,20 +1595,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 disabled={taskBusy || !taskTitle.trim()}
                 style={{
                   padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                  background: '#12222E', color: '#fff',
+                  background: 'var(--tm-navy)', color: '#fff',
                   fontSize: 13, fontWeight: 700, opacity: taskBusy || !taskTitle.trim() ? 0.5 : 1,
                 }}
               >{taskBusy ? '…' : '✓ Aufgabe erstellen'}</button>
               <button
                 onClick={() => setTaskOpen(false)}
-                style={{ padding: '8px 12px', borderRadius: 999, border: '1px solid #E3DCC8', background: '#fff', color: '#8A8578', fontSize: 13, cursor: 'pointer' }}
+                style={{ padding: '8px 12px', borderRadius: 999, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, cursor: 'pointer' }}
               >Abbrechen</button>
-              {taskInfo && <span style={{ fontSize: 12, color: '#B91C1C' }}>{taskInfo}</span>}
+              {taskInfo && <span style={{ fontSize: 12, color: 'var(--tm-red)' }}>{taskInfo}</span>}
             </div>
           </div>
         )}
         {team && taskInfo?.startsWith('✓') && !taskOpen && (
-          <div style={{ padding: '8px 16px', fontSize: 12.5, background: '#F0FDF4', color: '#166534', flexShrink: 0, borderBottom: '0.5px solid rgba(60,60,67,0.1)' }}>
+          <div style={{ padding: '8px 16px', fontSize: 12.5, background: 'var(--tm-green-soft)', color: 'var(--tm-green)', flexShrink: 0, borderBottom: '0.5px solid var(--tm-line)' }}>
             {taskInfo}
           </div>
         )}
@@ -1626,14 +1626,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           const row = (icon: string, label: string, value: string) => (
             <div key={label} style={{ display: 'flex', gap: 8, fontSize: 12.5, lineHeight: 1.5 }}>
               <span style={{ flexShrink: 0 }}>{icon}</span>
-              <span style={{ color: '#8A8578', flexShrink: 0 }}>{label}</span>
-              <span style={{ color: '#1A1814', fontWeight: 600, overflowWrap: 'anywhere' }}>{value}</span>
+              <span style={{ color: 'var(--tm-muted)', flexShrink: 0 }}>{label}</span>
+              <span style={{ color: 'var(--tm-text)', fontWeight: 600, overflowWrap: 'anywhere' }}>{value}</span>
             </div>
           )
           return (
             <div style={{
-              padding: '10px 16px 12px', background: '#FDFCF8', flexShrink: 0,
-              borderBottom: '0.5px solid rgba(60,60,67,0.15)',
+              padding: '10px 16px 12px', background: 'var(--tm-surface2)', flexShrink: 0,
+              borderBottom: '0.5px solid var(--tm-line)',
               display: 'flex', flexDirection: 'column', gap: 5,
             }}>
               {row('📅', 'Aufenthalt:', `${fmtFull(active.check_in)} – ${fmtFull(active.check_out)}${nights ? ` · ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'}` : ''}`)}
@@ -1645,16 +1645,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {active.doorCode && (
                 <div style={{ display: 'flex', gap: 7, fontSize: 12.5, alignItems: 'center' }}>
                   <span style={{ width: 18, flexShrink: 0 }}>🔑</span>
-                  <span style={{ color: '#8A8578', flexShrink: 0 }}>Türcode:</span>
+                  <span style={{ color: 'var(--tm-muted)', flexShrink: 0 }}>Türcode:</span>
                   <span style={{
-                    color: '#1A1814', fontWeight: 800, letterSpacing: 2,
+                    color: 'var(--tm-text)', fontWeight: 800, letterSpacing: 2,
                     fontVariantNumeric: 'tabular-nums', fontSize: 14,
-                    background: '#F4EFE0', borderRadius: 7, padding: '2px 8px',
+                    background: 'var(--tm-accent-soft)', borderRadius: 7, padding: '2px 8px',
                   }}>{active.doorCode}</span>
                   <button
                     onClick={() => { navigator.clipboard?.writeText(String(active.doorCode)); haptic() }}
                     title="Code kopieren"
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#8A8578', padding: 0 }}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--tm-muted)', padding: 0 }}
                   >⧉</button>
                 </div>
               )}
@@ -1664,17 +1664,17 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {sendError && (
           <div style={{
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
-            background: '#FEF2F2', borderBottom: '0.5px solid rgba(220,38,38,0.25)', color: '#B91C1C',
+            background: 'var(--tm-red-soft)', borderBottom: '0.5px solid rgba(220,38,38,0.25)', color: 'var(--tm-red)',
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <span style={{ flex: 1 }}>⚠️ {sendError}</span>
-            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>✕</button>
+            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         )}
         {bookingHintFor === active?.id && (
           <div style={{
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
-            background: '#EBF2FE', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: '#1D4FA3',
+            background: 'var(--tm-surface2)', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: '#1D4FA3',
           }}>
             ✓ Erledigt — <strong>denk dran:</strong> Bei Booking.com-Gästen den Haken „Keine Antwort nötig" zusätzlich in der Booking-App setzen (zählt für eure Antwortquote).
           </div>
@@ -1689,23 +1689,23 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           }}
           onTouchStart={stopPin}
           onWheel={stopPin}
-          style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: '#fff', position: 'relative' }}
+          style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: 'var(--tm-card)', position: 'relative' }}
         >
           {msgs.length === 0 && calls.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
-              <div style={{ fontSize: 13, color: '#AAA' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
+              <div style={{ fontSize: 13, color: 'var(--tm-muted)' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
             </div>
           )}
           {grouped.map(({ day, items }) => (
             <div key={day}>
               {/* day divider */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 12px' }}>
-                <div style={{ flex: 1, height: 1, background: '#E0DCD2' }} />
-                <span style={{ fontSize: 11, color: '#999', fontWeight: 600, background: '#EDE9E0', padding: '2px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--tm-surface2)' }} />
+                <span style={{ fontSize: 11, color: 'var(--tm-muted)', fontWeight: 600, background: 'var(--tm-surface2)', padding: '2px 10px', borderRadius: 99, whiteSpace: 'nowrap' }}>
                   {day}
                 </span>
-                <div style={{ flex: 1, height: 1, background: '#E0DCD2' }} />
+                <div style={{ flex: 1, height: 1, background: 'var(--tm-surface2)' }} />
               </div>
 
               {items.map((msg, i) => {
@@ -1718,7 +1718,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
                       <div style={{
                         width: openC ? '94%' : undefined, maxWidth: '94%',
-                        borderRadius: 14, background: '#EEF4FC', border: '1px solid #C9D9EF', overflow: 'hidden',
+                        borderRadius: 14, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', overflow: 'hidden',
                       }}>
                         <button onClick={() => setOpenCallId(openC ? null : c.id)} style={{
                           width: '100%', textAlign: 'left', border: 'none', background: 'none',
@@ -1729,12 +1729,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             <span style={{ fontSize: 12, fontWeight: 800, color: '#2C5282' }}>
                               Telefonat · {fmtMsgT(msg.created_at, uiLang)}
                             </span>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: '#7A8CA5' }}>NUR INTERN</span>
-                            <span style={{ marginLeft: 'auto', color: '#9DB2CC', fontSize: 12 }}>{openC ? '▾' : '▸ Anhören / Lesen'}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tm-muted)' }}>NUR INTERN</span>
+                            <span style={{ marginLeft: 'auto', color: 'var(--tm-muted2)', fontSize: 12 }}>{openC ? '▾' : '▸ Anhören / Lesen'}</span>
                           </div>
                           {c.summary && !openC && (
                             <div style={{
-                              fontSize: 12, color: '#4A5A70', lineHeight: 1.4, marginTop: 4,
+                              fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.4, marginTop: 4,
                               display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
                             }}>{c.summary}</div>
                           )}
@@ -1742,12 +1742,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         {openC && (
                           <div style={{ padding: '0 13px 12px' }}>
                             {c.summary && (
-                              <div style={{ fontSize: 12.5, color: '#4A5A70', lineHeight: 1.5, marginBottom: 8 }}>{c.summary}</div>
+                              <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', lineHeight: 1.5, marginBottom: 8 }}>{c.summary}</div>
                             )}
                             {c.hasAudio ? (
                               <audio controls preload="none" src={`/api/voice/calls/${c.id}/audio`} style={{ width: '100%', marginBottom: 8 }} />
                             ) : (
-                              <div style={{ fontSize: 11.5, color: '#7A8CA5', marginBottom: 8 }}>🎧 Kein Audio verfügbar.</div>
+                              <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginBottom: 8 }}>🎧 Kein Audio verfügbar.</div>
                             )}
                             {c.transcript ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -1755,22 +1755,22 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                   <div key={ti} style={{
                                     alignSelf: tr.who === 'bot' ? 'flex-end' : 'flex-start',
                                     maxWidth: '88%',
-                                    background: tr.who === 'bot' ? '#3E6FA8' : '#fff',
-                                    color: tr.who === 'bot' ? '#fff' : '#1A1814',
+                                    background: tr.who === 'bot' ? '#3E6FA8' : 'var(--tm-card)',
+                                    color: tr.who === 'bot' ? '#fff' : 'var(--tm-text)',
                                     borderRadius: 12, padding: '6px 10px', fontSize: 12.5, lineHeight: 1.45,
                                   }}>{tr.text}</div>
                                 ))}
                               </div>
                             ) : (
-                              <div style={{ fontSize: 11.5, color: '#7A8CA5' }}>Kein Transkript vorhanden.</div>
+                              <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>Kein Transkript vorhanden.</div>
                             )}
                             {/* ✅ §247: So wurde es gelöst — wandert nachts in die
                                 Telefon-Wissensbasis (lib/voice-learn, 4:40 Uhr). */}
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #C9D9EF' }}>
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--tm-line)' }}>
                               {c.solution && solFor !== c.id ? (
                                 <div style={{
-                                  background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10,
-                                  padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5, color: '#166534',
+                                  background: 'var(--tm-green-soft)', border: '1px solid var(--tm-line)', borderRadius: 10,
+                                  padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--tm-green)',
                                 }}>
                                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, marginBottom: 3 }}>
                                     ✅ SO WURDE ES GELÖST — fließt in die KI-Wissensbasis
@@ -1778,7 +1778,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                   {c.solution}
                                   <button
                                     onClick={() => { setSolFor(c.id); setSolText(c.solution ?? '') }}
-                                    style={{ display: 'block', marginTop: 6, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#166534' }}
+                                    style={{ display: 'block', marginTop: 6, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--tm-green)' }}
                                   >✏️ Ändern</button>
                                 </div>
                               ) : solFor === c.id ? (
@@ -1789,7 +1789,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                     placeholder="Wie wurde das Anliegen gelöst? z. B. „Router im Flurschrank neu gestartet, WLAN lief danach wieder.“"
                                     rows={3}
                                     style={{
-                                      width: '100%', borderRadius: 10, border: '1px solid #BBF7D0',
+                                      width: '100%', borderRadius: 10, border: '1px solid var(--tm-line)',
                                       padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
                                       resize: 'vertical', boxSizing: 'border-box',
                                     }}
@@ -1806,7 +1806,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                     >{solBusy ? '⏳ Speichern…' : '✅ Lösung speichern'}</button>
                                     <button
                                       onClick={() => { setSolFor(null); setSolText('') }}
-                                      style={{ border: '1px solid #D8E4F2', background: '#fff', color: '#5A6B82', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                                      style={{ border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                                     >Abbrechen</button>
                                   </div>
                                 </div>
@@ -1814,8 +1814,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                 <button
                                   onClick={() => { setSolFor(c.id); setSolText('') }}
                                   style={{
-                                    width: '100%', border: '1px dashed #9FD6B4', background: '#F7FDF9',
-                                    color: '#166534', borderRadius: 10, padding: '9px 12px',
+                                    width: '100%', border: '1px dashed #9FD6B4', background: 'var(--tm-green-soft)',
+                                    color: 'var(--tm-green)', borderRadius: 10, padding: '9px 12px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                                   }}
                                 >✅ So wurde es gelöst — erfassen</button>
@@ -1824,7 +1824,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             {/* 📞 §246g Rückruf-Werkstatt: bei bekanntem Gast gehören
                                 Anrufen und KI-Rückruf HIER hin, nicht in den Aufgaben-Tab. */}
                             {c.caller && (
-                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #C9D9EF' }}>
+                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--tm-line)' }}>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   <a href={`tel:${c.caller.replace(/[^\d+]/g, '')}`} style={{
                                     flex: '1 1 130px', textAlign: 'center', textDecoration: 'none',
@@ -1832,7 +1832,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                     padding: '9px 12px', fontSize: 13, fontWeight: 700,
                                   }}>📞 {c.caller}</a>
                                   <button onClick={() => { setCbFor(cbFor === c.id ? null : c.id); setCbNote(null) }} style={{
-                                    flex: '1 1 130px', border: '1px solid #C9D9EF', background: '#fff',
+                                    flex: '1 1 130px', border: '1px solid var(--tm-line)', background: 'var(--tm-card)',
                                     color: '#2C5282', borderRadius: 10, padding: '9px 12px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                                   }}>🤖 KI ruft zurück</button>
@@ -1845,7 +1845,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                                       placeholder="Was soll die KI ausrichten? z. B. „Der Techniker kommt in 20 Minuten, bitte am Eingang warten.“"
                                       rows={3}
                                       style={{
-                                        width: '100%', borderRadius: 10, border: '1px solid #C9D9EF',
+                                        width: '100%', borderRadius: 10, border: '1px solid var(--tm-line)',
                                         padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
                                         resize: 'vertical', boxSizing: 'border-box',
                                       }}
@@ -1887,7 +1887,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         maxWidth: '86%', padding: '9px 13px', borderRadius: 12,
                         background: istTest ? '#FFF7E6' : '#F4F3EF',
                         border: `1px solid ${istTest ? '#E8CE96' : '#E2DED4'}`,
-                        fontSize: 13, lineHeight: 1.45, color: '#5A5548', whiteSpace: 'pre-wrap',
+                        fontSize: 13, lineHeight: 1.45, color: 'var(--tm-muted)', whiteSpace: 'pre-wrap',
                       }}>
                         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, color: istTest ? '#A8791C' : '#8E8875', marginBottom: 4 }}>
                           {istTest ? '🧪 NUR INTERN — NICHT AN DEN GAST GESENDET' : '📋 INTERNE NOTIZ — der Gast sieht das nicht'}
@@ -1907,7 +1907,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             }}>📞 {num} anrufen</a>
                           )
                         })()}
-                        <div style={{ fontSize: 10, color: '#A8A292', marginTop: 5 }}>{fmtMsgT(msg.created_at, uiLang)}</div>
+                        <div style={{ fontSize: 10, color: 'var(--tm-muted)', marginTop: 5 }}>{fmtMsgT(msg.created_at, uiLang)}</div>
                       </div>
                     </div>
                   )
@@ -1939,7 +1939,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 3 }}>
                       {/* Absender-Vorname, wenn ein ANDERES Team-Mitglied geantwortet hat */}
                       {team && isMe && active?.kind !== 'booking' && msg.sender_id !== userId && !prevSame && teamNames[msg.sender_id] && (
-                        <span style={{ fontSize: 10.5, fontWeight: 700, color: '#8E8E93', paddingRight: 4 }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted)', paddingRight: 4 }}>
                           {teamNames[msg.sender_id]}
                         </span>
                       )}
@@ -1948,9 +1948,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                         padding: '10px 14px',
                         borderRadius,
                         background: isMe
-                          ? '#12222E'
+                          ? 'var(--tm-navy)'
                           : '#E9E9EB',
-                        color: isMe ? '#fff' : '#111',
+                        color: isMe ? '#fff' : 'var(--tm-text)',
                         fontSize: 15.5, lineHeight: 1.4,
                         boxShadow: 'none',
                         wordBreak: 'break-word',
@@ -1965,7 +1965,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                           onClick={() => setShowOriginal(so => ({ ...so, [msg.id]: !so[msg.id] }))}
                           style={{
                             border: 'none', background: 'none', cursor: 'pointer', padding: '0 3px',
-                            fontSize: 10.5, color: '#9A8F6E', fontWeight: 600,
+                            fontSize: 10.5, color: 'var(--tm-muted2)', fontWeight: 600,
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                           }}
                         >
@@ -1977,7 +1977,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                       )}
 
                       {isLast && (
-                        <span style={{ fontSize: 10.5, color: '#AAA', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
+                        <span style={{ fontSize: 10.5, color: 'var(--tm-muted)', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
                           {fmtMsgT(msg.created_at, uiLang)}
                           {isMe && msg.read_at && <span style={{ color: 'var(--gold)', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
                         </span>
@@ -2014,7 +2014,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               aria-label="Nach unten springen"
               style={{
                 position: 'absolute', right: 14, bottom: 12, width: 40, height: 40, borderRadius: '50%',
-                border: '0.5px solid rgba(60,60,67,0.2)', background: 'rgba(255,255,255,0.95)',
+                border: '0.5px solid var(--tm-line)', background: 'var(--tm-glass)',
                 boxShadow: '0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
                 color: 'var(--gold, #AE8D2D)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
               }}
@@ -2028,7 +2028,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           <button
             onClick={toggleDictation}
             style={{
-              borderTop: '1px solid #F0ECE2', background: '#FDFCF8', border: 'none', cursor: 'pointer',
+              borderTop: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', border: 'none', cursor: 'pointer',
               padding: '22px 16px', flexShrink: 0, width: '100%',
               paddingBottom: variant === 'app' && !(isMobile && mobileView === 'chat') ? 22 : 'max(22px, env(safe-area-inset-bottom))',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
@@ -2042,21 +2042,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
               </svg>
             </span>
-            <span style={{ fontSize: 14.5, fontWeight: 700, color: '#1A1814' }}>Ich höre zu…</span>
-            <span style={{ fontSize: 12, color: '#8A8578' }}>Sag, was du antworten willst — zum Fertigstellen antippen</span>
+            <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tm-text)' }}>Ich höre zu…</span>
+            <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>Sag, was du antworten willst — zum Fertigstellen antippen</span>
           </button>
         )}
 
         {/* ✏️ KI-Werkstatt — Anweisung tippen ODER 🎙️ sprechen → Claude schreibt */}
         {team && active && !recording && (
-          <div style={{ borderTop: '1px solid #F0ECE2', background: '#FDFCF8', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ borderTop: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
             {speechSupported && (
               <button
                 onClick={toggleDictation}
                 title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
                 style={{
                   width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0,
-                  background: '#12222E',
+                  background: 'var(--tm-navy)',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                 }}
               >
@@ -2071,15 +2071,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
               placeholder={refining ? 'Claude schreibt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
               style={{
-                flex: 1, minWidth: 0, border: '1px solid #EBE5D5', borderRadius: 999, padding: '8px 14px',
-                fontSize: 13, outline: 'none', background: '#fff', color: '#1A1814', fontFamily: 'inherit',
+                flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 999, padding: '8px 14px',
+                fontSize: 13, outline: 'none', background: 'var(--tm-card)', color: 'var(--tm-text)', fontFamily: 'inherit',
                 boxSizing: 'border-box',
               }}
             />
             <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
               padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, whiteSpace: 'nowrap',
-              background: instruction.trim() && !refining ? '#12222E' : '#EDE9E0',
-              color: instruction.trim() && !refining ? '#fff' : '#BBB',
+              background: instruction.trim() && !refining ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+              color: instruction.trim() && !refining ? '#fff' : 'var(--tm-muted2)',
               fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
             }}>{refining ? '⏳' : '✨'}</button>
           </div>
@@ -2087,7 +2087,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
         {/* Input bar */}
         <div style={{
-          borderTop: '0.5px solid rgba(60,60,67,0.15)', background: 'rgba(255,255,255,0.92)',
+          borderTop: '0.5px solid var(--tm-line)', background: 'var(--tm-glass)',
           backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           padding: '8px 12px',
           // In der Tab-Shell (app) übernimmt die Tab-Leiste die Safe-Area —
@@ -2103,7 +2103,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               title="Antwort von Claude vorschlagen lassen"
               style={{
                 width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                border: 'none', background: 'rgba(118,118,128,0.12)',
+                border: 'none', background: 'var(--tm-surface2)',
                 cursor: aiBusy ? 'wait' : 'pointer', fontSize: 15,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 opacity: aiBusy ? 0.5 : 1, transition: 'opacity .15s',
@@ -2121,7 +2121,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 title="Gästemappen-Link"
                 style={{
                   width: 34, height: 34, borderRadius: '50%',
-                  border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'rgba(118,118,128,0.12)',
+                  border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)',
                   cursor: 'pointer', fontSize: 15,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
@@ -2129,10 +2129,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               {mappeMenu && (
                 <div style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 220,
-                  background: '#fff', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-                  border: '0.5px solid rgba(60,60,67,0.15)', overflow: 'hidden',
+                  background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                  border: '0.5px solid var(--tm-line)', overflow: 'hidden',
                 }}>
-                  <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292' }}>
+                  <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
                     📖 GÄSTEMAPPE
                   </div>
                   <button
@@ -2142,20 +2142,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                       setMappeMenu(false)
                       taRef.current?.focus()
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}
                   >📎 An Nachricht anhängen</button>
                   <button
                     onClick={() => {
                       setMappeMenu(false)
                       reallySend(`${location.origin}${active.mappeUrl}`)
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}
                   >📤 Nur Link senden</button>
 
                   {/* §158: 🧾 Rechnung — ab Anreisetag Link, vorher Erläuterung */}
                   {active.bookingId && (
                     <>
-                      <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: '#A8A292', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.12)' }}>
+                      <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                         🧾 RECHNUNG
                       </div>
                       {(active.check_in ?? '') <= new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10) ? (
@@ -2172,7 +2172,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                               } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
                               finally { setInvoiceBusy(false) }
                             }}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}
                           >{invoiceBusy ? '⏳ Erstellt…' : '📎 Rechnungs-Link anhängen'}</button>
                           <button
                             disabled={invoiceBusy}
@@ -2185,7 +2185,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                               } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
                               finally { setInvoiceBusy(false) }
                             }}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#8A7020' }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)' }}
                           >{invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}</button>
                         </>
                       ) : (
@@ -2195,7 +2195,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                             setMappeMenu(false)
                             taRef.current?.focus()
                           }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}
                         >💬 Hinweis einfügen (Rechnung ab Anreisetag)</button>
                       )}
                       <button
@@ -2204,9 +2204,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                           setInvForm(f => ({ ...f, open: true, result: null, url: null }))
                           extractRecipient(active.bookingId!)
                         }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#333' }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}
                       >✏️ Rechnungsempfänger erfassen</button>
-                      {invoiceErr && <div style={{ padding: '6px 13px 10px', fontSize: 11.5, color: '#B91C1C' }}>⚠️ {invoiceErr}</div>}
+                      {invoiceErr && <div style={{ padding: '6px 13px 10px', fontSize: 11.5, color: 'var(--tm-red)' }}>⚠️ {invoiceErr}</div>}
                     </>
                   )}
                 </div>
@@ -2217,9 +2217,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           {invForm.open && typeof document !== 'undefined' && createPortal(
             <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
               onClick={() => setInvForm(f => ({ ...f, open: false }))}>
-              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: '#fff', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#111', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
-                <p style={{ margin: '0 0 12px', fontSize: 12, color: '#8E8E93', lineHeight: 1.5 }}>
+              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: 'var(--tm-card)', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
+                <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5 }}>
                   {invForm.extracting
                     ? '✨ Claude durchsucht den Chat nach Rechnungsdaten…'
                     : 'Daten des Gasts aus dem Chat übernehmen — vor der Anreise werden sie gespeichert und automatisch verwendet, danach wird die alte Rechnung storniert und neu ausgestellt.'}
@@ -2229,28 +2229,28 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                     value={invForm[k]}
                     onChange={(e) => setInvForm(f => ({ ...f, [k]: e.target.value }))}
                     placeholder={{ name: 'Name / Firma *', supplement: 'Zusatz (z. B. z. Hd. …)', street: 'Straße + Nr.', zip: 'PLZ', city: 'Ort', country: 'Land' }[k]}
-                    style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: '1.5px solid #E0DDD6', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', marginBottom: 8 }}
+                    style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', marginBottom: 8 }}
                   />
                 ))}
                 {invForm.result && (
-                  <p style={{ margin: '2px 0 8px', fontSize: 12.5, color: invForm.result.startsWith('⚠️') ? '#B91C1C' : '#1B7A34', lineHeight: 1.5, fontWeight: 600 }}>{invForm.result}</p>
+                  <p style={{ margin: '2px 0 8px', fontSize: 12.5, color: invForm.result.startsWith('⚠️') ? 'var(--tm-red)' : '#1B7A34', lineHeight: 1.5, fontWeight: 600 }}>{invForm.result}</p>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                   {invForm.url ? (
                     <button onClick={() => {
                       setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + invForm.url)
                       setInvForm(f => ({ ...f, open: false }))
-                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: '#12222E', color: '#fff', fontSize: 13, fontWeight: 800 }}>
+                    }} style={{ flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer', background: 'var(--tm-navy)', color: '#fff', fontSize: 13, fontWeight: 800 }}>
                       📎 Link in Entwurf übernehmen
                     </button>
                   ) : (
                     <button onClick={submitRecipient} disabled={invForm.busy || !invForm.name.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '11px 0', cursor: 'pointer',
-                      background: invForm.name.trim() && !invForm.busy ? '#12222E' : '#E5E1D6',
+                      background: invForm.name.trim() && !invForm.busy ? 'var(--tm-navy)' : '#E5E1D6',
                       color: '#fff', fontSize: 13, fontWeight: 800,
                     }}>{invForm.busy ? '⏳ Speichert…' : '💾 Übernehmen'}</button>
                   )}
-                  <button onClick={() => setInvForm(f => ({ ...f, open: false }))} style={{ border: '1.5px solid #E0DDD6', borderRadius: 999, padding: '11px 16px', cursor: 'pointer', background: '#fff', color: '#999', fontSize: 13, fontWeight: 700 }}>
+                  <button onClick={() => setInvForm(f => ({ ...f, open: false }))} style={{ border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '11px 16px', cursor: 'pointer', background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700 }}>
                     Schließen
                   </button>
                 </div>
@@ -2261,8 +2261,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
           <div style={{
             flex: 1, position: 'relative', display: 'flex',
-            border: '1px solid rgba(60,60,67,0.28)', borderRadius: 18,
-            background: '#fff', minHeight: 36,
+            border: '1px solid var(--tm-line)', borderRadius: 18,
+            background: 'var(--tm-card)', minHeight: 36,
           }}>
             <textarea
               ref={taRef}
@@ -2275,7 +2275,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 flex: 1, resize: 'none', outline: 'none', border: 'none',
                 borderRadius: 18, padding: draft.trim() ? '7px 62px 7px 13px' : '7px 13px',
                 fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
-                background: 'transparent', color: '#111',
+                background: 'transparent', color: 'var(--tm-text)',
                 overflowY: 'auto',
               }}
             />
@@ -2301,7 +2301,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   style={{
                     position: 'absolute', right: 4, bottom: 4, width: 28, height: 28,
                     borderRadius: '50%', border: 'none', padding: 0,
-                    background: busy || translating ? '#EDE9E0' : '#12222E',
+                    background: busy || translating ? 'var(--tm-surface2)' : 'var(--tm-navy)',
                     color: '#fff', cursor: busy ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
@@ -2332,7 +2332,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       <span style={{ flex: 1 }}>Sitzung abgelaufen — bitte neu anmelden.</span>
       <button
         onClick={() => { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search) }}
-        style={{ border: 'none', borderRadius: 999, padding: '8px 16px', background: '#fff', color: '#92400E', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
+        style={{ border: 'none', borderRadius: 999, padding: '8px 16px', background: 'var(--tm-card)', color: 'var(--tm-yellow)', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
       >Neu anmelden</button>
     </div>
   ) : null
@@ -2352,13 +2352,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         <div style={{ marginBottom: '12px', display: isApp ? 'none' : 'flex', alignItems: 'center', gap: '10px' }}>
           {isMobile && mobileView === 'chat' ? null : (
             <div>
-              <p style={{ fontSize: '11px', fontWeight: 700, color: '#8E8E93', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 2px' }}>
                 {t(uiLang, 'Kommunikation')}
               </p>
-              <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#111', margin: 0, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--tm-text)', margin: 0, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {t(uiLang, 'Nachrichten')}
                 {unread > 0 && (
-                  <span style={{ fontSize: '12px', fontWeight: 700, background: '#12222E', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, background: 'var(--tm-navy)', color: '#fff', padding: '2px 9px', borderRadius: '99px', lineHeight: '20px' }}>
                     {unread}
                   </span>
                 )}
@@ -2370,8 +2370,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {/* Card */}
         <div style={{
           flex: 1, display: 'flex', minHeight: 0,
-          background: '#fff', borderRadius: isApp ? 0 : '18px',
-          border: '1px solid #E8E4DC',
+          background: 'var(--tm-card)', borderRadius: isApp ? 0 : '18px',
+          border: '1px solid var(--tm-line)',
           boxShadow: '0 2px 20px rgba(0,0,0,0.06)',
           overflow: 'hidden',
         }}>
@@ -2409,32 +2409,32 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           position: 'fixed', inset: 0,
           zIndex: 9001,
           display: 'flex', flexDirection: 'column',
-          background: '#fff',
+          background: 'var(--tm-card)',
           animation: 'cslideup .22s cubic-bezier(.34,1.1,.64,1)',
         }}>
           {/* Mobile header */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '14px 16px', height: 56, flexShrink: 0,
-            background: '#FFFFFF', borderBottom: '1px solid #EDEBE4',
+            background: 'var(--tm-card)', borderBottom: '1px solid var(--tm-line)',
           }}>
             {mobileView === 'list' ? (
               <>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#12222E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                <span style={{ flex: 1, fontWeight: 700, fontSize: 17, color: '#1A1814' }}>
+                <span style={{ flex: 1, fontWeight: 700, fontSize: 17, color: 'var(--tm-text)' }}>
                   {t(uiLang, 'Nachrichten')}
                   {unread > 0 && (
-                    <span style={{ marginLeft: 8, background: '#12222E', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
+                    <span style={{ marginLeft: 8, background: 'var(--tm-navy)', color: '#fff', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
                       {unread}
                     </span>
                   )}
                 </span>
                 <button onClick={onClose} style={{
                   width: 32, height: 32, borderRadius: '50%', border: 'none',
-                  background: '#F2EFE8', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888',
+                  background: 'var(--tm-surface2)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)',
                 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -2445,8 +2445,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               /* In chat view, header is rendered inside MessagePanel's showBack */
               <button onClick={onClose} style={{
                 marginLeft: 'auto', width: 32, height: 32, borderRadius: '50%', border: 'none',
-                background: '#F2EFE8', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888',
+                background: 'var(--tm-surface2)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)',
               }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -2472,7 +2472,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           zIndex: 9001,
           width: 'min(880px,93vw)', height: 'calc(100vh - var(--navbar-h, 88px) - 24px)',
           display: 'flex', flexDirection: 'column',
-          background: '#FFFFFF',
+          background: 'var(--tm-card)',
           borderRadius: 16,
           boxShadow: '0 24px 80px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06)',
           overflow: 'hidden',
@@ -2482,15 +2482,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '0 18px', height: 52, flexShrink: 0,
-            background: '#FFFFFF', borderBottom: '1px solid #EDEBE4',
+            background: 'var(--tm-card)', borderBottom: '1px solid var(--tm-line)',
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#12222E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: '#1A1814' }}>
+            <span style={{ flex: 1, fontWeight: 700, fontSize: 15, color: 'var(--tm-text)' }}>
               {t(uiLang, 'Nachrichten')}
               {unread > 0 && (
-                <span style={{ marginLeft: 8, background: '#12222E', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
+                <span style={{ marginLeft: 8, background: 'var(--tm-navy)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 99 }}>
                   {unread}
                 </span>
               )}
@@ -2500,7 +2500,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                 <Av name={partner(active)} src={partnerAvatar(active)} size={28} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#3D3A32', lineHeight: 1.2 }}>{partner(active)}</span>
-                  <span style={{ fontSize: 10.5, color: '#999', lineHeight: 1.2 }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--tm-muted)', lineHeight: 1.2 }}>
                     {active.listing_title}
                     {dateRange && <> · <strong style={{ color: 'var(--gold-dark)' }}>{dateRange}</strong></>}
                   </span>
@@ -2509,8 +2509,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             )}
             <button onClick={onClose} style={{
               width: 30, height: 30, borderRadius: '50%', border: 'none',
-              background: '#F2EFE8', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888',
+              background: 'var(--tm-surface2)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)',
             }}
               onMouseEnter={e => { (e.target as HTMLElement).style.background = '#E8E3D8' }}
               onMouseLeave={e => { (e.target as HTMLElement).style.background = '#F2EFE8' }}

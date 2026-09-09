@@ -105,34 +105,34 @@ export default function OccupancyGrid({ stays, listings }: {
 
   return (
     <div>
-      <div ref={scrollRef} onScroll={onScroll} style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 14, background: '#fff', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
+      <div ref={scrollRef} onScroll={onScroll} style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 14, background: 'var(--tm-card)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)' }}>
         <div style={{ width: NAME_W + DAYS * DAY_W, minWidth: '100%' }}>
           {/* Tages-Header */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 3, background: '#fff', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.2)' }}>
+          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 3, background: 'var(--tm-card)', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
             <div style={{
               width: NAME_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
-              background: '#fff', boxShadow: 'inset -0.5px 0 0 rgba(60,60,67,0.2)',
+              background: 'var(--tm-card)', boxShadow: 'inset -0.5px 0 0 var(--tm-line)',
               display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 8,
             }}>
               {/* aktueller Monat — folgt dem Scrollen */}
               {headMonth && (
                 <>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, color: '#8A7020', lineHeight: 1.15, whiteSpace: 'nowrap' }}>{headMonth.m}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: '#B0AA9C' }}>{headMonth.y}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--tm-accent-dark)', lineHeight: 1.15, whiteSpace: 'nowrap' }}>{headMonth.m}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--tm-muted2)' }}>{headMonth.y}</span>
                 </>
               )}
             </div>
             {days.map((d) => (
               <div key={d.iso} style={{
                 width: DAY_W, flexShrink: 0, textAlign: 'center', padding: '6px 0 5px',
-                background: d.iso === today ? '#FAF5E4' : d.weekend ? '#FAFAF8' : '#fff',
+                background: d.iso === today ? 'var(--tm-accent-soft)' : d.weekend ? 'var(--tm-surface2)' : 'var(--tm-card)',
               }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: d.month ? '#8A7020' : '#B0AA9C', textTransform: 'uppercase', height: 12 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: d.month ? 'var(--tm-accent-dark)' : 'var(--tm-muted2)', textTransform: 'uppercase', height: 12 }}>
                   {d.month ?? d.dow}
                 </div>
                 <div style={{
                   fontSize: 13, fontWeight: d.iso === today ? 800 : 600,
-                  color: d.iso === today ? '#8A7020' : '#3C3C43',
+                  color: d.iso === today ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
                 }}>{d.num}</div>
               </div>
             ))}
@@ -142,13 +142,13 @@ export default function OccupancyGrid({ stays, listings }: {
           {rows.map((row, ri) => {
             const mine = stays.filter((s) => s.listingId === row.id && s.checkOut > startIso)
             return (
-              <div key={row.id} style={{ display: 'flex', height: ROW_H, boxShadow: ri < rows.length - 1 ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none' }}>
+              <div key={row.id} style={{ display: 'flex', height: ROW_H, boxShadow: ri < rows.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none' }}>
                 <div style={{
                   width: NAME_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
-                  background: '#fff', boxShadow: 'inset -0.5px 0 0 rgba(60,60,67,0.2)',
+                  background: 'var(--tm-card)', boxShadow: 'inset -0.5px 0 0 var(--tm-line)',
                   display: 'flex', alignItems: 'center', padding: '0 8px',
                 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1A1814', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {row.title}
                   </span>
                 </div>
@@ -194,15 +194,15 @@ export default function OccupancyGrid({ stays, listings }: {
       {/* Detail-Karte zum angetippten Aufenthalt */}
       {selected && (
         <div style={{
-          marginTop: 10, background: '#fff', borderRadius: 14, padding: '12px 14px',
+          marginTop: 10, background: 'var(--tm-card)', borderRadius: 14, padding: '12px 14px',
           boxShadow: `inset 0 0 0 1.5px ${channelColor(selected.channel)}`,
           display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap',
         }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>
               {selected.guestName ?? 'Belegt'} · {listings[selected.listingId]?.title ?? 'Wohnung'}
             </div>
-            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 2 }}>
               {fmt(selected.checkIn)} – {fmt(selected.checkOut)} · {dayDiff(selected.checkIn, selected.checkOut)} {dayDiff(selected.checkIn, selected.checkOut) === 1 ? 'Nacht' : 'Nächte'}
               {selected.persons ? ` · ${selected.persons} ${selected.persons === 1 ? 'Person' : 'Personen'}` : ''}
               {selected.channel ? ` · ${selected.channel}` : ''}

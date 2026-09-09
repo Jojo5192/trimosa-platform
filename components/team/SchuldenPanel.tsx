@@ -19,9 +19,9 @@ import { haptic } from '@/components/team/ux'
  * Team-App-Doktrin §266e: Akzent NAVY, kein Gold.
  */
 
-const NAVY = '#12222E'
+const NAVY = 'var(--tm-navy)'
 const CARD: React.CSSProperties = {
-  background: '#fff', borderRadius: 16, boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)',
+  background: 'var(--tm-card)', borderRadius: 16, boxShadow: '0 0 0 0.5px var(--tm-line)',
 }
 const BTN: React.CSSProperties = {
   border: 'none', borderRadius: 11, padding: '10px 14px', fontSize: 14,
@@ -29,7 +29,7 @@ const BTN: React.CSSProperties = {
 }
 const INPUT: React.CSSProperties = {
   fontSize: 16, padding: '10px 12px', borderRadius: 11,
-  border: '0.5px solid rgba(60,60,67,0.25)', background: '#fff', fontFamily: 'inherit', width: '100%',
+  border: '0.5px solid var(--tm-line)', background: 'var(--tm-card)', fontFamily: 'inherit', width: '100%',
 }
 
 const fmtMonatLang = (m: string) => {
@@ -94,7 +94,7 @@ function VerlaufChart({ verlauf, color, height = 220, planAb }: {
   return (
     <div ref={wrapRef} style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
       {!chart ? (
-        <p style={{ fontSize: 13, color: '#8A8578', margin: '10px 0' }}>Mindestens 2 Monatswerte für den Verlauf eintragen.</p>
+        <p style={{ fontSize: 13, color: 'var(--tm-muted)', margin: '10px 0' }}>Mindestens 2 Monatswerte für den Verlauf eintragen.</p>
       ) : (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', maxWidth: '100%' }}>
       {chart.yTicks.map((tk, i) => (
@@ -124,23 +124,23 @@ function VerlaufChart({ verlauf, color, height = 220, planAb }: {
 function Kpi({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div style={{ ...CARD, padding: '11px 13px', minWidth: 0 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: color ?? '#1A1814', marginTop: 3, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#8A8578', marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: color ?? 'var(--tm-text)', marginTop: 3, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--tm-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
 
 function deltaChip(delta: number | null, label: string) {
-  if (delta == null) return <span style={{ fontSize: 11.5, color: '#B0AA9C' }}>{label}: —</span>
+  if (delta == null) return <span style={{ fontSize: 11.5, color: 'var(--tm-muted2)' }}>{label}: —</span>
   // Schulden: SINKEN = gut (grün)
   const down = delta < 0
   const same = Math.round(delta) === 0
   return (
     <span style={{
       fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-      background: same ? '#F2F2F7' : down ? '#DCFCE7' : '#FEE2E2',
-      color: same ? '#8A8578' : down ? '#16A34A' : '#DC2626',
+      background: same ? 'var(--tm-surface2)' : down ? 'var(--tm-green-soft)' : 'var(--tm-red-soft)',
+      color: same ? 'var(--tm-muted)' : down ? 'var(--tm-green)' : 'var(--tm-red)',
     }}>
       {label}: {same ? '±0' : `${down ? '▼ ' : '▲ +'}${eur0(Math.abs(delta))}`}
     </span>
@@ -247,27 +247,27 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: '#F2F2F7',
+      position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-        background: 'rgba(249,249,249,0.94)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.15)', flexShrink: 0,
+        background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
         <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: NAVY, cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1A1814', margin: 0, flex: 1 }}>🏦 Schuldenstand</h2>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#8A8578', background: 'rgba(120,120,128,0.12)', borderRadius: 999, padding: '4px 10px' }}>nur Chefs</span>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>🏦 Schuldenstand</h2>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '4px 10px' }}>nur Chefs</span>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', padding: '14px 14px 48px' }}>
         <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
           {fehler && (
-            <div style={{ fontSize: 13.5, color: '#B42318', background: '#FEE2E2', borderRadius: 12, padding: '10px 13px' }}>
-              {fehler} <button onClick={load} style={{ ...BTN, padding: '4px 10px', fontSize: 12.5, marginLeft: 6, background: '#fff', color: '#B42318' }}>Erneut laden</button>
+            <div style={{ fontSize: 13.5, color: 'var(--tm-red)', background: 'var(--tm-red-soft)', borderRadius: 12, padding: '10px 13px' }}>
+              {fehler} <button onClick={load} style={{ ...BTN, padding: '4px 10px', fontSize: 12.5, marginLeft: 6, background: 'var(--tm-card)', color: 'var(--tm-red)' }}>Erneut laden</button>
             </div>
           )}
-          {loading && <div style={{ fontSize: 14, color: '#8A8578', padding: 18 }}>Lädt…</div>}
+          {loading && <div style={{ fontSize: 14, color: 'var(--tm-muted)', padding: 18 }}>Lädt…</div>}
 
           {/* ── Gesamt-Hero ── */}
           {!loading && (
@@ -304,7 +304,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
           {/* ── Standort-Gruppen ── */}
           {gruppen.map(([standort, liste]) => (
             <div key={standort}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '2px 4px 7px', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '2px 4px 7px', textTransform: 'uppercase' }}>
                 📍 {standort} · {eur0(liste.reduce((a, k) => a + (effStand.get(k.id) ?? 0), 0))}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
@@ -327,7 +327,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
               }}>＋ Kredit anlegen</button>
           )}
 
-          <p style={{ fontSize: 11.5, color: '#8A8578', lineHeight: 1.55, margin: '4px 4px 0' }}>
+          <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.55, margin: '4px 4px 0' }}>
             Zins &amp; Monatsrate werden automatisch aus dem Restschuld-Verlauf erkannt
             (Annuitäts-Fit über die letzten 18 Monate). ✓ = mathematisch exakt,
             ~ = Schätzung. Endet ein Verlauf in der Vergangenheit, schreibt die App
@@ -418,34 +418,34 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
         padding: '14px 16px', fontFamily: 'inherit',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#1A1814', flex: 1, minWidth: 140 }}>{k.name}</span>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--tm-text)', flex: 1, minWidth: 140 }}>{k.name}</span>
           <span style={{ fontSize: 19, fontWeight: 800, color: NAVY, fontVariantNumeric: 'tabular-nums' }}>
             {aktuell ? `${fs ? '~ ' : ''}${eur0(aktuell.restschuld)}` : '—'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#5A6B7A', background: 'rgba(120,120,128,0.1)', borderRadius: 999, padding: '2px 9px' }}>{FIRMEN[k.firma] ?? k.firma}</span>
-          {k.bank && <span style={{ fontSize: 11.5, color: '#8A8578' }}>{k.bank}</span>}
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '2px 9px' }}>{FIRMEN[k.firma] ?? k.firma}</span>
+          {k.bank && <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>{k.bank}</span>}
           {fit && (
             <span style={{ fontSize: 11, fontWeight: 700, color: '#0A84FF', background: 'rgba(10,132,255,0.1)', borderRadius: 999, padding: '2px 9px' }}>
               {fit.exakt ? '✓' : '~'} {pct2(fit.zinsPa)} p.a.
             </span>
           )}
           {fs && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#B45309', background: '#FEF3C7', borderRadius: 999, padding: '2px 9px' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-yellow)', background: 'var(--tm-yellow-soft)', borderRadius: 999, padding: '2px 9px' }}>
               ↻ ab {fmtMonat(fs.abMonat)} geschätzt
             </span>
           )}
-          <span style={{ marginLeft: 'auto', color: '#C7C7CC', fontSize: 13 }}>{open ? '▴' : '▾'}</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--tm-muted2)', fontSize: 13 }}>{open ? '▴' : '▾'}</span>
         </div>
         {/* Tilgungs-Fortschritt */}
         {erster && aktuell && getilgt > 0 && (
           <div style={{ marginTop: 9 }}>
-            <div style={{ height: 5, borderRadius: 3, background: 'rgba(120,120,128,0.14)', overflow: 'hidden' }}>
+            <div style={{ height: 5, borderRadius: 3, background: 'var(--tm-surface2)', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${Math.min(100, getilgtPct)}%`, background: '#16A34A', borderRadius: 3 }} />
             </div>
-            <div style={{ fontSize: 11, color: '#8A8578', marginTop: 4 }}>
-              getilgt seit {fmtMonatLang(erster.monat)}: <b style={{ color: '#16A34A' }}>{eur0(getilgt)}</b> ({getilgtPct.toFixed(1).replace('.', ',')} %)
+            <div style={{ fontSize: 11, color: 'var(--tm-muted)', marginTop: 4 }}>
+              getilgt seit {fmtMonatLang(erster.monat)}: <b style={{ color: 'var(--tm-green)' }}>{eur0(getilgt)}</b> ({getilgtPct.toFixed(1).replace('.', ',')} %)
             </div>
           </div>
         )}
@@ -455,17 +455,17 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
         <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
           <VerlaufChart verlauf={verlaufEff} color={NAVY} planAb={fs ? k.verlauf.length : istN} />
           {fs ? (
-            <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: -6 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginTop: -6 }}>
               ┄ gestrichelt = automatisch fortgeschrieben ab {fmtMonat(fs.abMonat)}
               {' '}({pct2(fs.zinsPa)} · {eur2(fs.rate)}/M{fs.basis === 'vertrag' ? ', Vertragsdaten' : ''})
             </div>
           ) : istN < verlaufEff.length && (
-            <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: -6 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginTop: -6 }}>
               ┄ gestrichelt = hinterlegter Tilgungsplan bis {fmtMonat(verlaufEff[verlaufEff.length - 1].monat)}
             </div>
           )}
           {fs && (
-            <div style={{ fontSize: 12, color: '#B45309', background: '#FEF3C7', borderRadius: 10, padding: '8px 11px', lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: 'var(--tm-yellow)', background: 'var(--tm-yellow-soft)', borderRadius: 10, padding: '8px 11px', lineHeight: 1.5 }}>
               Der gepflegte Verlauf endet {fmtMonatLang(fs.letzterEchter.monat)} ({eur0(fs.letzterEchter.restschuld)}) —
               seither rechnet die App mit {pct2(fs.zinsPa)} p.a. · {eur2(fs.rate)}/M automatisch weiter.
               Echte Kontostände unten einfügen ersetzt die Schätzung.
@@ -490,15 +490,15 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
             {k.zinsbindungBis && <Kpi label="Zinsbindung bis" value={fmtMonatLang(k.zinsbindungBis)} color="#B45309" />}
           </div>
           {k.zinssatz != null && fit && Math.abs(k.zinssatz - fit.zinsPa) > 0.15 && (
-            <div style={{ fontSize: 12, color: '#B45309', background: '#FEF3C7', borderRadius: 10, padding: '8px 11px' }}>
+            <div style={{ fontSize: 12, color: 'var(--tm-yellow)', background: 'var(--tm-yellow-soft)', borderRadius: 10, padding: '8px 11px' }}>
               Hinterlegter Vertragszins {pct2(k.zinssatz)} weicht vom erkannten Zins {pct2(fit.zinsPa)} ab — Verlauf oder Vertragsdaten prüfen.
             </div>
           )}
-          {k.notiz && <div style={{ fontSize: 12.5, color: '#5A6B7A', lineHeight: 1.5 }}>{k.notiz}</div>}
+          {k.notiz && <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', lineHeight: 1.5 }}>{k.notiz}</div>}
 
           {/* Verlauf einpflegen */}
           <div style={{ background: '#F7F7F9', borderRadius: 13, padding: '11px 13px' }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#5A6B7A', letterSpacing: '0.04em', marginBottom: 7 }}>VERLAUF EINFÜGEN (aus Excel kopieren)</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.04em', marginBottom: 7 }}>VERLAUF EINFÜGEN (aus Excel kopieren)</div>
             <textarea value={bulk} onChange={(e) => setBulk(e.target.value)} rows={3}
               placeholder={'07.2024\t440.000,00 €\n08.2024\t439.400,00 €\n…'}
               style={{ ...INPUT, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 16 }} />
@@ -507,17 +507,17 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
                 style={{ ...BTN, background: NAVY, color: '#fff', opacity: busy || !bulk.trim() ? 0.5 : 1 }}>
                 {busy ? '⏳…' : 'Übernehmen'}
               </button>
-              {bulkInfo && <span style={{ fontSize: 12.5, color: bulkInfo.startsWith('✓') ? '#16A34A' : '#B42318' }}>{bulkInfo}</span>}
+              {bulkInfo && <span style={{ fontSize: 12.5, color: bulkInfo.startsWith('✓') ? 'var(--tm-green)' : 'var(--tm-red)' }}>{bulkInfo}</span>}
             </div>
             {k.verlauf.length > 0 && (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: '#5A6B7A' }}>
+              <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--tm-muted)' }}>
                 {k.verlauf.length} Monate erfasst ({fmtMonat(k.verlauf[0].monat)} – {fmtMonat(k.verlauf[k.verlauf.length - 1].monat)})
                 {' · letzte: '}
                 {k.verlauf.slice(-3).map((z) => (
                   <span key={z.monat} style={{ whiteSpace: 'nowrap', marginRight: 8 }}>
                     {fmtMonat(z.monat)} {eur2(z.restschuld)}
                     <button disabled={busy} onClick={() => { if (confirm(`${fmtMonat(z.monat)} löschen?`)) void patch({ action: 'delete-monat', id: k.id, monat: z.monat }) }}
-                      style={{ border: 'none', background: 'none', color: '#B42318', cursor: 'pointer', fontSize: 12, padding: '0 2px', opacity: busy ? 0.4 : 1 }}>✕</button>
+                      style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontSize: 12, padding: '0 2px', opacity: busy ? 0.4 : 1 }}>✕</button>
                   </span>
                 ))}
               </div>
@@ -531,10 +531,10 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
               onCancel={() => setEdit(false)} />
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setEdit(true)} style={{ ...BTN, background: 'rgba(120,120,128,0.1)', color: '#1A1814' }}>✏️ Bearbeiten</button>
+              <button onClick={() => setEdit(true)} style={{ ...BTN, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }}>✏️ Bearbeiten</button>
               <button disabled={busy} onClick={() => {
                 if (confirm(`Kredit „${k.name}" mit ${k.verlauf.length} Monatswerten wirklich löschen?`)) void patch({ action: 'delete-kredit', id: k.id })
-              }} style={{ ...BTN, background: 'rgba(255,59,48,0.08)', color: '#D70015', opacity: busy ? 0.5 : 1 }}>🗑 Löschen</button>
+              }} style={{ ...BTN, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', opacity: busy ? 0.5 : 1 }}>🗑 Löschen</button>
             </div>
           )}
         </div>
@@ -594,7 +594,7 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
 
   return (
     <div style={{ ...CARD, padding: 16, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1A1814' }}>{vorlage ? 'Kredit bearbeiten' : 'Neuer Kredit'}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--tm-text)' }}>{vorlage ? 'Kredit bearbeiten' : 'Neuer Kredit'}</div>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name — z. B. Volksbank MFH Minden" style={INPUT} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <select value={standort} onChange={(e) => setStandort(e.target.value)} style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }}>
@@ -607,7 +607,7 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
           <button key={id} onClick={() => setFirma(id)} style={{
             ...BTN, padding: '8px 12px', fontSize: 12.5, flex: 1,
             background: firma === id ? NAVY : 'rgba(120,120,128,0.1)',
-            color: firma === id ? '#fff' : '#3C3C43',
+            color: firma === id ? '#fff' : 'var(--tm-muted)',
           }}>{label}</button>
         ))}
       </div>
@@ -620,12 +620,12 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
         <input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="Rate €/Monat (optional)" style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }} />
       </div>
       <input value={notiz ?? ''} onChange={(e) => setNotiz(e.target.value)} placeholder="Notiz (optional)" style={INPUT} />
-      {formFehler && <div style={{ fontSize: 12.5, color: '#B42318', background: '#FEE2E2', borderRadius: 10, padding: '8px 11px' }}>{formFehler}</div>}
+      {formFehler && <div style={{ fontSize: 12.5, color: 'var(--tm-red)', background: 'var(--tm-red-soft)', borderRadius: 10, padding: '8px 11px' }}>{formFehler}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={submit} disabled={busy || !name.trim()} style={{ ...BTN, background: NAVY, color: '#fff', opacity: busy || !name.trim() ? 0.5 : 1 }}>
           {busy ? '⏳…' : '💾 Speichern'}
         </button>
-        <button onClick={onCancel} style={{ ...BTN, background: 'rgba(120,120,128,0.1)', color: '#3C3C43' }}>Abbrechen</button>
+        <button onClick={onCancel} style={{ ...BTN, background: 'var(--tm-surface2)', color: 'var(--tm-muted)' }}>Abbrechen</button>
       </div>
     </div>
   )

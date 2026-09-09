@@ -726,7 +726,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-red: #dc3d3d;
   --tm-red-soft: rgba(220, 61, 61, 0.13);
   --tm-glass: rgba(243, 244, 246, 0.82);
+  --tm-glass-soft: rgba(243, 244, 246, 0.55);
   --tm-nav-glass: rgba(247, 248, 250, 0.9);
+  /* Primär-Knöpfe (Senden, Speichern): Navy hell, im Dunkeln aufgehellt */
+  --tm-navy: #12222E;
   --tm-r-card: 18px;
   --tm-shadow: 0 1px 2px rgba(23, 26, 31, 0.04), 0 2px 8px rgba(23, 26, 31, 0.04);
   --tm-shadow-float: 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06);
@@ -736,7 +739,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-nav-pad: calc(100px + env(safe-area-inset-bottom));
   color-scheme: light;
 }
-.team-shell.tm-dark {
+.tm-dark .team-shell, .team-shell.tm-dark {
   --tm-bg: #0f1114;
   --tm-card: #1a1d22;
   --tm-surface2: #22262c;
@@ -748,7 +751,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-accent-dark: #E3C878;
   --tm-accent-soft: rgba(201, 164, 74, 0.18);
   --tm-glass: rgba(15, 17, 20, 0.82);
+  --tm-glass-soft: rgba(15, 17, 20, 0.55);
   --tm-nav-glass: rgba(22, 25, 29, 0.92);
+  --tm-navy: #2b4257;
   --tm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
   --tm-shadow-float: 0 10px 30px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -846,9 +851,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   -webkit-tap-highlight-color: transparent; cursor: default; user-select: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-@media (prefers-color-scheme: dark) {
-  .tm-curtain { --c-bg: #0f1115; --c-text: #f2f3f5; --c-muted: #9aa1ab; --c-dark: #AE8D2D; }
-}
+/* §284: dunkel nach App-Modus (Klasse auf <html>), nicht mehr nach System-Media-Query */
+.tm-dark .tm-curtain { --c-bg: #0f1114; --c-text: #f2f3f5; --c-muted: #9aa1ab; --c-dark: #AE8D2D; }
+.team-page { background: #f3f4f6; }
+.tm-dark .team-page { background: #0f1114; }
 .tm-curtain.is-leaving { animation: tmCurtainOut 0.8s var(--c-ease) both; pointer-events: none; }
 @keyframes tmCurtainOut { to { opacity: 0; transform: scale(1.03); } }
 
@@ -972,6 +978,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%); mask-image: linear-gradient(to bottom, transparent, #000 60%);
   background: linear-gradient(to bottom, rgba(243,244,246,0), rgba(243,244,246,0.45));
 }
+.tm-dark .tm-fade-bottom { background: linear-gradient(to bottom, rgba(15,17,20,0), rgba(15,17,20,0.5)); }
 @media (prefers-reduced-motion: reduce) {
   .tm-stagger > *, .tm-grow, .tm-live, .tm-ring-spin { animation: none; }
   .tm-title { transition: none; }
@@ -981,7 +988,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* 8 Erfolgs-Momente: Blase fliegt aus dem Eingabefeld, Karte wischt grün */
 @keyframes tmFly { 0% { opacity: 0.95; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-64px) scale(0.9); } }
 .tm-fly { animation: tmFly 0.5s var(--tm-ease) forwards; }
-@keyframes tmDoneFlash { 0% { background-color: #ffffff; } 20% { background-color: rgba(26,157,87,0.22); } 100% { background-color: #ffffff; } }
+@keyframes tmDoneFlash { 0% { background-color: var(--tm-card, #fff); } 20% { background-color: rgba(26,157,87,0.22); } 100% { background-color: var(--tm-card, #fff); } }
 .tm-done-flash { animation: tmDoneFlash 1s var(--tm-ease) both; }
 /* 7 Peek-Menü: Hintergrund verschwimmt, Karte hebt sich ab */
 @keyframes tmDim { from { opacity: 0; } to { opacity: 1; } }

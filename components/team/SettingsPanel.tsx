@@ -11,6 +11,8 @@
  *    ALLE Geräte des Nutzers (Server filtert beim Senden)
  */
 import { useEffect, useState } from 'react'
+import { haptic } from '@/components/team/ux'
+import { useThemeMode, useIsDark, setThemeMode } from '@/lib/theme'
 import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
@@ -22,7 +24,7 @@ import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
 import SchuldenPanel from '@/components/team/SchuldenPanel'
 
-const HAIR = 'inset 0 -0.5px 0 rgba(60,60,67,0.15)'
+const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
 
 function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: () => void }) {
   return (
@@ -32,13 +34,13 @@ function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; o
       aria-pressed={on}
       style={{
         width: 51, height: 31, borderRadius: 16, border: 'none', padding: 2, flexShrink: 0,
-        background: on ? '#34C759' : 'rgba(120,120,128,0.18)',
+        background: on ? '#34C759' : 'var(--tm-surface2)',
         opacity: disabled ? 0.45 : 1, cursor: disabled ? 'default' : 'pointer',
         transition: 'background 0.2s ease', display: 'flex',
         justifyContent: on ? 'flex-end' : 'flex-start', alignItems: 'center',
       }}
     >
-      <span style={{ width: 27, height: 27, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.22)' }} />
+      <span style={{ width: 27, height: 27, borderRadius: '50%', background: 'var(--tm-card)', boxShadow: '0 2px 5px rgba(0,0,0,0.22)' }} />
     </button>
   )
 }
@@ -49,11 +51,11 @@ function Row({ title, subtitle, last, children }: {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
-      boxShadow: last ? 'none' : HAIR, background: '#fff',
+      boxShadow: last ? 'none' : HAIR, background: 'var(--tm-card)',
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#1A1814' }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 12, color: '#8A8578', marginTop: 1, lineHeight: 1.4 }}>{subtitle}</div>}
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 1, lineHeight: 1.4 }}>{subtitle}</div>}
       </div>
       {children}
     </div>
@@ -61,6 +63,9 @@ function Row({ title, subtitle, last, children }: {
 }
 
 export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
+  // 🌗 §284 Dark Mode mit Schalter (Inhaber 9.9.)
+  const themeMode = useThemeMode()
+  const isDark = useIsDark()
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
   const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean } | null>(null)
@@ -183,140 +188,163 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {/* §276: Titel „Mehr" steht in der Shell-Kopfleiste */}
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 16px', paddingBottom: 'var(--tm-nav-pad)' }}>
 
+        {/* 🌗 §284 Darstellung: Auto (System) · Hell · Dunkel — je Gerät */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>DARSTELLUNG</div>
+        <div className="tm-card" style={{ padding: '12px 16px', marginBottom: 22, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 19 }}>{isDark ? '🌙' : '☀️'}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Dark Mode</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>
+              {themeMode === 'system' ? `Folgt dem System (gerade ${isDark ? 'dunkel' : 'hell'})` : themeMode === 'dark' ? 'Immer dunkel' : 'Immer hell'}
+            </span>
+          </span>
+          <div role="tablist" style={{ display: 'flex', padding: 3, borderRadius: 999, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', flexShrink: 0 }}>
+            {(['system', 'light', 'dark'] as const).map((m) => (
+              <button key={m} role="tab" aria-selected={themeMode === m} className="tm-press-btn" onClick={() => { haptic(); setThemeMode(m) }} style={{
+                border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                background: themeMode === m ? 'var(--tm-card)' : 'transparent',
+                color: themeMode === m ? 'var(--tm-text)' : 'var(--tm-muted)',
+                boxShadow: themeMode === m ? 'var(--tm-shadow)' : 'none',
+                transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
+              }}>{m === 'system' ? 'Auto' : m === 'light' ? 'Hell' : 'Dunkel'}</button>
+            ))}
+          </div>
+        </div>
+
         {role === 'team' && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BEREICHE</div>
-            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BEREICHE</div>
+            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
               {/* §276: „Offen"-Karten-Stapel ist kein Reiter mehr — hier erreichbar */}
               <button onClick={() => window.dispatchEvent(new CustomEvent('trimosa-open-tab', { detail: 'offen' }))} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
               }}>
                 <span style={{ fontSize: 19 }}>📥</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Offen abarbeiten</span>
-                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel — Antwort, ✓, 📞, Aufgabe</span>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Offen abarbeiten</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel — Antwort, ✓, 📞, Aufgabe</span>
                 </span>
-                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
               <button onClick={() => setShowTrends(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
               }}>
                 <span style={{ fontSize: 19 }}>📈</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Entwicklung</span>
-                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Bewertungs-Scores im Zeitverlauf — gesamt & je Plattform</span>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Entwicklung</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Bewertungs-Scores im Zeitverlauf — gesamt & je Plattform</span>
                 </span>
-                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
               <button onClick={() => setShowCalls(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
               }}>
                 <span style={{ fontSize: 19 }}>☎️</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Telefonate</span>
-                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Alle Anrufe der KI-Assistentin — Transkript lesen & abhören</span>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Telefonate</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Alle Anrufe der KI-Assistentin — Transkript lesen & abhören</span>
                 </span>
-                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
               {locksOk && (
                 <button onClick={() => setShowLocks(true)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
                 }}>
                   <span style={{ fontSize: 19 }}>🔑</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Türschlösser</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Fernöffnen & Codes einsehen je Wohnung</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Türschlösser</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Fernöffnen & Codes einsehen je Wohnung</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
               {durOk && (
                 <button onClick={() => setShowDur(true)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
                 }}>
                   <span style={{ fontSize: 19 }}>⏱</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Reinigungs-Dauer</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Wie lange Reinigungen dauern (nur Chefs)</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Reinigungs-Dauer</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Wie lange Reinigungen dauern (nur Chefs)</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
               {schuldenOk && (
                 <button onClick={() => setShowSchulden(true)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
                 }}>
                   <span style={{ fontSize: 19 }}>🏦</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Schuldenstand</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Kredite je Standort — Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Schuldenstand</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Kredite je Standort — Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
               <button onClick={() => setShowQs(true)} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: wb ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
+                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: wb ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
               }}>
                 <span style={{ fontSize: 19 }}>🧾</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Qualitätssicherung</span>
-                  <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Protokolle & Historie je Wohnung</span>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Qualitätssicherung</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Protokolle & Historie je Wohnung</span>
                 </span>
-                <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
               {belegeOk && (
                 <button onClick={() => { window.location.href = '/buchhaltung' }} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: wb ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: wb ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
                 }}>
                   <span style={{ fontSize: 19 }}>💶</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Buchhaltung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Eigene Vollbild-Oberfläche — Belege, Zahlungen, Verbuchen (nur Admins)</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Buchhaltung</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Eigene Vollbild-Oberfläche — Belege, Zahlungen, Verbuchen (nur Admins)</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
               {wb && (
                 <button onClick={() => setShowWallbox(true)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: belegeOk ? 'inset 0 -0.5px 0 rgba(60,60,67,0.12)' : 'none',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: belegeOk ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
                 }}>
                   <span style={{ fontSize: 19 }}>⚡</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Wallbox</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Ladehistorie — kWh, Umsatz & Gewinn</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Wallbox</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ladehistorie — kWh, Umsatz & Gewinn</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
               {belegeOk && (
                 <button onClick={() => { window.location.href = '/api/tv-bridge/sso' }} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
                 }}>
                   <span style={{ fontSize: 19 }}>📺</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>TV-Steuerung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Ferienwohnungs-TVs — Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>TV-Steuerung</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ferienwohnungs-TVs — Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
                   </span>
-                  <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
               )}
             </div>
@@ -325,52 +353,52 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
 
         {/* §266f: Material — für ALLE Rollen (Bedarf melden, Status pflegen,
             Warenkorb je Standort; Katalog-Pflege nur Admins) */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MATERIAL</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MATERIAL</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
           <button onClick={() => setShowMaterial(true)} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+            background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
           }}>
             <span style={{ fontSize: 19 }}>🛒</span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Material & Bestellungen</span>
-              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Standort wählen, Produkt antippen — fertig. Warenkorb kommt automatisch</span>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Material & Bestellungen</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Standort wählen, Produkt antippen — fertig. Warenkorb kommt automatisch</span>
             </span>
-            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+            <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
         </div>
 
         {/* §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister
             (Upload + Ort + Notiz; keinerlei Finanz-Einblick) */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BELEGE</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)', marginBottom: 22 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BELEGE</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
           <button onClick={() => setShowBeleg(true)} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
+            background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
           }}>
             <span style={{ fontSize: 19 }}>🧾</span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Beleg einreichen</span>
-              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren — die Buchhaltung übernimmt</span>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Beleg einreichen</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren — die Buchhaltung übernimmt</span>
             </span>
-            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+            <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
           {/* §265 (Pascal): anklickbarer Verlauf aller eigenen Pushes */}
           <button onClick={() => setShowPushLog(true)} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-            background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left',
-            boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.12)',
+            background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+            boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
           }}>
             <span style={{ fontSize: 19 }}>🔔</span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: '#1A1814' }}>Verlauf</span>
-              <span style={{ display: 'block', fontSize: 12, color: '#8A8578', marginTop: 1 }}>Alle Mitteilungen der letzten 30 Tage — antippen springt zum Ziel</span>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Verlauf</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Alle Mitteilungen der letzten 30 Tage — antippen springt zum Ziel</span>
             </span>
-            <span style={{ color: '#C7C7CC', fontSize: 16 }}>›</span>
+            <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
           <Row
             title="Push auf diesem Gerät"
@@ -379,7 +407,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               : 'Mitteilungen auf dieses Gerät erhalten'}
           >
             {pushState === 'unknown'
-              ? <span style={{ fontSize: 13, color: '#B0AA9C' }}>…</span>
+              ? <span style={{ fontSize: 13, color: 'var(--tm-muted2)' }}>…</span>
               : <Switch on={pushState === 'on'} disabled={pushState === 'unsupported' || busy} onChange={toggleDevice} />}
           </Row>
           {role === 'team' && (
@@ -428,14 +456,14 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
             </Row>
           )}
         </div>
-        <div style={{ fontSize: 12, color: '#8A8578', lineHeight: 1.55, margin: '9px 16px 0' }}>
+        <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.55, margin: '9px 16px 0' }}>
           Jede Kategorie einzeln schaltbar — die Einstellung gilt für alle deine Geräte.
           „Push auf diesem Gerät" ist die oberste Ebene: ist die aus, kommt gar nichts.
         </div>
         {pushState === 'unsupported' && (
           <div style={{
             margin: '14px 0 0', padding: '11px 14px', borderRadius: 12,
-            background: '#FEF9EC', border: '1px solid #F1E4BD', fontSize: 12.5, lineHeight: 1.55, color: '#6B5D33',
+            background: '#FEF9EC', border: '1px solid #F1E4BD', fontSize: 12.5, lineHeight: 1.55, color: 'var(--tm-accent-dark)',
           }}>
             💡 Auf dem iPhone: <strong>trimosa.de/team</strong> in Safari öffnen → Teilen → „Zum Home-Bildschirm" — in der installierten App lässt sich Push hier aktivieren.
           </div>
@@ -444,15 +472,15 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
         {/* ☎️ Bereitschaft (§175) — nur Admins sichtbar */}
         {oncallPeople && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.05em', margin: '24px 16px 7px' }}>☎️ BEREITSCHAFT (TELEFON-ASSISTENTIN)</div>
-            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px rgba(60,60,67,0.1)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '24px 16px 7px' }}>☎️ BEREITSCHAFT (TELEFON-ASSISTENTIN)</div>
+            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
               {oncallPeople.map((p, i) => (
                 <Row key={p.id} title={p.name} subtitle={p.role} last={i === oncallPeople.length - 1}>
                   <Switch on={oncallSel.includes(p.id)} onChange={() => toggleOncall(p.id)} />
                 </Row>
               ))}
             </div>
-            <div style={{ fontSize: 12, color: '#8A8578', lineHeight: 1.55, margin: '9px 16px 0' }}>
+            <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.55, margin: '9px 16px 0' }}>
               Ausgewählte Personen sehen akute Anruf-Meldungen ganz oben im Aufgaben-Tab und bekommen die Anruf-Pushes. <strong>Niemand ausgewählt = das ganze Team.</strong>
             </div>
           </>

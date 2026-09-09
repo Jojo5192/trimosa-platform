@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { createPortal } from 'react-dom'
 import { haptic } from '@/components/team/ux'
 
-const NAVY = '#12222E'
+const NAVY = 'var(--tm-navy)'
 const GRUEN = '#16A34A'
 const KATEGORIEN = ['🧽 Putzen', '🧺 Wäsche', '🍽 Küche', '🧻 Papier & Müll', '🧤 Handschuhe', '🧴 Pflege']
 
@@ -38,11 +38,11 @@ interface Data {
 interface Vorschlag { name: string; artikelId?: string; hinweis?: string }
 
 const CARD: CSSProperties = {
-  background: '#fff', borderRadius: 16, padding: '14px 16px',
-  boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+  background: 'var(--tm-card)', borderRadius: 16, padding: '14px 16px',
+  boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
 }
 const INPUT: CSSProperties = {
-  borderRadius: 10, border: '0.5px solid rgba(60,60,67,0.25)', padding: '9px 11px', fontSize: 16,
+  borderRadius: 10, border: '0.5px solid var(--tm-line)', padding: '9px 11px', fontSize: 16,
 }
 
 export default function MaterialPanel({ onClose }: { onClose: () => void }) {
@@ -175,13 +175,13 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
     return (
       <div key={s} style={CARD}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: 15.5, fontWeight: 800, color: '#111' }}>🛒 Bestell-Liste {s}</span>
-          <span style={{ fontSize: 11, color: '#8E8E93', whiteSpace: 'nowrap' }}>{adr ? `📦 ${adr.label}` : ''}</span>
+          <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>🛒 Bestell-Liste {s}</span>
+          <span style={{ fontSize: 11, color: 'var(--tm-muted)', whiteSpace: 'nowrap' }}>{adr ? `📦 ${adr.label}` : ''}</span>
         </div>
         {offen.map((b) => {
           const a = artikelFor(b)
           return (
-            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
               {a?.bild && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={a.bild} alt="" loading="lazy"
@@ -189,24 +189,24 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                   style={{ width: 34, height: 34, objectFit: 'contain', flexShrink: 0 }} />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1814' }}>
-                  {a?.url ? <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#1A1814', textDecoration: 'underline', textDecorationColor: 'rgba(60,60,67,0.3)' }}>{b.name} ↗</a> : b.name}
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tm-text)' }}>
+                  {a?.url ? <a href={a.url} target="_blank" rel="noreferrer" style={{ color: 'var(--tm-text)', textDecoration: 'underline', textDecorationColor: 'rgba(60,60,67,0.3)' }}>{b.name} ↗</a> : b.name}
                 </div>
-                <div style={{ fontSize: 10.5, color: '#A9A499' }}>{b.von} · {new Date(b.at).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--tm-muted)' }}>{b.von} · {new Date(b.at).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}</div>
               </div>
               <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'bestellt' }, b.id); showToast(`📦 ${b.name} als bestellt markiert`) }} disabled={busy === b.id}
                 style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: NAVY, color: '#fff', cursor: 'pointer' }}>Bestellt</button>
               <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'entfernt' }, b.id) }} disabled={busy === b.id}
-                style={{ border: 'none', borderRadius: 999, padding: '6px 9px', fontSize: 11.5, background: 'rgba(118,118,128,0.12)', color: '#666', cursor: 'pointer' }}>✕</button>
+                style={{ border: 'none', borderRadius: 999, padding: '6px 9px', fontSize: 11.5, background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
             </div>
           )
         })}
         {bestellt.map((b) => (
-          <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)', opacity: 0.75 }}>
+          <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', opacity: 0.75 }}>
             <span style={{ fontSize: 13 }}>📦</span>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 14, color: '#1A1814' }}>{b.name} <span style={{ fontSize: 11, color: '#A9A499' }}>· bestellt</span></div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 14, color: 'var(--tm-text)' }}>{b.name} <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>· bestellt</span></div>
             <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'aufgefuellt' }, b.id); showToast(`✓ ${b.name} aufgefüllt`) }} disabled={busy === b.id}
-              style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: '#E8F5EC', color: '#166534', cursor: 'pointer' }}>✓ Aufgefüllt</button>
+              style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: 'var(--tm-green-soft)', color: 'var(--tm-green)', cursor: 'pointer' }}>✓ Aufgefüllt</button>
           </div>
         ))}
         {offen.length > 0 && data.merklisteUrl && (
@@ -242,8 +242,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
     }}>
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 8px', flexShrink: 0 }}>
-        <span style={{ fontSize: 28, fontWeight: 800, color: '#111', letterSpacing: '-0.6px' }}>🛒 Material</span>
-        <button onClick={onClose} style={{ border: 'none', background: 'rgba(118,118,128,0.12)', fontSize: 15, color: '#333', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer' }}>✕</button>
+        <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.6px' }}>🛒 Material</span>
+        <button onClick={onClose} style={{ border: 'none', background: 'var(--tm-surface2)', fontSize: 15, color: 'var(--tm-text)', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer' }}>✕</button>
       </div>
 
       {/* Standort-Chips */}
@@ -253,19 +253,19 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
             style={{
               border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700,
               whiteSpace: 'nowrap', cursor: 'pointer',
-              background: ort === s ? NAVY : '#fff', color: ort === s ? '#fff' : '#333',
-              boxShadow: ort === s ? 'none' : 'inset 0 0 0 0.5px rgba(60,60,67,0.2)',
+              background: ort === s ? NAVY : '#fff', color: ort === s ? '#fff' : 'var(--tm-text)',
+              boxShadow: ort === s ? 'none' : 'inset 0 0 0 0.5px var(--tm-line)',
             }}>{ort === s ? '📍 ' : ''}{s}</button>
         ))}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 14px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {error && (
-          <div style={{ ...CARD, background: '#FEF2F2', color: '#B91C1C', fontSize: 13 }}>
-            ⚠️ {error} <button onClick={load} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>Erneut</button>
+          <div style={{ ...CARD, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13 }}>
+            ⚠️ {error} <button onClick={load} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>Erneut</button>
           </div>
         )}
-        {!data && !error && <div style={{ ...CARD, color: '#999', fontSize: 13 }}>Laden…</div>}
+        {!data && !error && <div style={{ ...CARD, color: 'var(--tm-muted)', fontSize: 13 }}>Laden…</div>}
 
         {/* Bestell-Listen (aktiver Standort oder alle) */}
         {data && (ort ? [bedarfBlock(ort)] : data.standorte.map((s) => bedarfBlock(s)))}
@@ -274,10 +274,10 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {data && (
           <div style={CARD}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontSize: 15.5, fontWeight: 800, color: '#111' }}>🧺 Merkliste</span>
-              <span style={{ fontSize: 11, color: '#8E8E93' }}>{data.artikel.length} Produkte</span>
+              <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>🧺 Merkliste</span>
+              <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{data.artikel.length} Produkte</span>
             </div>
-            {!ort && <p style={{ margin: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: '#92400E' }}>👆 Oben den Standort wählen — dann Produkt antippen zum Nachbestellen.</p>}
+            {!ort && <p style={{ margin: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: 'var(--tm-yellow)' }}>👆 Oben den Standort wählen — dann Produkt antippen zum Nachbestellen.</p>}
             <input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Suchen…"
               style={{ ...INPUT, width: '100%', boxSizing: 'border-box', marginTop: 8 }} />
             {/* Kategorie-Chips */}
@@ -293,16 +293,16 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             )}
-            {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: '#A9A499' }}>Merkliste ist leer — unten pflegen (Admin).</p>}
-            {data.artikel.length > 0 && gefiltert.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: '#A9A499' }}>Nichts gefunden.</p>}
+            {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Merkliste ist leer — unten pflegen (Admin).</p>}
+            {data.artikel.length > 0 && gefiltert.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Nichts gefunden.</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginTop: 10 }}>
               {gefiltert.map((a) => {
                 const gemeldet = istGemeldet(a.name)
                 return (
                   <div key={a.id} className={gemeldet ? 'mat-pop' : undefined} style={{
                     display: 'flex', flexDirection: 'column', gap: 6, borderRadius: 12, padding: '8px 10px 10px',
-                    background: '#fff',
-                    boxShadow: gemeldet ? `inset 0 0 0 1.5px ${GRUEN}` : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                    background: 'var(--tm-card)',
+                    boxShadow: gemeldet ? `inset 0 0 0 1.5px ${GRUEN}` : 'inset 0 0 0 0.5px var(--tm-line)',
                   }}>
                     {a.bild && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -310,12 +310,12 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         style={{ width: '100%', height: 78, objectFit: 'contain' }} />
                     )}
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1814', lineHeight: 1.25, minHeight: 31 }}>{a.name}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--tm-text)', lineHeight: 1.25, minHeight: 31 }}>{a.name}</span>
                     <button className="mat-tap" onClick={() => melden(a.name, 'm' + a.id)} disabled={busy === 'm' + a.id}
                       style={{
                         border: 'none', borderRadius: 999, padding: '8px 0', fontSize: 12, fontWeight: 800,
                         cursor: 'pointer', opacity: ort || gemeldet ? 1 : 0.45,
-                        background: gemeldet ? '#E8F5EC' : NAVY, color: gemeldet ? '#166534' : '#fff',
+                        background: gemeldet ? 'var(--tm-green-soft)' : NAVY, color: gemeldet ? 'var(--tm-green)' : '#fff',
                       }}>
                       {gemeldet ? '✓ Auf der Liste' : '＋ Nachbestellen'}
                     </button>
@@ -329,8 +329,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {/* Freitext-KI */}
         {data && (
           <div style={CARD}>
-            <span style={{ fontSize: 15.5, fontWeight: 800, color: '#111' }}>✨ Etwas Besonderes?</span>
-            <p style={{ margin: '6px 0 8px', fontSize: 12, color: '#8A8578', lineHeight: 1.45 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>✨ Etwas Besonderes?</span>
+            <p style={{ margin: '6px 0 8px', fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
               Kurz beschreiben, was fehlt — die KI schlägt das passende Produkt vor (auch wenn es nicht auf der Merkliste steht).
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -344,18 +344,18 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             {vorschlag && (
-              <div style={{ marginTop: 10, borderRadius: 12, background: '#FAFAF8', border: '0.5px solid rgba(60,60,67,0.15)', padding: '10px 12px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1A1814' }}>
-                  {vorschlag.name} {vorschlag.artikelId ? <span style={{ fontSize: 10.5, fontWeight: 700, color: '#166534', background: '#E8F5EC', borderRadius: 999, padding: '2px 7px' }}>aus der Merkliste</span> : <span style={{ fontSize: 10.5, fontWeight: 700, color: '#8E8E93', background: 'rgba(118,118,128,0.1)', borderRadius: 999, padding: '2px 7px' }}>neu</span>}
+              <div style={{ marginTop: 10, borderRadius: 12, background: 'var(--tm-surface2)', border: '0.5px solid var(--tm-line)', padding: '10px 12px' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text)' }}>
+                  {vorschlag.name} {vorschlag.artikelId ? <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-green)', background: 'var(--tm-green-soft)', borderRadius: 999, padding: '2px 7px' }}>aus der Merkliste</span> : <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '2px 7px' }}>neu</span>}
                 </div>
-                {vorschlag.hinweis && <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: 3 }}>{vorschlag.hinweis}</div>}
+                {vorschlag.hinweis && <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginTop: 3 }}>{vorschlag.hinweis}</div>}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <button className="mat-tap" onClick={() => { melden(vorschlag.name, 'v1'); setVorschlag(null); setFrei('') }} disabled={!ort}
                     style={{ flex: 1, border: 'none', borderRadius: 999, padding: '9px 0', fontSize: 12.5, fontWeight: 800, background: NAVY, color: '#fff', cursor: 'pointer', opacity: ort ? 1 : 0.45 }}>＋ Nachbestellen</button>
                   <button className="mat-tap" onClick={() => setVorschlag(null)}
-                    style={{ border: 'none', borderRadius: 999, padding: '9px 12px', fontSize: 12, background: 'rgba(118,118,128,0.12)', color: '#666', cursor: 'pointer' }}>✕</button>
+                    style={{ border: 'none', borderRadius: 999, padding: '9px 12px', fontSize: 12, background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
                 </div>
-                {!ort && <div style={{ marginTop: 6, fontSize: 11, color: '#92400E' }}>Oben zuerst den Standort wählen.</div>}
+                {!ort && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--tm-yellow)' }}>Oben zuerst den Standort wählen.</div>}
               </div>
             )}
           </div>
@@ -365,7 +365,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {data?.admin && (
           <div style={CARD}>
             <button onClick={() => setEditListe(!editListe)}
-              style={{ border: 'none', background: 'none', padding: 0, fontSize: 13, color: '#555', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ border: 'none', background: 'none', padding: 0, fontSize: 13, color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>
               {editListe ? '▾' : '▸'} Merkliste verwalten ({data.artikel.length})
             </button>
             {editListe && (
@@ -374,28 +374,28 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 12.5 }}>
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {a.name}
-                      {a.url ? <span style={{ color: '#166534' }}> · 🔗</span> : null}
-                      {a.asin ? <span style={{ color: '#16A34A' }}> · 🛒</span> : null}
-                      {a.menge && a.menge > 1 ? <span style={{ color: '#8E8E93' }}> · {a.menge}×</span> : null}
+                      {a.url ? <span style={{ color: 'var(--tm-green)' }}> · 🔗</span> : null}
+                      {a.asin ? <span style={{ color: 'var(--tm-green)' }}> · 🛒</span> : null}
+                      {a.menge && a.menge > 1 ? <span style={{ color: 'var(--tm-muted)' }}> · {a.menge}×</span> : null}
                     </span>
                     <select value={a.kategorie && KATEGORIEN.includes(a.kategorie) ? a.kategorie : ''}
                       onChange={(e) => {
                         const artikel = data.artikel.map((x) => x.id === a.id ? { ...x, kategorie: e.target.value || undefined } : x)
                         patch({ artikel }, 'kat' + a.id)
                       }}
-                      style={{ borderRadius: 8, border: '0.5px solid rgba(60,60,67,0.25)', padding: '4px 6px', fontSize: 12, maxWidth: 130, background: '#fff' }}>
+                      style={{ borderRadius: 8, border: '0.5px solid var(--tm-line)', padding: '4px 6px', fontSize: 12, maxWidth: 130, background: 'var(--tm-card)' }}>
                       <option value="">— Kategorie</option>
                       {KATEGORIEN.map((k) => <option key={k} value={k}>{k}</option>)}
                     </select>
                     <button onClick={() => patch({ artikel: data.artikel.filter((x) => x.id !== a.id) }, 'del' + a.id)}
-                      style={{ border: 'none', background: 'none', color: '#B91C1C', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                      style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontSize: 12, cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
                   <input value={neuArtikel.name} onChange={(e) => setNeuArtikel({ ...neuArtikel, name: e.target.value })} placeholder="Produkt (z. B. Spülmittel)" style={INPUT} />
                   <div style={{ display: 'flex', gap: 6 }}>
                     <select value={neuArtikel.kategorie} onChange={(e) => setNeuArtikel({ ...neuArtikel, kategorie: e.target.value })}
-                      style={{ ...INPUT, flex: 1, minWidth: 0, background: '#fff' }}>
+                      style={{ ...INPUT, flex: 1, minWidth: 0, background: 'var(--tm-card)' }}>
                       <option value="">— Kategorie (optional)</option>
                       {KATEGORIEN.map((k) => <option key={k} value={k}>{k}</option>)}
                     </select>
@@ -431,12 +431,12 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {data?.admin && (
           <div style={CARD}>
             <button onClick={() => setEditAdr(!editAdr)}
-              style={{ border: 'none', background: 'none', padding: 0, fontSize: 13, color: '#555', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ border: 'none', background: 'none', padding: 0, fontSize: 13, color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>
               {editAdr ? '▾' : '▸'} Lieferadressen & Chat-Bonus
             </button>
             {editAdr && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                <p style={{ margin: 0, fontSize: 11.5, color: '#8A8578', lineHeight: 1.45 }}>
+                <p style={{ margin: 0, fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
                   Adress-LABEL je Standort = so heißt der Eintrag im Amazon-/dm-Adressbuch (Paketbox!). Wird in Bestell-Ansagen genannt.
                 </p>
                 {data.standorte.map((s) => {
@@ -454,21 +454,21 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                       style={INPUT} />
                   )
                 })}
-                <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#8A8578', lineHeight: 1.45 }}>
+                <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
                   dm-Merklisten-Link (dm.de → Merkliste → Teilen) — erscheint als Bestell-Button.
                 </p>
                 <input defaultValue={data.merklisteUrl ?? ''} onBlur={(e) => {
                   const u = e.target.value.trim()
                   if (u !== (data.merklisteUrl ?? '')) patch({ merklisteUrl: u }, 'mlurl')
                 }} placeholder="https://www.dm.de/… (geteilte Merkliste)" style={INPUT} />
-                <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#8A8578', lineHeight: 1.45 }}>
+                <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
                   Optional: Intern-Gruppe verknüpfen — dann liest die KI auch formlose Chat-/Sprachnachrichten als Meldung mit. {data.gruppeId ? '✓ verknüpft' : 'Nicht verknüpft.'}
                 </p>
-                {!gruppen && <button onClick={loadGruppen} style={{ alignSelf: 'flex-start', border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700, background: 'rgba(118,118,128,0.12)', color: '#333', cursor: 'pointer' }}>Gruppe wählen…</button>}
-                {gruppen && gruppen.length === 0 && <span style={{ fontSize: 11.5, color: '#8A8578' }}>Keine Intern-Gruppen gefunden — erst im Intern-Tab anlegen.</span>}
+                {!gruppen && <button onClick={loadGruppen} style={{ alignSelf: 'flex-start', border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700, background: 'var(--tm-surface2)', color: 'var(--tm-text)', cursor: 'pointer' }}>Gruppe wählen…</button>}
+                {gruppen && gruppen.length === 0 && <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>Keine Intern-Gruppen gefunden — erst im Intern-Tab anlegen.</span>}
                 {gruppen && gruppen.length > 0 && (
                   <select value={data.gruppeId ?? ''} onChange={(e) => { if (e.target.value) patch({ gruppeId: e.target.value }, 'gruppe') }}
-                    style={{ ...INPUT, background: '#fff' }}>
+                    style={{ ...INPUT, background: 'var(--tm-card)' }}>
                     <option value="" disabled>Gruppe auswählen…</option>
                     {gruppen.map((g) => <option key={g.id} value={g.id}>{g.emoji} {g.name}</option>)}
                   </select>

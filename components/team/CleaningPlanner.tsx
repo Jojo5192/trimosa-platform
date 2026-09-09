@@ -501,8 +501,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       {[{ id: '', name: 'Alle' }, ...persons, ...(hasUnassigned ? [{ id: 'none', name: 'Ohne Zuordnung' }] : [])].map((p) => (
         <button key={p.id || 'alle'} onClick={() => setPersonFilter(p.id)} style={{
           flexShrink: 0, padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700,
-          background: personFilter === p.id ? '#12222E' : 'rgba(120,120,128,0.12)',
-          color: personFilter === p.id ? '#fff' : '#3C3C43', cursor: 'pointer', whiteSpace: 'nowrap',
+          background: personFilter === p.id ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+          color: personFilter === p.id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',
         }}>{p.id && p.id !== 'none' ? `👤 ${p.name}` : p.name}</button>
       ))}
     </div>
@@ -529,7 +529,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         type MonthOut = NonNullable<typeof costs>['months'][number]
         const r2 = (x: number) => Math.round(x * 100) / 100
         const HAIR = 'inset 0 0 0 0.5px rgba(60,60,67,0.14)'
-        const eyebrowStyle = { fontSize: 12, fontWeight: 700, color: '#8A8578', letterSpacing: '0.06em', margin: '16px 4px 8px' } as const
+        const eyebrowStyle = { fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.06em', margin: '16px 4px 8px' } as const
         const deltaChip = (diff: number | null, small = false, neutralUnter = 1) => {
           if (diff == null) return null
           const neutral = Math.abs(diff) < neutralUnter
@@ -537,8 +537,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             <span style={{
               fontSize: small ? 10.5 : 11.5, fontWeight: 700, padding: small ? '1px 7px' : '3px 9px',
               borderRadius: 999, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
-              background: neutral ? 'rgba(120,120,128,0.10)' : diff > 0 ? '#FEE2E2' : '#DCFCE7',
-              color: neutral ? '#8E8E93' : diff > 0 ? '#B91C1C' : '#15803D',
+              background: neutral ? 'var(--tm-surface2)' : diff > 0 ? 'var(--tm-red-soft)' : 'var(--tm-green-soft)',
+              color: neutral ? 'var(--tm-muted)' : diff > 0 ? 'var(--tm-red)' : 'var(--tm-green)',
             }}>{Math.abs(diff) < 1 ? '±0 €' : eurSigned(r2(diff))}</span>
           )
         }
@@ -656,20 +656,20 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             return (
               <button key={m.key} onClick={() => toggle(`m|${m.key}`)} style={{
                 display: 'flex', width: '100%', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
-                background: '#fff', border: 'none', borderRadius: 18, padding: '13px 16px', marginBottom: 8,
+                background: 'var(--tm-card)', border: 'none', borderRadius: 18, padding: '13px 16px', marginBottom: 8,
                 boxShadow: HAIR, WebkitTapHighlightColor: 'transparent',
               }}>
-                <span style={{ color: '#C7C2B8', fontSize: 11 }}>▸</span>
+                <span style={{ color: 'var(--tm-muted2)', fontSize: 11 }}>▸</span>
                 <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: '#111', letterSpacing: -0.2 }}>{m.label}</span>
-                  <span style={{ display: 'block', fontSize: 11.5, color: '#9CA3AF', marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 700, color: 'var(--tm-text)', letterSpacing: -0.2 }}>{m.label}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tm-muted)', marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
                     {kind === 'aus'
                       ? `${m.slots.length} Reinigungen geplant${m.partialEnd ? ' · teilweise erfasst' : ''}`
                       : `${m.slots.length} Reinigungen · erwartet ${m.partialStart ? '~' : ''}${eur(m.total)}${showInv && lastInv ? ` · Rechnung ${lastInv.amount_invoiced != null ? eur(lastInv.amount_invoiced) : '?'}` : ''}`}
                   </span>
                 </span>
                 {kind === 'aus'
-                  ? <span style={{ fontSize: 14.5, fontWeight: 700, color: '#8A7020', fontVariantNumeric: 'tabular-nums' }}>{m.partialEnd ? '~' : ''}{eur(m.total)}</span>
+                  ? <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tm-accent-dark)', fontVariantNumeric: 'tabular-nums' }}>{m.partialEnd ? '~' : ''}{eur(m.total)}</span>
                   : showInv
                     ? (lastInv
                       ? (lastInv.status === 'fehler'
@@ -699,27 +699,27 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           const colS = { width: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums', flexShrink: 0 } as const
 
           return (
-            <div key={m.key} style={{ background: '#fff', borderRadius: 18, padding: '15px 16px 13px', marginBottom: 10, boxShadow: HAIR }}>
+            <div key={m.key} style={{ background: 'var(--tm-card)', borderRadius: 18, padding: '15px 16px 13px', marginBottom: 10, boxShadow: HAIR }}>
               {/* Kopf */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {kind !== 'aktuell' && (
-                  <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: '#C7C2B8', fontSize: 12, cursor: 'pointer', padding: 0 }}>▾</button>
+                  <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: 'var(--tm-muted2)', fontSize: 12, cursor: 'pointer', padding: 0 }}>▾</button>
                 )}
-                <span style={{ fontSize: 18, fontWeight: 800, color: '#111', letterSpacing: -0.3, flex: 1 }}>{m.label}</span>
-                <span style={{ fontSize: 12, color: '#9CA3AF' }}>{m.slots.length} Reinigungen · {personLabel}</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: -0.3, flex: 1 }}>{m.label}</span>
+                <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>{m.slots.length} Reinigungen · {personLabel}</span>
               </div>
 
               {/* Hero: ERWARTET · ABGERECHNET · Δ · Ampel */}
               <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap', margin: '10px 0 8px' }}>
                 <span>
-                  <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em' }}>ERWARTET</span>
-                  <span style={{ fontSize: 26, fontWeight: 800, color: '#8A7020', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
+                  <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted2)', letterSpacing: '0.05em' }}>ERWARTET</span>
+                  <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--tm-accent-dark)', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
                 </span>
                 {checkedInv && checkedInv.amount_invoiced != null && (
                   <>
                     <span>
-                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em' }}>ABGERECHNET</span>
-                      <span style={{ fontSize: 26, fontWeight: 800, color: '#12222E', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(checkedInv.amount_invoiced)}</span>
+                      <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted2)', letterSpacing: '0.05em' }}>ABGERECHNET</span>
+                      <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: -0.4, fontVariantNumeric: 'tabular-nums' }}>{eur(checkedInv.amount_invoiced)}</span>
                     </span>
                     <span style={{ paddingBottom: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
                       {deltaChip(checkedInv.amount_invoiced - m.total)}
@@ -732,7 +732,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               </div>
 
               {/* Je Wohnung: EINE Zeile — alles Weitere erst beim Antippen */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 0 3px', fontSize: 10, fontWeight: 700, color: '#B0AA9C', letterSpacing: '0.05em' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 0 3px', fontSize: 10, fontWeight: 700, color: 'var(--tm-muted2)', letterSpacing: '0.05em' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>WOHNUNG</span>
                 <span style={colS}>ERWARTET</span>
                 {checkedInv && <span style={colS}>ABGER.</span>}
@@ -747,32 +747,32 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 const nIssues = checkedInv ? issuesOf(title) : 0
                 return (
                   <div key={id}>
-                    <button onClick={() => toggle(k)} style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                    <button onClick={() => toggle(k)} style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
                       <span style={{ flex: 1, minWidth: 0, display: 'flex', gap: 7, alignItems: 'center' }}>
                         {checkedInv && (
                           <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: nIssues ? '#EF4444' : '#22C55E' }} />
                         )}
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-                        <span style={{ color: '#C7C2B8', fontSize: 9, flexShrink: 0 }}>{open ? '▾' : '▸'}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                        <span style={{ color: 'var(--tm-muted2)', fontSize: 9, flexShrink: 0 }}>{open ? '▾' : '▸'}</span>
                       </span>
-                      <span style={{ ...colS, fontSize: 13, color: checkedInv ? '#6B7280' : '#111', fontWeight: checkedInv ? 500 : 700 }}>{eur(row.total)}</span>
+                      <span style={{ ...colS, fontSize: 13, color: checkedInv ? 'var(--tm-muted)' : 'var(--tm-text)', fontWeight: checkedInv ? 500 : 700 }}>{eur(row.total)}</span>
                       {checkedInv && (
-                        <span style={{ ...colS, fontSize: 13, fontWeight: 700, color: '#111' }}>{wa ? eur(wa.abgerechnet) : '—'}</span>
+                        <span style={{ ...colS, fontSize: 13, fontWeight: 700, color: 'var(--tm-text)' }}>{wa ? eur(wa.abgerechnet) : '—'}</span>
                       )}
                       {checkedInv && (
                         <span style={{ ...colS, width: 56, display: 'flex', justifyContent: 'flex-end' }}>{wa ? deltaChip(wa.abgerechnet - row.total, true, Math.max(30, row.total * 0.15)) : null}</span>
                       )}
                     </button>
                     {open && (
-                      <div style={{ padding: '6px 0 8px 14px', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                        <p style={{ margin: 0, fontSize: 11.5, color: '#9CA3AF' }}>
+                      <div style={{ padding: '6px 0 8px 14px', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
+                        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--tm-muted)' }}>
                           {row.count}× · {fmtDur(row.minutes)}
                           {row.surcharge > 0.005 ? ` · Zulagen ${eur(row.surcharge)}` : ''}
                           {row.travel > 0.005 ? ` · Anfahrten ${eur(row.travel)}` : ''}
                           {row.vat > 0.005 ? ` · USt ${eur(row.vat)}` : ''}
                         </p>
                         {ab && (
-                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: !ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? '#15803D' : '#B91C1C' }}>
+                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: !ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? 'var(--tm-green)' : 'var(--tm-red)' }}>
                             📅 {ab.abgerechnetTermine}/{ab.erwartetTermine} Termine abgerechnet
                             {!ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? ' — alle gedeckt' : ''}
                             {ab.fehlend.length ? ` · fehlt: ${ab.fehlend.map(fmtShort).join(', ')}` : ''}
@@ -781,10 +781,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                           </p>
                         )}
                         {wa?.ursache && (
-                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#B45309', lineHeight: 1.45 }}>→ {wa.ursache}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--tm-yellow)', lineHeight: 1.45 }}>→ {wa.ursache}</p>
                         )}
                         {m.slots.filter((s) => s.listingId === id).map((s) => (
-                          <div key={s.stay.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: '#6B7280' }}>
+                          <div key={s.stay.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>
                             <span>
                               {wdShort(s.effDay)} {fmtShort(s.effDay)}
                               {s.sameDayArrival ? ' · Wechseltag' : ''}
@@ -802,9 +802,9 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               {checkedInv && (checkedInv.analysis?.wohnungen ?? [])
                 .filter((w) => w.wohnung === 'Ohne Wohnungs-Zuordnung' && Math.abs(w.abgerechnet) > 0.005)
                 .map((w, ozi) => (
-                  <div key={`ohne-zu-${ozi}`} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                    <span style={{ flex: 1, fontSize: 12.5, color: '#9CA3AF' }}>Ohne Wohnungs-Zuordnung (in Summe enthalten)</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>{eur(w.abgerechnet)}</span>
+                  <div key={`ohne-zu-${ozi}`} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
+                    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--tm-muted)' }}>Ohne Wohnungs-Zuordnung (in Summe enthalten)</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--tm-muted)', fontVariantNumeric: 'tabular-nums' }}>{eur(w.abgerechnet)}</span>
                   </div>
                 ))}
 
@@ -815,21 +815,21 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 const trips = [...m.trips.values()].sort((a, b) => a.day.localeCompare(b.day))
                 return (
                   <div>
-                    <button onClick={() => toggle(k)} style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
-                      <span style={{ flex: 1, fontSize: 12.5, color: '#6B7280' }}>
-                        <span style={{ color: '#C7C2B8', fontSize: 9, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>
+                    <button onClick={() => toggle(k)} style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
+                      <span style={{ flex: 1, fontSize: 12.5, color: 'var(--tm-muted)' }}>
+                        <span style={{ color: 'var(--tm-muted2)', fontSize: 9, marginRight: 5 }}>{openKeys[k] ? '▾' : '▸'}</span>
                         Zulagen & Anfahrten
                       </span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>{eur(m.surcharge + m.travel)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--tm-text)', fontVariantNumeric: 'tabular-nums' }}>{eur(m.surcharge + m.travel)}</span>
                     </button>
                     {openKeys[k] && (
-                      <div style={{ padding: '4px 0 8px 14px', boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                      <div style={{ padding: '4px 0 8px 14px', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
                         {zSlots.map((s) => {
                           const zk = dayKind(s.effDay)
                           return (
-                            <div key={`z-${s.stay.id}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: '#6B7280' }}>
+                            <div key={`z-${s.stay.id}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>
                               <span>{wdShort(s.effDay)} {fmtShort(s.effDay)} · {listings[s.listingId]?.title ?? '—'} · {zk === 'besonders' ? 'bes. Feiertag' : zk === 'feiertag' ? 'Feiertag' : 'Sonntag'}</span>
-                              <span style={{ fontWeight: 700, color: '#B45309', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eurSigned(slotSurcharge(s))}</span>
+                              <span style={{ fontWeight: 700, color: 'var(--tm-yellow)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eurSigned(slotSurcharge(s))}</span>
                             </div>
                           )
                         })}
@@ -837,7 +837,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                           const info = listings[t.listingId]
                           const perCleaning = t.count === 1 && cleaning.ratesByPerson?.[t.personId]?.travelPerCleaning
                           return (
-                            <div key={`t-${ti}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: '#6B7280' }}>
+                            <div key={`t-${ti}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '3px 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>
                               <span>{wdShort(t.day)} {fmtShort(t.day)} · Anfahrt {perCleaning ? info?.title ?? '—' : info?.group ?? info?.title ?? '—'}</span>
                               <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{eur(t.fee)}</span>
                             </div>
@@ -851,11 +851,11 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
 
               {/* Summe */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 0' }}>
-                <span style={{ fontSize: 14.5, fontWeight: 800, color: '#111' }}>Summe {m.label}{m.vat > 0.005 ? ' (brutto)' : ''}</span>
-                <span style={{ fontSize: 19, fontWeight: 800, color: '#8A7020', fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--tm-text)' }}>Summe {m.label}{m.vat > 0.005 ? ' (brutto)' : ''}</span>
+                <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--tm-accent-dark)', fontVariantNumeric: 'tabular-nums' }}>{eur(m.total)}</span>
               </div>
               {(m.vat > 0.005 || m.partialStart || m.partialEnd) && (
-                <p style={{ fontSize: 11, color: '#B0AA9C', margin: '2px 0 0', textAlign: 'right' }}>
+                <p style={{ fontSize: 11, color: 'var(--tm-muted2)', margin: '2px 0 0', textAlign: 'right' }}>
                   {m.vat > 0.005 ? `netto ${eur(m.net)} + USt ${eur(m.vat)}` : ''}
                   {m.vat > 0.005 && (m.partialStart || m.partialEnd) ? ' · ' : ''}
                   {m.partialStart
@@ -866,7 +866,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
 
               {/* ── Rechnungs-Prüfung (nicht im Ausblick) ── */}
               {kind !== 'aus' && (
-                <div style={{ marginTop: 12, paddingTop: 10, boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.15)' }}>
+                <div style={{ marginTop: 12, paddingTop: 10, boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                   {monthInvoices.map((inv) => {
                     const diff = inv.amount_invoiced != null && inv.amount_expected != null
                       ? inv.amount_invoiced - inv.amount_expected : (inv.analysis?.differenz ?? null)
@@ -880,12 +880,12 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                       <div key={inv.id} style={{ marginBottom: 8 }}>
                         <button onClick={() => setInvOpen(open ? null : inv.id)} style={{
                           width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none',
-                          background: inv.status === 'fehler' ? '#FEF2F2' : ok ? '#F0FDF4' : '#FFFBEB',
+                          background: inv.status === 'fehler' ? 'var(--tm-red-soft)' : ok ? 'var(--tm-green-soft)' : 'var(--tm-yellow-soft)',
                           borderRadius: 12, padding: '9px 12px',
-                          boxShadow: `inset 0 0 0 1px ${inv.status === 'fehler' ? '#FECACA' : ok ? '#BBF7D0' : '#FDE68A'}`,
+                          boxShadow: `inset 0 0 0 1px ${inv.status === 'fehler' ? 'var(--tm-line)' : ok ? 'var(--tm-line)' : 'var(--tm-line)'}`,
                         }}>
                           <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {inv.file_url === 'auto' ? '🔍 Automatische Prüfung' : `📄 ${inv.file_name ?? 'Rechnung'}`}{personName ? ` · ${personName}` : ''}
                             </span>
                             {inv.status === 'fehler'
@@ -894,26 +894,26 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                 ? chip('#FEF3C7', '#B45309', `${invPunkte.length} Prüfpunkt${invPunkte.length === 1 ? '' : 'e'}`)
                                 : chip('#DCFCE7', '#15803D', okLabel(inv))}
                           </span>
-                          <span style={{ display: 'block', fontSize: 12, color: '#6B7280', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+                          <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
                             {inv.status === 'fehler' ? 'Analyse fehlgeschlagen — antippen für Details'
                               : `Rechnung ${inv.amount_invoiced != null ? eur(inv.amount_invoiced) : '?'} · erwartet ${inv.amount_expected != null ? eur(inv.amount_expected) : '?'}${diff != null ? ` · ${eurSigned(diff)}` : ''}`}
                           </span>
                         </button>
                         {open && (
-                          <div style={{ padding: '10px 4px 0', fontSize: 12.5, color: '#374151' }}>
+                          <div style={{ padding: '10px 4px 0', fontSize: 12.5, color: 'var(--tm-text)' }}>
                             {/* Prüfpunkte — kurz und deterministisch */}
                             {inv.status === 'fehler' && inv.analysis?.einschaetzung && (
-                              <p style={{ margin: '0 0 8px', color: '#B91C1C', lineHeight: 1.5 }}>{inv.analysis.einschaetzung}</p>
+                              <p style={{ margin: '0 0 8px', color: 'var(--tm-red)', lineHeight: 1.5 }}>{inv.analysis.einschaetzung}</p>
                             )}
                             {inv.status !== 'fehler' && (invPunkte.length ? (
                               <div style={{ margin: '0 0 10px' }}>
                                 {invPunkte.slice(0, 6).map((p, i) => (
                                   <p key={i} style={{ margin: '0 0 4px', fontSize: 12, lineHeight: 1.45 }}>{p.icon} {p.text}</p>
                                 ))}
-                                {invPunkte.length > 6 && <p style={{ margin: 0, fontSize: 11.5, color: '#9CA3AF' }}>+{invPunkte.length - 6} weitere</p>}
+                                {invPunkte.length > 6 && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--tm-muted)' }}>+{invPunkte.length - 6} weitere</p>}
                               </div>
                             ) : (
-                              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#15803D' }}>
+                              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--tm-green)' }}>
                                 {hatTiefe(inv)
                                   ? '✓ Keine Auffälligkeiten — Summe und Termine passen zur Planung.'
                                   : '✓ Summe passt zur Erwartung — Termin- und Wohnungs-Abgleich liefert nur die automatische Prüfung.'}
@@ -923,7 +923,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                             {(inv.analysis?.positionen ?? []).length > 0 && (
                               <div style={{ margin: '0 0 10px' }}>
                                 {(inv.analysis!.positionen!).slice(0, 8).map((p, i) => (
-                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', fontSize: 11.5, color: '#6B7280' }}>
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>
                                     <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.text}</span>
                                     <span style={{ fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{p.betrag != null ? eur2(p.betrag) : '—'}</span>
                                   </div>
@@ -938,31 +938,31 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                   const pOpen = !!openKeys[pk]
                                   const posn = b.positionen ?? []
                                   return (
-                                    <div key={b.id} style={{ boxShadow: 'inset 0 -0.5px 0 rgba(60,60,67,0.1)' }}>
+                                    <div key={b.id} style={{ boxShadow: 'inset 0 -0.5px 0 var(--tm-line)' }}>
                                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
                                         <button onClick={() => toggle(pk)} style={{ flex: 1, minWidth: 0, display: 'flex', gap: 6, alignItems: 'center', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
                                           <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: b.zugeordnet ? '#22C55E' : '#D1D5DB' }} />
-                                          <span style={{ fontSize: 12.5, fontWeight: 600, color: b.zugeordnet ? '#111' : '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          <span style={{ fontSize: 12.5, fontWeight: 600, color: b.zugeordnet ? 'var(--tm-text)' : 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {fmtShort(b.datum)} · {eur2(b.betrag)}{b.zugeordnet ? '' : ' · nicht mitgezählt'}
                                           </span>
-                                          <span style={{ color: '#C7C2B8', fontSize: 9, flexShrink: 0 }}>{pOpen ? '▾' : '▸'}</span>
+                                          <span style={{ color: 'var(--tm-muted2)', fontSize: 9, flexShrink: 0 }}>{pOpen ? '▾' : '▸'}</span>
                                         </button>
                                         <a href={b.url} target="_blank" rel="noreferrer" style={{
                                           flexShrink: 0, padding: '4px 11px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: '#fff',
-                                          background: '#12222E', textDecoration: 'none',
+                                          background: 'var(--tm-navy)', textDecoration: 'none',
                                         }}>📄 PDF</a>
                                       </div>
                                       {pOpen && (
                                         <div style={{ padding: '0 0 8px 13px' }}>
-                                          <p style={{ margin: 0, fontSize: 11.5, color: '#9CA3AF' }}>
+                                          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--tm-muted)' }}>
                                             {b.text}
                                             {b.zeitraum && (b.zeitraum.von || b.zeitraum.bis)
                                               ? ` · Leistungszeitraum ${b.zeitraum.von ? fmtShort(b.zeitraum.von) : '?'}–${b.zeitraum.bis ? fmtShort(b.zeitraum.bis) : '?'}` : ''}
                                             {b.wohnung ? ` · ${b.wohnung}` : ''}
                                           </p>
-                                          {b.grund && <p style={{ margin: '3px 0 0', fontSize: 11.5, color: '#B45309' }}>{b.grund}</p>}
+                                          {b.grund && <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--tm-yellow)' }}>{b.grund}</p>}
                                           {posn.map((p, pi) => (
-                                            <div key={pi} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', fontSize: 11.5, color: '#6B7280' }}>
+                                            <div key={pi} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '2px 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>
                                               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                 {p.datum ? `${fmtShort(p.datum)} · ` : ''}{p.wohnung && p.wohnung !== 'unbekannt' ? `${p.wohnung} · ` : ''}{p.text}
                                               </span>
@@ -979,23 +979,23 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                             {/* KI-Prosa + Datei/Löschen — alles hinter einem Toggle bzw. klein */}
                             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                               {inv.status !== 'fehler' && (inv.analysis?.einschaetzung || (inv.analysis?.auffaelligkeiten ?? []).length > 0) && (
-                                <button onClick={() => toggle(kiKey)} style={{ border: 'none', background: 'rgba(120,120,128,0.10)', borderRadius: 999, padding: '5px 12px', fontSize: 11.5, fontWeight: 700, color: '#3C3C43', cursor: 'pointer' }}>
+                                <button onClick={() => toggle(kiKey)} style={{ border: 'none', background: 'var(--tm-surface2)', borderRadius: 999, padding: '5px 12px', fontSize: 11.5, fontWeight: 700, color: 'var(--tm-muted)', cursor: 'pointer' }}>
                                   {openKeys[kiKey] ? '▾' : '▸'} KI-Einschätzung
                                 </button>
                               )}
                               {inv.file_url && inv.file_url !== 'auto' && (
-                                <a href={inv.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#8A7020' }}>Datei öffnen ↗</a>
+                                <a href={inv.file_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-accent-dark)' }}>Datei öffnen ↗</a>
                               )}
-                              <button onClick={() => deleteInvoice(inv.id)} style={{ border: 'none', background: 'none', fontSize: 12, fontWeight: 700, color: '#B91C1C', cursor: 'pointer', padding: 0 }}>🗑 Löschen</button>
+                              <button onClick={() => deleteInvoice(inv.id)} style={{ border: 'none', background: 'none', fontSize: 12, fontWeight: 700, color: 'var(--tm-red)', cursor: 'pointer', padding: 0 }}>🗑 Löschen</button>
                             </div>
                             {openKeys[kiKey] && inv.status !== 'fehler' && (
-                              <div style={{ margin: '8px 0 0', padding: '8px 10px', borderRadius: 10, background: '#FAFAF8', fontSize: 12, lineHeight: 1.55 }}>
+                              <div style={{ margin: '8px 0 0', padding: '8px 10px', borderRadius: 10, background: 'var(--tm-surface2)', fontSize: 12, lineHeight: 1.55 }}>
                                 {inv.analysis?.einschaetzung && <p style={{ margin: '0 0 6px' }}>{inv.analysis.einschaetzung}</p>}
                                 {(inv.analysis?.auffaelligkeiten ?? []).map((a, i) => (
-                                  <p key={`a-${i}`} style={{ margin: '0 0 3px', color: '#B45309' }}>⚠️ {a}</p>
+                                  <p key={`a-${i}`} style={{ margin: '0 0 3px', color: 'var(--tm-yellow)' }}>⚠️ {a}</p>
                                 ))}
                                 {(inv.analysis?.hinweise ?? []).map((h, i) => (
-                                  <p key={`h-${i}`} style={{ margin: '0 0 3px', color: '#9CA3AF' }}>ℹ️ {h}</p>
+                                  <p key={`h-${i}`} style={{ margin: '0 0 3px', color: 'var(--tm-muted)' }}>ℹ️ {h}</p>
                                 ))}
                               </div>
                             )}
@@ -1005,22 +1005,22 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     )
                   })}
                   {invBusy === m.key ? (
-                    <p style={{ fontSize: 12.5, color: '#8A7020', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude sucht die Belege im Mail-Import und gleicht ab…</p>
+                    <p style={{ fontSize: 12.5, color: 'var(--tm-accent-dark)', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude sucht die Belege im Mail-Import und gleicht ab…</p>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
                       {personFilter && personFilter !== 'none' ? (
                         <button onClick={() => autoCheck(m.key, expectedPayload)} disabled={!!invBusy} style={{
                           padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
                           fontSize: 12.5, fontWeight: 700, color: '#fff',
-                          background: '#12222E', opacity: invBusy ? 0.5 : 1,
+                          background: 'var(--tm-navy)', opacity: invBusy ? 0.5 : 1,
                         }}>🔍 Rechnung aus Mail-Import prüfen ({personLabel})</button>
                       ) : (
-                        <span style={{ fontSize: 11.5, color: '#9CA3AF' }}>Für die automatische Prüfung oben eine 👤 Reinigungskraft wählen.</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>Für die automatische Prüfung oben eine 👤 Reinigungskraft wählen.</span>
                       )}
                       <button onClick={() => startUpload(m.key, expectedPayload)} disabled={!!invBusy} style={{
                         padding: '8px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
-                        fontSize: 12, fontWeight: 700, color: '#6B7280',
-                        background: 'rgba(120,120,128,0.10)', opacity: invBusy ? 0.5 : 1,
+                        fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)',
+                        background: 'var(--tm-surface2)', opacity: invBusy ? 0.5 : 1,
                       }}>📄 Selbst hochladen</button>
                     </div>
                   )}
@@ -1035,12 +1035,12 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         return (
           <div>
             {invError && (
-              <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#FEE2E2', color: '#B91C1C', fontSize: 12.5 }}>
-                {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: '#B91C1C', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+              <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 12.5 }}>
+                {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 800, cursor: 'pointer' }}>✕</button>
               </p>
             )}
             {pastData === null && (
-              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#9CA3AF' }}>⏳ Lade zurückliegende Monate…</p>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--tm-muted)' }}>⏳ Lade zurückliegende Monate…</p>
             )}
 
             {aktuell && (
@@ -1053,7 +1053,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               <>
                 <p style={eyebrowStyle}>ZURÜCKLIEGEND — RECHNUNGS-PRÜFUNG</p>
                 {rueck.map((m) => renderMonth(m, 'rueck'))}
-                <p style={{ fontSize: 10.5, color: '#B0AA9C', margin: '2px 4px 0', lineHeight: 1.5 }}>
+                <p style={{ fontSize: 10.5, color: 'var(--tm-muted2)', margin: '2px 4px 0', lineHeight: 1.5 }}>
                   Rückblick-Erwartungen rechnen mit den heutigen Zuordnungen & Sätzen — vor einem
                   Zuständigkeits-Wechsel (z. B. Sweet/Cozy bis Juni bei Tip-Top) weichen sie ab.
                 </p>
@@ -1067,10 +1067,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             )}
 
             {!aktuell && rueck.length === 0 && costs.future.length === 0 && (
-              <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
+              <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
             )}
             {costs.missingMinutes > 0 && (
-              <p style={{ fontSize: 11.5, color: '#B45309', margin: '10px 4px 0', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11.5, color: 'var(--tm-yellow)', margin: '10px 4px 0', lineHeight: 1.5 }}>
                 ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung — gerechnet mit {FALLBACK_MINUTES} Min. (Admin → 🧹 Reinigung pflegen).
               </p>
             )}
@@ -1080,16 +1080,16 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
 
       {/* ═══ 🗺 TOUREN ═══ */}
       {mode === 'touren' && (tours.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#8E8E93', fontSize: 13.5, padding: 30 }}>Keine Einsätze für {personLabel} in den nächsten 4 Wochen.</p>
+        <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>Keine Einsätze für {personLabel} in den nächsten 4 Wochen.</p>
       ) : tours.map(([day, groups]) => {
         const all = [...groups.values()].flat()
         const totalMin = all.reduce((a, s) => a + s.minutes, 0)
         const kind = dayKind(day)
         return (
-          <div key={day} style={{ marginBottom: 14, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: 'inset 0 0 0 0.5px rgba(60,60,67,0.15)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '11px 14px', background: day === today ? '#FAF5E4' : '#FCFBF9', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13.5, fontWeight: 800, color: day === today ? '#8A7020' : '#111' }}>{dayLabel(day, today)}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#6B7280' }}>
+          <div key={day} style={{ marginBottom: 14, background: 'var(--tm-card)', borderRadius: 16, overflow: 'hidden', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '11px 14px', background: day === today ? 'var(--tm-accent-soft)' : '#FCFBF9', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: day === today ? 'var(--tm-accent-dark)' : 'var(--tm-text)' }}>{dayLabel(day, today)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)' }}>
                 ⏱ {fmtDur(totalMin)} · 🚗 {groups.size} Anfahrt{groups.size === 1 ? '' : 'en'}{kind ? (kind === 'sonntag' ? ' · ☀️ Sonntag' : ' · 🎌 Feiertag') : ''}
               </span>
             </div>
@@ -1097,21 +1097,21 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               const info = listings[items[0].listingId]
               const pName = items[0].personId !== '-' ? (persons.find((p) => p.id === items[0].personId)?.name ?? null) : null
               return (
-                <div key={g} style={{ padding: '9px 14px', boxShadow: 'inset 0 0.5px 0 rgba(60,60,67,0.1)' }}>
-                  <p style={{ fontSize: 11.5, fontWeight: 800, color: '#8A7020', margin: '0 0 6px' }}>
+                <div key={g} style={{ padding: '9px 14px', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--tm-accent-dark)', margin: '0 0 6px' }}>
                     📍 {info?.group ?? info?.title ?? '—'}{pName && personFilter === '' ? ` · 👤 ${pName}` : ''} · {fmtDur(items.reduce((a, s) => a + s.minutes, 0))}
                   </p>
                   {items.map((s) => (
                     <div key={s.stay.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', alignItems: 'center' }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                         {listings[s.listingId]?.title}
-                        {cleaning.mine.includes(s.listingId) && <span style={{ color: '#8A7020' }}> · du</span>}
+                        {cleaning.mine.includes(s.listingId) && <span style={{ color: 'var(--tm-accent-dark)' }}> · du</span>}
                       </span>
                       <span style={{ display: 'inline-flex', gap: 5, flexShrink: 0, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11.5, color: '#6B7280' }}>{fmtDur(s.minutes)}</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>{fmtDur(s.minutes)}</span>
                         {s.sameDayArrival
-                          ? chip('#FFF7ED', '#C2410C', 'Wechsel')
-                          : s.recommended ? chip('#EFF6FF', '#1D4ED8', `von ${fmtShort(s.stay.checkOut)}`) : chip('#F0FDF4', '#15803D', 'flexibel')}
+                          ? chip('#FFF7ED', 'var(--tm-red)', 'Wechsel')
+                          : s.recommended ? chip('#EFF6FF', '#1D4ED8', `von ${fmtShort(s.stay.checkOut)}`) : chip('#F0FDF4', 'var(--tm-green)', 'flexibel')}
                       </span>
                     </div>
                   ))}
@@ -1131,15 +1131,15 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           else days.push({ iso: s.effDay, items: [s] })
         }
         return days.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#8E8E93' }}>
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--tm-muted)' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>🧹</p>
-            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#3C3C43' }}>Keine anstehenden Reinigungen für {personLabel} in den nächsten 4 Wochen.</p>
+            <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Keine anstehenden Reinigungen für {personLabel} in den nächsten 4 Wochen.</p>
           </div>
         ) : days.map(({ iso, items }) => (
           <div key={iso} style={{ marginBottom: 16 }}>
             <p style={{
               fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-              color: iso === today ? 'var(--gold, #AE8D2D)' : '#6B7280',
+              color: iso === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
               textTransform: 'uppercase', letterSpacing: '0.03em',
             }}>{dayLabel(iso, today)}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -1160,19 +1160,19 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                 const conf = cleaning.confirmations?.[`${s.listingId}|${s.stay.checkOut}`]
                 return (
                   <div key={s.stay.id} style={{
-                    background: '#fff', borderRadius: 14, padding: '11px 13px',
+                    background: 'var(--tm-card)', borderRadius: 14, padding: '11px 13px',
                     boxShadow: s.sameDayArrival
                       ? 'inset 0 0 0 1.5px #C2410C'
-                      : showName && isMine ? 'inset 0 0 0 1.5px #12222E' : 'inset 0 0 0 0.5px rgba(60,60,67,0.15)',
+                      : showName && isMine ? 'inset 0 0 0 1.5px var(--tm-accent)' : 'inset 0 0 0 0.5px var(--tm-line)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🧹 {info?.title ?? 'Wohnung'}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-text)' }}>🧹 {info?.title ?? 'Wohnung'}</span>
                       {showName && chip(isMine ? '#FAF5E4' : '#F3F4F6', isMine ? '#8A7020' : '#374151', `👤 ${isMine ? 'Du' : resp!.name}`)}
                     </div>
                     {conf ? (
                       <p style={{
                         fontSize: 12.5, fontWeight: 800, margin: '7px 0 0',
-                        color: '#16A34A',
+                        color: 'var(--tm-green)',
                       }}>
                         {'✅ Gereinigt gemeldet'}
                         {' · '}
@@ -1180,12 +1180,12 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         {conf.person ? ` · ${conf.person}` : ''}
                       </p>
                     ) : s.sameDayArrival ? (
-                      <p style={{ fontSize: 12.5, fontWeight: 800, color: '#C2410C', margin: '7px 0 0' }}>
+                      <p style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--tm-red)', margin: '7px 0 0' }}>
                         ⏰ WECHSELTAG — bis zur Anreise fertig
                       </p>
                     ) : (
                       <>
-                        <p style={{ fontSize: 12.5, fontWeight: 600, color: '#374151', margin: '7px 0 0' }}>
+                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--tm-text)', margin: '7px 0 0' }}>
                           🟢 Reinigen möglich: {fromLabel}
                           {s.nextIn
                             ? ` – ${wdShort(s.nextIn)} ${fmtShort(s.nextIn)} (Anreise)`
