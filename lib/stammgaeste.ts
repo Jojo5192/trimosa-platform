@@ -20,7 +20,7 @@ export type StayBooking = {
   check_in: string; check_out: string; listing_id: string | null; channel: string | null; source: string | null
 }
 export type StayInfo = { stays: number; nr: number; group: string }
-type Index = { byBooking: Map<string, StayInfo>; groups: Map<string, StayBooking[]>; at: number }
+type Index = { byBooking: Map<string, StayInfo>; groups: Map<string, StayBooking[]>; clustersByGroup: Map<string, StayBooking[][]>; at: number }
 
 function normName(n: string | null): string | null {
   const s = (n ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -81,12 +81,25 @@ export async function loadStayIndex(fresh = false): Promise<Index> {
     arr.push(b)
     groups.set(g, arr)
   }
+  // Aufenthalte = Cluster: Buchungen desselben Gastes, die sich überschneiden oder direkt
+  // aneinander anschließen (zwei Wohnungen am selben Tag, Verlängerung), zählen als EIN Besuch —
+  // sonst wäre jede Gruppenbuchung ein „Stammgast" (Live-Befund 9.9.: Panorama + Sunrise am selben Tag).
   const byBooking = new Map<string, StayInfo>()
+  const clustersByGroup = new Map<string, StayBooking[][]>()
   for (const [g, arr] of groups) {
     arr.sort((a, b) => a.check_in.localeCompare(b.check_in))
-    arr.forEach((b, i) => byBooking.set(b.id, { stays: arr.length, nr: i + 1, group: g }))
+    const clusters: StayBooking[][] = []
+    let cur: StayBooking[] = []
+    let curEnd = ''
+    for (const b of arr) {
+      if (cur.length && b.check_in <= curEnd) { cur.push(b); if (b.check_out > curEnd) curEnd = b.check_out }
+      else { if (cur.length) clusters.push(cur); cur = [b]; curEnd = b.check_out }
+    }
+    if (cur.length) clusters.push(cur)
+    clustersByGroup.set(g, clusters)
+    clusters.forEach((cl, i) => cl.forEach((b) => byBooking.set(b.id, { stays: clusters.length, nr: i + 1, group: g })))
   }
-  cache = { byBooking, groups, at: Date.now() }
+  cache = { byBooking, groups, clustersByGroup, at: Date.now() }
   return cache
 }
 
@@ -130,9 +143,9 @@ export async function stammgaesteStatistik(): Promise<StammgaesteStatistik> {
   }
   let einmalig = 0, zwei = 0, drei = 0, vierPlus = 0, buchungen = 0
   const gaeste: Stammgast[] = []
-  for (const arr of idx.groups.values()) {
+  for (const [g, arr] of idx.groups) {
     buchungen += arr.length
-    const n = arr.length
+    const n = idx.clustersByGroup.get(g)?.length ?? arr.length // Aufenthalte (Cluster), nicht Buchungen
     if (n === 1) { einmalig++; continue }
     if (n === 2) zwei++; else if (n === 3) drei++; else vierPlus++
     const lastB = arr[arr.length - 1]

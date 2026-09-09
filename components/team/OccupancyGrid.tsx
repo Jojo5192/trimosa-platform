@@ -73,8 +73,23 @@ export default function OccupancyGrid({ stays, listings }: {
 
   // Beim Öffnen zu HEUTE scrollen (das Grid beginnt 7 Tage in der
   // Vergangenheit — gestern bleibt eine Wisch-Geste entfernt sichtbar)
+  // Start auf heute — auch wenn der Kalender beim App-Start noch unsichtbar gemountet ist
+  // (Pascal 9.9.: „öffnet auf dem 1. September"): scrollLeft greift erst, wenn das Element
+  // Breite hat → ResizeObserver setzt beim Sichtbarwerden nach (§291)
+  const placedRef = useRef(false)
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollLeft = 5.5 * DAY_W
+    const el = scrollRef.current
+    if (!el) return
+    const place = () => {
+      if (placedRef.current || el.clientWidth <= 0) return
+      el.scrollLeft = 5.5 * DAY_W
+      placedRef.current = true
+    }
+    place()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(place)
+    ro.observe(el)
+    return () => ro.disconnect()
     updateHeadMonth()
     return () => cancelAnimationFrame(rafRef.current)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

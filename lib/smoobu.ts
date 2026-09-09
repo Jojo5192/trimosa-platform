@@ -705,3 +705,11 @@ export function eachDayBetween(startIso: string, endIso: string): string[] {
   }
   return days
 }
+
+/** §291 Diagnose: EINE Reservierung roh aus Smoobu (GET /reservations/{id}) — für die Admin-Route
+ *  /api/smoobu/reservation, um Übertragungsfehler (Personenzahl, Mail) am Original zu prüfen. */
+export async function getRawReservation(id: number, apiKey?: string): Promise<Record<string, unknown> | null> {
+  const res = await fetch(`${SMOOBU_BASE}/reservations/${id}`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
+  if (!res.ok) return null
+  return (await res.json()) as Record<string, unknown>
+}

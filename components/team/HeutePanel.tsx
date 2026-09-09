@@ -229,13 +229,16 @@ export default function HeutePanel({ role, visible, onCount }: {
       .sort((a, b) => String(b.lastMessageAt ?? '').localeCompare(String(a.lastMessageAt ?? '')))
     : [], [threads, role, istHeute])
 
-  // Roter Zähler am Reiter: Anreisen heute + Sofort-Aufgaben + heute geplante
+  // Roter Zähler am Reiter (Pascal 9.9. 15:04): NUR Handlungsbedarf — Sofort-Aufgaben,
+  // heute geplante Aufgaben und offene Gast-Nachrichten. Anreisen zählen nicht mehr
+  // („wenn dort eine Zahl ist, muss jemand aktiv werden").
   const heuteData = data[heute]
   useEffect(() => {
     const planned = tasks.filter((t) => (t.status === 'offen' || t.status === 'in_arbeit') && t.due_date === heute)
     const s = tasks.filter((t) => istSofort(t, heute) && t.due_date !== heute)
-    onCount((heuteData?.anreisen.length ?? 0) + s.length + planned.length)
-  }, [heuteData, tasks, heute, onCount])
+    const offen = role === 'team' ? threads.filter((t) => t.lastSender === 'guest' && !t.noReplyNeeded && !t.phoneResolved).length : 0
+    onCount(s.length + planned.length + offen)
+  }, [heuteData, tasks, threads, role, heute, onCount])
 
   /* Ziele öffnen */
   const openTab = (id: string) => window.dispatchEvent(new CustomEvent('trimosa-open-tab', { detail: id }))
