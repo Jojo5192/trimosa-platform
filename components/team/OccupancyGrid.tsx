@@ -43,7 +43,7 @@ function channelColor(channel?: string | null): string {
   // der Substring „booking" färbte die Balken sonst fälschlich navy
   if (c.includes('direct') || c.includes('direkt')) return 'var(--gold, #AE8D2D)'
   if (c.includes('booking')) return '#1A4FA0'
-  if (c.includes('hometogo')) return '#8B5CF6'
+  if (c.includes('hometogo')) return '#7C3AED' // Paragraph 305: HomeToGo-Markenlila, identisch mit den Inbox-Pillen
   return 'var(--gold, #AE8D2D)'
 }
 

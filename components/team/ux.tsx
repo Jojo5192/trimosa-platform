@@ -247,14 +247,16 @@ export function tmToast(text: string) {
 }
 
 /** 🎨 Portalfarben (Pascal-Spec) für Avatare, Badges, Belegungsbalken. */
+// Paragraph 305 (Pascal 9.9. 18:11): Pillen = Kalenderfarben. Airbnb Rot, Booking Navy, FeWo-direkt Vrbo-Blau (hell,
+// damit es sich vom Booking-Navy abhebt), HomeToGo „Twilight Purple" (Markenfarbe), Website/Direkt Gold.
 export const PORTAL_COLORS: Record<string, string> = {
-  'Booking.com': '#1d5bc4',
-  'Airbnb': '#ff385c',
-  'FeWo-direkt': '#f0a11f',
-  'HomeToGo': '#e11d48',
-  'Website': '#12a89a',
-  'Direkt': '#12a89a',
-  'TRIMOSA': '#12a89a',
+  'Booking.com': '#1A4FA0',
+  'Airbnb': '#E0565B',
+  'FeWo-direkt': '#0EA5E9',
+  'HomeToGo': '#7C3AED',
+  'Website': '#AE8D2D',
+  'Direkt': '#AE8D2D',
+  'TRIMOSA': '#AE8D2D',
 }
 /** Kanal-Normalisierung — §140/§262-Substring-Falle: fewo VOR direkt VOR booking */
 export function portalOf(raw?: string | null): string {

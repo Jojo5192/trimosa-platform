@@ -26,6 +26,8 @@ import { isFewoRelayEmail } from '@/lib/fewo'
 import { ensureDoorCode, getLockSettings } from '@/lib/locks'
 import { loadStayIndex } from '@/lib/stammgaeste'
 import { sendAutoMessageEmail } from '@/lib/email'
+import { askClaude, FAST_MODEL } from '@/lib/ai'
+import { sendPushToTeam } from '@/lib/push'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
 const MAX_PER_RUN = 40          // Sicherheitsventil gegen Massen-Versand
@@ -229,6 +231,19 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   report.bookingsChecked = bookings.length
   if (!bookings.length) return report
 
+  // Paragraph 305: Stummschaltungen je Buchung (eigene Abfrage, damit die Engine auch VOR der Migration
+  // 20260909_msg_mute.sql laeuft - dann gibt es schlicht keine Stummschaltung)
+  const muteMap = new Map<string, string>()
+  try {
+    const allIds = bookings.map((b) => b.id)
+    for (let i = 0; i < allIds.length; i += 300) {
+      const { data: mutes, error } = await supabaseAdmin
+        .from('bookings').select('id, msg_mute').in('id', allIds.slice(i, i + 300)).not('msg_mute', 'is', null)
+      if (error) break
+      for (const r of mutes ?? []) if (r.msg_mute) muteMap.set(String(r.id), String(r.msg_mute))
+    }
+  } catch { /* Spalte fehlt noch */ }
+
   const { data: lRows } = await supabaseAdmin
     .from('listings').select('id, title, address, location, check_in_time, check_out_time, google_place_id')
   const listings = new Map((lRows ?? []).map(l => [l.id as string, l as ListingRow]))
@@ -341,6 +356,17 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (dayDiff(createdDate, target) <= 0) continue
       }
       if (logSet.has(`${t.id}|${b.id}`)) continue
+      // Paragraph 305 (Pascal): Stummschalter - 'alle' laesst nur die Check-out-Anleitung durch,
+      // 'bewertung' unterdrueckt die Danke-/Bewertungs-Nachricht
+      const mute = muteMap.get(b.id)
+      if (mute === 'alle' && t.trigger_type !== 'vor_abreise') continue
+      if (mute === 'bewertung' && t.trigger_type === 'nach_abreise') continue
+      // Paragraph 305: vor der Bewertungsbitte prueft die KI den Chat auf Beschwerden - erkannt -> Buchung
+      // auf 'bewertung' stumm + Push ans Team, Nachricht bleibt aus (nie im Dry-Run, der hat keine Nebenwirkung)
+      if (t.trigger_type === 'nach_abreise' && !dryRun && await complaintDetected(b, listings.get(b.listing_id ?? '')?.title ?? null)) {
+        muteMap.set(b.id, 'bewertung')
+        continue
+      }
       due.push({ t, b })
     }
   }
@@ -528,4 +554,39 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
     }
   }
   return report
+}
+
+/**
+ * Paragraph 305: Hat sich der Gast im Chat beschwert? (letzte 12 Gast-Nachrichten, Haiku, JA/NEIN).
+ * Bei JA: msg_mute='bewertung' + Grund setzen (try/catch - Spalte evtl. noch nicht migriert) und Team-Push.
+ */
+async function complaintDetected(b: BookingRow, listingTitle: string | null): Promise<boolean> {
+  try {
+    const { data: msgs } = await supabaseAdmin
+      .from('messages').select('content, content_de, created_at')
+      .eq('booking_id', b.id).eq('sender_type', 'guest')
+      .order('created_at', { ascending: false }).limit(12)
+    const texts = (msgs ?? []).map((m) => String(m.content_de || m.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter((t) => t.length > 1)
+    if (!texts.length) return false
+    const system = 'Du pruefst die Nachrichten eines Ferienwohnungs-Gastes an den Gastgeber. Antworte NUR mit JA, wenn der Gast sich beschwert hat, unzufrieden war oder etwas schiefgelaufen ist (Mangel, Sauberkeit, Laerm, Zugang/Tuercode-Probleme, lange Wartezeit, Aerger, Enttaeuschung). Reine Fragen, Dank, Organisatorisches oder Sonderwuensche sind KEINE Beschwerde. Sonst antworte NUR mit NEIN.'
+    const raw = await askClaude(system, texts.reverse().map((t, i) => `${i + 1}. ${t.slice(0, 600)}`).join('\n'), 5, FAST_MODEL)
+    if (!/^\s*JA/i.test(raw)) return false
+    const today = new Date().toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })
+    try {
+      await supabaseAdmin.from('bookings')
+        .update({ msg_mute: 'bewertung', msg_mute_reason: `KI: Beschwerde im Chat erkannt (${today})` })
+        .eq('id', b.id).is('msg_mute', null)
+    } catch { /* Spalte fehlt noch - dann prueft der naechste Lauf erneut */ }
+    const gast = (b.guest_name ?? 'Gast').split(' ')[0]
+    await sendPushToTeam(
+      '🔕 Bewertungsbitte ausgesetzt',
+      `${gast}${listingTitle ? ' · ' + listingTitle : ''}: Beschwerde im Chat erkannt — keine Danke-/Bewertungs-Nachricht. Im Thread über 🔕 änderbar.`,
+      '/team?tab=inbox', { guestChat: true },
+    ).catch(() => {})
+    console.log('[auto-messages] Bewertungsbitte ausgesetzt (Beschwerde erkannt):', b.id)
+    return true
+  } catch (e) {
+    console.error('[auto-messages] Beschwerde-Check:', String(e).slice(0, 160))
+    return false
+  }
 }

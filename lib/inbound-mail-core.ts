@@ -605,6 +605,22 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
     const fewoSource = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
     const msgText = fewoSource && typeof parsed.nachricht === 'string' ? parsed.nachricht.trim() : ''
     if (relayEmail || msgText.length >= 3) {
+      // Paragraph 305 (Pascal 18:22): Antworten aus dem FeWo-Messenger kommen mit der privaten Relay-Adresse als
+      // Reply-To - die kennen wir je Buchung (guest_email). Exakter Treffer VOR der Vornamens-Heuristik.
+      if (relayEmail) {
+        const since = new Date(Date.now() - 45 * 86400_000).toISOString().slice(0, 10)
+        const { data: byRelay } = await supabaseAdmin
+          .from('bookings')
+          .select('id, guest_name, guest_email, smoobu_reservation_id')
+          .ilike('guest_email', relayEmail).neq('status', 'cancelled').gte('check_out', since)
+          .order('check_in', { ascending: false }).limit(2)
+        if (byRelay && byRelay.length >= 1) {
+          const b = byRelay[0]
+          const saved = msgText.length >= 3 ? await saveGuestMessage(b.id, b.guest_name, msgText) : false
+          console.log('[inbound-mail] Gastnachricht per Relay-Adresse zugeordnet:', { booking: b.id, nachricht: saved })
+          return { ok: true, bookingId: b.id, relay: relayEmail, nachricht: saved, zuordnung: 'relay-adresse' }
+        }
+      }
       const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
       if (first) {
         const today = new Date().toISOString().slice(0, 10)

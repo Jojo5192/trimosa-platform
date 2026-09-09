@@ -404,6 +404,22 @@ export async function GET(request: Request) {
     ]))
   } catch { /* fail-soft */ }
 
+  // Paragraph 305: Stummschaltungen je Buchung an die Threads haengen (eigene Abfrage - deploy-sicher,
+  // solange die Migration 20260909_msg_mute.sql noch nicht gelaufen ist)
+  try {
+    const muteIds = threads.filter((t) => t.kind === 'booking').map((t) => String(t.id))
+    const muteMap = new Map<string, { msg_mute: string | null; msg_mute_reason: string | null }>()
+    for (let i = 0; i < muteIds.length; i += 300) {
+      const { data: mutes, error } = await supabaseAdmin
+        .from('bookings').select('id, msg_mute, msg_mute_reason').in('id', muteIds.slice(i, i + 300)).not('msg_mute', 'is', null)
+      if (error) break
+      for (const r of mutes ?? []) muteMap.set(String(r.id), { msg_mute: r.msg_mute, msg_mute_reason: r.msg_mute_reason })
+    }
+    for (const t of threads) {
+      const r = t.kind === 'booking' ? muteMap.get(String(t.id)) : undefined
+      if (r) Object.assign(t as unknown as Record<string, unknown>, { msgMute: r.msg_mute, msgMuteReason: r.msg_mute_reason })
+    }
+  } catch { /* Spalte fehlt noch */ }
   return NextResponse.json({ userId: user.id, threads, teamNames })
 }
 
@@ -423,6 +439,18 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
   }
   const { kind, id, value, field } = await req.json()
+  // Paragraph 305 (Pascal): Stummschalter je Buchung - value '' | 'alle' | 'bewertung'
+  if (field === 'mute') {
+    if (kind !== 'booking' || typeof id !== 'string' || typeof value !== 'string' || !['', 'alle', 'bewertung'].includes(value)) {
+      return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
+    }
+    const { data: me } = await supabaseAdmin.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+    const who = String((me as { full_name?: string | null } | null)?.full_name ?? '').split(' ')[0] || 'Team'
+    const { error } = await supabaseAdmin.from('bookings')
+      .update({ msg_mute: value || null, msg_mute_reason: value ? `manuell (${who})` : null }).eq('id', id)
+    if (error) return NextResponse.json({ error: `Speichern fehlgeschlagen (${error.message.slice(0, 80)}) — Migration 20260909_msg_mute.sql ausgeführt?` }, { status: 500 })
+    return NextResponse.json({ ok: true, msgMute: value || null })
+  }
   if (!id || (kind !== 'booking' && kind !== 'direct') || typeof value !== 'boolean') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 })
   }

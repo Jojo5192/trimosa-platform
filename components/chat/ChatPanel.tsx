@@ -35,6 +35,9 @@ interface Conversation {
   lastSender?: 'guest' | 'host' | null
   noReplyNeeded?: boolean
   phoneResolved?: boolean
+  /** Paragraph 305: Auto-Nachrichten stumm ('alle' = nur Check-out) bzw. keine Bewertungsbitte */
+  msgMute?: 'alle' | 'bewertung' | null
+  msgMuteReason?: string | null
   adults?: number | null
   children?: number | null
   guestLang?: string | null
@@ -117,6 +120,8 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     lastPreview: t.lastPreview ?? null, lastSender: t.lastSender ?? null,
     noReplyNeeded: (t.noReplyNeeded as boolean) ?? false,
     phoneResolved: (t.phoneResolved as boolean) ?? false,
+    msgMute: (t.msgMute as 'alle' | 'bewertung' | null | undefined) ?? null,
+    msgMuteReason: (t.msgMuteReason as string | null | undefined) ?? null,
     adults: (t.adults as number | null) ?? null,
     children: (t.children as number | null) ?? null,
     guestLang: t.guestLang ?? null,
@@ -183,6 +188,7 @@ function ThreadBadges({ c, size = 10.5 }: { c: Conversation; size?: number }) {
       {st && <Pill size={size} bg={PILL_TONES[st.tone].bg} color={PILL_TONES[st.tone].color}>{st.label}</Pill>}
       {portal && <Pill size={size} bg={portalColor(c.platform)} color="#fff">{portal}</Pill>}
       {isDringend(c) && <Pill size={size} bg="var(--tm-red, #dc3d3d)" color="#fff">dringend</Pill>}
+      {c.msgMute && <Pill size={size} bg="var(--tm-surface2, #ECEAE4)" color="var(--tm-muted, #6B6B6B)">{c.msgMute === 'alle' ? '🔕 stumm' : '🔕 keine Bewertungsbitte'}</Pill>}
       {/* §290 Stammgast (Dominik): ab dem zweiten Aufenthalt */}
       {(c.stays ?? 1) >= 2 && <Pill size={size} bg="var(--tm-yellow-soft, rgba(217,133,6,0.13))" color="var(--tm-yellow, #d98506)">⭐ {c.stayNr}. Aufenthalt</Pill>}
     </span>
@@ -403,6 +409,26 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // Gast-Nachricht macht den Thread automatisch wieder unbeantwortet.
   //  ✓  "Keine Antwort erforderlich"
   //  📞 "Per Telefonat geklärt" (zählt im Wochenbericht als telefonisch beantwortet)
+  // Paragraph 305 (Pascal): Stummschalter je Gast - 'alle' laesst nur noch die Check-out-Anleitung durch
+  async function muteConv(c: Conversation, mode: '' | 'alle' | 'bewertung') {
+    const prev = c.msgMute ?? null
+    const next = mode || null
+    setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: next } : x))
+    setActive(a => (a && a.id === c.id ? { ...a, msgMute: next } : a))
+    try {
+      const res = await fetch('/api/chat/inbox', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'booking', id: c.id, value: mode, field: 'mute' }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
+      tmToast(next === 'alle' ? 'Auto-Nachrichten stumm (außer Check-out)' : next === 'bewertung' ? 'Keine Bewertungsbitte mehr' : 'Auto-Nachrichten wieder an')
+    } catch (e) {
+      setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: prev } : x))
+      setActive(a => (a && a.id === c.id ? { ...a, msgMute: prev } : a))
+      tmToast(String(e instanceof Error ? e.message : e).slice(0, 90))
+    }
+  }
+
   async function markConv(c: Conversation, field: 'no_reply' | 'phone') {
     const key = field === 'phone' ? 'phoneResolved' as const : 'noReplyNeeded' as const
     const value = !c[key]
@@ -1221,6 +1247,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             ['💬', 'Antworten', () => { setPeek(null); selectConv(c) }],
             ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt — keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
             ['📞', c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt', () => { setPeek(null); markConv(c, 'phone') }],
+            ...((c.kind ?? 'direct') === 'booking' ? [
+              ['🔕', c.msgMute === 'alle' ? 'Auto-Nachrichten wieder einschalten' : 'Auto-Nachrichten stumm (nur noch Check-out)', () => { setPeek(null); muteConv(c, c.msgMute === 'alle' ? '' : 'alle') }],
+              ['⭐', c.msgMute === 'bewertung' ? 'Bewertungsbitte wieder erlauben' : 'Keine Bewertungsbitte für diesen Gast', () => { setPeek(null); muteConv(c, c.msgMute === 'bewertung' ? '' : 'bewertung') }],
+            ] as [string, string, () => void][] : []),
             ['🧾', 'Buchung & Gast', () => { setPeek(null); selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
             ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); window.open(c.mappeUrl!, '_blank', 'noopener') }]] : []),
           ] as [string, string, () => void][]).map(([icon, label, fn], i) => (
