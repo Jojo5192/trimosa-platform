@@ -39,7 +39,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .eq('chat_id', id)
     return mediaOnly
       ? q.not('attachment_url', 'is', null).order('created_at', { ascending: false }).limit(400)
-      : q.order('created_at', { ascending: true }).limit(300)
+      // NEUESTE 300 (desc), unten wieder chronologisch gedreht — ascending+limit
+      // lieferte die ÄLTESTEN 300: sobald eine Gruppe >300 Nachrichten hatte,
+      // fehlten die neuesten im Thread (Chefsache, 8.9.2026 — §275).
+      : q.order('created_at', { ascending: false }).limit(300)
   }
   // Deploy-Retry: reply_to_id existiert erst nach Migration 20260719_team_reply.
   // Breiter Typ nötig: supabase-js kann den DYNAMISCHEN Select-String nicht
@@ -54,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let res = (await buildQuery(true)) as unknown as MsgRes
   if (res.error) res = (await buildQuery(false)) as unknown as MsgRes
   if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
-  const msgs = res.data
+  const msgs = mediaOnly ? res.data : [...(res.data ?? [])].reverse()
 
   if (!mediaOnly && !peek) {
     await supabaseAdmin
@@ -90,7 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await membership(id, auth.userId))) return NextResponse.json({ error: 'Kein Mitglied.' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))
-  const content = typeof body.content === 'string' ? body.content.trim().slice(0, 4000) : ''
+  const content = typeof body.content === 'string' ? body.content.trim().slice(0, 12000) : ''
   const attachmentUrl = typeof body.attachmentUrl === 'string' && body.attachmentUrl ? body.attachmentUrl : null
   const attachmentType = ['image', 'video', 'pdf', 'audio'].includes(body.attachmentType) ? body.attachmentType : null
   const attachmentName = typeof body.attachmentName === 'string' ? body.attachmentName.slice(0, 160) : null
