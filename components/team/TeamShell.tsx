@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
 import { haptic, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
+import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
@@ -304,11 +305,59 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     return () => { html.style.backgroundColor = prev }
   }, [])
 
-  // Service Worker früh registrieren (Push-Empfang) — die Einstellungen dazu
-  // liegen im ⚙️-Tab; so bekommen auch Dienstleister ohne Chat-Tab Push
+  // Service Worker früh registrieren (Push-Empfang + §280 Offline-Cache) — die
+  // Einstellungen dazu liegen im ⚙️-Tab; so bekommen auch Dienstleister ohne
+  // Chat-Tab Push. ensureOwner: Nutzerwechsel auf demselben Gerät räumt
+  // Snapshots/Warteschlange/Cache vorher weg.
   useEffect(() => {
+    ensureOwner(userId)
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+  }, [userId])
+
+  /* §280 Offline: Leiste unter der Kopfleiste, Warteschlange automatisch
+   * senden und den Reiter neu laden, sobald Netz zurück ist; Bedienung
+   * merken (Polling wird nach 10 Min ohne Bedienung seltener). */
+  const online = useOnline()
+  const outboxCount = useOutboxCount()
+  const [backOnline, setBackOnline] = useState(false)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    const onOnline = () => {
+      setBackOnline(true)
+      void flushOutbox()
+      window.dispatchEvent(new Event('trimosa-refresh'))
+      if (t) clearTimeout(t)
+      t = setTimeout(() => setBackOnline(false), 3500)
+    }
+    const onOffline = () => setSyncing(false)
+    const onTouch = () => noteInteraction()
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('pointerdown', onTouch, { passive: true })
+    window.addEventListener('keydown', onTouch, { passive: true })
+    window.addEventListener('scroll', onTouch, { passive: true, capture: true })
+    if (navigator.onLine !== false) void flushOutbox()
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('pointerdown', onTouch)
+      window.removeEventListener('keydown', onTouch)
+      window.removeEventListener('scroll', onTouch, { capture: true } as EventListenerOptions)
+      if (t) clearTimeout(t)
+    }
   }, [])
+  const offlineBar = (!online || backOnline) ? (
+    <div role="status" style={{
+      flexShrink: 0, padding: '7px 16px', fontSize: 12.5, fontWeight: 600, textAlign: 'center', lineHeight: 1.35,
+      background: online ? 'var(--tm-green-soft, rgba(26,157,87,0.13))' : 'var(--tm-yellow-soft, rgba(240,180,41,0.16))',
+      color: online ? 'var(--tm-green, #1a9d57)' : '#7a5a00',
+      borderBottom: '1px solid var(--tm-line, #e3e6ea)',
+    }}>
+      {online
+        ? '✅ Wieder online — gleiche ab …'
+        : `📴 Offline — du siehst den letzten Stand${outboxCount > 0 ? ` · ${outboxCount} ${outboxCount === 1 ? 'Nachricht wartet' : 'Nachrichten warten'}` : ''}`}
+    </div>
+  ) : null
 
   /* §265 Push-Tap in die LAUFENDE App: Der SW schickt statt eines Reloads
    * eine Message (client.navigate() wirft bei unkontrollierten Clients und
@@ -526,6 +575,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!navHidden && header}
         {tab === 'inbox' && role === 'team' && !navHidden && segmented}
+        {offlineBar}
 
         {/* Content */}
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>

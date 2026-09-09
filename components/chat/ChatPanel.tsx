@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows, portalOf, portalColor, initials } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, portalOf, portalColor, initials } from '@/components/team/ux'
+import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 
 /** ☎️ §227d: Anruf-Eintrag für die Inline-Anzeige im Verlauf */
@@ -781,6 +782,22 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.removeEventListener('trimosa-open-conv', h)
   }, [getConvs]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* §280 Offline-Warteschlange: wartende Nachrichten dieses Threads; sobald
+     eine raus ist, Thread + Liste nachladen */
+  const outboxAll = useOutbox()
+  const pendingOut = useMemo(
+    () => (active ? outboxAll.filter((i) => i.kind === 'guest' && i.targetId === active.id) : []),
+    [outboxAll, active],
+  )
+  useEffect(() => {
+    const onSent = (e: Event) => {
+      const d = (e as CustomEvent<{ kind?: string; targetId?: string }>).detail
+      if (d?.kind === 'guest' && active && d.targetId === active.id) { getMsgs(active.id, active.kind); getConvs() }
+    }
+    window.addEventListener(OUTBOX_SENT_EVENT, onSent)
+    return () => window.removeEventListener(OUTBOX_SENT_EVENT, onSent)
+  }, [active, getMsgs, getConvs])
+
   /* Thread switch: the composer belongs to ONE conversation — reset it */
   useEffect(() => {
     setDraft('')
@@ -802,7 +819,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const cached = msgsCacheRef.current.get(active.id)
     if (cached) { msgsSigRef.current = msgsSig(active.id, cached); setMsgs(cached) }
     getMsgs(active.id, active.kind, true).then(() => getMsgs(active.id, active.kind)).catch(() => {})
-    timer.current = setInterval(() => getMsgs(active.id, active.kind), 5000)
+    // §280: offline pausieren, nach 10 Min ohne Bedienung seltener
+    timer.current = setInterval(() => { if (shouldPoll('chat-msgs')) getMsgs(active.id, active.kind) }, 5000)
     return () => { if (timer.current) clearInterval(timer.current) }
   }, [open, active, getMsgs])
 
@@ -1009,11 +1027,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     haptic()
     setBusy(true)
     setSendError(null)
+    const payload = active.kind === 'booking'
+      ? { content, ...(contentDe ? { contentDe, lang } : {}) }
+      : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
+    const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
     try {
-      const payload = active.kind === 'booking'
-        ? { content, ...(contentDe ? { contentDe, lang } : {}) }
-        : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
-      const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
       const r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1027,8 +1045,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         const d = await r.json().catch(() => null)
         setSendError(d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
       }
-    } catch {
-      setSendError('Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+    } catch (e) {
+      if (isNetworkError(e) || !isOnline()) {
+        // §280 Offline-Warteschlange: Nachricht wartet halbtransparent im
+        // Thread und geht automatisch raus, sobald Netz da ist
+        enqueueOutbox({ kind: 'guest', targetId: active.id, url, body: payload, text: content })
+        setDraft('')
+        tmToast('📴 Offline — Nachricht wartet auf Verbindung')
+      } else {
+        setSendError('Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+      }
     } finally {
       setBusy(false)
     }
@@ -1468,7 +1494,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               )}
               <span style={{ fontSize: 11, color: '#8E8E93', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 {active.listing_title}
-                {dateRange && <span style={{ color: 'var(--gold-dark)', fontWeight: 600 }}> · {dateRange}</span>}
+                {dateRange && <span style={{ color: 'var(--gold-dark)', fontWeight: 600 }}> · {isMobile ? fmtRangeShort(active.check_in, active.check_out) : dateRange}</span>}
               </span>
               {team && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -1905,6 +1931,19 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </div>
                 )
               })}
+            </div>
+          ))}
+          {/* §280: ohne Netz gesendete Nachrichten — halbtransparent, bis sie raus sind */}
+          {pendingOut.map((p) => (
+            <div key={p.id} style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 0' }}>
+              <div style={{
+                maxWidth: '78%', padding: '9px 13px', borderRadius: 18, opacity: 0.55,
+                background: 'var(--tm-accent-soft, rgba(174,141,45,0.13))', color: 'var(--tm-text, #171a1f)',
+                fontSize: 15, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {p.text}
+                <div style={{ fontSize: 10.5, marginTop: 4, color: 'var(--tm-muted, #646b76)', fontWeight: 600 }}>⏳ wartet auf Verbindung</div>
+              </div>
             </div>
           ))}
           <div ref={bottomRef} />

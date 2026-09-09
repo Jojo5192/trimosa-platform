@@ -9,6 +9,7 @@
  * Chat räumen hier auf und umgekehrt (Reload bei Tab-Wechsel + Intervall).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { shouldPoll } from '@/lib/offline'
 
 // Lokale Flaggen-Map (wie ChatPanel) — lib/translate ist server-only (supabaseAdmin)
 const LANG_FLAGS: Record<string, string> = {
@@ -134,7 +135,7 @@ export default function OffenPanel({ visible, onCount }: {
   useEffect(() => { if (visible) load() }, [visible, load])
   useEffect(() => {
     if (!visible) return
-    const t = setInterval(load, 45000)
+    const t = setInterval(() => { if (shouldPoll('offen')) load() }, 45000) // §280: offline pausieren
     return () => clearInterval(t)
   }, [visible, load])
   useEffect(() => { onCount(queue.length) }, [queue.length, onCount])

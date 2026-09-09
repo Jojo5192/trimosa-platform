@@ -159,7 +159,7 @@ export default function KennzahlenCard() {
       ) : s ? (
         <>
           {/* Vier Kacheln */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
             <Tile value={fmtEur(s.umsatz)} label="Umsatz netto" />
             <Tile value={`${Math.round(s.auslastung)}%`} label="Auslastung" />
             <Tile value={s.oNacht != null ? fmtEur(s.oNacht) : '—'} label="Ø / Nacht netto" />

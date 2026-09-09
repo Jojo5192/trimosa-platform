@@ -1,10 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows } from '@/components/team/ux'
+import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
+
+/** §280 Sofortstart: letzter Gruppen-Stand im Gerätespeicher */
+const INTERN_SNAP_KEY = 'trimosa-intern-v1'
 
 /**
  * 💼 Interner Team-Messenger (Etappe B, §97): Gruppen-Chats fürs Team —
@@ -190,6 +194,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       const d = await r.json()
       setChats(d.chats ?? [])
       chatsRef.current = d.chats ?? []
+      try { localStorage.setItem(INTERN_SNAP_KEY, JSON.stringify((d.chats ?? []).slice(0, 40))) } catch { /* quota */ }
       // §265: Wunsch-Gruppe aus Push/URL öffnen, sobald sie geladen ist
       if (pendingChatRef.current) {
         const ziel = (d.chats ?? []).find((c: TeamChat) => c.id === pendingChatRef.current)
@@ -243,8 +248,16 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   }, [])
 
   useEffect(() => {
+    // §280 Sofortstart: Gruppen aus dem Gerätespeicher zeigen, der
+    // Server-Abgleich ersetzt sie still
+    try {
+      const raw = localStorage.getItem(INTERN_SNAP_KEY)
+      const snap = raw ? (JSON.parse(raw) as TeamChat[]) : null
+      if (Array.isArray(snap) && snap.length && !chatsRef.current.length) { setChats(snap); chatsRef.current = snap; setLoading(false) }
+    } catch { /* egal */ }
     loadChats()
-    const id = setInterval(loadChats, 20000)
+    // §280: offline pausieren, nach 10 Min ohne Bedienung seltener
+    const id = setInterval(() => { if (shouldPoll('intern-chats')) loadChats() }, 20000)
     return () => clearInterval(id)
   }, [loadChats])
 
@@ -252,9 +265,25 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     if (timer.current) clearInterval(timer.current)
     if (!active) return
     loadMsgs(active.id)
-    timer.current = setInterval(() => loadMsgs(active.id), 5000)
+    timer.current = setInterval(() => { if (shouldPoll('intern-msgs')) loadMsgs(active.id) }, 5000)
     return () => { if (timer.current) clearInterval(timer.current) }
   }, [active, loadMsgs])
+
+  /* §280 Offline-Warteschlange: wartende Nachrichten dieser Gruppe; sobald
+     eine raus ist, Thread + Liste nachladen */
+  const outboxAll = useOutbox()
+  const pendingOut = useMemo(
+    () => (active ? outboxAll.filter((i) => i.kind === 'intern' && i.targetId === active.id) : []),
+    [outboxAll, active],
+  )
+  useEffect(() => {
+    const onSent = (e: Event) => {
+      const d = (e as CustomEvent<{ kind?: string; targetId?: string }>).detail
+      if (d?.kind === 'intern' && active && d.targetId === active.id) { loadMsgs(active.id); loadChats() }
+    }
+    window.addEventListener(OUTBOX_SENT_EVENT, onSent)
+    return () => window.removeEventListener(OUTBOX_SENT_EVENT, onSent)
+  }, [active, loadMsgs, loadChats])
 
   // Nur bei NEUER letzter Nachricht ans Ende scrollen — nicht bei
   // Reaktions-Updates oder Poll-Refreshes (Ruckel-Fix 19.7.). Beim ÖFFNEN
@@ -316,10 +345,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     if (!active || !draft.trim() || busy) return
     haptic()
     setBusy(true)
+    const url = `/api/team-chat/${active.id}`
+    const body = { content: draft.trim(), replyToId: replyTo?.id }
     try {
-      const r = await fetch(`/api/team-chat/${active.id}`, {
+      const r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: draft.trim(), replyToId: replyTo?.id }),
+        body: JSON.stringify(body),
       })
       if (r.ok) {
         setDraft('')
@@ -327,6 +358,20 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         if (composerRef.current) composerRef.current.style.height = 'auto'
         await loadMsgs(active.id)
         loadChats()
+      } else {
+        tmToast(`Senden fehlgeschlagen (HTTP ${r.status}) — Entwurf bleibt erhalten.`)
+      }
+    } catch (e) {
+      if (isNetworkError(e) || !isOnline()) {
+        // §280 Offline-Warteschlange: Nachricht wartet halbtransparent im
+        // Thread und geht automatisch raus, sobald Netz da ist
+        enqueueOutbox({ kind: 'intern', targetId: active.id, url, body, text: body.content })
+        setDraft('')
+        setReplyTo(null)
+        if (composerRef.current) composerRef.current.style.height = 'auto'
+        tmToast('📴 Offline — Nachricht wartet auf Verbindung')
+      } else {
+        tmToast('Senden fehlgeschlagen — Entwurf bleibt erhalten.')
       }
     } finally { setBusy(false) }
   }
@@ -919,6 +964,19 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                 </div>
               )
             })}
+          </div>
+        ))}
+        {/* §280: ohne Netz gesendete Nachrichten — halbtransparent, bis sie raus sind */}
+        {pendingOut.map((p) => (
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 0' }}>
+            <div style={{
+              maxWidth: '78%', padding: '9px 13px', borderRadius: 18, opacity: 0.55,
+              background: 'var(--tm-accent-soft, rgba(174,141,45,0.13))', color: 'var(--tm-text, #171a1f)',
+              fontSize: 15, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {p.text}
+              <div style={{ fontSize: 10.5, marginTop: 4, color: 'var(--tm-muted, #646b76)', fontWeight: 600 }}>⏳ wartet auf Verbindung</div>
+            </div>
           </div>
         ))}
         <div ref={bottomRef} />

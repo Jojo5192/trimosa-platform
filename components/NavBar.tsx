@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
+import { clearOfflineData } from '@/lib/offline'
 import type { User } from '@supabase/supabase-js'
 import ChatOverlay from '@/components/ChatOverlay'
 import OnboardingModal from '@/components/OnboardingModal'
@@ -567,7 +568,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
                   open={menuOpen}
                   onToggle={() => setMenuOpen(o => !o)}
                   onClose={() => setMenuOpen(false)}
-                  onLogout={() => { supabase.auth.signOut(); setMenuOpen(false) }}
+                  onLogout={() => { void clearOfflineData(); supabase.auth.signOut(); setMenuOpen(false) }} // §280: Snapshot/Warteschlange/Cache weg
                 />
               </>
             ) : (

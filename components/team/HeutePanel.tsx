@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, portalColor, initials } from '@/components/team/ux'
 import type { HeuteDaten, HeuteAnreise, HeuteStay } from '@/lib/heute'
+import { shouldPoll } from '@/lib/offline'
 
 type Thread = {
   id: string; guestName: string; listingTitle: string | null; bookingId?: string | null
@@ -198,7 +199,7 @@ export default function HeutePanel({ role, visible, onCount }: {
   }, [visible, tag, load])
   useEffect(() => {
     if (!visible) return
-    const t = setInterval(() => load(tag), 120_000)
+    const t = setInterval(() => { if (shouldPoll('heute')) load(tag) }, 120_000) // §280: offline pausieren
     return () => clearInterval(t)
   }, [visible, tag, load])
   const ptr = usePullToRefresh(scrollRef, useCallback(() => load(tag, true), [load, tag]))
