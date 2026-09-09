@@ -92,6 +92,20 @@ export default function CalendarPanel() {
   const [selDay, setSelDay] = useState<string>(isoOffset(0))
   const viewInitRef = useRef(false)
 
+  // Pascal 9.9.: letzter Kalender-Stand im Gerätespeicher — Reiter steht sofort (auch offline)
+  const CAL_SNAP_KEY = 'trimosa-calendar-v1'
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CAL_SNAP_KEY)
+      const j = raw ? JSON.parse(raw) : null
+      if (j && Array.isArray(j.stays)) {
+        setStays(j.stays); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
+        setCleaning(j.cleaning ?? null); setServicePins(j.servicePins ?? {}); setMyDoorCode(j.myDoorCode ?? null)
+        setLoading(false)
+      }
+    } catch { /* egal */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const load = useCallback(async (attempt = 0) => {
     try {
       const res = await fetch('/api/team/calendar', { cache: 'no-store' })
@@ -111,6 +125,8 @@ export default function CalendarPanel() {
         setServicePins(j.servicePins ?? {})
         setMyDoorCode(j.myDoorCode ?? null)
         setError(null)
+        try { localStorage.setItem(CAL_SNAP_KEY, JSON.stringify({ stays: j.stays ?? [], tasks: j.tasks ?? [], qs: j.qs ?? [], listings: j.listings ?? {}, cleaning: j.cleaning ?? null, servicePins: j.servicePins ?? {}, myDoorCode: j.myDoorCode ?? null })) } catch { /* quota */ }
+        window.dispatchEvent(new Event('trimosa-synced'))
         // Reinigungs-Verantwortliche starten direkt im Planer (einmalig)
         if (!viewInitRef.current) {
           viewInitRef.current = true

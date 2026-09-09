@@ -730,7 +730,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           {/* §277 Gruppen-Quadrat in neutraler Teamfarbe + Mitglieder-Zähler als Gruppen-Symbol */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
-            <span title={`${c.members.length} Mitglieder`} style={{ position: 'absolute', right: -4, bottom: -4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: 'var(--tm-text, #171a1f)', color: 'var(--tm-bg, #f3f4f6)', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px var(--tm-card, #fff)' }}>{c.members.length}</span>
+            {/* Pascal 9.9.: Mitglieder-Zahl am Emoji entfiel — sie wurde als Ungelesen-Zähler gelesen */}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

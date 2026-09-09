@@ -421,7 +421,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   const goTab = (id: Tab) => { haptic(); setTab(id) }
   // §282.11 Live-Punkt statt Uhrzeit: grün pulsierend = verbunden, grau = offline;
   // die Sync-Zeit bleibt als Tooltip (und am Rechner als Text daneben)
-  const showSync = !!lastSync && isDesktop
+  // Pascal 9.9.: Uhrzeit ganz ersetzt — Punkt pulsiert WÄHREND des Abgleichs, steht still wenn synchron
+  const showSync = false
   /* §282.1 Großer Titel: fährt beim Scrollen des sichtbaren Panels zusammen —
      Scroll-Ereignisse der Panels kommen per Capture an der Inhaltsfläche an;
      gemerkt wird der Reiter, für den eingeklappt ist (Wechsel ⇒ wieder groß). */
@@ -499,8 +500,8 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
         <span className="tm-num" style={{ fontSize: 11.5, color: 'var(--tm-muted2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtSync(lastSync)}</span>
       )}
       <span
-        className={online ? 'tm-live' : undefined}
-        title={online ? `Verbunden${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
+        className={online && syncing ? 'tm-live' : undefined}
+        title={online ? `${syncing ? 'Gleicht ab' : 'Synchron'}${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
         aria-label={online ? 'Verbunden' : 'Offline'}
         style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginRight: 2, background: online ? 'var(--tm-green)' : 'var(--tm-muted2)', transition: 'background .3s var(--tm-ease)' }}
       />
@@ -618,11 +619,12 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
           {role === 'team' && wrap('offen',
             <OffenPanel visible={tab === 'offen'} onCount={setOffenCount} />, true
           )}
-          {tab === 'aufgaben' && wrap('aufgaben',
+          {/* Pascal 9.9.: Aufgaben/Kalender/Mehr bleiben gemountet — Reiterwechsel ohne Nachladen */}
+          {wrap('aufgaben',
             <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true
           )}
-          {tab === 'kalender' && wrap('kalender', <CalendarPanel />, true)}
-          {tab === 'einstellungen' && wrap('einstellungen', <SettingsPanel role={role} />, true)}
+          {wrap('kalender', <CalendarPanel />, true)}
+          {wrap('einstellungen', <SettingsPanel role={role} />, true)}
 
           {/* §282.2 Progressive Unschärfe: Inhalt verschwimmt weich in die Tab-Leiste */}
           {!isDesktop && !navHidden && <div aria-hidden="true" className="tm-fade-bottom" style={{ height: 'calc(var(--tm-nav-pad, 92px) + 8px)' }} />}
