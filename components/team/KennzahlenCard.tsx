@@ -27,6 +27,15 @@ type Kennzahlen = {
 }
 
 const DETAILS_KEY = 'trimosa-kz-details'
+/** §290 Stammgäste (Dominik): Verteilung + Wiederkehrer-Liste aus /api/stammgaeste */
+type Stammgaeste = {
+  gesamtGaeste: number; einmalig: number; zwei: number; drei: number; vierPlus: number; wiederkehrer: number; quote: number; buchungen: number
+  gaeste: { name: string; email: string | null; stays: number; first: string; last: string; listings: string[]; portale: string[]; naechte: number }[]
+}
+function fmtMonat(iso: string): string {
+  const [y, m] = iso.split('-')
+  return y && m ? `${m}/${y.slice(2)}` : iso
+}
 const DE_MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 
 /** Monat des heutigen Tages in Europe/Berlin als YYYY-MM. */
@@ -101,6 +110,9 @@ export default function KennzahlenCard() {
   const [error, setError] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
+  const [stamm, setStamm] = useState<Stammgaeste | null>(null)
+  const [stammAlle, setStammAlle] = useState(false)
+  const stammLoaded = useRef(false)
 
   useEffect(() => {
     try { setShowDetails(localStorage.getItem(DETAILS_KEY) !== '0') } catch { /* egal */ }
@@ -116,6 +128,13 @@ export default function KennzahlenCard() {
       setOk(true)
       setError(null)
       setData(j)
+      if (!stammLoaded.current) {
+        stammLoaded.current = true
+        fetch('/api/stammgaeste', { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: Stammgaeste | null) => { if (d) setStamm(d) })
+          .catch(() => {})
+      }
     } catch {
       setError('Kennzahlen konnten nicht geladen werden.')
     } finally {
@@ -250,6 +269,44 @@ export default function KennzahlenCard() {
               )
             })}
           </div>
+
+          {/* ⭐ §290 Stammgäste (Dominik 9.9.): wer kam 2×, 3×, 4+× */}
+          {stamm && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text, #171a1f)' }}>⭐ Stammgäste</span>
+                <span className="tm-num" style={{ fontSize: 11.5, color: 'var(--tm-muted2, #959ca7)' }}>{stamm.wiederkehrer} von {stamm.gesamtGaeste} Gästen · {stamm.quote.toLocaleString('de-DE')} %</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                <Tile num={stamm.zwei} format={(n) => String(Math.round(n))} label="2× gebucht" />
+                <Tile num={stamm.drei} format={(n) => String(Math.round(n))} label="3× gebucht" />
+                <Tile num={stamm.vierPlus} format={(n) => String(Math.round(n))} label="4× und öfter" />
+              </div>
+              {stamm.gaeste.length > 0 && (
+                <div style={{ marginTop: 8, borderTop: '1px solid var(--tm-line, #e3e6ea)' }}>
+                  {(stammAlle ? stamm.gaeste : stamm.gaeste.slice(0, 6)).map((g) => (
+                    <div key={`${g.name}-${g.first}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--tm-line, #e3e6ea)' }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--tm-text, #171a1f)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.name}</span>
+                        <span className="tm-num" style={{ display: 'block', fontSize: 11.5, color: 'var(--tm-muted, #646b76)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          zuletzt {fmtMonat(g.last)} · {g.naechte} Nächte · {g.listings.join(', ') || '—'}
+                        </span>
+                      </span>
+                      <span className="tm-num" style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: 'var(--tm-yellow-soft, rgba(217,133,6,0.13))', color: 'var(--tm-yellow, #d98506)' }}>{g.stays}×</span>
+                    </div>
+                  ))}
+                  {stamm.gaeste.length > 6 && (
+                    <button type="button" onClick={() => { haptic(); setStammAlle((v) => !v) }} style={{ background: 'none', border: 'none', padding: '10px 0 2px', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--tm-accent-dark, #8A7020)' }}>
+                      {stammAlle ? '▾ Weniger anzeigen' : `▸ Alle ${stamm.gaeste.length} Stammgäste anzeigen`}
+                    </button>
+                  )}
+                </div>
+              )}
+              <p style={{ margin: '8px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--tm-muted2, #959ca7)' }}>
+                Zusammengeführt über Website-Konto, echte E-Mail oder vollen Namen. Gäste nur mit Vornamen (oft Airbnb) sind nicht als Wiederkehrer erkennbar.
+              </p>
+            </>
+          )}
 
           {/* Fußnote: wie gerechnet wird */}
           <button type="button" onClick={() => setShowInfo((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: '12px 0 0', cursor: 'pointer', fontSize: 11.5, color: 'var(--tm-muted2, #959ca7)' }}>

@@ -41,6 +41,8 @@ interface Conversation {
   bookingId?: string | null
   listingId?: string | null
   doorCode?: string | null   // §247: Türcode in der Gast-Karte (team-only)
+  stays?: number             // §290 Stammgast: Aufenthalte gesamt
+  stayNr?: number            // §290 laufende Nummer dieses Aufenthalts
 }
 
 /** §209: Breite der Swipe-Aktionsleiste (📞 + ✓) in der Thread-Liste */
@@ -121,6 +123,8 @@ function mapInboxThread(t: Record<string, unknown>, userId: string): Conversatio
     bookingId: (t.bookingId as string | null) ?? (t.kind === 'booking' ? (t.id as string) : null),
     listingId: (t.listingId as string | null) ?? null,
     doorCode: (t.doorCode as string | null) ?? null,
+    stays: (t.stays as number | undefined) ?? 1,
+    stayNr: (t.stayNr as number | undefined) ?? 1,
   } as unknown as Conversation
 }
 
@@ -206,6 +210,8 @@ function ThreadBadges({ c, size = 10.5 }: { c: Conversation; size?: number }) {
       {st && <Pill size={size} bg={PILL_TONES[st.tone].bg} color={PILL_TONES[st.tone].color}>{st.label}</Pill>}
       {portal && <Pill size={size} bg={portalColor(c.platform)} color="#fff">{portal}</Pill>}
       {isDringend(c) && <Pill size={size} bg="var(--tm-red, #dc3d3d)" color="#fff">dringend</Pill>}
+      {/* §290 Stammgast (Dominik): ab dem zweiten Aufenthalt */}
+      {(c.stays ?? 1) >= 2 && <Pill size={size} bg="var(--tm-yellow-soft, rgba(217,133,6,0.13))" color="var(--tm-yellow, #d98506)">⭐ {c.stayNr}. Aufenthalt</Pill>}
     </span>
   )
 }

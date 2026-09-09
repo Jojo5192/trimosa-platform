@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { loadStayIndex } from '@/lib/stammgaeste'
 
 /**
  * GET /api/chat/inbox — the team's unified guest-communication inbox.
@@ -63,14 +64,18 @@ export async function GET(request: Request) {
       }
       if (!ms || ms.length < 1000) break
     }
+    const stayIdxA = await loadStayIndex().catch(() => null)
     const threads = rows
       .filter((b) => lastByRes[Number(b.smoobu_reservation_id)])
       .map((b) => {
         const last = lastByRes[Number(b.smoobu_reservation_id)]
+        const si = stayIdxA?.byBooking.get(b.id)
         return {
           kind: 'booking' as const,
           id: b.id,
           guestName: b.guest_name || 'Gast',
+          // §290 Stammgast: Aufenthalte gesamt + laufende Nummer
+          stays: si?.stays ?? 1, stayNr: si?.nr ?? 1,
           guestAvatar: null,
           listingTitle: ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? null,
           platform: b.channel && b.channel !== 'direct' ? b.channel : b.source === 'trimosa' ? 'TRIMOSA' : 'Smoobu',
@@ -158,6 +163,8 @@ export async function GET(request: Request) {
   type Last = { at: string; preview: string; sender: 'guest' | 'host'; noReply?: boolean; phone?: boolean }
   const lastLive: Record<string, Last> = {}
   const bUnread: Record<string, number> = {}
+  // §290 Stammgast-Index (10-Min-Cache in lib/stammgaeste)
+  const stayIdx = await loadStayIndex().catch(() => null)
   // phone_resolved mit Deploy-sicherem Retry (Migration evtl. noch nicht gelaufen).
   // Breiter Response-Typ, weil supabase-js die beiden select-Strings verschieden typisiert.
   type MsgRes = { data: unknown[] | null; error: { message: string } | null }
@@ -335,6 +342,9 @@ export async function GET(request: Request) {
       children: b?.children ?? null,
       // §247: Türcode fürs Team direkt in der Gast-Karte (Route ist team-gated)
       doorCode: (b?.door_code as string | null) ?? null,
+      // §290 Stammgast
+      stays: (c.booking_id ? stayIdx?.byBooking.get(c.booking_id as string)?.stays : undefined) ?? 1,
+      stayNr: (c.booking_id ? stayIdx?.byBooking.get(c.booking_id as string)?.nr : undefined) ?? 1,
       unread: unread[c.id] ?? 0,
     }
   })
@@ -370,6 +380,7 @@ export async function GET(request: Request) {
         adults: b.adults ?? null,
         children: b.children ?? null,
         doorCode: (b.door_code as string | null) ?? null,   // §247
+        stays: stayIdx?.byBooking.get(b.id)?.stays ?? 1, stayNr: stayIdx?.byBooking.get(b.id)?.nr ?? 1, // §290
         unread: bUnread[b.id] ?? 0,
       }
     })

@@ -23,6 +23,7 @@ import {
 import { translateOutgoing } from '@/lib/translate'
 import { sendMessageToGuest } from '@/lib/smoobu'
 import { ensureDoorCode, getLockSettings } from '@/lib/locks'
+import { loadStayIndex } from '@/lib/stammgaeste'
 import { sendAutoMessageEmail } from '@/lib/email'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa.de'
@@ -217,6 +218,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
     .lte('check_in', addDays(today, 70))
     .gte('check_out', addDays(today, -70))
     .limit(1000)
+  // §290 Stammgast-Index einmal je Lauf (10-Min-Cache)
+  const stayIdx = await loadStayIndex().catch(() => null)
   const bookings = (bRows ?? []) as BookingRow[]
   report.bookingsChecked = bookings.length
   if (!bookings.length) return report
@@ -373,6 +376,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           ? `https://search.google.com/local/writereview?placeid=${listing.google_place_id}`
           : '',
         fruehester_checkin: fruehesterCheckin,
+        // §290 Stammgast-Platzhalter
+        stammgast: (stayIdx?.byBooking.get(b.id)?.stays ?? 1) >= 2 ? 'Schön, dass du wieder bei uns bist!' : '',
+        aufenthalt_nr: String(stayIdx?.byBooking.get(b.id)?.nr ?? 1),
       }
       let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
       // Nicht auflösbare Rest-Tokens säubern (nie kaputte {platzhalter} an Gäste)

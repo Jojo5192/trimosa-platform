@@ -79,6 +79,9 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: '{adresse}',      label: 'Adresse der Wohnung' },
   { key: '{google_bewertung}', label: 'Google-Bewertungs-Link (nackte URL)' },
   { key: '{bewertung_button}', label: 'Google-Bewertung als Button' },
+  // §290 Stammgäste (Dominik 9.9.)
+  { key: '{stammgast}',    label: 'Willkommen-zurück-Satz (nur bei Stammgästen, sonst leer)' },
+  { key: '{aufenthalt_nr}', label: 'Laufende Nummer des Aufenthalts (z. B. 3)' },
 ]
 
 /** Sentinel, der {mappe_button} unbeschadet durch Übersetzung & Versand trägt
@@ -103,6 +106,10 @@ export interface MessageContext {
   google_bewertung: string
   /** §231: „sofort" bzw. „10:00 Uhr" — frühester Check-in HEUTE (max aus Code-Gültigkeit und 10-Uhr-Doktrin) */
   fruehester_checkin: string
+  /** §290: „Schön, dass du wieder bei uns bist!" ab dem zweiten Aufenthalt, sonst leer */
+  stammgast: string
+  /** §290: laufende Nummer des Aufenthalts als Text („3") */
+  aufenthalt_nr: string
 }
 
 /** Ersetzt alle {platzhalter} im Text mit den Werten aus dem Kontext. */
@@ -130,6 +137,8 @@ export function demoContext(wohnung: string, checkin: string, checkout: string):
     mappe: 'trimosa.de/mappe/…',
     adresse: 'Beispielstraße 1, 54634 Bitburg',
     fruehester_checkin: '10:00 Uhr',
+    stammgast: 'Schön, dass du wieder bei uns bist!',
+    aufenthalt_nr: '2',
   }
 }
 

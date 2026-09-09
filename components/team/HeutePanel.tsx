@@ -276,7 +276,7 @@ export default function HeutePanel({ role, visible, onCount }: {
         <Dot tone={a.fertig === 'ja' ? 'green' : a.fertig === 'fehler' ? 'red' : 'grey'} title="„Wohnung ist fertig“ gemeldet">{a.fertig === 'gesperrt' ? '🚫' : '✓'}</Dot>
       </span>
     )
-    const sub = `${a.guestName ? `${a.listingTitle} · ` : ''}bis ${ddmm(a.checkOut)}${a.persons ? ` · ${a.persons} 👤` : ''}`
+    const sub = `${a.guestName ? `${a.listingTitle} · ` : ''}bis ${ddmm(a.checkOut)}${a.persons ? ` · ${a.persons} 👤` : ''}${(a.stays ?? 1) >= 2 ? ` · ⭐ ${a.stayNr}. Aufenthalt` : ''}`
     const last = i === all.length - 1
     return (
       <div key={a.bookingId}>

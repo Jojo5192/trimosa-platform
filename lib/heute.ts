@@ -11,6 +11,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getStaffCodes, firstCleaningOpenAt, type LockRef } from '@/lib/locks'
 import type { TaskAuth } from '@/lib/tasks'
+import { loadStayIndex } from '@/lib/stammgaeste'
 
 const TZ = 'Europe/Berlin'
 export function berlinToday(): string {
@@ -66,6 +67,9 @@ export interface HeuteStay {
   checkOut: string
   persons: number | null
   platform: string
+  /** §290 Stammgast: Aufenthalte gesamt (≥ 2 = Wiederkehrer) + laufende Nummer */
+  stays?: number
+  stayNr?: number
 }
 export interface HeuteAnreise extends HeuteStay {
   /** ✉ Anreise-Infos (Auto-Nachricht) sind raus */
@@ -163,8 +167,11 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
       if (n) nameByGuest.set(p.id, n)
     }
   }
+  const stayIdx = await loadStayIndex().catch(() => null)
   const toStay = (b: BookingRow): HeuteStay => ({
     bookingId: b.id,
+    stays: stayIdx?.byBooking.get(b.id)?.stays ?? 1,
+    stayNr: stayIdx?.byBooking.get(b.id)?.nr ?? 1,
     listingId: b.listing_id,
     listingTitle: byId.get(b.listing_id)?.title ?? 'Wohnung',
     guestName: auth.role === 'provider' ? null : (b.guest_name ?? (b.guest_id ? nameByGuest.get(b.guest_id) ?? null : null) ?? 'Gast'),
