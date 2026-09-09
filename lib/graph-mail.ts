@@ -183,7 +183,12 @@ async function handleMessage(m: GraphMsg, mailbox: string, state: GraphMailState
     const result = await processInboundMail({ from, subject, rawText, attachments, relayEmail, mailbox, mailKey: m.id }, { belegeOnly: opts.belegeOnly === true })
     report.verarbeitet.push({
       mailbox, from: from.slice(0, 60), subject: subject.slice(0, 90),
-      ergebnis: String(result.skipped ?? (result.ok ? Object.keys(result).filter((k) => k !== 'ok').join('+') || 'ok' : result.error ?? 'fehler')).slice(0, 120),
+      // Paragraph 296: Werte statt nur Schluessel (ergaenzt=guest_name,adults smoobu=ok nachricht=false)
+      ergebnis: String(result.skipped ?? (result.ok
+        ? Object.entries(result).filter(([k]) => k !== 'ok')
+            .map(([k, v]) => `${k}=${Array.isArray(v) ? (v.join(',') || '-') : String(v ?? '-').slice(0, k === 'bookingId' ? 8 : 60)}`)
+            .join(' ') || 'ok'
+        : result.error ?? 'fehler')).slice(0, 220),
     })
     return result
   } catch (e) {

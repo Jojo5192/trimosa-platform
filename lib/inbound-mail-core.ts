@@ -513,6 +513,11 @@ export async function processInboundMail(input: InboundMailInput, opts: { belege
   // — bzw. Lieferanten-Beleg (§236 C3, entscheidet der Handler selbst)
   const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
   if (!relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments, mailOpts)
+  // Paragraph 296: Bewertungs-Aufforderungen der Portale sind keine Buchungsmails - die KI las daraus
+  // Zeitraeume und ordnete sie alten Buchungen zu (Jeannett, 1.9.)
+  if (/@reviews?\.homeaway\.com|noreply@review/i.test(from) || /^(Schreiben Sie eine Bewertung|Bewerten Sie|Write a review|Rate your)/i.test(subject.trim())) {
+    return { ok: true, skipped: 'Bewertungsaufforderung des Portals' }
+  }
 
   // ── Claude extrahiert die Buchungsdaten ──
   const system = `Du extrahierst Buchungsdaten aus der Bestätigungs-E-Mail eines
@@ -631,7 +636,16 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   if (typeof parsed.kinder === 'number' && (booking.children == null || booking.children === 0) && parsed.kinder > 0) upd.children = parsed.kinder
   if (typeof parsed.email === 'string' && parsed.email.includes('@') && !booking.guest_email) upd.guest_email = parsed.email
   // §293 (Pascal): VOLLER Name aus der Buchungsmail — Portale liefern oft nur den Vornamen
-  const fullName = String(parsed.gast_name ?? '').replace(/\s+/g, ' ').trim()
+  // Paragraph 296: voller Name deterministisch aus dem FeWo-Betreff (Sofortbuchung von Michael Barth: ...,
+  // Reservierung fuer Johannes Pohlschneider: ..., ... gesendet an Anja Keuter: ...) - die KI-Extraktion
+  // liefert aus dem Body oft nur den Vornamen (Pohlschneider blieb beim Rescan 9.9. einwortig)
+  const fewoMail = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
+  const subjName = fewoMail
+    ? (subject.match(/(?:von|f\u00fcr|fuer|an|from|for|to)\s+([\p{L}'\u2019.\- ]{3,60}?)(?:\s+gesendet)?:\s/iu)?.[1] ?? '').replace(/\s+/g, ' ').trim()
+    : ''
+  const subjOk = /^(?:\p{Lu}[\p{L}'\u2019.\-]*\s+){1,3}\p{Lu}[\p{L}'\u2019.\-]*$/u.test(subjName)
+  const aiName = String(parsed.gast_name ?? '').replace(/\s+/g, ' ').trim()
+  const fullName = subjOk && aiName.split(' ').length < 2 ? subjName : aiName
   const oursName = (booking.guest_name ?? '').trim()
   const nameParts = fullName.split(' ')
   if (nameParts.length >= 2 && fullName.length <= 80

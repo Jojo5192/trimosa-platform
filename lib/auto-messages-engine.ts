@@ -326,6 +326,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         // dedupliziert beide Pfade.
         if (b.check_in !== today || hour < t.send_hour) continue
         if (!b.listing_id || !cleanReady.has(b.listing_id)) continue
+        // Paragraph 295: nie ab der regulaeren Check-in-Zeit - eine Nachzustellung um 16 Uhr waere sinnlos
+        const ciHour = Number(String(listings.get(b.listing_id)?.check_in_time ?? '16:00').slice(0, 2)) || 16
+        if (hour >= ciHour) continue
       } else if (t.trigger_type === 'nach_buchung') {
         if (Date.now() - new Date(b.created_at).getTime() > NEW_BOOKING_WINDOW_MS) continue
       } else {
@@ -400,7 +403,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       if (!german) { report.postponed++; continue }
 
       const conv = convByBooking.get(b.id)
-      const kanal = conv ? (t.send_email ? 'chat+email' : 'chat') : b.smoobu_reservation_id ? 'smoobu' : 'email'
+      const kanal = conv ? (t.send_email ? 'chat+email' : 'chat') : b.smoobu_reservation_id && !isFewoRelayEmail(b.guest_email) ? 'smoobu' : 'email'
       if (dryRun) {
         report.due.push({
           vorlage: t.name, gast, wohnung: listing?.title ?? '—', zeitraum, kanal,

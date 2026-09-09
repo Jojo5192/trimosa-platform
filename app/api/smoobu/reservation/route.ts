@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
-import { getRawReservation } from '@/lib/smoobu'
+import { getRawReservation, updateReservation } from '@/lib/smoobu'
 
 /**
  * 🔎 §291 Diagnose (Admin/Gastgeber): Roh-Reservierung aus Smoobu neben unserer Buchung —
@@ -38,4 +38,32 @@ export async function GET(req: NextRequest) {
     keys: Object.keys(raw),
   }
   return NextResponse.json({ ours, smoobu: summary }, NO_STORE)
+}
+
+/**
+ * Paragraph 296: Feld-Update in Smoobu gezielt testen (Admin) - POST { booking | id, fields } schickt NUR
+ * die erlaubten Felder per PUT und liefert Smoobus Antwort plus den Stand danach. Nutzen: belegen, welche
+ * Felder Smoobu bei Kanal-Buchungen wirklich uebernimmt (E-Mail?).
+ */
+const ALLOWED = new Set(['firstname', 'lastname', 'email', 'phone', 'adults', 'children', 'price', 'notice'])
+export async function POST(req: NextRequest) {
+  const auth = await getTaskAuth()
+  if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nur für Admins/Gastgeber.' }, { status: 403, ...NO_STORE })
+  const b = await req.json().catch(() => ({})) as Record<string, unknown>
+  const fields: Record<string, unknown> = {}
+  if (b.fields && typeof b.fields === 'object') {
+    for (const [k, v] of Object.entries(b.fields as Record<string, unknown>)) if (ALLOWED.has(k)) fields[k] = v
+  }
+  let smoobuId = Number(b.id ?? 0) || null
+  if (typeof b.booking === 'string' && b.booking) {
+    const { data } = await supabaseAdmin.from('bookings').select('smoobu_reservation_id').eq('id', b.booking).maybeSingle()
+    if (data?.smoobu_reservation_id) smoobuId = Number(data.smoobu_reservation_id)
+  }
+  if (!smoobuId || !Object.keys(fields).length) {
+    return NextResponse.json({ error: 'booking/id oder erlaubte fields fehlen.', erlaubt: [...ALLOWED] }, { status: 400, ...NO_STORE })
+  }
+  const ergebnis = await updateReservation(smoobuId, fields)
+  const raw = await getRawReservation(smoobuId)
+  const danach = raw ? { firstName: raw.firstname, lastName: raw.lastname, email: raw.email, phone: raw.phone, adults: raw.adults, children: raw.children } : null
+  return NextResponse.json({ smoobuId, gesendet: fields, ergebnis: ergebnis ?? 'ok', danach }, NO_STORE)
 }
