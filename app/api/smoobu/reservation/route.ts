@@ -26,8 +26,12 @@ export async function GET(req: NextRequest) {
     if (ours?.smoobu_reservation_id) smoobuId = Number(ours.smoobu_reservation_id)
   }
   if (!smoobuId) return NextResponse.json({ error: 'booking oder id fehlt / keine Smoobu-Reservierung.', ours }, { status: 400, ...NO_STORE })
+  // Paragraph 304: Migrations-Check (Inhaber 9.9.: „hab ich die Migration gemacht?") - existiert die Spalte
+  // bookings.smoobu_push_claimed_at (20260907_smoobu_push_claim.sql)? PostgREST meldet sonst „column ... does not exist"
+  const { error: colErr } = await supabaseAdmin.from('bookings').select('smoobu_push_claimed_at').limit(1)
+  const migrationSmoobuPushClaim = colErr ? `FEHLT: ${colErr.message.slice(0, 120)}` : 'ok (Spalte vorhanden)'
   const raw = await getRawReservation(smoobuId)
-  if (!raw) return NextResponse.json({ error: 'Smoobu liefert nichts.', ours, smoobuId }, { status: 502, ...NO_STORE })
+  if (!raw) return NextResponse.json({ error: 'Smoobu liefert nichts.', ours, smoobuId, migrationSmoobuPushClaim }, { status: 502, ...NO_STORE })
   // Nur die für die Diagnose relevanten Felder — keine Volltexte/Notizen an den Client
   const pick = (k: string) => raw[k]
   const summary = {
@@ -37,7 +41,7 @@ export async function GET(req: NextRequest) {
     notice: typeof raw.notice === 'string' ? (raw.notice as string).slice(0, 300) : null,
     keys: Object.keys(raw),
   }
-  return NextResponse.json({ ours, smoobu: summary }, NO_STORE)
+  return NextResponse.json({ ours, smoobu: summary, migrationSmoobuPushClaim }, NO_STORE)
 }
 
 /**
