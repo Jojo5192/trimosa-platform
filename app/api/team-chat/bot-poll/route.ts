@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { askClaude } from '@/lib/ai'
+import { askClaude, askClaudeWithFile } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 import { getClaudeBotId, postAsClaude } from '@/lib/claude-bot'
 import { buildBotContext } from '@/lib/team-bot-context'
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const { data: msgs } = await supabaseAdmin
     .from('team_messages')
-    .select('id, chat_id, sender_id, content, created_at')
+    .select('id, chat_id, sender_id, content, created_at, attachment_url, attachment_type')
     .gt('created_at', cursor)
     .order('created_at', { ascending: true })
     .limit(30)
@@ -78,6 +78,33 @@ export async function GET(req: NextRequest) {
     })
     const question = (m.content ?? '').replace(TRIGGER, '').trim()
 
+    // §292 (Pascal 9.9.): Foto zur @c-Nachricht — entweder direkt angehängt (Bildunterschrift)
+    // oder in den 3 Minuten davor vom selben Absender gesendet → als image-Block mitgeben
+    let image: { mediaType: string; base64: string } | null = null
+    try {
+      let url: string | null = m.attachment_type === 'image' && m.attachment_url ? (m.attachment_url as string) : null
+      if (!url) {
+        const since = new Date(new Date(m.created_at).getTime() - 3 * 60_000).toISOString()
+        const { data: prev } = await supabaseAdmin
+          .from('team_messages')
+          .select('attachment_url, attachment_type')
+          .eq('chat_id', m.chat_id).eq('sender_id', m.sender_id).eq('attachment_type', 'image')
+          .lt('created_at', m.created_at).gt('created_at', since)
+          .order('created_at', { ascending: false }).limit(1)
+        url = (prev?.[0]?.attachment_url as string | null) ?? null
+      }
+      if (url) {
+        const res = await fetch(url)
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer())
+          if (buf.length <= 4_500_000) {
+            const ct = (res.headers.get('content-type') ?? 'image/jpeg').split(';')[0].trim()
+            image = { mediaType: /^image\/(jpeg|png|webp|gif)$/.test(ct) ? ct : 'image/jpeg', base64: buf.toString('base64') }
+          }
+        }
+      }
+    } catch { image = null }
+
     try {
       const system = await getPrompt('team_bot')
       const user = `${liveData}
@@ -85,8 +112,8 @@ export async function GET(req: NextRequest) {
 ═══ Chat-Verlauf (neueste unten):
 ${lines.join('\n')}
 
-DIE AN DICH GERICHTETE NACHRICHT: ${question || m.content}`
-      const answer = (await askClaude(system, user, 5000)).trim()
+DIE AN DICH GERICHTETE NACHRICHT: ${question || m.content}${image ? '\n(Ein Foto ist angehängt — beziehe dich konkret darauf.)' : ''}`
+      const answer = (image ? await askClaudeWithFile(system, user, image, 5000) : await askClaude(system, user, 5000)).trim()
       if (answer) {
         await postAsClaude(m.chat_id, answer)
         answered++

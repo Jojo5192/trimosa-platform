@@ -79,14 +79,29 @@ export const SPRUECHE: Spruch[] = [
   ...Object.entries(TAGESZEIT).flatMap(([slot, arr]) => arr.map((text, i) => ({ id: `t${slot}-${i + 1}`, text }))),
 ]
 
-export function pickSpruch(d: Date, lastId: string | null, rnd: () => number = Math.random): Spruch {
+/** Pascal 9.9. 15:19: die letzten 12 gezeigten Sprüche werden nicht wiederholt. `last` = Cookie-
+ *  Wert (kommagetrennte IDs, neueste zuletzt) oder eine einzelne ID. */
+export function parseSpruchHistory(raw: string | null | undefined): string[] {
+  return (raw ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(-12)
+}
+export function pushSpruchHistory(raw: string | null | undefined, id: string): string {
+  return [...parseSpruchHistory(raw).filter((x) => x !== id), id].slice(-12).join(',')
+}
+export function pickSpruch(d: Date, last: string | string[] | null, rnd: () => number = Math.random): Spruch {
   const { hour, weekday } = berlinParts(d)
   const slot: keyof typeof TAGESZEIT = hour >= 5 && hour < 11 ? 'morgen' : hour >= 11 && hour < 18 ? 'tag' : hour >= 18 && hour < 23 ? 'abend' : 'nacht'
+  const exclude = new Set(Array.isArray(last) ? last : parseSpruchHistory(last))
   const themed = SPRUECHE.filter((s) => s.id.startsWith(`w${weekday}-`) || s.id.startsWith(`t${slot}-`))
   const general = SPRUECHE.filter((s) => s.id.startsWith('a'))
-  const pool = (rnd() < 0.45 && themed.length ? themed : general).filter((s) => s.id !== lastId)
-  const list = pool.length ? pool : general
-  return list[Math.floor(rnd() * list.length)] ?? general[0]
+  const pool = (rnd() < 0.45 && themed.length ? themed : general).filter((s) => !exclude.has(s.id))
+  const list = pool.length ? pool : general.filter((s) => !exclude.has(s.id))
+  const final = list.length ? list : general
+  return final[Math.floor(rnd() * final.length)] ?? general[0]
+}
+/** Cookies gelten je Benutzer UND Gerät (Pascal): Name + kurzer Nutzer-Suffix. */
+export function cookieFor(base: string, userId: string | null | undefined): string {
+  const suf = (userId ?? '').replace(/-/g, '').slice(0, 8)
+  return suf ? `${base}-${suf}` : base
 }
 
 /** Seitenaufruf: immer, außer der Vorhang lief in den letzten 10 Minuten. */

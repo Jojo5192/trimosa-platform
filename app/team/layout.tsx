@@ -1,26 +1,41 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
-import { THEME_BOOT_SCRIPT } from '@/lib/theme-boot'
+import { cookies } from 'next/headers'
+import { THEME_BOOT_SCRIPT, THEME_COOKIE, DARK_BG, LIGHT_BG } from '@/lib/theme-boot'
 
 /**
  * Team-App-Layout: Zoom-Sperre NUR hier (App-Charakter) — die öffentliche
  * Website bleibt aus Barrierefreiheits-Gründen zoombar. Wirkt zusammen mit
  * .team-shell (touch-action + 16px-Inputs gegen den iOS-Auto-Zoom).
  */
-export const metadata: Metadata = {
-  // iOS-Statusbar in der installierten App: opak & hell (schwarze Uhrzeit auf Weiß)
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'TRIMOSA Team' },
+/** §292 (Dominik 9.9.: helle Balken im Dark Mode): Statusbar-Stil und theme-color folgen dem
+ *  Modus-Cookie, das der Client beim Umschalten und das Boot-Script setzen. iOS liest den
+ *  Statusbar-Stil beim Start der installierten App — nach einem Wechsel greift er beim nächsten
+ *  Kaltstart. 'black' = dunkle Leiste mit weißer Uhrzeit, 'default' = hell mit schwarzer. */
+async function isDarkCookie(): Promise<boolean> {
+  try { return (await cookies()).get(THEME_COOKIE)?.value === 'dark' } catch { return false }
 }
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  // cover: sonst liefert env(safe-area-inset-*) in der installierten App 0
-  // und der Composer klebt in den runden Display-Ecken
-  viewportFit: 'cover',
-  // Statusbar-Fläche (Uhrzeit/Batterie) weiß — nahtlos zum App-Header
-  themeColor: '#f3f4f6',
+export async function generateMetadata(): Promise<Metadata> {
+  const dark = await isDarkCookie()
+  return {
+    appleWebApp: { capable: true, statusBarStyle: dark ? 'black' : 'default', title: 'TRIMOSA Team' },
+  }
+}
+export async function generateViewport(): Promise<Viewport> {
+  const dark = await isDarkCookie()
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    // cover: sonst liefert env(safe-area-inset-*) in der installierten App 0
+    // und der Composer klebt in den runden Display-Ecken
+    viewportFit: 'cover',
+    // Statusbar-Fläche (Uhrzeit/Batterie) — nahtlos zum App-Header, je Modus
+    themeColor: dark ? DARK_BG : LIGHT_BG,
+    // <meta name="color-scheme">: iOS richtet Tastatur + Zubehörleiste danach aus (§292)
+    colorScheme: dark ? 'dark' : 'light',
+  }
 }
 
 export default function TeamLayout({ children }: { children: ReactNode }) {

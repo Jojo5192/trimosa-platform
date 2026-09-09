@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  COOKIE_ACTIVE, COOKIE_CURTAIN, COOKIE_SPRUCH, curtainDueOnReturn, greetingFor, pickSpruch, type Spruch,
+  COOKIE_ACTIVE, COOKIE_CURTAIN, COOKIE_SPRUCH, cookieFor, curtainDueOnReturn, greetingFor, pickSpruch, pushSpruchHistory, type Spruch,
 } from '@/lib/start-curtain'
 
 /**
@@ -29,16 +29,21 @@ function getCookie(name: string): string | null {
     return m ? decodeURIComponent(m.slice(name.length + 1)) : null
   } catch { return null }
 }
-function touchActive() { setCookie(COOKIE_ACTIVE, String(Date.now())) }
 
 const LETTERS = ['T', 'R', 'I', 'M', 'O', 'S', 'A']
 
-export default function StartCurtain({ initialShow, firstName, initialGreeting, initialSpruch }: {
+export default function StartCurtain({ initialShow, firstName, initialGreeting, initialSpruch, userId }: {
   initialShow: boolean
   firstName: string | null
   initialGreeting: string
   initialSpruch: Spruch
+  /** Cookies je Benutzer und Gerät (Pascal 9.9.) */
+  userId: string
 }) {
+  const cActive = cookieFor(COOKIE_ACTIVE, userId)
+  const cCurtain = cookieFor(COOKIE_CURTAIN, userId)
+  const cSpruch = cookieFor(COOKIE_SPRUCH, userId)
+  const touchActive = () => setCookie(cActive, String(Date.now()))
   const [shown, setShown] = useState<Shown | null>(initialShow ? { greeting: initialGreeting, spruch: initialSpruch } : null)
   const [leaving, setLeaving] = useState(false)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -57,8 +62,8 @@ export default function StartCurtain({ initialShow, firstName, initialGreeting, 
   useEffect(() => {
     if (!shown) return
     startedAt.current = Date.now()
-    setCookie(COOKIE_CURTAIN, String(Date.now()))
-    setCookie(COOKIE_SPRUCH, shown.spruch.id)
+    setCookie(cCurtain, String(Date.now()))
+    setCookie(cSpruch, pushSpruchHistory(getCookie(cSpruch), shown.spruch.id))
     const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
     const t1 = setTimeout(leave, reduce ? 3000 : 6000)
     const t2 = setTimeout(() => { setShown(null); setLeaving(false) }, 11000)
@@ -71,12 +76,12 @@ export default function StartCurtain({ initialShow, firstName, initialGreeting, 
     const iv = setInterval(() => { if (document.visibilityState === 'visible') touchActive() }, 60_000)
     const onVis = () => {
       if (document.visibilityState === 'hidden') { touchActive(); return }
-      const lastActive = Number(getCookie(COOKIE_ACTIVE) ?? 0) || null
-      const lastCurtain = Number(getCookie(COOKIE_CURTAIN) ?? 0) || null
+      const lastActive = Number(getCookie(cActive) ?? 0) || null
+      const lastCurtain = Number(getCookie(cCurtain) ?? 0) || null
       if (curtainDueOnReturn(lastActive, lastCurtain)) {
         const now = new Date()
         setLeaving(false)
-        setShown({ greeting: greetingFor(now, firstName), spruch: pickSpruch(now, getCookie(COOKIE_SPRUCH)) })
+        setShown({ greeting: greetingFor(now, firstName), spruch: pickSpruch(now, getCookie(cSpruch)) })
       }
       touchActive()
     }
@@ -87,7 +92,8 @@ export default function StartCurtain({ initialShow, firstName, initialGreeting, 
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('pagehide', touchActive)
     }
-  }, [firstName])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, userId])
 
   if (!shown) return null
   const words = shown.spruch.text.split(' ')

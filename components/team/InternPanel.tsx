@@ -383,7 +383,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     } finally { setBusy(false) }
   }
 
-  async function sendFile(file: File) {
+  async function sendFile(file: File, caption?: string) {
     if (!active || uploading) return
     if (file.size > 50 * 1024 * 1024) { alert('Datei zu groß (max. 50 MB).') ; return }
     setUploading(true)
@@ -404,7 +404,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: draft.trim(), replyToId: replyTo?.id,
+          content: (caption ?? draft).trim(), replyToId: replyTo?.id,
           attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: file.name,
         }),
       })
@@ -1073,7 +1073,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         }}>
           {uploading ? '⏳' : '📎'}
           <input type="file" accept="image/*,video/mp4,video/quicktime,video/webm,application/pdf" style={{ display: 'none' }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = '' }} />
+            onChange={(e) => {
+              const f = e.target.files?.[0]; e.target.value = ''
+              if (!f) return
+              // §292 (Pascal): Bildunterschrift beim Hochladen — steht schon Text im Feld, wird er
+              // genommen; sonst kurz nachfragen. Mit @c schaut sich Claude das Bild an.
+              const caption = draft.trim() ? draft : (window.prompt('Bildunterschrift (optional) — mit @c fragst du Claude dazu', '') ?? '')
+              sendFile(f, caption)
+            }} />
         </label>
         <div style={{ flex: 1, position: 'relative', display: 'flex', border: '1px solid var(--tm-line)', borderRadius: 18, background: 'var(--tm-card)', minHeight: 36 }}>
           <textarea

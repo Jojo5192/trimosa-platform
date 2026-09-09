@@ -4,7 +4,7 @@ import { redirect, notFound } from 'next/navigation'
 import TeamShell from '@/components/team/TeamShell'
 import StartCurtain from '@/components/team/StartCurtain'
 import { cookies } from 'next/headers'
-import { COOKIE_CURTAIN, COOKIE_SPRUCH, curtainDueOnLoad, greetingFor, pickSpruch } from '@/lib/start-curtain'
+import { COOKIE_CURTAIN, COOKIE_SPRUCH, cookieFor, curtainDueOnLoad, greetingFor, pickSpruch } from '@/lib/start-curtain'
 
 /**
  * /team — die Team-App (PWA): Reiter Heute · Inbox · Kalender · Aufgaben · Mehr.
@@ -36,16 +36,16 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
   if (!role) notFound()
 
   const jar = await cookies()
-  const lastCurtain = Number(jar.get(COOKIE_CURTAIN)?.value ?? 0) || null
+  const lastCurtain = Number(jar.get(cookieFor(COOKIE_CURTAIN, user.id))?.value ?? 0) || null
   const showCurtain = curtainDueOnLoad(lastCurtain)
   const firstName = String(me?.display_name ?? '').trim().split(/\s+/)[0] || null
   const now = new Date()
   const greeting = greetingFor(now, firstName)
-  const spruch = pickSpruch(now, jar.get(COOKIE_SPRUCH)?.value ?? null)
+  const spruch = pickSpruch(now, jar.get(cookieFor(COOKIE_SPRUCH, user.id))?.value ?? null)
 
   return (
     <main className="team-page" style={{ height: '100dvh', overflow: 'hidden' }}>
-      <StartCurtain initialShow={showCurtain} firstName={firstName} initialGreeting={greeting} initialSpruch={spruch} />
+      <StartCurtain initialShow={showCurtain} firstName={firstName} initialGreeting={greeting} initialSpruch={spruch} userId={user.id} />
       <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} initialTaskId={task ?? null} />
     </main>
   )

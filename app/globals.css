@@ -860,6 +860,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .tm-dark .tm-curtain { --c-bg: #0f1114; --c-text: #f2f3f5; --c-muted: #9aa1ab; --c-dark: #AE8D2D; }
 .team-page { background: #f3f4f6; }
 .tm-dark .team-page { background: #0f1114; }
+/* §292 (Dominik): die iOS-Tastatur-Zubehörleiste (▲ ▼ ✓) folgt dem color-scheme des DOKUMENTS —
+   deshalb zusätzlich am Wurzelelement, nicht nur an .team-shell */
+html.tm-dark { color-scheme: dark; }
 .tm-curtain.is-leaving { animation: tmCurtainOut 0.8s var(--c-ease) both; pointer-events: none; }
 @keyframes tmCurtainOut { to { opacity: 0; transform: scale(1.03); } }
 

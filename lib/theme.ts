@@ -9,7 +9,7 @@ import { useSyncExternalStore } from 'react'
  * den Vorhang, die Seite und die Portale um. Vor dem ersten Frame setzt ein
  * Inline-Script in app/team/layout.tsx dieselbe Klasse (kein Aufblitzen).
  */
-import { THEME_KEY, DARK_BG, LIGHT_BG } from '@/lib/theme-boot'
+import { THEME_KEY, DARK_BG, LIGHT_BG, THEME_COOKIE } from '@/lib/theme-boot'
 export { THEME_KEY, DARK_BG, LIGHT_BG } from '@/lib/theme-boot'
 export type ThemeMode = 'system' | 'light' | 'dark'
 export const THEME_EVENT = 'trimosa-theme'
@@ -34,6 +34,8 @@ export function applyTheme(mode: ThemeMode = getThemeMode()) {
   const html = document.documentElement
   html.classList.toggle('tm-dark', dark)
   html.style.backgroundColor = dark ? DARK_BG : LIGHT_BG
+  // Cookie für den Server (Statusbar-Stil der installierten App, theme-color beim nächsten Start)
+  try { document.cookie = `${THEME_COOKIE}=${dark ? 'dark' : 'light'}; path=/; max-age=31536000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}` } catch { /* egal */ }
   try {
     let meta = document.querySelector('meta[name="theme-color"]:not([media])') as HTMLMetaElement | null
     if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta) }
