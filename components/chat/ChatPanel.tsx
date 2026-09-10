@@ -2207,8 +2207,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           // AUSSER die Bar ist im Thread versteckt, dann braucht sie der Composer
           paddingBottom: variant === 'app' && !(isMobile && mobileView === 'chat')
             ? 8 : 'max(8px, env(safe-area-inset-bottom))',
-          display: recording ? 'none' : 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
+          // Paragraph 311b: ZWEI Zeilen - oben die beschrifteten Werkzeuge (horizontal scrollbar), unten das Textfeld
+          // in voller Breite. Eine Zeile passte bei 375 px mit Beschriftungen nicht mehr (Senden-Knopf ausserhalb).
+          display: recording ? 'none' : 'flex', flexDirection: 'column', gap: 6, flexShrink: 0,
         }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 1, minHeight: 0 }}>
           {active && isHost(active) && msgs.length > 0 && (
             <div style={TB_WRAP}>
             <button
@@ -2434,11 +2437,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </div>,
             document.body,
           )}
+          </div>
           {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
           <div style={{
             // HOTFIX 10.9. (Pascal 09:50 „Versenden-Knopf fehlt"): minWidth 0, sonst schiebt die Intrinsic-Breite des
             // Textfelds die Zeile ueber den Bildschirmrand und der Senden-Knopf (rechts innen) liegt ausserhalb
-            flex: 1, minWidth: 0, position: 'relative', display: 'flex',
+            width: '100%', minWidth: 0, position: 'relative', display: 'flex', boxSizing: 'border-box',
             border: '1px solid var(--tm-line)', borderRadius: 18,
             background: 'var(--tm-card)', minHeight: 36,
           }}>
