@@ -166,6 +166,11 @@ function shortPlatform(p: string): string {
   return p
 }
 
+/** Paragraph 311 (Pascal 10.9. 07:19): Werkzeugknoepfe im Nachrichtenbereich mit kleiner Beschriftung, damit
+ *  auch Dritte sofort sehen, was welcher Knopf tut (Diktieren · Vorschlag · Verbessern · Vorlagen · Mappe). */
+const TB_WRAP: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }
+const TB_LABEL: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: 'var(--tm-muted)', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.01em' }
+
 /** Pillen-Badge in „soft"-Farbe (Pascal-Spec: klein, fett) */
 function Pill({ children, bg, color, size = 10.5 }: { children: ReactNode; bg: string; color: string; size?: number }) {
   return (
@@ -2156,6 +2161,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
         {team && active && !recording && (
           <div style={{ borderTop: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
             {speechSupported && (
+              <div style={TB_WRAP}>
               <button
                 onClick={toggleDictation}
                 title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
@@ -2169,12 +2175,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
                 </svg>
               </button>
+                <span style={TB_LABEL}>Diktieren</span>
+              </div>
             )}
             <input
               value={instruction}
               onChange={e => setInstruction(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
-              placeholder={refining ? 'Claude schreibt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
+              placeholder={refining ? 'Claude schreibt…' : draft.trim() ? 'Anweisung an die KI, z. B. kürzer, förmlicher…' : 'Was soll die KI antworten? (oder 🎙 diktieren)'}
               style={{
                 flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 999, padding: '8px 14px',
                 fontSize: 13, outline: 'none', background: 'var(--tm-card)', color: 'var(--tm-text)', fontFamily: 'inherit',
@@ -2186,7 +2194,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               background: instruction.trim() && !refining ? 'var(--tm-navy)' : 'var(--tm-surface2)',
               color: instruction.trim() && !refining ? '#fff' : 'var(--tm-muted2)',
               fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
-            }}>{refining ? '⏳' : '✨'}</button>
+            }}>{refining ? '⏳' : '✨ KI schreibt'}</button>
           </div>
         )}
 
@@ -2202,6 +2210,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           display: recording ? 'none' : 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0,
         }}>
           {active && isHost(active) && msgs.length > 0 && (
+            <div style={TB_WRAP}>
             <button
               onClick={suggestReply}
               disabled={aiBusy}
@@ -2217,10 +2226,33 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             >
               {aiBusy ? '⏳' : '✨'}
             </button>
+              <span style={TB_LABEL}>Vorschlag</span>
+            </div>
+          )}
+          {/* Paragraph 311: eigenen Entwurf per KI ausformulieren lassen (Pascal: „per Knopfdruck besser ausformuliert") */}
+          {active && isHost(active) && draft.trim().length > 0 && (
+            <div style={TB_WRAP}>
+              <button
+                onClick={() => refineDraft('Formuliere meinen Entwurf freundlich, klar und fehlerfrei aus - gleicher Inhalt, gleiche Sprache, nichts hinzuerfinden, Laenge aehnlich.')}
+                disabled={refining}
+                title="Entwurf von der KI sauber ausformulieren lassen"
+                aria-label="Entwurf verbessern"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                  border: 'none', background: 'var(--tm-surface2)',
+                  cursor: refining ? 'wait' : 'pointer', fontSize: 15,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: refining ? 0.5 : 1, marginBottom: 1,
+                }}
+              >
+                {refining ? '⏳' : '✍️'}
+              </button>
+              <span style={TB_LABEL}>Verbessern</span>
+            </div>
           )}
           {/* Paragraph 306: 📨 Vorlagen (Auto-Nachrichten) als Entwurf einfuegen */}
           {team && active && (
-            <div style={{ position: 'relative', flexShrink: 0, marginBottom: 1 }}>
+            <div style={{ ...TB_WRAP, position: 'relative', marginBottom: 1 }}>
               <button
                 onClick={openTplMenu}
                 title="Vorlage einfügen"
@@ -2232,6 +2264,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >📨</button>
+              <span style={TB_LABEL}>Vorlagen</span>
               {tplMenu && (
                 <div style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 250, maxHeight: 320, overflowY: 'auto',
@@ -2257,7 +2290,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           )}
           {/* §157: 📖 Gästemappen-Link — anhängen oder direkt senden */}
           {team && active?.mappeUrl && (
-            <div style={{ position: 'relative', flexShrink: 0, marginBottom: 1 }}>
+            <div style={{ ...TB_WRAP, position: 'relative', marginBottom: 1 }}>
               <button
                 onClick={() => setMappeMenu(v => !v)}
                 title="Gästemappen-Link"
@@ -2268,6 +2301,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >📖</button>
+              <span style={TB_LABEL}>Mappe</span>
               {mappeMenu && (
                 <div style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 220,
