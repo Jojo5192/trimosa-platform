@@ -168,8 +168,16 @@ function shortPlatform(p: string): string {
 
 /** Paragraph 311 (Pascal 10.9. 07:19): Werkzeugknoepfe im Nachrichtenbereich mit kleiner Beschriftung, damit
  *  auch Dritte sofort sehen, was welcher Knopf tut (Diktieren · Vorschlag · Verbessern · Vorlagen · Mappe). */
-const TB_WRAP: React.CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }
-const TB_LABEL: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: 'var(--tm-muted)', lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.01em' }
+const TOOL_PILL: React.CSSProperties = {
+  flex: 1, minWidth: 0, padding: '11px 8px', borderRadius: 14, border: '1px solid var(--tm-line)',
+  background: 'var(--tm-card)', color: 'var(--tm-text)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+}
+const TOOL_CIRCLE: React.CSSProperties = {
+  width: 44, height: 44, borderRadius: '50%', border: '1px solid var(--tm-line)', background: 'var(--tm-surface2)',
+  cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+}
+const VERBESSERN_ANWEISUNG = 'Formuliere meinen Entwurf freundlich, klar und fehlerfrei aus - gleicher Inhalt, gleiche Sprache, passend zum bisherigen Gespraech und zur Buchung, nichts hinzuerfinden, Laenge aehnlich.'
 
 /** Pillen-Badge in „soft"-Farbe (Pascal-Spec: klein, fett) */
 function Pill({ children, bg, color, size = 10.5 }: { children: ReactNode; bg: string; color: string; size?: number }) {
@@ -2157,47 +2165,6 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           </button>
         )}
 
-        {/* ✏️ KI-Werkstatt — Anweisung tippen ODER 🎙️ sprechen → Claude schreibt */}
-        {team && active && !recording && (
-          <div style={{ borderTop: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', padding: '8px 14px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-            {speechSupported && (
-              <div style={TB_WRAP}>
-              <button
-                onClick={toggleDictation}
-                title="Diktier-Modus: sprich, was du antworten willst — Claude schreibt die Antwort"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0,
-                  background: 'var(--tm-navy)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
-                </svg>
-              </button>
-                <span style={TB_LABEL}>Diktieren</span>
-              </div>
-            )}
-            <input
-              value={instruction}
-              onChange={e => setInstruction(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); refineDraft() } }}
-              placeholder={refining ? 'Claude schreibt…' : draft.trim() ? 'Anweisung an die KI, z. B. kürzer, förmlicher…' : 'Was soll die KI antworten? (oder 🎙 diktieren)'}
-              style={{
-                flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 999, padding: '8px 14px',
-                fontSize: 13, outline: 'none', background: 'var(--tm-card)', color: 'var(--tm-text)', fontFamily: 'inherit',
-                boxSizing: 'border-box',
-              }}
-            />
-            <button onClick={() => refineDraft()} disabled={refining || !instruction.trim()} style={{
-              padding: '8px 14px', borderRadius: 999, border: 'none', flexShrink: 0, whiteSpace: 'nowrap',
-              background: instruction.trim() && !refining ? 'var(--tm-navy)' : 'var(--tm-surface2)',
-              color: instruction.trim() && !refining ? '#fff' : 'var(--tm-muted2)',
-              fontSize: 12.5, fontWeight: 700, cursor: instruction.trim() && !refining ? 'pointer' : 'default',
-            }}>{refining ? '⏳' : '✨ KI schreibt'}</button>
-          </div>
-        )}
-
         {/* Input bar */}
         <div style={{
           borderTop: '0.5px solid var(--tm-line)', background: 'var(--tm-glass)',
@@ -2211,63 +2178,14 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           // in voller Breite. Eine Zeile passte bei 375 px mit Beschriftungen nicht mehr (Senden-Knopf ausserhalb).
           display: recording ? 'none' : 'flex', flexDirection: 'column', gap: 6, flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 1, minHeight: 0 }}>
-          {active && isHost(active) && msgs.length > 0 && (
-            <div style={TB_WRAP}>
-            <button
-              onClick={suggestReply}
-              disabled={aiBusy}
-              title="Antwort von Claude vorschlagen lassen"
-              style={{
-                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                border: 'none', background: 'var(--tm-surface2)',
-                cursor: aiBusy ? 'wait' : 'pointer', fontSize: 15,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: aiBusy ? 0.5 : 1, transition: 'opacity .15s',
-                marginBottom: 1,
-              }}
-            >
-              {aiBusy ? '⏳' : '✨'}
-            </button>
-              <span style={TB_LABEL}>Vorschlag</span>
-            </div>
-          )}
-          {/* Paragraph 311: eigenen Entwurf per KI ausformulieren lassen (Pascal: „per Knopfdruck besser ausformuliert") */}
-          {active && isHost(active) && draft.trim().length > 0 && (
-            <div style={TB_WRAP}>
-              <button
-                onClick={() => refineDraft('Formuliere meinen Entwurf freundlich, klar und fehlerfrei aus - gleicher Inhalt, gleiche Sprache, nichts hinzuerfinden, Laenge aehnlich.')}
-                disabled={refining}
-                title="Entwurf von der KI sauber ausformulieren lassen"
-                aria-label="Entwurf verbessern"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                  border: 'none', background: 'var(--tm-surface2)',
-                  cursor: refining ? 'wait' : 'pointer', fontSize: 15,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  opacity: refining ? 0.5 : 1, marginBottom: 1,
-                }}
-              >
-                {refining ? '⏳' : '✍️'}
-              </button>
-              <span style={TB_LABEL}>Verbessern</span>
-            </div>
-          )}
-          {/* Paragraph 306: 📨 Vorlagen (Auto-Nachrichten) als Entwurf einfuegen */}
-          {team && active && (
-            <div style={{ ...TB_WRAP, position: 'relative', marginBottom: 1 }}>
-              <button
-                onClick={openTplMenu}
-                title="Vorlage einfügen"
-                aria-label="Vorlage einfügen"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%',
-                  border: 'none', background: tplMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)',
-                  cursor: 'pointer', fontSize: 15,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >📨</button>
-              <span style={TB_LABEL}>Vorlagen</span>
+          {/* Paragraph 313: Werkzeuge nach Pascals Vorbild - drei grosse beschriftete Knoepfe, darunter Anhang + Textfeld + Senden */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            {speechSupported && (
+              <button onClick={toggleDictation} className="tm-press-btn" title="Sprich, was du antworten willst — die KI schreibt die Nachricht mit Chat-Verlauf und Buchungsdaten" style={TOOL_PILL}>🎤 Diktieren</button>
+            )}
+            {team && active && (
+              <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
+                <button onClick={openTplMenu} className="tm-press-btn" title="Vorlage mit den Buchungsdaten als Entwurf einfügen" style={{ ...TOOL_PILL, background: tplMenu ? 'rgba(174,141,45,0.22)' : TOOL_PILL.background }}>📨 Vorlagen</button>
               {tplMenu && (
                 <div style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 250, maxHeight: 320, overflowY: 'auto',
@@ -2289,22 +2207,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </div>
                 </div>
               )}
-            </div>
-          )}
-          {/* §157: 📖 Gästemappen-Link — anhängen oder direkt senden */}
-          {team && active?.mappeUrl && (
-            <div style={{ ...TB_WRAP, position: 'relative', marginBottom: 1 }}>
-              <button
-                onClick={() => setMappeMenu(v => !v)}
-                title="Gästemappen-Link"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%',
-                  border: 'none', background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)',
-                  cursor: 'pointer', fontSize: 15,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >📖</button>
-              <span style={TB_LABEL}>Mappe</span>
+              </div>
+            )}
+            {active && isHost(active) && (
+              <button onClick={() => { haptic(); if (draft.trim()) refineDraft(VERBESSERN_ANWEISUNG); else suggestReply() }} disabled={aiBusy || refining} className="tm-press-btn" title="Eigenen Entwurf verbessern — ohne Entwurf schreibt die KI einen Antwortvorschlag aus Chat-Verlauf und Buchung" style={{ ...TOOL_PILL, opacity: aiBusy || refining ? 0.6 : 1 }}>{aiBusy || refining ? '⏳ KI arbeitet…' : draft.trim() ? '✨ KI verbessern' : '✨ KI schreibt'}</button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            {team && active?.mappeUrl && (
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <button onClick={() => setMappeMenu(v => !v)} title="Anhängen: Gästemappe oder Rechnung" aria-label="Anhängen" style={{ ...TOOL_CIRCLE, background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)' }}>📎</button>
               {mappeMenu && (
                 <div style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 220,
@@ -2312,7 +2224,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   border: '0.5px solid var(--tm-line)', overflow: 'hidden',
                 }}>
                   <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
-                    📖 GÄSTEMAPPE
+                    📎 ANHÄNGEN — GÄSTEMAPPE & RECHNUNG
                   </div>
                   <button
                     onClick={() => {
@@ -2390,8 +2302,8 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   )}
                 </div>
               )}
-            </div>
-          )}
+              </div>
+            )}
           {/* §159: Empfänger-Dialog (Portal — §83: fixed nie im Touch-Scroller) */}
           {invForm.open && typeof document !== 'undefined' && createPortal(
             <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
@@ -2437,12 +2349,11 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             </div>,
             document.body,
           )}
-          </div>
-          {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
+          {/* Textfeld: ✕ innen loescht den Entwurf; Senden ist der Kreis rechts (immer sichtbar) */}
           <div style={{
             // HOTFIX 10.9. (Pascal 09:50 „Versenden-Knopf fehlt"): minWidth 0, sonst schiebt die Intrinsic-Breite des
             // Textfelds die Zeile ueber den Bildschirmrand und der Senden-Knopf (rechts innen) liegt ausserhalb
-            width: '100%', minWidth: 0, position: 'relative', display: 'flex', boxSizing: 'border-box',
+            flex: 1, minWidth: 0, position: 'relative', display: 'flex', boxSizing: 'border-box',
             border: '1px solid var(--tm-line)', borderRadius: 18,
             background: 'var(--tm-card)', minHeight: 36,
           }}>
@@ -2455,7 +2366,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               rows={1}
               style={{
                 flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box', resize: 'none', outline: 'none', border: 'none',
-                borderRadius: 18, padding: draft.trim() ? '7px 76px 7px 13px' : '7px 13px', minHeight: 46,
+                borderRadius: 18, padding: draft.trim() ? '7px 40px 7px 13px' : '7px 13px', minHeight: 46,
                 fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
                 background: 'transparent', color: 'var(--tm-text)',
                 overflowY: 'auto',
@@ -2470,32 +2381,20 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   onClick={() => { setDraft(''); setInstruction('') }}
                   title="Entwurf verwerfen"
                   style={{
-                    position: 'absolute', right: 48, bottom: 12, width: 22, height: 22,
+                    position: 'absolute', right: 8, bottom: 12, width: 22, height: 22,
                     borderRadius: '50%', border: 'none', background: 'rgba(118,118,128,0.28)',
                     color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                   }}
                 >✕</button>
-                <button
-                  onClick={send}
-                  disabled={busy || translating}
-                  title="Senden"
-                  aria-label="Senden"
-                  style={{
-                    // Paragraph 306 (Pascal): groesserer Senden-Knopf (28 -> 38 px)
-                    position: 'absolute', right: 4, bottom: 4, width: 38, height: 38,
-                    borderRadius: '50%', border: 'none', padding: 0,
-                    background: busy || translating ? 'var(--tm-surface2)' : 'var(--tm-navy)',
-                    color: '#fff', cursor: busy ? 'default' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-                  </svg>
-                </button>
               </>
             )}
+          </div>
+            <button onClick={send} disabled={busy || translating || !draft.trim()} title="Senden" aria-label="Senden" style={{ ...TOOL_CIRCLE, border: 'none', background: busy || translating || !draft.trim() ? 'var(--tm-surface2)' : 'var(--tm-navy)', color: '#fff', cursor: busy || !draft.trim() ? 'default' : 'pointer' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>

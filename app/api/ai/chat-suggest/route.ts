@@ -31,17 +31,22 @@ export async function POST(request: Request) {
 
   // Two thread sources share this endpoint: platform conversations and
   // Smoobu booking threads (unified inbox). Normalise to conv shape.
+  let bookingFacts = ''
   let conv: { id: string; host_id: string; guest_id: string | null; listing_id: string | null }
   if (typeof bookingId === 'string') {
     if (!isTeam) return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 403 })
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('id, guest_id, listing_id, listings(host_id)')
+      .select('id, guest_id, listing_id, guest_name, check_in, check_out, adults, children, channel, listings(host_id)')
       .eq('id', bookingId)
       .maybeSingle()
     if (!booking) return NextResponse.json({ error: 'Buchung nicht gefunden.' }, { status: 404 })
     const l = (Array.isArray(booking.listings) ? booking.listings[0] : booking.listings) as { host_id: string } | null
     conv = { id: booking.id, host_id: l?.host_id ?? user.id, guest_id: booking.guest_id, listing_id: booking.listing_id }
+    // Paragraph 313 (Pascal 10:23): Buchungsdaten in den KI-Kontext (Diktieren + Verbessern arbeiten damit)
+    const bk = booking as { guest_name?: string | null; check_in?: string; check_out?: string; adults?: number | null; children?: number | null; channel?: string | null }
+    const fmt = (d?: string) => d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : '—'
+    bookingFacts = `Gast: ${bk.guest_name ?? 'Gast'} · Aufenthalt ${fmt(bk.check_in)}–${fmt(bk.check_out)} · ${(bk.adults ?? 1) + (bk.children ?? 0)} Personen · Kanal ${bk.channel ?? '—'}\n`
   } else {
     const { data: found } = await supabaseAdmin
       .from('conversations')
@@ -128,7 +133,7 @@ export async function POST(request: Request) {
 
   // Zeiten sind AKTUELL & VERBINDLICH — ältere Chats/Wissensbasis können noch
   // alte Zeiten nennen (z. B. Check-out 11:00 vor der Umstellung auf 10:00)
-  const facts = (listing
+  const facts = bookingFacts + (listing
     ? `Unterkunft: ${listing.title} (${listing.location ?? '—'}) · Check-in ab ${listing.check_in_time ?? '—'} · Check-out bis ${listing.check_out_time ?? '—'}
 (Diese Check-in-/Check-out-Zeiten sind der AKTUELLE, VERBINDLICHE Stand — sie gehen abweichenden Zeiten aus der Wissensbasis oder früheren Antworten IMMER vor.)`
     : 'Unterkunft: unbekannt')

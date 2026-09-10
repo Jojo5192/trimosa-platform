@@ -91,6 +91,11 @@ html:has(.team-shell),
 html:has(.team-shell) body {
   background-color: #f3f4f6;
 }
+/* Paragraph 313 (Pascal/Dominik 10.9. 19:25 „Leiste oben weiß im Dark Mode"): mit black-translucent zeigt die
+   Statusleisten-Zone den html/body-Hintergrund - der muss im Dark Mode dunkel sein, sonst bleibt sie hell. */
+html.tm-dark:has(.team-shell),
+html.tm-dark:has(.team-shell) body,
+html.tm-dark { background-color: #0f1114; }
 
 body {
   color: #1D1D1F;
@@ -858,6 +863,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 /* §284: dunkel nach App-Modus (Klasse auf <html>), nicht mehr nach System-Media-Query */
 .tm-dark .tm-curtain { --c-bg: #0f1114; --c-text: #f2f3f5; --c-muted: #9aa1ab; --c-dark: #AE8D2D; }
+/* Paragraph 313: im Dark Mode alle Lichtkreise in Markenfarbe (o3 sonst Anthrazit) */
+.tm-dark .tm-curtain .o3 { opacity: 0.22; }
 .team-page { background: #f3f4f6; }
 .tm-dark .team-page { background: #0f1114; }
 /* §292 (Dominik): die iOS-Tastatur-Zubehörleiste (▲ ▼ ✓) folgt dem color-scheme des DOKUMENTS —
@@ -887,15 +894,21 @@ html.tm-dark { color-scheme: dark; }
 @keyframes tmGrid { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0.35; } }
 
 /* 3 Leuchtender Rand: Verlauf läuft einmal um die abgerundete Kante (Masken-Trick) */
+/* Paragraph 313 (Pascal 10.9. 13:11): Rand-Licht als INNENSCHATTEN ueber die ganze Flaeche inkl. Safe-Area statt
+   Rahmenlinie; oben ein Verlauf in die Seitenfarbe, damit keine Kante zur Statusleiste entsteht. */
 .tm-curtain .c-edge {
-  position: absolute; inset: 0; border-radius: 28px; padding: 4px; opacity: 0;
-  background: conic-gradient(from var(--tm-ang), transparent 0 58%, var(--c-brand) 76%, var(--c-brand2) 86%, #fffaf0 92%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
-  animation: tmEdge 5.6s var(--c-ease) 0.2s both, tmSpin 5.6s linear 0.2s both;
+  position: absolute; inset: 0; border-radius: 0; padding: 0; opacity: 0; pointer-events: none;
+  box-shadow: inset 0 0 70px rgba(174,141,45,0.55);
+  animation: tmEdge 5.6s var(--c-ease) 0.2s both;
 }
 .tm-curtain .c-edge.glow { filter: blur(10px); }
-.tm-curtain .c-edge.sharp { padding: 1.5px; }
+.tm-curtain .c-edge.sharp { box-shadow: inset 0 0 28px rgba(174,141,45,0.35); }
+.tm-curtain::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; z-index: 2; pointer-events: none;
+  height: calc(env(safe-area-inset-top, 0px) + 140px);
+  background: linear-gradient(to bottom, var(--c-bg) 0%, var(--c-bg) 28%, transparent 100%);
+}
+.tm-curtain .c-center { z-index: 3; }
 @keyframes tmEdge { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes tmSpin { to { --tm-ang: 360deg; } }
 
