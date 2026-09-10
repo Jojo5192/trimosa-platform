@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
-import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh } from '@/components/team/ux'
+import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh, isStandalonePwa } from '@/components/team/ux'
 import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
 import { applyTheme, useIsDark } from '@/lib/theme'
 import OffenPanel from '@/components/team/OffenPanel'
@@ -90,6 +90,27 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   const fallback: Tab = 'heute'
   // Paragraph 308: Update-Streifen
   const [updating, setUpdating] = useState(false)
+  // Paragraph 310: In-App-Link-Sheet (Standalone-PWA hat keine Browser-Leiste -> kein Zurueck)
+  const [linkSheet, setLinkSheet] = useState<{ url: string; title: string } | null>(null)
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<{ url: string; title?: string }>).detail
+      if (d?.url) setLinkSheet({ url: d.url, title: d.title || '' })
+    }
+    // Klicks auf Links mit target=_blank (z. B. Links in Nachrichten) im Standalone-Modus abfangen
+    const onClick = (e: MouseEvent) => {
+      if (!isStandalonePwa()) return
+      const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || a.getAttribute('target') !== '_blank') return
+      const href = a.href
+      if (!/^https?:/i.test(href)) return
+      e.preventDefault()
+      setLinkSheet({ url: href, title: a.textContent?.trim().slice(0, 60) || '' })
+    }
+    window.addEventListener('trimosa-open-link', onOpen)
+    document.addEventListener('click', onClick, true)
+    return () => { window.removeEventListener('trimosa-open-link', onOpen); document.removeEventListener('click', onClick, true) }
+  }, [])
 
   const [tab, setTab] = useState<Tab>(
     initialTaskId ? 'aufgaben'
@@ -591,6 +612,18 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {updating && <div className="tm-update-stripe" aria-hidden="true" />}
+      {linkSheet && (
+        <div role="dialog" aria-label="Link" style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', background: 'var(--tm-bg, #F3F4F6)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(env(safe-area-inset-top) + 8px) 10px 8px', background: 'var(--tm-glass)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '0.5px solid var(--tm-line)' }}>
+            <button onClick={() => { haptic(); setLinkSheet(null) }} style={{ border: 'none', background: 'var(--tm-surface2)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹ Zurück</button>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'center' }}>
+              {linkSheet.title || linkSheet.url.replace(/^https?:\/\//, '')}
+            </span>
+            <button onClick={() => window.open(linkSheet.url, '_blank', 'noopener')} title="Im Browser öffnen" style={{ border: 'none', background: 'var(--tm-surface2)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>↗</button>
+          </div>
+          <iframe src={linkSheet.url} title={linkSheet.title || 'Link'} style={{ flex: 1, border: 'none', width: '100%', background: '#fff' }} />
+        </div>
+      )}
       {syncing && <div className="tm-loadbar" aria-hidden="true" />}
       {isDesktop && sidebar}
 

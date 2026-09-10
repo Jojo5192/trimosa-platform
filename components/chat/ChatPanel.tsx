@@ -5,7 +5,7 @@ import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink } from '@/components/team/ux'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 
@@ -1307,7 +1307,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               ['🔧', c.earlyBlocked ? 'Early Check-in wieder erlauben' : 'Early Check-in sperren (Arbeiten geplant)', () => { setPeek(null); toggleEarlyBlock(c) }],
             ] as [string, string, () => void][] : []),
             ['🧾', 'Buchung & Gast', () => { setPeek(null); selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
-            ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); window.open(c.mappeUrl!, '_blank', 'noopener') }]] : []),
+            ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); openLink(c.mappeUrl!, 'Gästemappe') }]] : []),
           ] as [string, string, () => void][]).map(([icon, label, fn], i) => (
             <button key={label} className="tm-press-btn" onClick={() => { haptic(); fn() }} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', border: 'none',
@@ -2402,7 +2402,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           )}
           {/* iMessage-style field: rounded bubble, send button INSIDE, grows upward, Enter = newline */}
           <div style={{
-            flex: 1, position: 'relative', display: 'flex',
+            // HOTFIX 10.9. (Pascal 09:50 „Versenden-Knopf fehlt"): minWidth 0, sonst schiebt die Intrinsic-Breite des
+            // Textfelds die Zeile ueber den Bildschirmrand und der Senden-Knopf (rechts innen) liegt ausserhalb
+            flex: 1, minWidth: 0, position: 'relative', display: 'flex',
             border: '1px solid var(--tm-line)', borderRadius: 18,
             background: 'var(--tm-card)', minHeight: 36,
           }}>
@@ -2414,7 +2416,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               placeholder={needsTranslation ? `Deutsch → ${flag(guestLang)} ${LANG_LABEL[guestLang!] ?? guestLang}` : t(uiLang, 'Nachricht')}
               rows={1}
               style={{
-                flex: 1, resize: 'none', outline: 'none', border: 'none',
+                flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box', resize: 'none', outline: 'none', border: 'none',
                 borderRadius: 18, padding: draft.trim() ? '7px 76px 7px 13px' : '7px 13px', minHeight: 46,
                 fontSize: 17, lineHeight: '22px', fontFamily: 'inherit',
                 background: 'transparent', color: 'var(--tm-text)',

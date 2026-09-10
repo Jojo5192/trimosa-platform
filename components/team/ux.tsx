@@ -246,6 +246,23 @@ export function tmToast(text: string) {
   try { window.dispatchEvent(new CustomEvent('trimosa-toast', { detail: { text } })) } catch { /* SSR */ }
 }
 
+/** Paragraph 310 (Dominik 10.9. 08:09): Laeuft die App als installierte PWA, oeffnen Links (Gaestemappe, Rechnung …)
+ *  ohne Browser-Leiste — kein Zurueck. Deshalb im Standalone-Modus ein In-App-Sheet mit Schliessen-Knopf;
+ *  im normalen Browser wie gehabt ein neues Fenster. */
+export function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined') return false
+  const nav = window.navigator as Navigator & { standalone?: boolean }
+  return nav.standalone === true || (window.matchMedia?.('(display-mode: standalone)').matches ?? false)
+}
+export function openLink(url: string, title?: string) {
+  if (typeof window === 'undefined') return
+  if (isStandalonePwa()) {
+    window.dispatchEvent(new CustomEvent('trimosa-open-link', { detail: { url, title: title ?? '' } }))
+  } else {
+    window.open(url, '_blank', 'noopener')
+  }
+}
+
 /** 🎨 Portalfarben (Pascal-Spec) für Avatare, Badges, Belegungsbalken. */
 // Paragraph 305 (Pascal 9.9. 18:11): Pillen = Kalenderfarben. Airbnb Rot, Booking Navy, FeWo-direkt Vrbo-Blau (hell,
 // damit es sich vom Booking-Navy abhebt), HomeToGo „Twilight Purple" (Markenfarbe), Website/Direkt Gold.
