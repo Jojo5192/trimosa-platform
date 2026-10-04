@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, memo, type ReactNode, type TouchEvent as ReactTouchEvent } from 'react'
 import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink } from '@/components/team/ux'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
+import { isOffenThread, publishInboxThreads, INBOX_RELOAD_EVENT, type InboxThreadLite } from '@/lib/inbox-store'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
 
 /** ☎️ §227d: Anruf-Eintrag für die Inline-Anzeige im Verlauf */
@@ -76,9 +77,10 @@ const INBOX_FILTERS: { id: InboxFilter; label: string; count?: boolean }[] = [
   { id: 'p:Website', label: 'Website' },
   { id: 'erledigt', label: 'Erledigt' },
 ]
-/** Offen = letzte Nachricht vom Gast, weder ✓ noch 📞 markiert */
+/** Offen = letzte Nachricht vom Gast, weder ✓ noch 📞 markiert
+ *  (EINE Definition in lib/inbox-store — gilt auch für Badge, Heute, Offen-Stapel) */
 function isOffen(c: Conversation): boolean {
-  return c.lastSender === 'guest' && !c.noReplyNeeded && !c.phoneResolved
+  return isOffenThread(c)
 }
 function daysUntil(iso: string | null | undefined): number | null {
   if (!iso) return null
@@ -299,6 +301,163 @@ function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?
   )
 }
 
+/* ── §314 Trägheit: stabile Listen-Daten + memoisierte Karte + optimistisches Senden ── */
+
+/** Unveränderte Threads behalten ihr Objekt (und eine unveränderte Liste ihr Array) —
+ *  so überspringen die memoisierten Karten jeden Listen-Abgleich, der nichts geändert hat. */
+function shareConvs(prev: Conversation[], next: Conversation[]): Conversation[] {
+  if (!prev.length) return next
+  const byId = new Map(prev.map((c) => [c.id, c]))
+  let same = prev.length === next.length
+  const out = next.map((c, i) => {
+    const p = byId.get(c.id)
+    const keep = p && JSON.stringify(p) === JSON.stringify(c) ? p : c
+    if (keep !== prev[i]) same = false
+    return keep
+  })
+  return same ? prev : out
+}
+
+/** Minuten-Takt für relative Angaben in den Karten („14:32" → „Gestern", „Anreise in 2 Tagen"):
+ *  innerhalb derselben Minute bleibt die Karte unangetastet, danach rechnet sie neu. */
+function minuteKey(): number {
+  return Math.floor(Date.now() / 60000)
+}
+
+/** Wartende Blase des optimistischen Sendens — lebt NUR in eigenem State, nie in msgs/Cache.
+ *  afterId = letzte Nachricht beim Tipp (dahinter wird die echte Zeile erwartet → kein Doppel). */
+interface SendingMsg { id: string; threadId: string; text: string; afterId: string | null; failed?: boolean }
+
+/** Vom POST zurückgegebene Zeile auf die gemeinsame Message-Form bringen (wie fetchMsgList).
+ *  null = unbekannte Form → der Aufrufer lädt den Verlauf wie früher neu. */
+function sentRow(m: unknown, threadId: string, kind: 'direct' | 'booking' | undefined, userId: string): Message | null {
+  if (!m || typeof m !== 'object') return null
+  const r = m as Record<string, unknown>
+  if ((typeof r.id !== 'string' && typeof r.id !== 'number') || typeof r.content !== 'string' || typeof r.created_at !== 'string') return null
+  if (kind === 'booking') {
+    return {
+      id: r.id as string, conversation_id: threadId,
+      sender_id: r.sender_type === 'guest' ? 'guest' : userId,
+      content: r.content, read_at: (r.read_at as string | null) ?? null, created_at: r.created_at,
+      lang: (r.lang as string | null) ?? null, content_de: (r.content_de as string | null) ?? null,
+    }
+  }
+  if (typeof r.sender_id !== 'string') return null
+  return r as unknown as Message
+}
+
+/** Handgriffe der Listen-Karten: EIN stabiles Objekt, das an die jeweils aktuellen Funktionen
+ *  der Komponente weiterreicht — sonst bräche React.memo bei jedem Render. */
+interface RowApi {
+  tap(c: Conversation, swipeOpen: boolean): void
+  peek(c: Conversation): void
+  mark(c: Conversation, field: 'no_reply' | 'phone'): void
+  swipeStart(e: ReactTouchEvent<HTMLDivElement>, id: string): void
+  swipeMove(e: ReactTouchEvent<HTMLDivElement>, id: string): void
+  swipeEnd(id: string): void
+}
+
+/** §277 Chat-KARTE der Thread-Liste — memoisiert: Tippen im Composer, Pull-to-Refresh und
+ *  unveränderte Listen-Abgleiche rendern die Karten nicht mehr neu. tick (Minuten-Takt)
+ *  hält die relativen Zeitangaben frisch. */
+const ConvCard = memo(function ConvCard({ c, name, avatar, isSel, swipeOpen, canSwipe, team, uiLang, api }: {
+  c: Conversation; name: string; avatar: string | null; isSel: boolean; swipeOpen: boolean
+  canSwipe: boolean; team: boolean; uiLang: UiLang; tick: number; api: RowApi
+}) {
+  const unread = (c.unread ?? 0) > 0
+  const range = fmtRangeShort(c.check_in, c.check_out)
+  return (
+    <div className="tm-conv-row" data-conv={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 6px', borderRadius: 16, WebkitTouchCallout: 'none' }}
+      onContextMenu={team ? (e) => { e.preventDefault(); api.peek(c) } : undefined}
+      onTouchStart={canSwipe ? (e) => api.swipeStart(e, c.id) : undefined}
+      onTouchMove={canSwipe ? (e) => api.swipeMove(e, c.id) : undefined}
+      onTouchEnd={canSwipe ? () => api.swipeEnd(c.id) : undefined}
+      onTouchCancel={canSwipe ? () => api.swipeEnd(c.id) : undefined}
+    >
+      {canSwipe && (
+        <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex' }}>
+          <button onClick={() => api.mark(c, 'phone')} style={{
+            width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
+            background: c.phoneResolved ? '#8E8E93' : '#3478F6',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
+          }}>
+            📞<span style={{ fontSize: 9, fontWeight: 700 }}>{c.phoneResolved ? 'Zurück' : 'Telefonat'}</span>
+          </button>
+          <button onClick={() => api.mark(c, 'no_reply')} style={{
+            width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
+            background: c.noReplyNeeded ? '#8E8E93' : '#34C759',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
+          }}>
+            ✓<span style={{ fontSize: 9, fontWeight: 700 }}>{c.noReplyNeeded ? 'Zurück' : 'Erledigt'}</span>
+          </button>
+        </div>
+      )}
+    {/* §277 Chat-KARTE (Pascal-Spec): 16px Radius, hairline, weicher Schatten;
+        ungelesen = Akzent-Rahmen, Name extra fett, Zeit in Akzent, Punkt rechts */}
+    <button data-swipe-front className="tm-press" onClick={() => api.tap(c, swipeOpen)} style={{
+      width: '100%', textAlign: 'left', cursor: 'pointer',
+      padding: '10px 12px', borderRadius: 16,
+      border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
+      background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
+      boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      position: 'relative',
+      transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
+      transition: 'transform .22s ease, background .12s',
+    }}>
+      {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) */}
+      <div style={{
+        width: 40, height: 40, borderRadius: 13, flexShrink: 0, overflow: 'hidden',
+        background: portalColor(c.platform), color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', userSelect: 'none',
+      }}>
+        {avatar
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          : initials(name)}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+            {name}
+          </span>
+          <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {c.last_message_at
+              ? fmtTime(c.last_message_at, uiLang)
+              : c.check_in
+                ? `ab ${new Date(c.check_in).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
+                : ''}
+          </span>
+          {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
+        </div>
+        {(c.listing_title || range) && (
+          <div className="tm-num" style={{ fontSize: 12, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+            {c.listing_title ?? '—'}{range ? ` · ${range}` : ''}
+          </div>
+        )}
+        {c.lastPreview && (
+          <div style={{ fontSize: 12.5, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
+            {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
+            {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 12 }}>📞 </span>}
+            {c.lastSender === 'host' && <span style={{ color: 'var(--tm-muted2, #959ca7)' }}>Du: </span>}
+            {c.lastPreview}
+          </div>
+        )}
+        {(c.platform || c.guestStatus || (c.guestLang && c.guestLang !== 'de')) && (
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+            {c.guestLang && c.guestLang !== 'de' && (
+              <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 13, lineHeight: 1 }}>{flag(c.guestLang)}</span>
+            )}
+            <ThreadBadges c={c} />
+          </div>
+        )}
+      </div>
+    </button>
+    </div>
+  )
+})
+
 /* ── main ── */
 interface Props {
   userId: string
@@ -310,16 +469,23 @@ interface Props {
   onClose?: () => void
   /** app only: meldet der Shell, ob mobil ein Thread offen ist (Tab-Bar verstecken) */
   onMobileThread?: (open: boolean) => void
-  /** team: meldet „zu bearbeiten"-Threads (ungelesen ODER unbeantwortet) fürs App-Badge */
-  onUnread?: (n: number) => void
   /** page only: pre-select a conversation (?conv= deep link from emails) */
   initialConvId?: string | null
   /** team mode: unified inbox (all guests incl. Airbnb/Booking via Smoobu) */
   team?: boolean
 }
 
-export default function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread, onUnread }: Props) {
+function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team = false, onMobileThread }: Props) {
   const [convs, setConvs]       = useState<Conversation[]>([])
+  /* Listen-Abgleich (Team): Anfragen sind durchnummeriert — eine Antwort wird nur
+     angewendet, wenn noch keine NEUERE angewendet wurde (kein Zurückspringen), und
+     optimistische Änderungen (✓/📞/Stumm) entwerten alle bis dahin laufenden Antworten. */
+  const listSeqRef       = useRef(0)      // zuletzt vergebene Anfrage-Nummer
+  const appliedSeqRef    = useRef(0)      // höchste angewendete bzw. entwertete Nummer
+  const lastListStartRef = useRef(0)      // Bremse für weiche Auslöser (Poll/Sichtbarkeit/Heute)
+  const listLoadedRef    = useRef(false)  // ein Server-Stand liegt vor
+  const listReloadTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const guardList = () => { appliedSeqRef.current = ++listSeqRef.current }
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   // „Ältere Chats" (§129): einmalige Nachladung aller vergangenen Buchungen
   // mit Archiv-Verlauf — null = noch nicht geladen, kein Polling
@@ -420,6 +586,35 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   const swipeInfo = useRef<{ x: number; y: number; id: string; el: HTMLElement | null; locked: '' | 'h' | 'v' } | null>(null)
   const listScrollRef = useRef<HTMLDivElement | null>(null)
 
+  /* §314 Optimistisches Senden: die Nachricht steht SOFORT als wartende Blase im Verlauf,
+     der Entwurf ist sofort leer. Bestätigt der Server, ersetzt die echte Zeile die Blase;
+     schlägt es fehl, wandert der Text zurück in den Entwurf (Rollback) — oder die Blase
+     bleibt als „nicht gesendet" stehen (Tipp übernimmt den Text), wenn der Thread nicht mehr
+     zu sehen bzw. das Feld neu beschrieben ist (nie Text in den Composer eines anderen Gasts
+     schreiben). sendingRef ist die Quelle, der State nur ihr Abbild fürs Rendern. */
+  const [sending, setSending] = useState<SendingMsg[]>([])
+  const sendingRef = useRef<SendingMsg[]>([])
+  const updateSending = (fn: (l: SendingMsg[]) => SendingMsg[]) => {
+    sendingRef.current = fn(sendingRef.current)
+    setSending(sendingRef.current)
+  }
+  const dropSending = (id: string) => updateSending((l) => l.filter((x) => x.id !== id))
+  /** aktuell offener Thread / aktueller Entwurf — für Prüfungen NACH einem await */
+  const activeIdRef = useRef<string | null>(null)
+  const draftRef = useRef('')
+  /** ist der Thread gerade zu sehen? (mobil: nicht in der Listenansicht) */
+  const threadShownRef = useRef(true)
+
+  /* §314 „Zurück": gestaffeltes Einblenden nur, wenn der Reiter sichtbar wird — nicht, wenn
+     die Liste nach dem Schließen eines Threads neu aufgebaut wird (die Staffel lief dann bis
+     ~0,8 s nach). Ausgeschaltet beim Öffnen eines Threads (mobil), wieder scharf, sobald der
+     Reiter ausgeblendet ist (rootRef + IntersectionObserver weiter unten). */
+  const [listStagger, setListStagger] = useState(true)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  /** Listen-Position beim Öffnen eines Threads (mobil) — die Liste wird beim Zurück neu
+   *  aufgebaut und stünde sonst wieder ganz oben */
+  const listPosRef = useRef<{ top: number; id: string; index: number; offset: number } | null>(null)
+
   // "✨" reply suggestion (hosts only) — lands in the composer as an editable
   // draft, never auto-sent. History is loaded server-side by the API.
   // Thread-Markierungen auf der jeweils LETZTEN Nachricht — eine spätere
@@ -430,6 +625,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   async function muteConv(c: Conversation, mode: '' | 'alle' | 'bewertung') {
     const prev = c.msgMute ?? null
     const next = mode || null
+    guardList() // laufende Listen-Antwort darf die Änderung nicht überschreiben
     setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: next } : x))
     setActive(a => (a && a.id === c.id ? { ...a, msgMute: next } : a))
     try {
@@ -439,6 +635,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
       tmToast(next === 'alle' ? 'Auto-Nachrichten stumm (außer Check-out)' : next === 'bewertung' ? 'Keine Bewertungsbitte mehr' : 'Auto-Nachrichten wieder an')
+      reloadListSoon()
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: prev } : x))
       setActive(a => (a && a.id === c.id ? { ...a, msgMute: prev } : a))
@@ -449,6 +646,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // Paragraph 309: Early-Check-in fuer diese Buchung sperren/freigeben (z. B. Arbeiten am Anreisetag)
   async function toggleEarlyBlock(c: Conversation) {
     const next = !c.earlyBlocked
+    guardList() // laufende Listen-Antwort darf die Änderung nicht überschreiben
     setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: next } : x))
     setActive(a => (a && a.id === c.id ? { ...a, earlyBlocked: next } : a))
     try {
@@ -458,6 +656,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
       tmToast(next ? 'Early Check-in gesperrt — keine Frueh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
+      reloadListSoon()
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: !next } : x))
       setActive(a => (a && a.id === c.id ? { ...a, earlyBlocked: !next } : a))
@@ -468,6 +667,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   async function markConv(c: Conversation, field: 'no_reply' | 'phone') {
     const key = field === 'phone' ? 'phoneResolved' as const : 'noReplyNeeded' as const
     const value = !c[key]
+    // Ein schon laufender Listen-Abgleich (60-s-Poll, Heute) kennt die Markierung noch
+    // nicht — seine Antwort wird entwertet, sonst springen Badge/Chip/Heute kurz zurück
+    guardList()
     setConvs(cs => cs.map(x => x.id === c.id ? { ...x, [key]: value } : x))
     setActive(a => (a && a.id === c.id ? { ...a, [key]: value } : a))
     // Booking.com wertet die Antwortquote separat — dort muss der Haken
@@ -480,10 +682,13 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       setBookingHintFor(null)
     }
     try {
-      await fetch('/api/chat/inbox', {
+      const res = await fetch('/api/chat/inbox', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: c.kind ?? 'direct', id: c.id, value, field }),
       })
+      // gespeichert → Liste mit dem Serverstand abgleichen (schließt das Wettrennen mit
+      // einem Abgleich, der zwischen Tipp und Speichern gestartet ist)
+      if (res.ok) reloadListSoon()
     } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
   }
   async function toggleMark(field: 'no_reply' | 'phone') {
@@ -700,7 +905,10 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   // Verlauf INSTANT, frische Daten ersetzen ihn still (wie die Listen-§52)
   const msgsCacheRef  = useRef<Map<string, Message[]>>(new Map())
   // §157: iMessage-Swipe vom linken Rand → zurück zur Liste (mobil)
-  const swipe = useSwipeBack(() => setMobileView('list'))
+  /* §314 Zurück zur Liste: die Shell (Kopf-/Tab-Leiste) im SELBEN Render mitnehmen statt
+     erst über den Effekt unten — spart einen zweiten Render und einen Frame ohne Leisten */
+  const backToList = () => { setMobileView('list'); onMobileThread?.(false) }
+  const swipe = useSwipeBack(backToList)
 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
@@ -719,29 +927,85 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     onMobileThread?.(isMobile && mobileView === 'chat')
   }, [isMobile, mobileView, onMobileThread])
 
+  /* §314: Refs für Prüfungen nach einem await (Senden, Nachrichten-Abruf) */
+  useLayoutEffect(() => { activeIdRef.current = active?.id ?? null }, [active?.id])
+  useEffect(() => { draftRef.current = draft }, [draft])
+
+  /* §314 Ansichtswechsel mobil (vor dem ersten Bild):
+     · Thread: immer ans Ende — beim ERNEUTEN Öffnen desselben Threads laufen weder der
+       Thread-Wechsel- noch der Scroll-Effekt, der neu aufgebaute Feed stand sonst ganz oben.
+     · Liste: Position von vor dem Öffnen wiederherstellen. Steht die angetippte Karte noch
+       an derselben Stelle der Liste, wird exakt auf sie ausgerichtet (Karten außerhalb des
+       Bildschirms haben wegen content-visibility nur eine geschätzte Höhe). */
+  useLayoutEffect(() => {
+    threadShownRef.current = !isMobile || mobileView === 'chat'
+    if (!isMobile) return
+    if (mobileView === 'chat') { pinToBottom(); return }
+    const sc = listScrollRef.current
+    const pos = listPosRef.current
+    listPosRef.current = null
+    if (!sc || !pos) return
+    sc.scrollTop = pos.top
+    const row = pos.index >= 0 ? sc.querySelectorAll<HTMLElement>('[data-conv]')[pos.index] : undefined
+    if (row && row.dataset.conv === pos.id) {
+      sc.scrollTop += row.getBoundingClientRect().top - sc.getBoundingClientRect().top - pos.offset
+    }
+  }, [mobileView, isMobile])
+
+  /* §314: Staffel der Liste wieder scharf schalten, sobald der Reiter/das Segment
+     ausgeblendet ist (display: none der Shell) bzw. das Overlay geschlossen wurde —
+     beim nächsten Sichtbarwerden blendet die Liste wie gewohnt gestaffelt ein. */
+  useEffect(() => {
+    if (!open) { setListStagger(true); return }
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => !e.isIntersecting)) setListStagger(true)
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [open])
+
   /* ── data fetching ── */
   const CACHE_KEY = team ? 'trimosa-inbox-v1' : 'trimosa-chats-v1'
-  const getConvs = useCallback(async () => {
+  const getConvs = useCallback(async (soft = false) => {
     if (team) {
+      // soft = Hintergrund-Auslöser (60-s-Poll, Rückkehr in die App, Bitte des Heute-Reiters):
+      // höchstens alle 5 s. Start, Aktualisieren, Pull und Senden laufen immer.
+      if (soft && Date.now() - lastListStartRef.current < 5000) return null
+      lastListStartRef.current = Date.now()
+      const seq = ++listSeqRef.current
       const r = await fetch('/api/chat/inbox')
-      if (r.status === 401 || r.status === 403) { setAuthExpired(true); return null }
+      // Ein Hintergrund-Abruf setzt das Sitzungs-Banner nie (ein einzelner 401-Aussetzer
+      // bliebe sonst dauerhaft stehen); jeder geglückte Abruf nimmt es zurück.
+      if (r.status === 401 || r.status === 403) { if (!soft) setAuthExpired(true); return null }
       if (!r.ok) return null
       const { threads, teamNames: tn } = await r.json()
+      setAuthExpired(false)
+      if (seq < appliedSeqRef.current) return null // überholt bzw. durch ✓/📞 entwertet
+      appliedSeqRef.current = seq
+      listLoadedRef.current = true
       if (tn) setTeamNames(tn)
       const data: Conversation[] = (threads ?? []).map((t: Record<string, unknown>) => mapInboxThread(t, userId))
-      setConvs(data)
+      setConvs(prev => shareConvs(prev, data)) // §314: unveränderte Threads behalten ihr Objekt
       // Der offene Thread übernimmt Markierungen (📞/✓) und Status sofort,
       // auch wenn ein ANDERES Team-Mitglied sie gesetzt hat — active ist eine
       // Kopie und würde sonst erst beim Thread-Wechsel nachziehen (§130).
       // unread bleibt bewusst lokal (sonst flackert das Badge beim Lesen).
+      // Unverändert → dasselbe Objekt behalten: sonst startet jeder Listen-Abgleich
+      // den Nachrichten-Effekt (Cache-Anzeige + Doppel-Abruf) des offenen Threads neu.
       setActive(a => {
         if (!a) return a
         const fresh = data.find(c => c.id === a.id)
-        return fresh
-          ? { ...a, noReplyNeeded: fresh.noReplyNeeded, phoneResolved: fresh.phoneResolved, lastSender: fresh.lastSender, guestStatus: fresh.guestStatus }
-          : a
+        if (!fresh) return a
+        const same = fresh.noReplyNeeded === a.noReplyNeeded && fresh.phoneResolved === a.phoneResolved
+          && fresh.lastSender === a.lastSender && fresh.guestStatus === a.guestStatus
+        return same
+          ? a
+          : { ...a, noReplyNeeded: fresh.noReplyNeeded, phoneResolved: fresh.phoneResolved, lastSender: fresh.lastSender, guestStatus: fresh.guestStatus }
       })
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.slice(0, 60))) } catch { /* quota */ }
+      // Snapshot: die ersten 60 + ALLE offenen — der Zähler stimmt so auch beim Kaltstart/offline
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(data.filter((c, i) => i < 60 || isOffen(c)))) } catch { /* quota */ }
       convsRef.current = data
       applyPending(data)
       // §276: Sync-Stand + Ladestreifen der Shell
@@ -751,7 +1015,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const r = await fetch('/api/chat')
     if (!r.ok) return null
     const data: Conversation[] = await r.json()
-    setConvs(data)
+    setConvs(prev => shareConvs(prev, data))
     convsRef.current = data
     applyPending(data)
     return data
@@ -767,8 +1031,21 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     pendingConvRef.current = null
     hatAuswahlRef.current = true
     setActive(ziel)
-    if (window.innerWidth < 680) setMobileView('chat')
+    if (window.innerWidth < 680) { setMobileView('chat'); setListStagger(false) }
   }
+
+  /* Nach einer gespeicherten Änderung (✓/📞/Stumm, Offen-Stapel) die Liste mit dem
+     Serverstand abgleichen — kurz gebündelt, damit zügiges Abhaken mehrerer Threads
+     nicht je Tipp einen schweren Inbox-Abruf auslöst. */
+  function reloadListSoon() {
+    if (!team) return
+    if (listReloadTimer.current) clearTimeout(listReloadTimer.current)
+    listReloadTimer.current = setTimeout(() => {
+      listReloadTimer.current = null
+      void getConvs().catch(() => {})
+    }, 1200)
+  }
+  useEffect(() => () => { if (listReloadTimer.current) clearTimeout(listReloadTimer.current) }, [])
 
   // ⬇️ §209 Pull-to-Refresh der Thread-Liste (Ziehen am Listenanfang lädt neu)
   const listPtr = usePullToRefresh(listScrollRef, getConvs)
@@ -781,7 +1058,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   }, [getConvs, variant])
 
   // Ältere Chats einmalig nachladen (§129) — dedupe gegen die Live-Liste
-  // passiert beim Rendern, damit der 20s-Poll die Archiv-Daten nie anfasst
+  // passiert beim Rendern, damit der Listen-Abgleich (60 s) die Archiv-Daten nie anfasst
   const loadArchiv = useCallback(async () => {
     setArchivLoading(true)
     try {
@@ -821,6 +1098,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     // + Scroll-Sprung bei jedem 5s-Poll (§110-Lektion aus dem InternPanel).
     const apply = (list: Message[]) => {
       msgsCacheRef.current.set(id, list)
+      // §314: Antwort eines inzwischen verlassenen Threads landet nur im Cache — sonst
+      // stünden seine Nachrichten unter dem Kopf des jetzt offenen Gasts
+      if (activeIdRef.current !== id) return
       const sig = msgsSig(id, list)
       if (sig !== msgsSigRef.current) {
         msgsSigRef.current = sig
@@ -951,6 +1231,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const last = msgs[msgs.length - 1]
     if (isOurSide(last, active)) return
     if (draft.trim() || autoSuggested.current.has(active.id)) return
+    // §314: solange eine eigene Nachricht unterwegs ist (Entwurf schon geleert), keinen
+    // KI-Entwurf ins Feld schreiben
+    if (sendingRef.current.some((x) => x.threadId === active.id && !x.failed)) return
     autoSuggested.current.add(active.id)
     suggestReply()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -988,14 +1271,41 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     return () => window.visualViewport?.removeEventListener('resize', grow)
   }, [draft])
 
-  /* Ungelesene Gäste-Threads an die Team-Shell melden (§277, Pascal-Spec:
-     Inbox-Zähler = Summe der UNGELESENEN Chats beider Seiten; die offenen
-     Antworten leben auf „Heute" und im Filter-Chip „Offen · n"). Das
-     App-Icon-Badge rechnet die Shell zentral (nach Push-Einstellungen). */
+  /* Gäste-Threads in den gemeinsamen Stand (lib/inbox-store) veröffentlichen — Pascal 12.9.:
+     Inbox-Badge, Segment „Gäste · n" und Heute zählen daraus die OFFENEN Threads, also
+     dieselbe Zahl wie der Filter-Chip „Offen · n" (hebt die reine Ungelesen-Zählung aus
+     §277 auf). Hängt an convs: ✓/📞, Antworten und der Snapshot-Start wirken sofort auf
+     alle Zähler. Nur die Team-App veröffentlicht (nicht /dashboard/chat, nicht das Overlay). */
   useEffect(() => {
-    if (!team || !onUnread) return
-    onUnread(convs.filter((c) => (c.unread ?? 0) > 0).length)
-  }, [convs, team, onUnread])
+    if (!team || variant !== 'app') return
+    if (!listLoadedRef.current && convs.length === 0) return // noch kein Stand → nicht „0" melden
+    publishInboxThreads(convs.map((c): InboxThreadLite => ({
+      id: c.id, guestName: c.guest_name || 'Gast', listingTitle: c.listing_title ?? null,
+      bookingId: c.bookingId ?? null, platform: c.platform ?? '',
+      lastMessageAt: c.last_message_at ?? null, lastSender: c.lastSender ?? null,
+      lastPreview: c.lastPreview ?? null, noReplyNeeded: !!c.noReplyNeeded,
+      phoneResolved: !!c.phoneResolved, unread: c.unread ?? 0,
+    })))
+  }, [convs, team, variant])
+
+  /* Listen-Abgleich der Team-App — den gab es bisher nicht (nur Start/Aktualisieren/Senden),
+     der Zähler alterte also, solange niemand aktualisierte: alle 60 s bei sichtbarer App
+     (§280: offline pausiert, im Leerlauf seltener), bei Rückkehr in die App und auf Bitte
+     des Heute-Reiters/Offen-Stapels (INBOX_RELOAD_EVENT). */
+  useEffect(() => {
+    if (!team || variant !== 'app') return
+    const soft = () => { void getConvs(true).catch(() => {}) }
+    const id = setInterval(() => { if (document.visibilityState === 'visible' && shouldPoll('chat-list')) soft() }, 60_000)
+    const onVis = () => { if (document.visibilityState === 'visible' && Date.now() - lastListStartRef.current > 60_000) soft() }
+    const onAsk = (e: Event) => { if ((e as CustomEvent<{ hard?: boolean }>).detail?.hard) reloadListSoon(); else soft() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener(INBOX_RELOAD_EVENT, onAsk)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener(INBOX_RELOAD_EVENT, onAsk)
+    }
+  }, [team, variant, getConvs]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (variant !== 'overlay' || !onClose) return
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -1009,8 +1319,27 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     // nicht Sekunden später unter den Fingern wegtauschen.
     pendingConvRef.current = null
     hatAuswahlRef.current = true
+    // §314: Seit die Liste unveränderte Objekte behält (shareConvs), ist c beim erneuten
+    // Öffnen oft DASSELBE Objekt wie active — der Nachrichten-Effekt läuft dann nicht neu,
+    // also den Stand hier selbst auffrischen (den vollen bringt der 5-s-Abruf).
+    if (active === c) void getMsgs(c.id, c.kind, true).catch(() => {})
     setActive(c)
-    if (isMobile) setMobileView('chat')
+    if (isMobile) {
+      // §314: Listen-Position merken (wird beim Zurück wiederhergestellt), Staffel für den
+      // Rückweg ausschalten, Shell im selben Render umschalten
+      const sc = listScrollRef.current
+      if (sc) {
+        const rows = Array.from(sc.querySelectorAll<HTMLElement>('[data-conv]'))
+        const index = rows.findIndex((el) => el.dataset.conv === c.id)
+        listPosRef.current = {
+          top: sc.scrollTop, id: c.id, index,
+          offset: index >= 0 ? rows[index].getBoundingClientRect().top - sc.getBoundingClientRect().top : 0,
+        }
+      }
+      setListStagger(false)
+      setMobileView('chat')
+      onMobileThread?.(true)
+    }
     // Push-Mitteilungen dieses Threads aus der Mitteilungszentrale räumen
     // (Dominik §121.3) — der sw taggt Pushes mit ihrer Ziel-URL
     try {
@@ -1139,42 +1468,107 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     try { rec.start() } catch { finish() }
   }
 
-  /* ── send (with translation preview when the guest speaks another language) ── */
-  async function reallySend(content: string, contentDe?: string, lang?: string) {
-    if (!active) return
+  /* ── send (with translation preview when the guest speaks another language) ──
+     §314 optimistisch: wartende Blase + geleerter Entwurf SOFORT beim Tipp. Thread, Text und
+     Zielsprache werden dabei festgehalten (der Nutzer kann währenddessen den Thread wechseln).
+     Der Versand selbst bleibt seriell (busy) — Reihenfolge beim Gast wie bisher. */
+
+  /** Wartende Blase einfügen und ans Ende scrollen (der Scroll-Effekt beobachtet nur msgs) */
+  function addSending(threadId: string, text: string): string {
+    const id = 'tmp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    const afterId = msgs.length ? msgs[msgs.length - 1].id : null
+    updateSending((l) => [...l, { id, threadId, text: text.trim(), afterId }])
+    // nach dem Einfügen, aber vor dem nächsten Bild ans Ende
+    requestAnimationFrame(() => pinToBottom(400))
+    return id
+  }
+
+  /** Rollback einer wartenden Blase (Regeln siehe State-Kommentar oben). draftText = null:
+   *  der Text kam nicht aus dem Entwurf (Link/Rechnung senden) → wie bisher nur die Meldung. */
+  function rollbackSend(tempId: string, conv: Conversation, draftText: string | null, error: string | null) {
+    const here = activeIdRef.current === conv.id
+    const visible = here && threadShownRef.current
+    if (draftText == null) dropSending(tempId)
+    else if (visible && !draftRef.current.trim()) { dropSending(tempId); setDraft(draftText) }
+    // nicht (mehr) zu sehen: als Blase im Thread aufheben — ein Entwurf ginge beim nächsten Thread-Wechsel verloren
+    else updateSending((l) => l.map((x) => (x.id === tempId ? { ...x, failed: true } : x)))
+    if (!visible) tmToast(`⚠️ Nachricht an ${partner(conv)} nicht gesendet`)
+    if (here && error) setSendError(error)
+  }
+
+  /** „Nicht gesendet"-Blase antippen → Text in den Entwurf dieses Threads übernehmen */
+  function adoptFailed(p: SendingMsg) {
     haptic()
+    dropSending(p.id)
+    setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + p.text)
+    taRef.current?.focus()
+  }
+
+  /** pre = Versand aus dem Entwurf (send() hat Blase/Entwurf schon behandelt);
+   *  ohne pre = „Nur Link senden"/„Rechnung senden" — der Entwurf bleibt unberührt. */
+  async function reallySend(content: string, contentDe?: string, lang?: string, pre?: { conv: Conversation; tempId: string; draftText: string }) {
+    const conv = pre?.conv ?? active
+    if (!conv) return
+    if (!pre) haptic()
     setBusy(true)
     setSendError(null)
-    const payload = active.kind === 'booking'
+    const tempId = pre?.tempId ?? addSending(conv.id, content)
+    const draftText = pre?.draftText ?? null
+    if (!pre) { setFlyText(content); setTimeout(() => setFlyText(null), 600) }
+    const payload = conv.kind === 'booking'
       ? { content, ...(contentDe ? { contentDe, lang } : {}) }
-      : { conversationId: active.id, content, ...(contentDe ? { contentDe, lang } : {}) }
-    const url = active.kind === 'booking' ? `/api/messages/${active.id}` : '/api/chat'
+      : { conversationId: conv.id, content, ...(contentDe ? { contentDe, lang } : {}) }
+    const url = conv.kind === 'booking' ? `/api/messages/${conv.id}` : '/api/chat'
+    let r: Response
     try {
-      const r = await fetch(url, {
+      r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        // übersteht einen App-Wechsel direkt nach dem Tipp — bricht iOS die Anfrage ab, obwohl
+        // der Server sie schon verarbeitet, ginge die Nachricht über die Warteschlange doppelt raus
+        keepalive: true,
       })
-      if (r.ok) {
-        haptic('success')
-        setFlyText(content); setTimeout(() => setFlyText(null), 600)
-        setDraft('')
-        await getMsgs(active.id, active.kind); getConvs()
-      } else if (r.status === 401 || r.status === 403) {
-        setAuthExpired(true)
-      } else {
-        const d = await r.json().catch(() => null)
-        haptic('error')
-        setSendError(d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
-      }
     } catch (e) {
       if (isNetworkError(e) || !isOnline()) {
         // §280 Offline-Warteschlange: Nachricht wartet halbtransparent im
         // Thread und geht automatisch raus, sobald Netz da ist
-        enqueueOutbox({ kind: 'guest', targetId: active.id, url, body: payload, text: content })
-        setDraft('')
+        enqueueOutbox({ kind: 'guest', targetId: conv.id, url, body: payload, text: content })
+        dropSending(tempId) // die „wartet auf Verbindung"-Blase der Warteschlange übernimmt
         tmToast('📴 Offline — Nachricht wartet auf Verbindung')
       } else {
-        setSendError('Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+        rollbackSend(tempId, conv, draftText, 'Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+      }
+      setBusy(false)
+      return
+    }
+    // Ab hier hat der Server geantwortet — nichts darf mehr in die Warteschlange führen
+    // (Folge-Abrufe sind einzeln abgefangen; früher konnte ein Netzfehler des Nachladens
+    // eine bereits gesendete Nachricht erneut einreihen).
+    try {
+      if (r.ok) {
+        haptic('success')
+        const d = await r.json().catch(() => null)
+        const row = sentRow(d?.message, conv.id, conv.kind, userId)
+        const here = activeIdRef.current === conv.id
+        if (row) {
+          // echte Zeile übernehmen — nach id entdoppelt (der 5-s-Abruf kann sie schon gebracht haben)
+          const cached = msgsCacheRef.current.get(conv.id)
+          if (cached && !cached.some((m) => m.id === row.id)) msgsCacheRef.current.set(conv.id, [...cached, row])
+          if (here) setMsgs((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]))
+        } else if (here) {
+          await getMsgs(conv.id, conv.kind).catch(() => {}) // unbekannte Antwortform → wie früher nachladen
+        }
+        dropSending(tempId)
+        // schneller Stand ohne Warten; den vollen (Smoobu-Abgleich, Übersetzung) bringt der 5-s-Abruf
+        if (row && here) void getMsgs(conv.id, conv.kind, true).catch(() => {})
+        void getConvs().catch(() => {})
+      } else if (r.status === 401 || r.status === 403) {
+        setAuthExpired(true)
+        rollbackSend(tempId, conv, draftText, null)
+      } else {
+        const d = await r.json().catch(() => null)
+        haptic('error')
+        rollbackSend(tempId, conv, draftText, d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
       }
     } finally {
       setBusy(false)
@@ -1183,7 +1577,16 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
 
   async function send() {
     if (!draft.trim() || !active || busy || translating) return
-    if (needsTranslation && guestLang) {
+    // Beim Tipp festhalten — alles Weitere arbeitet nur noch mit diesen Werten
+    const conv = active
+    const text = draft
+    const lang = needsTranslation && guestLang ? guestLang : null
+    haptic()
+    const pre = { conv, tempId: addSending(conv.id, text), draftText: text }
+    setDraft('')
+    setSendError(null)
+    setFlyText(text); setTimeout(() => setFlyText(null), 600)
+    if (lang) {
       // Direktversand (Pascal-Feedback §97): automatisch übersetzen und sofort
       // senden — das deutsche Original bleibt in der Bubble einsehbar
       // („Gesendet auf 🇳🇱"). Schlägt die Übersetzung fehl → deutsch senden.
@@ -1191,30 +1594,56 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       // geschützt und danach wiederhergestellt — geht dabei etwas verloren,
       // wird das deutsche Original gesendet (Engine-Muster §148).
       setTranslating(true)
+      let translated: string | null = null
       try {
         const urls: string[] = []
-        const tokenized = draft.replace(/https?:\/\/[^\s]+/g, (u) => { urls.push(u); return `[[L${urls.length}]]` })
+        const tokenized = text.replace(/https?:\/\/[^\s]+/g, (u) => { urls.push(u); return `[[L${urls.length}]]` })
         const res = await fetch('/api/ai/translate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: tokenized, targetLang: guestLang }),
+          body: JSON.stringify({ text: tokenized, targetLang: lang }),
         })
         const data = await res.json()
         if (res.ok && data.translation) {
           let restored = data.translation as string
           urls.forEach((u, i) => { restored = restored.split(`[[L${i + 1}]]`).join(u) })
           const intact = !/\[\[L\d+\]\]/.test(restored) && urls.every((u) => restored.includes(u))
-          if (intact) await reallySend(restored, draft, guestLang)
-          else await reallySend(draft)
-        } else {
-          await reallySend(draft)
+          if (intact) translated = restored
         }
       } catch {
-        setSendError('Übersetzung fehlgeschlagen — Entwurf bleibt erhalten, bitte erneut senden.')
+        // Netzfehler der Übersetzung: nichts gesendet → Rollback, Text zurück in den Entwurf
+        rollbackSend(pre.tempId, conv, text, 'Übersetzung fehlgeschlagen — Entwurf bleibt erhalten, bitte erneut senden.')
+        return
       } finally { setTranslating(false) }
+      if (translated) await reallySend(translated, text, lang, pre)
+      else await reallySend(text, undefined, undefined, pre)
       return
     }
-    await reallySend(draft)
+    await reallySend(text, undefined, undefined, pre)
   }
+
+  /* §314: Handgriffe der memoisierten Listen-Karten (ConvCard). Der Ref trägt nach jedem
+     Render die aktuellen Funktionen; rowApi selbst bleibt dasselbe Objekt. */
+  const rowApiRef = useRef<RowApi | null>(null)
+  useLayoutEffect(() => {
+    rowApiRef.current = {
+      tap: (c, swipeOpen) => {
+        if (peekJustOpened.current) { peekJustOpened.current = false; return }
+        if (swipeOpen) { setOpenSwipeId(null); return }
+        selectConv(c)
+      },
+      peek: (c) => { haptic(); setPeek(c) },
+      mark: (c, field) => { haptic(); markConv(c, field); setOpenSwipeId(null) },
+      swipeStart: beginRowSwipe, swipeMove: moveRowSwipe, swipeEnd: endRowSwipe,
+    }
+  })
+  const rowApi = useMemo<RowApi>(() => ({
+    tap: (c, swipeOpen) => rowApiRef.current?.tap(c, swipeOpen),
+    peek: (c) => rowApiRef.current?.peek(c),
+    mark: (c, field) => rowApiRef.current?.mark(c, field),
+    swipeStart: (e, id) => rowApiRef.current?.swipeStart(e, id),
+    swipeMove: (e, id) => rowApiRef.current?.swipeMove(e, id),
+    swipeEnd: (id) => rowApiRef.current?.swipeEnd(id),
+  }), [])
 
   if (!open) return null
 
@@ -1347,8 +1776,9 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     const rows: ListRow[] = archivExtra.length
       ? [...filtered, { divider: `📁 Ältere Chats (${archivExtra.length})` }, ...archivExtra]
       : filtered
+    const tick = minuteKey()
     return (
-      <div ref={listScrollRef} className="tm-stagger" style={{
+      <div ref={listScrollRef} className={listStagger ? 'tm-stagger' : undefined} style={{
         // §277: am Rechner 390 px (Pascal-Spec) — --tm-list-w aus globals ab 1000px
         width: fullWidth ? '100%' : 'var(--tm-list-w, 270px)',
         flexShrink: fullWidth ? undefined : 0,
@@ -1414,102 +1844,12 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
               borderTop: '0.5px solid var(--tm-line)', marginTop: 8,
             }}>{c.divider}</div>
           )
-          const isSel = !isMobile && active?.id === c.id
-          const swipeOpen = openSwipeId === c.id
           // Swipe-Aktionen nur für Team-Threads, deren letzte Nachricht vom
           // Gast kommt (dort machen ✓/📞 überhaupt Sinn — wie im Thread-Kopf)
-          const canSwipe = team && c.lastSender === 'guest'
-          const unread = (c.unread ?? 0) > 0
-          const range = fmtRangeShort(c.check_in, c.check_out)
           return (
-            <div key={c.id} style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, touchAction: 'pan-y', margin: '0 12px 6px', borderRadius: 16, WebkitTouchCallout: 'none' }}
-              onContextMenu={team ? (e) => { e.preventDefault(); haptic(); setPeek(c) } : undefined}
-              onTouchStart={canSwipe ? (e) => beginRowSwipe(e, c.id) : undefined}
-              onTouchMove={canSwipe ? (e) => moveRowSwipe(e, c.id) : undefined}
-              onTouchEnd={canSwipe ? () => endRowSwipe(c.id) : undefined}
-              onTouchCancel={canSwipe ? () => endRowSwipe(c.id) : undefined}
-            >
-              {canSwipe && (
-                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex' }}>
-                  <button onClick={() => { haptic(); markConv(c, 'phone'); setOpenSwipeId(null) }} style={{
-                    width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
-                    background: c.phoneResolved ? '#8E8E93' : '#3478F6',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
-                  }}>
-                    📞<span style={{ fontSize: 9, fontWeight: 700 }}>{c.phoneResolved ? 'Zurück' : 'Telefonat'}</span>
-                  </button>
-                  <button onClick={() => { haptic(); markConv(c, 'no_reply'); setOpenSwipeId(null) }} style={{
-                    width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
-                    background: c.noReplyNeeded ? '#8E8E93' : '#34C759',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
-                  }}>
-                    ✓<span style={{ fontSize: 9, fontWeight: 700 }}>{c.noReplyNeeded ? 'Zurück' : 'Erledigt'}</span>
-                  </button>
-                </div>
-              )}
-            {/* §277 Chat-KARTE (Pascal-Spec): 16px Radius, hairline, weicher Schatten;
-                ungelesen = Akzent-Rahmen, Name extra fett, Zeit in Akzent, Punkt rechts */}
-            <button data-swipe-front className="tm-press" onClick={() => { if (peekJustOpened.current) { peekJustOpened.current = false; return } if (swipeOpen) { setOpenSwipeId(null); return } selectConv(c) }} style={{
-              width: '100%', textAlign: 'left', cursor: 'pointer',
-              padding: '10px 12px', borderRadius: 16,
-              border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
-              background: isSel ? 'var(--tm-accent-soft, rgba(174,141,45,.13))' : 'var(--tm-card, #fff)',
-              boxShadow: 'var(--tm-shadow, 0 1px 2px rgba(23,26,31,.04), 0 2px 8px rgba(23,26,31,.04))',
-              display: 'flex', alignItems: 'flex-start', gap: 12,
-              position: 'relative',
-              transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
-              transition: 'transform .22s ease, background .12s',
-            }}>
-              {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) */}
-              <div style={{
-                width: 40, height: 40, borderRadius: 13, flexShrink: 0, overflow: 'hidden',
-                background: portalColor(c.platform), color: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', userSelect: 'none',
-              }}>
-                {partnerAvatar(c)
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={partnerAvatar(c) ?? undefined} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                  : initials(partner(c))}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
-                    {partner(c)}
-                  </span>
-                  <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                    {c.last_message_at
-                      ? fmtTime(c.last_message_at, uiLang)
-                      : c.check_in
-                        ? `ab ${new Date(c.check_in).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
-                        : ''}
-                  </span>
-                  {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
-                </div>
-                {(c.listing_title || range) && (
-                  <div className="tm-num" style={{ fontSize: 12, color: 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                    {c.listing_title ?? '—'}{range ? ` · ${range}` : ''}
-                  </div>
-                )}
-                {c.lastPreview && (
-                  <div style={{ fontSize: 12.5, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
-                    {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
-                    {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 12 }}>📞 </span>}
-                    {c.lastSender === 'host' && <span style={{ color: 'var(--tm-muted2, #959ca7)' }}>Du: </span>}
-                    {c.lastPreview}
-                  </div>
-                )}
-                {(c.platform || c.guestStatus || (c.guestLang && c.guestLang !== 'de')) && (
-                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                    {c.guestLang && c.guestLang !== 'de' && (
-                      <span title={`Gast schreibt ${LANG_LABEL[c.guestLang] ?? c.guestLang}`} style={{ fontSize: 13, lineHeight: 1 }}>{flag(c.guestLang)}</span>
-                    )}
-                    <ThreadBadges c={c} />
-                  </div>
-                )}
-              </div>
-            </button>
-            </div>
+            <ConvCard key={c.id} c={c} name={partner(c)} avatar={partnerAvatar(c) ?? null}
+              isSel={!isMobile && active?.id === c.id} swipeOpen={openSwipeId === c.id}
+              canSwipe={team && c.lastSender === 'guest'} team={team} uiLang={uiLang} tick={tick} api={rowApi} />
           )
         })}
         {/* „Ältere Chats laden" — einmalige Nachladung der Archiv-Threads (§129) */}
@@ -1548,6 +1888,15 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
       </div>
     )
 
+    // §314: wartende Blasen dieses Threads. Ist die echte Zeile schon im Verlauf (der 5-s-Abruf
+    // kann sie vor der POST-Antwort bringen), wird die wartende ausgeblendet — kein Doppel.
+    const sendingHere = sending.filter((p) => {
+      if (p.threadId !== active.id) return false
+      if (p.failed) return true
+      const from = p.afterId ? msgs.findIndex((m) => m.id === p.afterId) + 1 : 0
+      return !msgs.slice(from).some((m) => isOurSide(m, active) && (m.content === p.text || m.content_de === p.text))
+    })
+
     return (
       <div
         className={showBack ? 'tm-slide-in' : undefined}
@@ -1570,7 +1919,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {showBack && (
             <button
-              onClick={() => setMobileView('list')}
+              onClick={backToList}
               style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)', flexShrink: 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -1809,7 +2158,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
           onWheel={stopPin}
           style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: 'var(--tm-card)', position: 'relative', transition: 'opacity .18s var(--tm-ease, ease)' }}
         >
-          {msgs.length === 0 && calls.length === 0 && (
+          {msgs.length === 0 && calls.length === 0 && sendingHere.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
               <div style={{ fontSize: 13, color: 'var(--tm-muted)' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
@@ -2104,6 +2453,30 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
                   </div>
                 )
               })}
+            </div>
+          ))}
+          {/* §314: optimistisch gesendete Nachrichten — sofort sichtbar, blass bis zur Bestätigung;
+              fehlgeschlagen = rot umrandet, Tipp übernimmt den Text in den Entwurf */}
+          {sendingHere.map((p) => (
+            <div key={p.id} style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 8, marginTop: 6, marginBottom: 10 }}>
+              <div style={{ width: 30, flexShrink: 0 }} />
+              <div style={{ maxWidth: '72%', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                <div
+                  role={p.failed ? 'button' : undefined}
+                  onClick={p.failed ? () => adoptFailed(p) : undefined}
+                  style={{
+                    padding: '10px 14px', borderRadius: '18px 18px 4px 18px',
+                    background: 'var(--tm-navy)', color: '#fff',
+                    fontSize: 15.5, lineHeight: 1.4, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                    opacity: p.failed ? 1 : 0.6,
+                    boxShadow: p.failed ? '0 0 0 2px var(--tm-red)' : 'none',
+                    cursor: p.failed ? 'pointer' : 'default',
+                  }}
+                >{p.text}</div>
+                <span style={{ fontSize: 10.5, fontWeight: p.failed ? 700 : 400, color: p.failed ? 'var(--tm-red)' : 'var(--tm-muted)', paddingRight: 3, textAlign: 'right' }}>
+                  {p.failed ? t(uiLang, 'Nicht gesendet — antippen, um den Text zu übernehmen') : t(uiLang, 'Wird gesendet …')}
+                </span>
+              </div>
             </div>
           ))}
           {/* §280: ohne Netz gesendete Nachrichten — halbtransparent, bis sie raus sind */}
@@ -2423,7 +2796,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
   if (variant === 'page' || variant === 'app') {
     const isApp = variant === 'app'
     return (
-      <div style={{
+      <div ref={rootRef} style={{
         maxWidth: isApp ? undefined : '1100px', margin: '0 auto',
         padding: isApp ? 0 : isMobile ? '10px 10px 16px' : '20px 20px 32px',
         // app: füllt den Content-Bereich der Tab-Shell (die setzt die Höhe)
@@ -2614,3 +2987,7 @@ export default function ChatPanel({ userId, variant, open = true, onClose, initi
     </>
   )
 }
+
+/* §314: memo — die Team-Shell rendert bei jedem Scroll-Schwellenwert, Sync-Stand und
+   Reiterwechsel neu; die Props hier sind stabil, das ChatPanel bleibt davon unberührt. */
+export default memo(ChatPanel)

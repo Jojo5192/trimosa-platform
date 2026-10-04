@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getTaskAuth } from '@/lib/tasks'
 import { getRawReservation, updateReservationRaw } from '@/lib/smoobu'
+import { fewoDiagnose } from '@/lib/fewo-diagnose'
 
 /**
  * 🔎 §291 Diagnose (Admin/Gastgeber): Roh-Reservierung aus Smoobu neben unserer Buchung —
  * GET ?booking=<bookings.id> ODER ?id=<smoobu_reservation_id>. Zeigt, was Smoobu wirklich
  * liefert (adults/children/email …), um „Übertragungsfehler" (Pascal 9.9., FeWo-direkt) zu belegen.
+ *
+ * FeWo-Daten 1.10. (Hans-Dieter): mit ?booking=<id> zusätzlich der Block `fewo` — was fehlt (E-Mail/Nachname),
+ * Aufgabe vorhanden?, wartende Buchungsmails mit diesem Zeitraum samt Grund, andere Buchungen im selben
+ * Zeitraum. GET ?fewo=1 (ohne booking) = Übersicht aller künftigen FeWo-Buchungen mit fehlenden Daten plus
+ * die komplette Mail-Warteschlange. Beides nur lesend (lib/fewo-diagnose), ohne Smoobu-/Graph-Aufruf.
  */
 export const dynamic = 'force-dynamic'
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
@@ -15,6 +21,12 @@ export async function GET(req: NextRequest) {
   const auth = await getTaskAuth()
   if (!auth || auth.role !== 'admin') return NextResponse.json({ error: 'Nur für Admins/Gastgeber.' }, { status: 403, ...NO_STORE })
   const bookingId = req.nextUrl.searchParams.get('booking')
+  // FeWo-Daten-Diagnose: fail-soft — die Smoobu-Diagnose darunter darf daran nie scheitern
+  const fewoDiag = async (id?: string) => {
+    try { return await fewoDiagnose(id ? { bookingId: id } : {}) } catch (e) { return { error: String(e).slice(0, 200) } }
+  }
+  if (!bookingId && req.nextUrl.searchParams.get('fewo')) return NextResponse.json(await fewoDiag(), NO_STORE)
+  const fewo = bookingId ? await fewoDiag(bookingId) : undefined
   let smoobuId = Number(req.nextUrl.searchParams.get('id') ?? 0) || null
   let ours: Record<string, unknown> | null = null
   if (bookingId) {
@@ -25,13 +37,13 @@ export async function GET(req: NextRequest) {
     ours = (data as Record<string, unknown> | null) ?? null
     if (ours?.smoobu_reservation_id) smoobuId = Number(ours.smoobu_reservation_id)
   }
-  if (!smoobuId) return NextResponse.json({ error: 'booking oder id fehlt / keine Smoobu-Reservierung.', ours }, { status: 400, ...NO_STORE })
+  if (!smoobuId) return NextResponse.json({ error: 'booking oder id fehlt / keine Smoobu-Reservierung.', ours, fewo }, { status: 400, ...NO_STORE })
   // Paragraph 304: Migrations-Check (Inhaber 9.9.: „hab ich die Migration gemacht?") - existiert die Spalte
   // bookings.smoobu_push_claimed_at (20260907_smoobu_push_claim.sql)? PostgREST meldet sonst „column ... does not exist"
   const { error: colErr } = await supabaseAdmin.from('bookings').select('smoobu_push_claimed_at').limit(1)
   const migrationSmoobuPushClaim = colErr ? `FEHLT: ${colErr.message.slice(0, 120)}` : 'ok (Spalte vorhanden)'
   const raw = await getRawReservation(smoobuId)
-  if (!raw) return NextResponse.json({ error: 'Smoobu liefert nichts.', ours, smoobuId, migrationSmoobuPushClaim }, { status: 502, ...NO_STORE })
+  if (!raw) return NextResponse.json({ error: 'Smoobu liefert nichts.', ours, smoobuId, migrationSmoobuPushClaim, fewo }, { status: 502, ...NO_STORE })
   // Nur die für die Diagnose relevanten Felder — keine Volltexte/Notizen an den Client
   const pick = (k: string) => raw[k]
   const summary = {
@@ -41,7 +53,7 @@ export async function GET(req: NextRequest) {
     notice: typeof raw.notice === 'string' ? (raw.notice as string).slice(0, 300) : null,
     keys: Object.keys(raw),
   }
-  return NextResponse.json({ ours, smoobu: summary, migrationSmoobuPushClaim }, NO_STORE)
+  return NextResponse.json({ ours, smoobu: summary, migrationSmoobuPushClaim, fewo }, NO_STORE)
 }
 
 /**

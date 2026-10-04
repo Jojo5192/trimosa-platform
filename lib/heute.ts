@@ -1,7 +1,8 @@
 /**
  * 🏠 §277 Heute-Bildschirm der Team-App (Pascals JUPAS-Referenz):
  * Datenaufbereitung für GET /api/heute — eigener Türcode, An-/Abreisen des
- * Tages mit Reinigungs-/Check-in-Stand (nur heute), Abreisen, Vorschau auf
+ * Tages mit Reinigungs-/Check-in-Stand (nur heute), Abreisen (mit Chat-
+ * Abmeldung „ausgecheckt HH:MM (laut Gast)", lib/checkout-detect.ts), Vorschau auf
  * den Folgetag. Aufgaben + „Warten auf Antwort" holt der Client aus den
  * vorhandenen APIs (/api/tasks, /api/chat/inbox) — keine doppelte Logik.
  * Sichtbarkeit wie der Kalender (§111/§112): Admin alles, sonst
@@ -9,10 +10,12 @@
  * NIE Gastnamen. Server-Cache 2 Min je Nutzer+Tag.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { earlyCheckinBlock } from '@/lib/early-checkin'
-import { getStaffCodes, firstCleaningOpenAt, firstGuestOpenAt, type LockRef } from '@/lib/locks'
+import { earlyCheckinBlock, pickEarlyTemplate, EARLY_LOG_CLAIM } from '@/lib/early-checkin'
+import { getStaffCodes, getLockOpenLog, firstGuestOpenAt, type CleaningStart, type LockRef } from '@/lib/locks'
+import { loadCleaningStarts, resolveCleaningStart, sharedLockKeys } from '@/lib/cleaning-start'
 import type { TaskAuth } from '@/lib/tasks'
 import { loadStayIndex } from '@/lib/stammgaeste'
+import { loadCheckoutStates, detectChatCheckouts, type CheckoutEntry } from '@/lib/checkout-detect'
 
 const TZ = 'Europe/Berlin'
 export function berlinToday(): string {
@@ -39,6 +42,40 @@ function hm5(iso: string, tag: string): string {
   if (day === tag) return hm
   if (day === addDays(tag, -1)) return `gestern ${hm}`
   return `${day.slice(8, 10)}.${day.slice(5, 7)}. ${hm}`
+}
+/** „10:07" — minutengenau (Vier-Schritte-Leiste); '' bei ungültigem Zeitstempel */
+function hmExakt(iso: string): string {
+  if (Number.isNaN(Date.parse(iso))) return ''
+  return new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
+}
+/** Kurzanzeige unter dem Schritt: am Stichtag „10:07", sonst „gestern" bzw. „28.09." (passt in eine Spalte bei 375 px) */
+function zeitKurz(iso: string, tag: string): string | null {
+  const hm = hmExakt(iso)
+  if (!hm) return null
+  const day = berlinDay(iso)
+  if (day === tag) return hm
+  if (day === addDays(tag, -1)) return 'gestern'
+  return `${day.slice(8, 10)}.${day.slice(5, 7)}.`
+}
+/** Langform für den Detailtext: „10:07" · „gestern 17:42" · „28.09. 17:42" */
+function zeitLang(iso: string, tag: string): string {
+  const hm = hmExakt(iso)
+  if (!hm) return ''
+  const day = berlinDay(iso)
+  if (day === tag) return `${hm} Uhr`
+  if (day === addDays(tag, -1)) return `gestern ${hm} Uhr`
+  return `${day.slice(8, 10)}.${day.slice(5, 7)}. ${hm} Uhr`
+}
+/** Kanal aus auto_message_log.channel als feste Beschriftung — nie den Rohtext an den Client.
+ *  Reihenfolge wichtig: 'email (smoobu-fehler)' ist eine E-Mail. */
+function kanalLabel(channel: string): string {
+  const c = channel.toLowerCase()
+  const wie = c.includes('chat+email') ? 'Chat + E-Mail'
+    : c.includes('email') ? 'E-Mail'
+    : c.includes('smoobu') ? 'Portal-Nachricht'
+    : c.startsWith('chat') ? 'nur Chat, keine E-Mail'
+    : 'gesendet'
+  return c.startsWith('manuell') ? `${wie} · von Hand` : wie
 }
 /** „16 Uhr" / „15:30 Uhr" */
 function uhr(t: string | null | undefined, fallback = '16:00'): string {
@@ -74,6 +111,32 @@ export interface HeuteStay {
   /** §290 Stammgast: Aufenthalte gesamt (≥ 2 = Wiederkehrer) + laufende Nummer */
   stays?: number
   stayNr?: number
+  /** Check-out-Erkennung (nur Abreisen des angezeigten Tags): der Gast hat seine Abreise im Chat gemeldet.
+   *  at = Sendezeitpunkt dieser Nachricht (ISO). Nur die Uhrzeit, keine Gastdaten — fehlt in alten Snapshots. */
+  checkout?: { at: string; quelle: 'chat' } | null
+}
+/** Vier-Schritte-Leiste (1.10., Pascal 17.9.): erledigt = grün · aktiv = gelb · offen = grau · fehler = rot */
+export type SchrittStatus = 'erledigt' | 'aktiv' | 'offen' | 'fehler'
+export interface HeuteSchritt {
+  key: 'begonnen' | 'fertig' | 'informiert' | 'eingecheckt'
+  status: SchrittStatus
+  /** ISO-Zeitpunkt des Schritts, wenn bekannt */
+  at: string | null
+  /** fertige Kurzanzeige unter dem Symbol: „10:07" · „gestern" · „~12:30" · „frei" · „gesperrt" · „ab 16:00"; null = „–" */
+  zeit: string | null
+  /** Detailtext (aufgeklappte Leiste) — ohne Gastdaten */
+  text: string
+}
+export interface HeuteProzess {
+  /** immer genau vier: begonnen · fertig · informiert · eingecheckt */
+  schritte: HeuteSchritt[]
+  /** Textzeilen unter der Leiste — nur Auffälliges (z. B. „Meldung nicht zugestellt") */
+  hinweise: { ton: 'red' | 'yellow' | 'grey'; text: string }[]
+  /** Knopf „Gast jetzt informieren" — nur Admin/Gastgeber, Schritt 3 offen, nicht gesperrt, vor der Check-in-Zeit.
+   *  Reine Freischaltung des Knopfs: gesendet wird NUR per Tipp (POST /api/heute/inform), nie automatisch. */
+  kannInformieren: boolean
+  /** Warnung für den Bestätigungsdialog (Reinigung nicht als fertig gemeldet) */
+  warnung: string | null
 }
 export interface HeuteAnreise extends HeuteStay {
   /** ✉ Anreise-Infos (Auto-Nachricht) sind raus */
@@ -89,6 +152,8 @@ export interface HeuteAnreise extends HeuteStay {
   eingecheckt: string | null
   /** Paragraph 309: Early-Check-in gesperrt (Grund) - dann keine Frueh-Check-in-Nachricht */
   earlyBlock: string | null
+  /** Vier-Schritte-Leiste — nur am HEUTIGEN Tag; fehlt in alten Snapshots/Offline-Antworten (dann alte Punkte) */
+  prozess?: HeuteProzess | null
 }
 export interface HeuteDaten {
   tag: string
@@ -118,6 +183,11 @@ type BookingRow = {
 const cache = (globalThis as unknown as { __heuteCache?: Map<string, { at: number; data: HeuteDaten }> })
 cache.__heuteCache ??= new Map()
 const TTL_MS = 120_000
+/** Nach einem manuellen Versand (POST /api/heute/inform): Server-Cache leeren. Wirkt nur in DIESER
+ *  Server-Instanz — der Client lädt danach zusätzlich mit fresh=1. */
+export function invalidateHeuteCache(): void {
+  cache.__heuteCache!.clear()
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))])
@@ -194,7 +264,18 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   })
   const byTitle = (a: HeuteStay, b: HeuteStay) => a.listingTitle.localeCompare(b.listingTitle, 'de')
   const arrivals = rows.filter((b) => b.check_in === tag)
-  const abreisen = rows.filter((b) => b.check_out === tag).map(toStay).sort(byTitle)
+  // 👋 Check-out-Erkennung (lib/checkout-detect.ts): „Gast hat sich im Chat abgemeldet" je Abreise.
+  // Wird hier nur GESTARTET (läuft parallel zu den Anreise-Abfragen) und unten abgeholt. Klassifiziert
+  // wird ausschließlich am heutigen Tag, hart auf 4 s begrenzt; andere Tage zeigen nur den gemerkten
+  // Stand. Fail-soft: ohne Ergebnis bleibt es bei „bis HH:MM".
+  const departures = rows.filter((b) => b.check_out === tag)
+  const coPromise: Promise<Map<string, CheckoutEntry>> = (async () => {
+    if (!departures.length || tag > heute) return new Map<string, CheckoutEntry>()
+    const ids = departures.map((b) => b.id)
+    const stored = await loadCheckoutStates(ids)
+    if (!istHeute) return stored
+    return withTimeout(detectChatCheckouts(ids, tag, stored).catch(() => stored), 4000, stored)
+  })().catch(() => new Map<string, CheckoutEntry>())
   const vorschau = {
     tag: tag1,
     anreisen: rows.filter((b) => b.check_in === tag1).map(toStay).sort(byTitle),
@@ -204,7 +285,7 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   /* Status-Signale je Anreise */
   const arrivalIds = arrivals.map((b) => b.id)
   const listingIds = [...new Set(arrivals.map((b) => b.listing_id))]
-  type Tpl = { id: string; trigger_type: string; enabled: boolean }
+  type Tpl = { id: string; trigger_type: string; enabled: boolean; sort?: number | null; send_hour?: number | null; listing_id?: string | null; listing_ids?: string[] | null }
   type Log = { booking_id: string; auto_message_id: string; sent_at: string; channel: string | null }
   type Prev = { id: string; listing_id: string; check_out: string; source: string | null; payment_status: string | null }
   type Conf = { listing_id: string; slot_date: string; confirmed_at: string; started_at: string | null; duration_min: number | null }
@@ -214,7 +295,8 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   let confs: Conf[] = []
   if (arrivalIds.length) {
     const [t, l, p, c] = await Promise.all([
-      supabaseAdmin.from('auto_messages').select('id, trigger_type, enabled'),
+      // select('*'): Wohnungs-Chips (listing_ids) + sort für die Vorlagen-Auswahl der Leiste — robust vor/nach Migrationen
+      supabaseAdmin.from('auto_messages').select('*'),
       supabaseAdmin.from('auto_message_log').select('booking_id, auto_message_id, sent_at, channel').in('booking_id', arrivalIds),
       istHeute
         ? supabaseAdmin.from('bookings').select('id, listing_id, check_out, source, payment_status')
@@ -232,24 +314,50 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     prevs = ((p.data ?? []) as Prev[]).filter((b) => b.source !== 'trimosa' || b.payment_status === 'paid')
     confs = (c.data ?? []) as Conf[]
   }
-  const reinigungTpl = templates.filter((t) => t.trigger_type === 'reinigung_fertig')
+  const reinigungTpl = templates.filter((t) => t.trigger_type === 'reinigung_fertig').sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
   const reinigungIds = new Set(reinigungTpl.map((t) => t.id))
   const infoIds = new Set(templates.filter((t) => ['nach_buchung', 'vor_anreise', 'anreisetag'].includes(t.trigger_type)).map((t) => t.id))
   const okLog = (x: Log) => !!x.channel && !x.channel.startsWith('fehler') && x.channel !== 'sendet…'
 
-  // Wechseltag-Reinigungen ohne Meldung: LIVE ins Schloss-Protokoll schauen
-  // (parallel, je Wohnung max. 6 s — sonst „noch nicht begonnen")
-  const lockOpen = new Map<string, string | null>()
+  // Vier-Schritte-Leiste: 🚦-Master-Schalter + Stummschalter je Buchung (eigene Abfrage, deploy-sicher:
+  // fehlt die Spalte msg_mute noch, gibt es schlicht keine Stummschaltung)
+  let autoOn = false
+  const muteMap = new Map<string, string>()
+  if (istHeute && arrivalIds.length) {
+    try {
+      const [sw, mu] = await Promise.all([
+        supabaseAdmin.from('app_settings').select('value').eq('key', 'auto_messages').maybeSingle(),
+        supabaseAdmin.from('bookings').select('id, msg_mute').in('id', arrivalIds).not('msg_mute', 'is', null),
+      ])
+      autoOn = (sw.data?.value as { sendEnabled?: boolean } | null)?.sendEnabled === true
+      if (!mu.error) for (const r of (mu.data ?? []) as { id: string; msg_mute: string | null }[]) if (r.msg_mute) muteMap.set(String(r.id), String(r.msg_mute))
+    } catch { /* fail-soft: Knopf bleibt aus */ }
+  }
+
+  // Wechseltag-Reinigungen ohne Meldung — Reinigungsstart (1.10.): erst der GEMERKTE Start
+  // (app_settings `cleaning_start:<Wohnung>|<Tag>`), sonst LIVE ins Schloss-Protokoll
+  // (parallel, je Wohnung max. 6 s). Regel: erste Team-Öffnung ab 06:00 (Keypad-Code/App,
+  // kein Gast-Code, nicht von innen, keine Fern-Öffnung) nach der letzten Code-Nutzung der
+  // ABREISENDEN Buchung; geteilte Haustüren zählen nur ohne eigenes Schloss.
+  // „Nicht prüfbar" (status unknown) ist NICHT „noch nicht begonnen" — siehe Anzeige unten.
+  const lockOpen = new Map<string, CleaningStart>()
   if (istHeute) {
-    await Promise.all(listingIds.map(async (lid) => {
-      const prev = prevs.find((p) => p.listing_id === lid)
-      if (!prev || prev.check_out !== tag) return
-      if (confs.some((c) => c.listing_id === lid && c.slot_date === tag)) return
-      const l = byId.get(lid)
-      const afterHm = (l?.check_out_time ?? '10:00').slice(0, 5)
-      const iso = await withTimeout(firstCleaningOpenAt(l?.locks ?? [], afterHm, tag).catch(() => null), 6000, null)
-      lockOpen.set(lid, iso)
-    }))
+    const wechselOhneMeldung = listingIds
+      .map((lid) => ({ lid, prev: prevs.find((p) => p.listing_id === lid) }))
+      .filter((x) => !!x.prev && x.prev.check_out === tag && !confs.some((c) => c.listing_id === x.lid && c.slot_date === tag))
+    if (wechselOhneMeldung.length) {
+      const stored = await loadCleaningStarts(wechselOhneMeldung.map((x) => x.lid), tag)
+      const live = wechselOhneMeldung.some((x) => !stored.has(x.lid))
+      const shared = sharedLockKeys(listings)
+      const remoteOpens = live ? await getLockOpenLog() : []
+      await Promise.all(wechselOhneMeldung.map(async ({ lid, prev }) => {
+        lockOpen.set(lid, await resolveCleaningStart({
+          listingId: lid, locks: byId.get(lid)?.locks ?? [], day: tag,
+          departingBookingId: prev?.id ?? null, checkOutHm: byId.get(lid)?.check_out_time ?? '10:00',
+          stored, shared, remoteOpens, budgetMs: 6000,
+        }))
+      }))
+    }
   }
 
   // Paragraph 308: „eingecheckt" = erste Oeffnung mit Gast-Code heute ab 10:00 (Schlossprotokoll, je Wohnung max. 6 s)
@@ -263,7 +371,8 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   if (istHeute) {
     await Promise.all(arrivals.filter((b) => b.door_code).map(async (b) => {
       const l = byId.get(b.listing_id)
-      const iso = await withTimeout(firstGuestOpenAt(l?.locks ?? [], '10:00', tag).catch(() => null), 6000, null)
+      // nur der Code DIESER Buchung zählt (nicht der abreisende Gast, nicht fremde Gäste an geteilten Türen)
+      const iso = await withTimeout(firstGuestOpenAt(l?.locks ?? [], '10:00', tag, `TRIMOSA ${b.id.slice(0, 8)}`).catch(() => null), 6000, null)
       guestOpen.set(b.listing_id, iso)
     }))
   }
@@ -279,6 +388,7 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
 
     let reinigung: HeuteAnreise['reinigung'] = null
     let checkin: HeuteAnreise['checkin'] = null
+    let prozess: HeuteProzess | null = null
     if (istHeute) {
       const prev = prevs.find((p) => p.listing_id === b.listing_id && p.id !== b.id)
       const wechsel = !!prev && prev.check_out === tag
@@ -293,10 +403,22 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
           ? { status: 'fertig', text: start ? `Start ${start} · fertig ${done}` : `fertig ${done} gemeldet` }
           : { status: 'frei', text: `Wohnung war frei · sauber (${done} gemeldet)` }
       } else if (wechsel) {
-        const open = lockOpen.get(b.listing_id) ?? null
-        if (open) {
-          const eta = new Date(Date.parse(open) + (minutes + 30) * 60_000).toISOString()
-          reinigung = { status: 'laeuft', text: `läuft seit ${hm5(open, tag)} · fertig ~${hm5(eta, tag)}` }
+        const open = lockOpen.get(b.listing_id)
+        if (open?.status === 'found' && open.at) {
+          const etaMs = Date.parse(open.at) + (minutes + 30) * 60_000
+          // Wer geöffnet hat (Code-Name) — nur fürs Team, Dienstleister sehen ihn nicht
+          const name = (open.who ?? '').replace(/^TRIMOSA-Team\s*/i, '').trim()
+          const wer = auth.role !== 'provider' && name && !/^zutrittscode$/i.test(name) ? ` (${name})` : ''
+          // Start erkannt, aber über eine Stunde über der erwarteten Dauer ohne Fertigmeldung → nicht mehr „läuft"
+          reinigung = Date.now() > etaMs + 60 * 60_000
+            ? { status: 'unklar', text: `begonnen ${hm5(open.at, tag)}${wer} · keine Fertigmeldung` }
+            : { status: 'laeuft', text: `läuft seit ${hm5(open.at, tag)}${wer} · fertig ~${hm5(new Date(etaMs).toISOString(), tag)}` }
+        } else if (open?.status === 'unknown') {
+          // nicht prüfbar (Nuki-Fehler/Timeout) — bewusst der vorhandene Status „unklar" (gelb), kein neuer Wert
+          reinigung = { status: 'unklar', text: 'Schloss-Protokoll nicht lesbar' }
+        } else if (open?.status === 'nolock') {
+          // kein auslesbares Schloss (z. B. nur TTLock): der Start ist nicht messbar, es zählt allein die Fertigmeldung
+          reinigung = { status: 'offen', text: 'noch nicht gemeldet' }
         } else {
           reinigung = { status: 'offen', text: 'noch nicht begonnen' }
         }
@@ -312,8 +434,111 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
       else if (reinigung.status === 'fertig') checkin = { status: 'yellow', text: `ab ${ci} · fertig, Meldung fehlt` }
       else if (!wechsel) checkin = { status: 'grey', text: `ab ${ci} · Vornacht war frei` }
       else checkin = { status: 'grey', text: `ab ${ci}` }
+
+      /* ── Vier-Schritte-Leiste (1.10.): begonnen → fertig → informiert → eingecheckt ──
+         Reine Anzeige aus vorhandenen Daten (cleaning_confirmations, Schloss-Protokoll, auto_message_log).
+         KEINE Zeit-Automatik: gesendet wird nur vom NFC-Scan/der Engine wie bisher oder per Knopf. */
+      const nowHm = hmExakt(new Date().toISOString())
+      const ciTime = (l?.check_in_time ?? '16:00').slice(0, 5)
+      const eing = guestOpen.get(b.listing_id) ?? null
+      const block = earlyBlk.get(b.id) ?? null
+      const stumm = muteMap.get(b.id) === 'alle'
+      const tpl = pickEarlyTemplate(reinigungTpl, b.listing_id)
+      const hinweise: HeuteProzess['hinweise'] = []
+      const S = (key: HeuteSchritt['key'], status: SchrittStatus, at: string | null, zeit: string | null, text: string): HeuteSchritt =>
+        ({ key, status, at, zeit: zeit ?? (at ? zeitKurz(at, tag) : null), text })
+      const abreiseTag = prev ? `${prev.check_out.slice(8, 10)}.${prev.check_out.slice(5, 7)}.` : ''
+
+      // Schritt 1 + 2 — Reinigung
+      let s1: HeuteSchritt
+      let s2: HeuteSchritt
+      if (!prev) {
+        s1 = S('begonnen', 'erledigt', null, 'frei', 'Wohnung war frei – keine Reinigung nötig')
+        s2 = S('fertig', 'erledigt', null, 'frei', 'Wohnung war frei · sauber')
+      } else if (conf) {
+        s1 = S('begonnen', 'erledigt', conf.started_at, null, conf.started_at ? `begonnen ${zeitLang(conf.started_at, tag)}` : 'Startzeit nicht erfasst')
+        s2 = S('fertig', 'erledigt', conf.confirmed_at, null, `fertig gemeldet ${zeitLang(conf.confirmed_at, tag)}${wechsel ? '' : ` (Abreise ${abreiseTag})`}`)
+      } else if (wechsel) {
+        const open = lockOpen.get(b.listing_id)
+        if (open?.status === 'found' && open.at) {
+          const etaMs = Date.parse(open.at) + (minutes + 30) * 60_000
+          const ueber = Date.now() > etaMs + 60 * 60_000
+          const name = (open.who ?? '').replace(/^TRIMOSA-Team\s*/i, '').trim()
+          const wer = auth.role !== 'provider' && name && !/^zutrittscode$/i.test(name) ? ` (${name})` : ''
+          const eta = hm5(new Date(etaMs).toISOString(), tag)
+          s1 = S('begonnen', 'erledigt', open.at, null, `Tür geöffnet ${zeitLang(open.at, tag)}${wer}`)
+          s2 = S('fertig', 'aktiv', null, ueber ? null : `~${eta}`, ueber ? 'keine Fertigmeldung' : `läuft · voraussichtlich fertig ~${eta} Uhr`)
+          if (ueber) hinweise.push({ ton: 'yellow', text: `Reinigung seit ${hmExakt(open.at)} Uhr ohne Fertigmeldung` })
+        } else if (open?.status === 'unknown') {
+          s1 = S('begonnen', 'offen', null, '?', 'Schloss-Protokoll nicht lesbar – Start unbekannt')
+          s2 = S('fertig', 'aktiv', null, null, 'noch nicht gemeldet')
+          hinweise.push({ ton: 'yellow', text: 'Schloss-Protokoll nicht lesbar' })
+        } else if (open?.status === 'nolock') {
+          s1 = S('begonnen', 'offen', null, '?', 'Start nicht messbar (kein auslesbares Schloss)')
+          s2 = S('fertig', 'aktiv', null, null, 'noch nicht gemeldet')
+        } else {
+          s1 = S('begonnen', 'aktiv', null, null, 'noch nicht begonnen')
+          s2 = S('fertig', 'offen', null, null, 'folgt nach dem Start')
+        }
+      } else {
+        // Vornacht frei, aber die Reinigung nach der letzten Abreise wurde nie gemeldet
+        s1 = S('begonnen', 'offen', null, '?', `Reinigung nach Abreise ${abreiseTag} nicht gemeldet`)
+        s2 = S('fertig', 'offen', null, '?', 'keine Fertigmeldung')
+        hinweise.push({ ton: 'yellow', text: `Reinigung nach Abreise ${abreiseTag} nicht gemeldet` })
+      }
+
+      // Schritt 3 — „Wohnung ist bereit" an den Gast (auto_message_log der Vorlage reinigung_fertig)
+      const ch = String(rLog?.channel ?? '')
+      // laufender Versand: Claim-Marker der Engine/des Knopfs bzw. der nackte NFC-Claim; älter als 5 min = hängt
+      const inFlug = !!rLog && (ch === EARLY_LOG_CLAIM || ch === 'reinigung-event')
+      const haengt = !!rLog && inFlug && Date.now() - Date.parse(rLog.sent_at) > 5 * 60_000
+      let s3: HeuteSchritt
+      if (rLog && inFlug && !haengt) {
+        s3 = S('informiert', 'aktiv', null, 'sendet', 'wird gerade gesendet …')
+      } else if (rLog && inFlug) {
+        s3 = S('informiert', 'fehler', rLog.sent_at, null, 'Versand hängt – Zustellung unklar')
+        hinweise.push({ ton: 'red', text: `Versand hängt seit ${hmExakt(rLog.sent_at)} Uhr – Zustellung unklar, bitte im Chat prüfen` })
+      } else if (rLog && okLog(rLog)) {
+        s3 = S('informiert', 'erledigt', rLog.sent_at, null, `„Wohnung ist bereit“ gesendet ${zeitLang(rLog.sent_at, tag)} · ${kanalLabel(ch)}`)
+      } else if (rLog) {
+        s3 = S('informiert', 'fehler', rLog.sent_at, null, 'Meldung nicht zugestellt')
+        hinweise.push({ ton: 'red', text: `Meldung nicht zugestellt (${hmExakt(rLog.sent_at)} Uhr)` })
+      } else if (eing) {
+        s3 = S('informiert', 'offen', null, null, 'nicht mehr nötig – Gast ist da')
+      } else if (block) {
+        s3 = S('informiert', 'offen', null, 'gesperrt', 'Early Check-in gesperrt – keine Früh-Meldung')
+      } else if (stumm) {
+        s3 = S('informiert', 'offen', null, 'stumm', 'Nachrichten für diese Buchung sind stummgeschaltet')
+      } else if (!tpl || !tpl.enabled || !autoOn) {
+        s3 = S('informiert', 'offen', null, 'aus', !tpl ? 'keine Vorlage „Früher Check-in möglich“ vorhanden' : !tpl.enabled ? 'Vorlage „Früher Check-in möglich“ ist ausgeschaltet' : 'Auto-Versand (🚦) ist ausgeschaltet')
+      } else if (nowHm >= ciTime) {
+        s3 = S('informiert', 'offen', null, null, `keine Früh-Meldung mehr – regulärer Check-in ab ${uhr(ciTime)}`)
+      } else if (s2.status === 'erledigt') {
+        const autoAb = conf && berlinDay(conf.confirmed_at) !== tag && Number(nowHm.slice(0, 2)) < (tpl.send_hour ?? 0)
+        s3 = S('informiert', 'aktiv', null, null, autoAb ? `noch nicht informiert · automatisch ab ${tpl.send_hour} Uhr` : 'noch nicht informiert')
+      } else {
+        s3 = S('informiert', 'offen', null, null, 'folgt nach der Reinigung')
+      }
+
+      // Schritt 4 — Gast hat seinen Türcode benutzt
+      const hatLog = (Array.isArray(l?.locks) ? l.locks : []).some((x) => x.provider === 'nuki' || x.provider === 'tedee')
+      let s4: HeuteSchritt
+      if (eing) s4 = S('eingecheckt', 'erledigt', eing, null, `Türcode benutzt ${zeitLang(eing, tag)} · Wohnung belegt`)
+      else if (!b.door_code) s4 = S('eingecheckt', 'offen', null, '?', 'kein Türcode – Check-in nicht messbar')
+      else if (!hatLog) s4 = S('eingecheckt', 'offen', null, '?', 'Schloss liefert kein Protokoll – Check-in nicht messbar')
+      else if (s3.status === 'erledigt') s4 = S('eingecheckt', 'aktiv', null, null, 'wartet auf den Gast · früher Check-in möglich')
+      else s4 = S('eingecheckt', nowHm >= ciTime ? 'aktiv' : 'offen', null, `ab ${ciTime}`, `wartet auf den Gast · Check-in ab ${uhr(ciTime)}`)
+
+      // Knopf „Gast jetzt informieren" — Schritt 3 offen (kein Log-Eintrag oder Fehler), nicht gesperrt,
+      // vor der regulären Check-in-Zeit. Der Server prüft beim Tipp alles noch einmal (lib/early-inform.ts).
+      const kannInformieren = auth.role === 'admin' && (!rLog || s3.status === 'fehler') && !eing && !block && !stumm
+        && !!tpl?.enabled && autoOn && nowHm < ciTime
+      const warnung = s2.status === 'erledigt' ? null
+        : wechsel ? 'Die Reinigung ist noch NICHT als fertig gemeldet.'
+        : 'Für diese Wohnung liegt keine Fertigmeldung der Reinigung vor.'
+      prozess = { schritte: [s1, s2, s3, s4], hinweise, kannInformieren, warnung: kannInformieren ? warnung : null }
     }
-    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin, eingecheckt: guestOpen.get(b.listing_id) ?? null, earlyBlock: earlyBlk.get(b.id) ?? null }
+    return { ...base, infosRaus, codeDa: !!b.door_code, fertig, reinigung, checkin, eingecheckt: guestOpen.get(b.listing_id) ?? null, earlyBlock: earlyBlk.get(b.id) ?? null, prozess }
   }).sort(byTitle)
 
   /* Eigener Türcode (§141) — nur der eigene, nie fremde */
@@ -323,8 +548,17 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     if (sc?.code) doorCode = { code: sc.code, listings: sc.listingIds.map((id) => byId.get(id)?.title ?? '').filter(Boolean) }
   } catch { /* fail-soft */ }
 
+  const coState = await coPromise
+  const abreisen: HeuteStay[] = departures.map((b) => {
+    const e = coState.get(b.id)
+    const at = e && !e.locked && e.day === tag && e.at && berlinDay(e.at) === tag ? e.at : null
+    return { ...toStay(b), checkout: at ? { at, quelle: 'chat' as const } : null }
+  }).sort(byTitle)
+
   const heuteView: HeuteDaten['heuteView'] = auth.role === 'provider' ? (cleans ? 'cleaning' : 'provider') : 'full'
   const data: HeuteDaten = { tag, heute, stand: new Date().toISOString(), firstName, roleLabel, heuteView, doorCode, anreisen, abreisen, vorschau }
-  cache.__heuteCache!.set(key, { at: Date.now(), data })
+  // „Schloss-Protokoll nicht lesbar" nicht 2 Minuten festhalten — höchstens 20 s
+  const lockUnknown = [...lockOpen.values()].some((r) => r.status === 'unknown')
+  cache.__heuteCache!.set(key, { at: lockUnknown ? Date.now() - TTL_MS + 20_000 : Date.now(), data })
   return data
 }

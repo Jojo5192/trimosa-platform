@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getLockSettings, type LockRef } from '@/lib/locks'
 import { resolvePlaceholders } from '@/lib/auto-messages'
+import { pickEarlyTemplate } from '@/lib/early-checkin'
 
 /**
  * Text der Früh-Check-in-Nachricht (§231): kommt aus der Auto-Nachrichten-
@@ -9,13 +10,13 @@ import { resolvePlaceholders } from '@/lib/auto-messages'
  * gelten). Semantik: Vorlage vorhanden & AUS → keine Nachricht (bewusst);
  * KEINE Vorlage vorhanden → eingebauter Standardtext (funktioniert ab Werk).
  */
-interface EarlyBooking {
+export interface EarlyBooking {
   id: string; door_code: string | null; guest_name: string | null
   check_in: string; check_out: string
   adults: number | null; children: number | null; portal_token: string | null
 }
 
-async function renderEarlyCheckinText(
+export async function renderEarlyCheckinText(
   listingId: string, listingTitle: string, arr: EarlyBooking, checkInTime: string, nowHour: number,
 ): Promise<{ text: string; templateId: string | null } | null> {
   let body: string | null = null
@@ -24,11 +25,8 @@ async function renderEarlyCheckinText(
     const { data: rows } = await supabaseAdmin
       .from('auto_messages').select('*').eq('trigger_type', 'reinigung_fertig').order('sort')
     const list = (rows ?? []) as { id: string; enabled: boolean; body: string; listing_id: string | null; listing_ids: string[] | null }[]
-    const match = list.find((t) => {
-      const ids = Array.isArray(t.listing_ids) && t.listing_ids.length
-        ? t.listing_ids : t.listing_id ? [t.listing_id] : null
-      return !ids || ids.includes(listingId)
-    })
+    // dieselbe Auswahl wie die Heute-Leiste (lib/early-checkin.ts)
+    const match = pickEarlyTemplate(list, listingId)
     if (match) {
       if (!match.enabled) return null
       body = match.body
@@ -208,18 +206,31 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
     return { ok: false, status: 'fehler' }
   }
 
-  // ⏱ §255: Reinigungs-DAUER — Start = erste Türöffnung ohne Gast-Codes am
-  // heutigen Tag (Schloss-Protokoll), Ende = diese Fertigmeldung. Grenze:
-  // am Abreisetag selbst zählt erst ab Check-out-Zeit (der Gast öffnet
-  // morgens ja noch selbst); an späteren Tagen ab 06:00.
+  // ⏱ §255 / Reinigungsstart (1.10.): Reinigungs-DAUER — Start = der Reinigungsstart
+  // des heutigen Tags nach DERSELBEN Regel wie die Heute-Karte (lib/cleaning-start.ts:
+  // gemerkter Start, sonst erste Team-Öffnung ab 06:00 nach der letzten Code-Nutzung
+  // des abreisenden Gastes), Ende = diese Fertigmeldung. Die Check-out-Zeit ist KEINE
+  // Grenze mehr (Reinigung ab 09:50 wurde sonst zu kurz oder gar nicht gemessen) —
+  // Ausnahme tedee: Ereignisse OHNE PIN zählen am Abreisetag weiter erst ab Check-out-Zeit.
   let durationLabel = ''
   let durationMin: number | null = null
   try {
-    const afterHm = state.slotDate === now.date
-      ? ((l.check_out_time ?? '10:00').slice(0, 5))
-      : '06:00'
-    const { firstCleaningOpenAt } = await import('@/lib/locks')
-    const startedAt = await firstCleaningOpenAt((l.locks as LockRef[] | null) ?? [], afterHm)
+    const { resolveCleaningStart } = await import('@/lib/cleaning-start')
+    let departingBookingId: string | null = null
+    if (state.slotDate === now.date) {
+      const { data: deps } = await supabaseAdmin
+        .from('bookings').select('id, source, payment_status')
+        .eq('listing_id', l.id).eq('status', 'confirmed').eq('check_out', state.slotDate).limit(5)
+      const dep = ((deps ?? []) as { id: string; source: string | null; payment_status: string | null }[])
+        .find((b) => b.source !== 'trimosa' || b.payment_status === 'paid')
+      departingBookingId = dep?.id ?? null
+    }
+    const start = await resolveCleaningStart({
+      listingId: l.id, locks: (l.locks as LockRef[] | null) ?? [], day: now.date,
+      departingBookingId, checkOutHm: state.slotDate === now.date ? (l.check_out_time ?? '10:00') : null,
+      budgetMs: 6000, persist: false,
+    })
+    const startedAt = start.at
     if (startedAt) {
       const mins = Math.round((Date.now() - Date.parse(startedAt)) / 60000)
       if (mins >= 1 && mins <= 12 * 60) {

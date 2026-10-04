@@ -723,96 +723,311 @@ export async function staffCodeUsedToday(locks: LockRef[]): Promise<boolean | nu
 }
 
 /**
- * ⏱ §255: Beginn der Reinigung = erste TÜRÖFFNUNG am heutigen Berlin-Tag
- * ab `afterHm`, die NICHT von einem GAST-Code stammt (Gast-Auths heißen
- * „TRIMOSA <hex8>" — Team-Codes, Alt-Dauercodes („Zutrittscode") und
- * App-Öffnungen zählen). Liefert den frühesten Zeitstempel (ISO) oder null.
+ * ⏱ §255 / Reinigungsstart (1.10.): Beginn der Reinigung aus dem Schloss-Protokoll.
  *
- * Nuki-Log-Semantik (§248c-kalibriert): Einträge tragen name/date/authId/
- * action/state — Keypad-Öffnungen heißen im `name` nur wie ihre Auth
- * („Zutrittscode"), der echte Nutzer steckt hinter der authId. action
- * 1 = unlock / 3 = unlatch; state 0 = Erfolg.
+ * REGEL: Start = früheste ERFOLGREICHE Öffnung am Berlin-Tag ab 06:00 durch einen
+ * IDENTIFIZIERTEN Nicht-Gast — Keypad-Code oder Nuki-App-Nutzer (authId vorhanden,
+ * Auth-Name ist kein Gast-Code „TRIMOSA <hex8>"). Es zählen NICHT: „Manuell (Button)"/
+ * Drehknauf von innen, Auto-Lock, Fern-Öffnungen über die Web-API (unsere Team-App),
+ * Keypad-Fehler (trigger 253). Nutzt der ABREISENDE Gast seinen Code danach noch
+ * einmal, zählt erst die nächste Team-Öffnung.
+ *
+ * Nuki-Log-Semantik (§248c-kalibriert): Einträge tragen name/date/authId/action/state/
+ * trigger — der Log-name ist der Auth-Name („Zutrittscode" = unbenannte Auth), der
+ * sichere Bezug ist die authId. action 1 = unlock / 3 = unlatch; state 0 = Erfolg.
+ * trigger laut Nuki-Doku (hier NICHT live kalibriert): 0 System/Bluetooth, 1 manuell,
+ * 2 Knopf, 3 automatisch, 4 Web-API, 5 App, 6 Auto-Lock, 253 Keypad-Fehler, 255 Keypad.
+ * Darum braucht „Team" eine POSITIVE Identität (authId) — ein unbekannter trigger ohne
+ * authId zählt nie.
  */
 const GUEST_AUTH_RE = /^TRIMOSA [0-9a-f]{6,10}$/i
+/** Früheste Uhrzeit (Berlin), ab der eine Team-Öffnung als Reinigungsstart zählt (Inhaber-Entscheid 1.10.). */
+export const CLEANING_EARLIEST_HM = '06:00'
 
-/** Beginn der Reinigung. `onDay` = Berlin-Datum der Reinigung (Default heute).
- *  Nur für Tage im Log-Fenster (Nuki ~letzte 50 Einträge). */
-export async function firstCleaningOpenAt(locks: LockRef[], afterHm: string, onDay?: string): Promise<string | null> {
-  const targetDay = onDay ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
-  const hmBerlin = (iso: string): string => new Intl.DateTimeFormat('de-DE', {
-    timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(iso))
-  const dayBerlin = (iso: string): string => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date(iso))
+const logHmBerlin = (iso: string): string => new Intl.DateTimeFormat('de-DE', {
+  timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false,
+}).format(new Date(iso))
+const logDayBerlin = (iso: string): string => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date(iso))
 
-  let earliest: string | null = null
-  const consider = (iso: string | undefined) => {
-    if (!iso || Number.isNaN(Date.parse(iso))) return
-    if (dayBerlin(iso) !== targetDay) return
-    if (hmBerlin(iso) < afterHm) return
-    if (!earliest || Date.parse(iso) < Date.parse(earliest)) earliest = iso
+type NukiLogEntry = { id?: string; name?: string; date?: string; authId?: string; action?: number; state?: number; trigger?: number; source?: number }
+type NukiDayLog = { entries: NukiLogEntry[]; /** false = Tag nicht bis 06:00 zurück gelesen (mehr als 2 Seiten) */ complete: boolean }
+
+/** Ergebnis der Start-Erkennung. found = Start erkannt · none = Protokoll gelesen, keine
+ *  Team-Öffnung · unknown = NICHT PRÜFBAR (HTTP-Fehler, Timeout, Protokoll unvollständig) ·
+ *  nolock = Wohnung hat kein auslesbares Schloss (nur TTLock / keins / Token fehlt). */
+export interface CleaningStart {
+  status: 'found' | 'none' | 'unknown' | 'nolock'
+  at: string | null
+  /** Auth-Name der Öffnung (z. B. „VP Glanzteam") — nur Nuki */
+  who: string | null
+  lockId: string | null
+  /** nur bei found: false = mindestens ein Protokoll war unvollständig/nicht lesbar — der Treffer
+   *  kann zu SPÄT liegen (frühere Öffnungen fehlen) → anzeigen ja, aber nicht dauerhaft merken */
+  complete?: boolean
+}
+
+const NUKI_LOG_PAGE = 50
+const NUKI_LOG_PAGES = 2
+const nukiLogMem = globalThis as unknown as {
+  __nukiDayLog?: Map<string, { at: number; v: NukiDayLog }>
+  __nukiAuthNames?: Map<number, { at: number; v: Map<string, string> }>
+  /** Die API hat fromDate/toDate abgelehnt (HTTP 4xx) oder damit leer geantwortet, obwohl Einträge
+   *  im Fenster liegen → in dieser Instanz ohne Datumsfilter lesen */
+  __nukiNoDateFilter?: boolean
+  /** Der Datumsfilter hat in dieser Instanz schon Einträge aus dem Fenster geliefert → gilt als geprüft */
+  __nukiDateFilterOk?: boolean
+}
+nukiLogMem.__nukiDayLog ??= new Map()
+nukiLogMem.__nukiAuthNames ??= new Map()
+
+/** Abbruch-Signal für Protokoll-Lesezugriffe: Rest des Zeitbudgets, höchstens 4,5 s je Aufruf. */
+function logSignal(deadline: number): AbortSignal {
+  return AbortSignal.timeout(Math.max(300, Math.min(deadline - Date.now(), 4500)))
+}
+
+/**
+ * Nuki-Protokoll EINES Berlin-Tags ab 06:00 — mit Datumsfilter (fromDate/toDate) und bis zu
+ * 2 Seiten à 50 (Folgeseite über den Parameter `id` = „ältere Einträge"). Lehnt die API den
+ * Datumsfilter ab (HTTP 4xx außer 401/403/429), wird ohne Filter gelesen (dann die letzten bis
+ * zu 100 Einträge). PLAUSIBILITÄTSNETZ (der Filter ist nie gegen die echte API kalibriert):
+ * liefert Seite 1 MIT Filter nichts, wird einmal ohne Filter nachgelesen — liegen dort Einträge
+ * im Fenster, gilt der Filter als unbrauchbar (Instanz liest fortan ohne). So wird aus einem
+ * falsch verstandenen Datumsformat nie still „noch nicht begonnen".
+ * null = nicht lesbar (HTTP-Fehler — wird geloggt). 60 s In-Process-Cache je Schloss+Tag.
+ */
+async function fetchNukiDayLog(lockId: number, day: string, deadline: number): Promise<NukiDayLog | null> {
+  const mem = nukiLogMem.__nukiDayLog!
+  const ck = `${lockId}:${day}`
+  const hit = mem.get(ck)
+  if (hit && Date.now() - hit.at < 60_000) return hit.v
+
+  // 06:00 Berlin = 04:00Z (Sommer) / 05:00Z (Winter); Berlin-Mitternacht = 22:00Z / 23:00Z —
+  // großzügiges UTC-Fenster, der exakte Tages-/Uhrzeit-Filter folgt beim Auswerten.
+  const fromIso = `${day}T03:00:00.000Z`
+  const toIso = `${day}T23:00:00.000Z`
+  const fromMs = Date.parse(fromIso)
+  const toMs = Date.parse(toIso)
+  const imFenster = (e: NukiLogEntry) => !!e.date && Date.parse(e.date) >= fromMs && Date.parse(e.date) <= toMs
+  const rowsOf = async (r: Response): Promise<NukiLogEntry[]> => {
+    const json = await r.json() as unknown
+    return (Array.isArray(json) ? json : []) as NukiLogEntry[]
   }
-
-  const nukiIds = (locks ?? []).filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
-  if (nukiIds.length && nukiConfigured()) {
-    for (const id of nukiIds) {
-      try {
-        const res = await nukiFetch(`/smartlock/${id}/log?limit=50`)
-        if (!res.ok) continue
-        const entries = await res.json() as { name?: string; date?: string; authId?: string; action?: number; state?: number }[]
-        // authId → Auth-Name auflösen (Gast-Code-Erkennung, §248c)
-        const authName = new Map<string, string>()
-        try {
-          const ar = await nukiFetch(`/smartlock/${id}/auth`)
-          if (ar.ok) {
-            for (const a of (await ar.json()) as { id?: string; name?: string }[]) {
-              if (a.id) authName.set(String(a.id), String(a.name ?? ''))
-            }
-          }
-        } catch { /* ohne Auflösung entscheidet der Log-name */ }
-        for (const e of entries ?? []) {
-          if (e.action !== 1 && e.action !== 3) continue          // nur Öffnungen
-          if (e.state !== undefined && e.state !== 0) continue     // nur erfolgreiche
-          const who = (e.authId && authName.get(String(e.authId))) || String(e.name ?? '')
-          if (GUEST_AUTH_RE.test(who.trim())) continue             // Gast-Codes zählen nicht
-          consider(e.date)
-        }
-      } catch (e) {
-        console.error('[cleaning-duration] Nuki-Log fehlgeschlagen:', e)
+  const byKey = new Map<string, NukiLogEntry>()
+  let complete = false
+  let olderThan: string | null = null
+  for (let page = 0; page < NUKI_LOG_PAGES; page++) {
+    if (page > 0 && deadline - Date.now() < 500) break   // Budget aufgebraucht → unvollständig
+    const fetchPage = (withDates: boolean) => {
+      const q = [`limit=${NUKI_LOG_PAGE}`]
+      if (withDates) q.push(`fromDate=${encodeURIComponent(fromIso)}`, `toDate=${encodeURIComponent(toIso)}`)
+      if (olderThan) q.push(`id=${encodeURIComponent(olderThan)}`)
+      return nukiFetch(`/smartlock/${lockId}/log?${q.join('&')}`, { signal: logSignal(deadline) })
+    }
+    let withDates = !nukiLogMem.__nukiNoDateFilter
+    let res = await fetchPage(withDates)
+    // Datumsfilter abgelehnt (4xx, aber nicht Anmeldung/Rechte/Rate-Limit) → einmal ohne Filter
+    if (withDates && res.status >= 400 && res.status < 500 && ![401, 403, 429].includes(res.status)) {
+      const retry = await fetchPage(false)
+      if (retry.ok) {
+        console.error('[nuki-log] Datumsfilter abgelehnt (HTTP', res.status, ') — lese ohne Filter. Schloss', lockId)
+        nukiLogMem.__nukiNoDateFilter = true
+        withDates = false
+      }
+      res = retry
+    }
+    if (!res.ok) {
+      console.error('[nuki-log] HTTP', res.status, '· Schloss', lockId, '· Seite', page + 1)
+      if (page === 0) return null
+      break
+    }
+    let rows = await rowsOf(res)
+    if (withDates && rows.some(imFenster)) {
+      nukiLogMem.__nukiDateFilterOk = true
+    } else if (withDates && page === 0 && rows.length === 0 && !nukiLogMem.__nukiDateFilterOk) {
+      // Plausibilitätsnetz: leere Antwort MIT Filter, Filter in dieser Instanz noch nie bestätigt
+      const probe = await fetchPage(false)
+      if (!probe.ok) {
+        console.error('[nuki-log] Gegenprobe ohne Datumsfilter HTTP', probe.status, '· Schloss', lockId)
+        return null   // nicht prüfbar — lieber „nicht lesbar" als still „keine Öffnung"
+      }
+      const all = await rowsOf(probe)
+      if (all.some(imFenster)) {
+        console.error('[nuki-log] Datumsfilter liefert leer, obwohl Einträge im Fenster liegen — lese ohne Filter. Schloss', lockId, '· Tag', day)
+        nukiLogMem.__nukiNoDateFilter = true
+        rows = all
       }
     }
+    let oldest: NukiLogEntry | null = null
+    let added = 0
+    for (const e of rows) {
+      const k = e.id ? String(e.id) : `${e.date}|${e.action}|${e.authId ?? ''}|${e.trigger ?? ''}`
+      if (!byKey.has(k)) { byKey.set(k, e); added++ }
+      if (e.date && (!oldest?.date || Date.parse(e.date) < Date.parse(oldest.date))) oldest = e
+    }
+    // fertig, wenn die Seite nicht voll ist ODER (ohne Datumsfilter) schon vor das Fenster zurückreicht
+    if (rows.length < NUKI_LOG_PAGE || (!!oldest?.date && Date.parse(oldest.date) < fromMs)) { complete = true; break }
+    if (!oldest?.id || !added) break
+    olderThan = String(oldest.id)
+  }
+  const v: NukiDayLog = { entries: [...byKey.values()], complete }
+  if (mem.size > 60) for (const [k, c] of mem) if (Date.now() - c.at > 600_000) mem.delete(k)
+  mem.set(ck, { at: Date.now(), v })
+  return v
+}
+
+/** authId → Auth-Name eines Schlosses (10 min In-Process-Cache). Bei Fehler der letzte
+ *  bekannte Stand oder null — dann entscheidet der Log-name (= Auth-Name, §248c). */
+async function nukiAuthNames(lockId: number, deadline: number): Promise<Map<string, string> | null> {
+  const mem = nukiLogMem.__nukiAuthNames!
+  const hit = mem.get(lockId)
+  if (hit && Date.now() - hit.at < 600_000) return hit.v
+  try {
+    const res = await nukiFetch(`/smartlock/${lockId}/auth`, { signal: logSignal(deadline) })
+    if (res.ok) {
+      const v = new Map<string, string>()
+      for (const a of (await res.json()) as { id?: string; name?: string }[]) {
+        if (a.id) v.set(String(a.id), String(a.name ?? ''))
+      }
+      mem.set(lockId, { at: Date.now(), v })
+      return v
+    }
+    console.error('[nuki-log] Auth-Liste HTTP', res.status, '· Schloss', lockId)
+  } catch (e) {
+    console.error('[nuki-log] Auth-Liste nicht lesbar · Schloss', lockId, e)
+  }
+  return hit?.v ?? null
+}
+
+/** Wer hat geöffnet? guest = Gast-Code · staff = identifizierter Nicht-Gast (Keypad-Code /
+ *  App-Nutzer) · other = von innen, ohne Identität, Auto-Lock oder Fern-Öffnung (Web-API). */
+function classifyNukiEntry(e: NukiLogEntry, names: Map<string, string> | null): { open: boolean; actor: 'guest' | 'staff' | 'other'; who: string } {
+  const open = (e.action === 1 || e.action === 3)             // nur Öffnungen
+    && (e.state === undefined || e.state === 0)                // nur erfolgreiche
+    && e.trigger !== 253 && e.trigger !== 254                  // Keypad-Fehler / Sonderfälle nie
+  const who = ((e.authId && names?.get(String(e.authId))) || String(e.name ?? '')).trim()
+  if (GUEST_AUTH_RE.test(who)) return { open, actor: 'guest', who }
+  if (!e.authId) return { open, actor: 'other', who }          // Knopf/Drehknauf: keine Identität
+  // manuell · Knopf · Auto-Lock — außer das Protokoll nennt ausdrücklich das Keypad als Quelle
+  // (source 1 = Keypad-Code, 2 = Fingerabdruck laut Nuki-Doku; unkalibriert, fehlt das Feld, ändert sich nichts)
+  const keypad = e.trigger === 255 || e.source === 1 || e.source === 2
+  if (!keypad && (e.trigger === 1 || e.trigger === 2 || e.trigger === 6)) return { open, actor: 'other', who }
+  if (e.trigger === 4 || /^nuki (web|bridge)/i.test(who)) return { open, actor: 'other', who }      // Fern-Öffnung (Web-API/Bridge)
+  return { open, actor: 'staff', who }
+}
+
+/**
+ * Reinigungsstart LIVE aus dem Schloss-Protokoll (Regel siehe oben). `locks` = die Schlösser,
+ * die für die Wohnung zählen (geteilte Haustüren filtert der Aufrufer, lib/cleaning-start.ts).
+ * `departingAlias` = Code-Name der ABREISENDEN Buchung („TRIMOSA <id8>"); `remoteOpenAt` =
+ * Zeitpunkte (ms) eigener Fern-Öffnungen aus der Team-App (Sicherheitsnetz, falls der
+ * trigger-Wert der Web-API anders ausfällt als dokumentiert). Gesamtbudget `budgetMs` (6 s).
+ * tedee: wie bisher „best effort" (jedes Ereignis ohne Gast-PIN zählt). Weil dort auch der
+ * abreisende Gast Ereignisse OHNE PIN erzeugt (Knopf, Abschließen, Auto-Lock), zählen solche
+ * anonymen Ereignisse erst ab `tedeeAnonEarliestHm` (Abreisetag: Check-out-Zeit, wie vor dem
+ * 1.10.); ein Ereignis MIT Nicht-Gast-PIN (Team-PIN) zählt wie bei Nuki schon ab 06:00.
+ */
+export async function detectCleaningStart(
+  locks: LockRef[],
+  opts: { day?: string; earliestHm?: string; departingAlias?: string | null; budgetMs?: number; remoteOpenAt?: number[]; tedeeAnonEarliestHm?: string | null } = {},
+): Promise<CleaningStart> {
+  const day = opts.day ?? logDayBerlin(new Date().toISOString())
+  const earliestHm = opts.earliestHm ?? CLEANING_EARLIEST_HM
+  const deadline = Date.now() + (opts.budgetMs ?? 6000)
+  const dep = (opts.departingAlias ?? '').trim().toLowerCase()
+  const remote = opts.remoteOpenAt ?? []
+  const tedeeAnonHm = /^\d{2}:\d{2}/.test(opts.tedeeAnonEarliestHm ?? '') ? (opts.tedeeAnonEarliestHm as string).slice(0, 5) : earliestHm
+  const inWindow = (iso: string | undefined): iso is string =>
+    !!iso && !Number.isNaN(Date.parse(iso)) && logDayBerlin(iso) === day && logHmBerlin(iso) >= earliestHm
+
+  const staff: { t: number; iso: string; who: string | null; lockId: string }[] = []
+  const depUses: number[] = []
+  const lesbar: number[] = []        // Schlösser mit gelesenem Protokoll
+  const fehler: number[] = []        // Schlösser, deren Protokoll NICHT (vollständig) lesbar war
+
+  const nukiIds = (locks ?? []).filter((l) => l.provider === 'nuki').map((l) => Number(l.id)).filter(Number.isFinite)
+  const tedeeIds = (locks ?? []).filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
+  const nukiOn = nukiIds.length > 0 && nukiConfigured()
+  const tedeeOn = tedeeIds.length > 0 && tedeeConfigured()
+  if (!nukiOn && !tedeeOn) return { status: 'nolock', at: null, who: null, lockId: null }
+
+  if (nukiOn) {
+    await Promise.all(nukiIds.map(async (id) => {
+      try {
+        const [log, names] = await Promise.all([fetchNukiDayLog(id, day, deadline), nukiAuthNames(id, deadline)])
+        if (!log) { fehler.push(id); return }
+        lesbar.push(id)
+        if (!log.complete) {
+          fehler.push(id)
+          console.error('[cleaning-start] Nuki-Protokoll unvollständig (mehr als', NUKI_LOG_PAGE * NUKI_LOG_PAGES, 'Einträge) · Schloss', id, '· Tag', day)
+        }
+        for (const e of log.entries) {
+          if (!inWindow(e.date)) continue
+          const t = Date.parse(e.date)
+          const c = classifyNukiEntry(e, names)
+          if (c.actor === 'guest') {
+            if (dep && c.who.toLowerCase() === dep) depUses.push(t)   // Code der abreisenden Buchung benutzt
+            continue
+          }
+          if (!c.open || c.actor !== 'staff') continue
+          // Sicherheitsnetz: eigene Fern-Öffnung (Team-App) in zeitlicher Nähe und kein Keypad → zählt nicht
+          const keypad = e.trigger === 255 || e.source === 1 || e.source === 2
+          if (!keypad && remote.some((r) => t >= r - 60_000 && t <= r + 180_000)) continue
+          staff.push({ t, iso: e.date, who: c.who || null, lockId: String(id) })
+        }
+      } catch (err) {
+        fehler.push(id)
+        console.error('[cleaning-start] Nuki-Protokoll nicht lesbar · Schloss', id, err)
+      }
+    }))
   }
 
   // tedee (River): Events des Tages, Gast-PINs (Alias „TRIMOSA <hex>") raus.
   // Öffnungs-Eventtyp ist nicht sicher dokumentiert → jedes Ereignis mit
   // Zeitstempel zählt (best effort; Kalibrierung am lebenden Schloss).
-  const tedeeIds = (locks ?? []).filter((l) => l.provider === 'tedee').map((l) => Number(l.id)).filter(Number.isFinite)
-  if (tedeeIds.length && tedeeConfigured()) {
+  if (tedeeOn) {
     for (const id of tedeeIds) {
+      let gelesen = false
       for (const path of TEDEE_ACTIVITY_PATHS(id)) {
         try {
-          const res = await tedeeFetch(path)
+          const res = await tedeeFetch(path, { signal: logSignal(deadline) })
           if (!res.ok) continue
           const events = tedeeEventsOf(tedeeResult<unknown>(await res.json()))
           for (const ev of events) {
             const o = ev as { date?: string; pinAlias?: string }
-            if (o.pinAlias && GUEST_AUTH_RE.test(String(o.pinAlias).trim())) continue
-            consider(o.date)
+            const alias = String(o.pinAlias ?? '').trim()
+            if (alias && GUEST_AUTH_RE.test(alias)) continue
+            if (!inWindow(o.date)) continue
+            // ohne PIN (Knopf/Abschließen/Auto-Lock — erzeugt auch der abreisende Gast): am Abreisetag erst ab Check-out-Zeit
+            if (!alias && logHmBerlin(o.date) < tedeeAnonHm) continue
+            staff.push({ t: Date.parse(o.date), iso: o.date, who: null, lockId: String(id) })
           }
+          gelesen = true
           break
         } catch { /* nächster Pfad-Kandidat */ }
       }
+      if (gelesen) lesbar.push(id)
+      else { fehler.push(id); console.error('[cleaning-start] tedee-Protokoll nicht lesbar · Schloss', id) }
     }
   }
 
-  return earliest
+  // Erst die Team-Öffnung NACH der letzten Code-Nutzung der abreisenden Buchung zählt
+  const lastDep = depUses.length ? Math.max(...depUses) : 0
+  const hit = staff.filter((s) => s.t > lastDep).sort((a, b) => a.t - b.t)[0]
+  if (hit) return { status: 'found', at: hit.iso, who: hit.who, lockId: hit.lockId, complete: fehler.length === 0 }
+  if (fehler.length || !lesbar.length) return { status: 'unknown', at: null, who: null, lockId: null }
+  return { status: 'none', at: null, who: null, lockId: null }
 }
 
 /**
  * Paragraph 308 (Pascal 9.9. 19:25 „4. Haken eingecheckt"): erste ERFOLGREICHE Oeffnung mit einem GAST-Code
- * am Tag ab afterHm (Berlin) - Spiegelbild von firstCleaningOpenAt (dort zaehlen Gast-Codes nicht).
+ * am Tag ab afterHm (Berlin) - Spiegelbild von detectCleaningStart (dort zaehlen Gast-Codes nicht).
  * Nuki: Auth-Name matcht GUEST_AUTH_RE · tedee: pinAlias matcht GUEST_AUTH_RE. null = noch nicht eingecheckt.
+ * onlyAlias (Vier-Schritte-Leiste 1.10.): nur der Code DIESER Buchung zählt („TRIMOSA <id8>") — sonst markiert
+ * am Wechseltag der abreisende Gast (Codes gelten bis abends) oder an einer geteilten Haustür ein fremder Gast
+ * die Anreise als eingecheckt. Ohne den Parameter bleibt das alte Verhalten (jeder Gast-Code).
  */
-export async function firstGuestOpenAt(locks: LockRef[], afterHm: string, onDay?: string): Promise<string | null> {
+export async function firstGuestOpenAt(locks: LockRef[], afterHm: string, onDay?: string, onlyAlias?: string): Promise<string | null> {
+  const want = onlyAlias?.trim().toLowerCase() || null
   const targetDay = onDay ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
   const hmBerlin = (iso: string): string => new Intl.DateTimeFormat('de-DE', {
     timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -842,6 +1057,7 @@ export async function firstGuestOpenAt(locks: LockRef[], afterHm: string, onDay?
           if (e.state !== undefined && e.state !== 0) continue
           const who = (e.authId && authName.get(String(e.authId))) || String(e.name ?? '')
           if (!GUEST_AUTH_RE.test(who.trim())) continue
+          if (want && who.trim().toLowerCase() !== want) continue
           consider(e.date)
         }
       } catch (e) { console.error('[guest-open] Nuki-Log fehlgeschlagen:', e) }
@@ -858,6 +1074,7 @@ export async function firstGuestOpenAt(locks: LockRef[], afterHm: string, onDay?
           for (const ev of events) {
             const o = ev as { date?: string; pinAlias?: string }
             if (!o.pinAlias || !GUEST_AUTH_RE.test(String(o.pinAlias).trim())) continue
+            if (want && String(o.pinAlias).trim().toLowerCase() !== want) continue
             consider(o.date)
           }
           break
@@ -927,13 +1144,22 @@ export async function tedeeActivityProbe(lockId: number): Promise<{ path: string
  *  Reinigungs-Zeugen (staffCodeUsedToday). Liefert die jüngsten Einträge
  *  kompakt (name/date/trigger/action/state) + eine Roh-Probe des ersten
  *  Eintrags, damit unbekannte Feldnamen sichtbar werden. */
-export async function nukiLogProbe(smartlockId: number): Promise<{
+export async function nukiLogProbe(smartlockId: number, day?: string, departingAlias?: string): Promise<{
   status: number
   count: number
   todayBerlin: string
   zeugeWuerdeMatchen: boolean
   entries: { name: string; authName?: string; date: string; trigger?: number; action?: number; state?: number; source?: number }[]
   rawFirst: string
+  /** Reinigungsstart-Diagnose (1.10.) — nur mit `day` (YYYY-MM-DD): die Einträge des Tages (Lesefenster ab 03:00 UTC), klassifiziert */
+  tag?: {
+    day: string
+    lesbar: boolean
+    vollstaendig: boolean
+    aktionen: Record<string, number>
+    eintraege: { uhrzeit: string; name: string; authName?: string; action?: number; state?: number; trigger?: number; source?: number; klasse: 'guest' | 'staff' | 'other'; oeffnung: boolean }[]
+    reinigungsStart: CleaningStart
+  }
 }> {
   const todayBerlin = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
   const res = await nukiFetch(`/smartlock/${smartlockId}/log?limit=50`)
@@ -961,10 +1187,37 @@ export async function nukiLogProbe(smartlockId: number): Promise<{
     state: typeof e.state === 'number' ? e.state : undefined,
     source: typeof e.source === 'number' ? e.source : undefined,
   }))
+  // Reinigungsstart-Diagnose: derselbe Lese- und Regel-Weg wie die Heute-Karte (detectCleaningStart)
+  let tag: Awaited<ReturnType<typeof nukiLogProbe>>['tag']
+  if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const log = await fetchNukiDayLog(smartlockId, day, Date.now() + 8000).catch(() => null)
+    const aktionen: Record<string, number> = {}
+    for (const e of log?.entries ?? []) aktionen[String(e.action ?? '?')] = (aktionen[String(e.action ?? '?')] ?? 0) + 1
+    tag = {
+      day,
+      lesbar: !!log,
+      vollstaendig: !!log?.complete,
+      aktionen,
+      eintraege: (log?.entries ?? [])
+        .filter((e) => !!e.date && !Number.isNaN(Date.parse(e.date)) && logDayBerlin(e.date) === day)
+        .sort((a, b) => Date.parse(a.date as string) - Date.parse(b.date as string))
+        .map((e) => {
+          const c = classifyNukiEntry(e, authName)
+          return {
+            uhrzeit: logHmBerlin(e.date as string), name: String(e.name ?? ''),
+            authName: e.authId ? authName.get(String(e.authId)) ?? '(Auth unbekannt/gelöscht)' : undefined,
+            action: e.action, state: e.state, trigger: e.trigger, source: e.source,
+            klasse: c.actor, oeffnung: c.open,
+          }
+        }),
+      reinigungsStart: await detectCleaningStart([{ provider: 'nuki', id: String(smartlockId), label: '' }], { day, departingAlias: departingAlias ?? null, budgetMs: 8000 }),
+    }
+  }
   return {
     status: res.status,
     count: entries.length,
     todayBerlin,
+    tag,
     // NEUE Zeugen-Logik (name-Match ODER authId→Team-Auth) — wie staffCodeUsedToday
     zeugeWuerdeMatchen: entries.some((e) => String(e.date ?? '').slice(0, 10) === todayBerlin && (
       String(e.name ?? '').startsWith('TRIMOSA-Team') ||

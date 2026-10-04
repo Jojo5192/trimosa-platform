@@ -13,6 +13,7 @@ import OccupancyGrid from '@/components/team/OccupancyGrid'
 import { usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 import KennzahlenCard from '@/components/team/KennzahlenCard'
+import ReviewSyncCard from '@/components/team/ReviewSyncCard'
 
 type Stay = { id: string; listingId: string; checkIn: string; checkOut: string; guestName: string | null; channel?: string | null; persons?: number | null; totalPrice?: number | null }
 type CalTask = { id: string; title: string; due_date: string | null; status: string; prio: string; listing_id: string | null; location_group: string | null; is_general: boolean; assigneeName?: string | null }
@@ -395,6 +396,8 @@ export default function CalendarPanel() {
           </p>
           {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
           <KennzahlenCard />
+          {/* ⭐ §314: Bewertungs-Abruf (Ampel je Portal + „Jetzt abrufen") — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
+          <ReviewSyncCard />
         </div>
       ) : (
         <div style={{ padding: '12px 16px 40px' }}>

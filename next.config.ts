@@ -52,7 +52,12 @@ const nextConfig: NextConfig = {
     //
     // Origin inventory (keep in sync when adding third parties):
     //  - unpkg.com                 → Leaflet JS + CSS + marker images
-    //  - *.basemaps.cartocdn.com   → map tiles (light + voyager)
+    //  - *.basemaps.cartocdn.com   → map tiles (light + voyager), seit 29.09.2026 nur
+    //                                mit API-Schlüssel (NEXT_PUBLIC_CARTO_KEY, lib/map-tiles).
+    //                                connect-src wird für die Schlüssel-Prüfung per fetch
+    //                                gebraucht (Host a.basemaps.cartocdn.com) — nicht entfernen!
+    //  - tile.openstreetmap.org    → Ausweich-Kacheln ohne bzw. bei abgelehntem CARTO-
+    //                                Schlüssel (als <img> geladen → img-src https:)
     //  - <supabase>.supabase.co    → REST/Auth/Storage (fetch) + storage images
     //  - www.google.com/maps       → legacy map iframe fallback (no-coords listings)
     //  - komoot.com / komoot.de    → two-click tour embeds

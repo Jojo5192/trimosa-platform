@@ -13,6 +13,7 @@ import { POI_CATEGORIES, type Poi, type PoiCategory } from '@/lib/regions'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { t, type UiLang } from '@/lib/i18n'
+import { addBaseTiles } from '@/lib/map-tiles'
 
 export interface RegionMapListing {
   id: string
@@ -164,30 +165,25 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
           }
           .leaflet-attribution-flag { display: none !important; }
           .leaflet-control-attribution {
-            font-size: 9px !important;
-            background: rgba(255,255,255,0.8) !important;
-            color: rgba(0,0,0,0.4) !important;
+            font-size: 10px !important;
+            background: rgba(255,255,255,0.88) !important;
+            color: rgba(0,0,0,0.72) !important;
             border-radius: 4px !important;
             padding: 2px 6px !important;
           }
-          .leaflet-control-attribution a { color: rgba(0,0,0,0.4) !important; }
+          .leaflet-control-attribution a { color: rgba(0,0,0,0.72) !important; text-decoration: underline; }
         `
         document.head.appendChild(style)
       }
 
-      L.control.attribution({ position: 'bottomleft', prefix: false })
-        .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
-        .addTo(map)
+      // Grundkarte + Namensnennung zentral (CARTO mit Schlüssel, sonst bzw. bei
+      // Störung OpenStreetMap) — lib/map-tiles
+      addBaseTiles(L, map, tiles === 'voyager' ? 'voyager' : 'light')
 
-      L.tileLayer(
-        tiles === 'voyager'
-          ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        { subdomains: 'abcd', maxZoom: 19 }
-      ).addTo(map)
-
-      // Metric scale bar helps judging distances around the address
-      L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map)
+      // Metric scale bar helps judging distances around the address. Unten links
+      // (stapelt sich über der Namensnennung): rechts würde sie auf schmalen
+      // Handys das Ende der Pflicht-Namensnennung überdecken.
+      L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
 
       // TRIMOSA apartments — gold pins linking to the listing
       listings.forEach((l) => {

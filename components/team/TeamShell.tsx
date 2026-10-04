@@ -10,8 +10,10 @@
  *  · Ladestreifen oben während eines Abgleichs, Toast-Host, Such-Ebene
  * Tabs (§277): 🏠 Heute · 💬 Inbox · 📅 Belegung · ✅ Aufgaben · ⋯ Mehr.
  *   Die Inbox vereint Gäste-Chat und Intern-Messenger: Segment-Pille
- *   „Gäste · n | Intern · n" unter der Kopfleiste, Wahl wird gemerkt
- *   (localStorage), beim Betreten landet man auf der Seite mit Ungelesenem.
+ *   „Gäste · n | Intern · n" unter der Kopfleiste (Gäste = OFFENE Threads,
+ *   Intern = ungelesene Chats — Pascal 12.9.), Wahl wird gemerkt
+ *   (localStorage), beim Betreten landet man auf der Seite, die als einzige
+ *   eine Zahl trägt.
  *   Dienstleister sehen in der Inbox nur Intern (kein Segment).
  * ChatPanel/InternPanel bleiben gemountet (Polling/State), die anderen Tabs
  * werden per display umgeschaltet — Tab-Wechsel fühlt sich instant an.
@@ -21,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
 import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh, isStandalonePwa } from '@/components/team/ux'
 import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
+import { useInboxOpenCount } from '@/lib/inbox-store'
 import { applyTheme, useIsDark } from '@/lib/theme'
 import OffenPanel from '@/components/team/OffenPanel'
 import InternPanel from '@/components/team/InternPanel'
@@ -138,7 +141,10 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [internUnread, setInternUnread] = useState(0)
-  const [guestUnread, setGuestUnread] = useState(0)
+  // Pascal 12.9.: Gäste zählen OFFENE Threads (letzte Nachricht vom Gast, weder ✓ noch 📞) —
+  // aus dem gemeinsamen Stand lib/inbox-store, den das ChatPanel veröffentlicht. Dieselbe
+  // Zahl wie Chip „Offen · n" und Heute „Warten auf Antwort"; Intern bleibt „ungelesen".
+  const guestOpen = useInboxOpenCount()
   const [offenCount, setOffenCount] = useState(0)
   const [heuteCount, setHeuteCount] = useState(0)
   // Mobil in einem Thread: Kopfleiste + Tab-Bar versteckt (WhatsApp-Verhalten, §98)
@@ -147,10 +153,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   const navHidden = tab === 'inbox' && (seg === 'gaeste' && role === 'team' ? chatThread : internThread)
 
   // Pascal-Spec: Beim Betreten der Inbox landet man im gemerkten Segment —
-  // hat nur EINE Seite Ungelesenes, dort. (Nur beim Betreten, nie während
+  // trägt nur EINE Seite eine Zahl, dort. (Nur beim Betreten, nie während
   // des Lesens — sonst springt die Ansicht unter den Fingern um.)
+  // g = dieselbe Zahl wie in der Pille (offene Gäste-Threads), i = ungelesene Intern-Chats.
   const unreadRef = useRef({ g: 0, i: 0 })
-  unreadRef.current = { g: guestUnread, i: internUnread }
+  unreadRef.current = { g: guestOpen, i: internUnread }
   const skipAutoPick = useRef(!!(initialConvId || initialInternChatId))
   useEffect(() => {
     if (tab !== 'inbox' || role !== 'team') return
@@ -171,8 +178,9 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   }, [])
 
   // §162: Klick auf eine Aufgabe im Kalender → Aufgaben-Tab öffnen und die
-  // Aufgabe fokussieren (Event aus CalendarPanel; TasksPanel ist nur bei
-  // aktivem Tab gemountet, darum vermittelt die Shell per Prop)
+  // Aufgabe fokussieren (Event aus CalendarPanel/HeutePanel; die Shell schaltet
+  // den Reiter um und reicht die ID per Prop an das dauerhaft gemountete
+  // TasksPanel — das lädt beim Sichtbarwerden frisch, §314)
   const [taskFocus, setTaskFocus] = useState<string | null>(initialTaskId ?? null)
   useEffect(() => {
     const onOpenTask = (e: Event) => {
@@ -255,12 +263,21 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
   // (Sofort-Aufgaben + heute geplante Aufgaben + offene Gast-Nachrichten + Anreisen mit
   // fehlendem Häkchen). Die frühere Kopplung an die Push-Einstellungen (19.7.) entfällt;
   // Intern-Ungelesenes zeigt der Inbox-Reiter, Push-Mitteilungen kommen weiterhin.
+  // Der Anteil „offene Gast-Nachrichten" kommt aus demselben Stand wie das Inbox-Badge
+  // (lib/inbox-store). Bei Rückkehr in die App wird die Zahl neu gesetzt: der Service
+  // Worker setzt bei jedem Push nur einen zahlenlosen Marker (public/sw.js).
   useEffect(() => {
     const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
-    try {
-      if (heuteCount > 0) nav.setAppBadge?.(heuteCount)?.catch(() => {})
-      else nav.clearAppBadge?.()?.catch(() => {})
-    } catch { /* Badging API nicht verfügbar */ }
+    const apply = () => {
+      try {
+        if (heuteCount > 0) nav.setAppBadge?.(heuteCount)?.catch(() => {})
+        else nav.clearAppBadge?.()?.catch(() => {})
+      } catch { /* Badging API nicht verfügbar */ }
+    }
+    apply()
+    const onVis = () => { if (document.visibilityState === 'visible') apply() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
   }, [heuteCount])
 
   // Tastatur-Pinning (iOS-26-fest): iOS verschiebt bei offener Tastatur den
@@ -454,8 +471,9 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     const next = el.scrollTop > 24 ? tab : null
     setCollapsedFor((c) => (c === next ? c : next))
   }
-  // Inbox-Zähler = ungelesene Chats beider Seiten (Pascal-Spec)
-  const badgeFor = (id: Tab) => id === 'inbox' ? (role === 'team' ? guestUnread : 0) + internUnread : id === 'heute' ? heuteCount : 0
+  // Inbox-Zähler = OFFENE Gäste-Threads + ungelesene Intern-Chats (Pascal 12.9.) —
+  // die Gäste-Zahl ist dieselbe wie Chip „Offen · n" und Heute „Warten auf Antwort"
+  const badgeFor = (id: Tab) => id === 'inbox' ? (role === 'team' ? guestOpen : 0) + internUnread : id === 'heute' ? heuteCount : 0
 
   /* ── Segment-Pille „Gäste · n | Intern · n" (nur Team, unter der Kopfleiste) ── */
   const segmented = (
@@ -464,7 +482,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
         display: 'flex', padding: 3, borderRadius: 999, maxWidth: 420,
         background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)',
       }}>
-        {([['gaeste', 'Gäste', guestUnread], ['intern', 'Intern', internUnread]] as const).map(([id, label, n]) => {
+        {([['gaeste', 'Gäste', guestOpen], ['intern', 'Intern', internUnread]] as const).map(([id, label, n]) => {
           const on = seg === id
           return (
             <button key={id} role="tab" aria-selected={on} className="tm-press-btn" onClick={() => { haptic(); setSeg(id) }} style={{
@@ -641,7 +659,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               {role === 'team' && (
                 <div style={{ flex: 1, minHeight: 0, display: seg === 'gaeste' ? 'block' : 'none' }}>
-                  <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} onUnread={setGuestUnread} />
+                  <ChatPanel variant="app" team userId={userId} initialConvId={initialConvId} onMobileThread={setChatThread} />
                 </div>
               )}
               <div style={{ flex: 1, minHeight: 0, display: seg === 'intern' || role !== 'team' ? 'block' : 'none' }}>
@@ -654,7 +672,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
           )}
           {/* Pascal 9.9.: Aufgaben/Kalender/Mehr bleiben gemountet — Reiterwechsel ohne Nachladen */}
           {wrap('aufgaben',
-            <TasksPanel role={role} userId={userId} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true
+            <TasksPanel role={role} userId={userId} visible={tab === 'aufgaben'} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true
           )}
           {wrap('kalender', <CalendarPanel />, true)}
           {wrap('einstellungen', <SettingsPanel role={role} />, true)}

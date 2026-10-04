@@ -173,7 +173,12 @@ export async function POST(req: NextRequest) {
   if (body.action === 'nuki-log-test' && body.smartlockId) {
     const { nukiLogProbe } = await import('@/lib/locks')
     try {
-      return NextResponse.json(await nukiLogProbe(Number(body.smartlockId)))
+      // Reinigungsstart-Diagnose: optional { day: 'YYYY-MM-DD', alias: 'TRIMOSA <id8>' der abreisenden Buchung }
+      return NextResponse.json(await nukiLogProbe(
+        Number(body.smartlockId),
+        typeof body.day === 'string' ? body.day : undefined,
+        typeof body.alias === 'string' ? body.alias : undefined,
+      ))
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }

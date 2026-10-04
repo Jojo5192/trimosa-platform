@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { shouldPoll } from '@/lib/offline'
+import { isOffenThread, requestInboxReload } from '@/lib/inbox-store'
 
 // Lokale Flaggen-Map (wie ChatPanel) — lib/translate ist server-only (supabaseAdmin)
 const LANG_FLAGS: Record<string, string> = {
@@ -114,7 +115,7 @@ export default function OffenPanel({ visible, onCount }: {
       if (!r.ok) return
       const d = await r.json()
       const open: Thread[] = (d.threads ?? [])
-        .filter((t: Thread) => t.lastSender === 'guest' && !t.noReplyNeeded && !t.phoneResolved)
+        .filter((t: Thread) => isOffenThread(t))
         .sort((a: Thread, b: Thread) => String(a.lastMessageAt ?? '').localeCompare(String(b.lastMessageAt ?? '')))
       setQueue((q) => {
         // Aktuelle Karte nicht unter den Fingern austauschen — nur wenn sie
@@ -129,9 +130,8 @@ export default function OffenPanel({ visible, onCount }: {
     } catch { /* Netz */ }
   }, [])
 
-  // Einmal beim Start laden (Tab-Badge zeigt die Zahl schon vor dem ersten
-  // Besuch), danach bei jedem Tab-Wechsel hierher + 45s-Intervall
-  useEffect(() => { load() }, [load])
+  // Laden bei jedem Wechsel hierher + 45s-Intervall. Der frühere Abruf beim App-Start
+  // entfällt: er diente dem alten Tab-Badge — die Offen-Zahl liefert jetzt lib/inbox-store.
   useEffect(() => { if (visible) load() }, [visible, load])
   useEffect(() => {
     if (!visible) return
@@ -187,6 +187,8 @@ export default function OffenPanel({ visible, onCount }: {
 
   /* ── Karte abräumen (Animation → Queue-Update) ── */
   function dismiss(dir: 'left' | 'right', remove: boolean) {
+    // Karte erledigt (beantwortet/✓/📞) → Inbox-Badge, Chip „Offen" und Heute ziehen nach
+    if (remove) requestInboxReload(true)
     setLeaving(dir)
     setTimeout(() => {
       setLeaving(null)

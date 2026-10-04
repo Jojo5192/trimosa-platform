@@ -25,3 +25,22 @@ export async function earlyCheckinBlock(b: { id: string; listing_id: string | nu
   } catch { /* fail-soft */ }
   return { blocked: false, reason: null }
 }
+
+/** Vier-Schritte-Leiste (1.10.): Claim-Marker im auto_message_log, solange ein Versand läuft —
+ *  dieselbe Schreibweise wie die Engine (EIN Zeichen U+2026, nicht drei Punkte). */
+export const EARLY_LOG_CLAIM = 'sendet…'
+
+export interface EarlyTpl { id: string; enabled: boolean; listing_id?: string | null; listing_ids?: string[] | null }
+
+/**
+ * Die EINE Auswahl der Vorlage „Früher Check-in möglich" (Trigger 'reinigung_fertig') für eine
+ * Wohnung: erste passende Vorlage der nach `sort` sortierten Liste (ohne Wohnungs-Chips = gilt für
+ * alle). null = keine passt. Gemeinsam für Versand (lib/cleaning-done.ts) und Heute-Anzeige.
+ */
+export function pickEarlyTemplate<T extends EarlyTpl>(list: T[], listingId: string): T | null {
+  return list.find((t) => {
+    const ids = Array.isArray(t.listing_ids) && t.listing_ids.length
+      ? t.listing_ids : t.listing_id ? [t.listing_id] : null
+    return !ids || ids.includes(listingId)
+  }) ?? null
+}

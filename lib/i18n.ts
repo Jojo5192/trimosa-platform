@@ -430,6 +430,8 @@ addTranslations({
   'Antwortet in Smoobu automatisch sichtbar': ['Replies are automatically synced', 'Les réponses sont synchronisées automatiquement', 'Antwoorden worden automatisch gesynchroniseerd'],
   'Nachrichten werden geladen…': ['Loading messages…', 'Chargement des messages…', 'Berichten laden…'],
   'Noch keine Nachrichten': ['No messages yet', 'Pas encore de messages', 'Nog geen berichten'],
+  'Wird gesendet …': ['Sending …', 'Envoi en cours …', 'Wordt verzonden …'],
+  'Nicht gesendet — antippen, um den Text zu übernehmen': ['Not sent — tap to put the text back into the message field', 'Non envoyé — touchez pour reprendre le texte', 'Niet verzonden — tik om de tekst over te nemen'],
   'Schreibe dem Gast eine erste Nachricht.': ['Write the guest a first message.', 'Écrivez un premier message au voyageur.', 'Stuur de gast een eerste bericht.'],
   'Schreibe dem Gastgeber eine Nachricht.': ['Write your host a message.', 'Écrivez un message à votre hôte.', 'Stuur de gastheer een bericht.'],
   'Nachricht schreiben… (Enter zum Senden)': ['Write a message… (Enter to send)', 'Écrire un message… (Entrée pour envoyer)', 'Schrijf een bericht… (Enter om te versturen)'],

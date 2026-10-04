@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { t, type UiLang } from '@/lib/i18n'
+import { addBaseTiles } from '@/lib/map-tiles'
 
 export interface MapListing {
   id: string
@@ -85,17 +86,10 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
       // Zoom control – repositioned bottom right
       L.control.zoom({ position: 'bottomright' }).addTo(map)
 
-      // Attribution – minimal, bottom left
-      L.control.attribution({ position: 'bottomleft', prefix: false })
-        .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
-        .addTo(map)
-
-      // CartoDB Positron — light, desaturated, minimal. Keeps the map calm so
-      // the gold price markers and photo popups are what stands out.
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-      }).addTo(map)
+      // Grundkarte + Namensnennung zentral — lib/map-tiles. Mit Schlüssel CARTO
+      // Positron (hell, entsättigt: die goldenen Preis-Marker und Foto-Popups
+      // stehen im Vordergrund), sonst bzw. bei Störung OpenStreetMap.
+      addBaseTiles(L, map, 'light')
 
       // Listings at (nearly) the same address stack invisibly on one point —
       // fan them out in a small circle so every apartment in the building is
@@ -361,13 +355,13 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           /* Attribution */
           .leaflet-attribution-flag { display: none !important; }
           .leaflet-control-attribution {
-            font-size: 9px !important;
-            background: rgba(255,255,255,0.8) !important;
-            color: rgba(0,0,0,0.4) !important;
+            font-size: 10px !important;
+            background: rgba(255,255,255,0.88) !important;
+            color: rgba(0,0,0,0.72) !important;
             border-radius: 4px !important;
             padding: 2px 6px !important;
           }
-          .leaflet-control-attribution a { color: rgba(0,0,0,0.4) !important; }
+          .leaflet-control-attribution a { color: rgba(0,0,0,0.72) !important; text-decoration: underline; }
         `
         document.head.appendChild(style)
       }

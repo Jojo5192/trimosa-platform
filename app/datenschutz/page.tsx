@@ -139,10 +139,11 @@ export default function DatenschutzPage() {
 
       <LegalSection heading="9. Kartendarstellung (CARTO, OpenStreetMap, Google Maps)">
         <LegalP>
-          Zur Darstellung der Lage von Unterkünften nutzen wir Kartendienste. Die Übersichtskarte
-          verwendet Kartenkacheln von CARTO auf Basis von OpenStreetMap-Daten. Auf Detailseiten kann
-          zusätzlich eine über Google Maps (Google Ireland Limited, Irland) eingebettete Karte
-          angezeigt werden. Beim Laden der Karten wird Ihre IP-Adresse an den jeweiligen Anbieter
+          Zur Darstellung der Lage von Unterkünften nutzen wir Kartendienste. Unsere Karten
+          verwenden Kartenkacheln von CARTO (CartoDB Inc., USA) auf Basis von OpenStreetMap-Daten;
+          ersatzweise können die Kacheln über den Kacheldienst der OpenStreetMap Foundation
+          (Vereinigtes Königreich) geladen werden. Auf Detailseiten kann zusätzlich eine über Google
+          Maps (Google Ireland Limited, Irland) eingebettete Karte angezeigt werden. Beim Laden der Karten wird Ihre IP-Adresse an den jeweiligen Anbieter
           übertragen, was technisch erforderlich ist, um die Karte auszuliefern. Rechtsgrundlage ist
           unser berechtigtes Interesse an einer ansprechenden Standortdarstellung (Art. 6 Abs. 1
           lit. f DSGVO).
@@ -298,7 +299,7 @@ export default function DatenschutzPage() {
 
       <LegalSection heading="18. Datenübermittlung in Drittstaaten">
         <LegalP>
-          Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google, Anthropic,
+          Einige der eingesetzten Dienste (u. a. Vercel, Stripe, Resend, Google, CARTO, Anthropic,
           Twilio, ElevenLabs) können
           personenbezogene Daten in Länder außerhalb der EU/des EWR – insbesondere in die USA –
           übermitteln. In diesen Ländern besteht möglicherweise kein mit der EU vergleichbares

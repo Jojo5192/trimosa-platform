@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { addBaseTiles } from '@/lib/map-tiles'
 
 interface Props {
   lat: number | null
@@ -55,10 +56,9 @@ export default function LocationPicker({ lat, lon, onChange, address, fallback =
       })
       mapRef.current = map
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-      }).addTo(map)
+      // Grundkarte + Namensnennung zentral — lib/map-tiles. Die Namensnennung
+      // ist bei beiden Anbietern Pflicht, auch im Editor.
+      addBaseTiles(L, map, 'voyager')
 
       const pin = L.divIcon({
         className: '',

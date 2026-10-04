@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { firstCleaningOpenAt, type LockRef } from '@/lib/locks'
+import { getLockOpenLog, type LockRef } from '@/lib/locks'
+import { resolveCleaningStart, sharedLockKeys } from '@/lib/cleaning-start'
 
 /**
  * ⏱ §255: Reinigungs-Dauer-Auswertung — NUR für Chefs (is_admin).
@@ -9,6 +10,9 @@ import { firstCleaningOpenAt, type LockRef } from '@/lib/locks'
  * Fertigmeldung, §255). ?probe=1 = Sichtbarkeits-Check fürs Mehr-Tab.
  */
 export const dynamic = 'force-dynamic'
+// Backfill liest je Meldung das Schloss-Protokoll (bis ~6,5 s) — Zeitlimit festlegen, die Schleife bricht vorher ab
+export const maxDuration = 60
+const BACKFILL_BUDGET_MS = 40_000
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
 
 async function requireChef(): Promise<string | null> {
@@ -142,20 +146,42 @@ export async function POST(req: NextRequest) {
   const rows = (conf ?? []) as { listing_id: string; slot_date: string; confirmed_at: string }[]
   if (!rows.length) return NextResponse.json({ gemessen: 0, geprueft: 0 }, NO_STORE)
 
-  // Schlösser + Check-out-Zeit je Wohnung
-  const ids = [...new Set(rows.map((r) => r.listing_id))]
-  const { data: ls } = await supabaseAdmin.from('listings').select('id, locks, check_out_time').in('id', ids)
+  // Schlösser je Wohnung — ALLE Wohnungen laden, damit geteilte Schlösser (Haustür Sirzenich)
+  // erkannt werden. Start-Regel wie Heute-Karte und NFC-Meldung (lib/cleaning-start.ts): ab 06:00,
+  // die Check-out-Zeit ist keine Grenze mehr (Ausnahme tedee: Ereignisse ohne PIN am Abreisetag).
+  const { data: ls } = await supabaseAdmin.from('listings').select('id, locks, check_out_time')
   const cfg = new Map((ls ?? []).map((l) => [l.id as string, l as { locks: LockRef[] | null; check_out_time: string | null }]))
+  const shared = sharedLockKeys((ls ?? []) as { locks: LockRef[] | null }[])
+  const remoteOpens = await getLockOpenLog()
   const dayOf = (iso: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date(iso))
 
   let gemessen = 0
+  let geprueft = 0
+  const t0 = Date.now()
   for (const r of rows) {
+    // Zeitbudget: vor dem Zeitlimit der Funktion sauber mit Teilergebnis raus (Rest beim nächsten Aufruf)
+    if (Date.now() - t0 > BACKFILL_BUDGET_MS) break
+    geprueft++
     const c = cfg.get(r.listing_id)
     if (!c?.locks?.length) continue
     const cleaningDay = dayOf(r.confirmed_at)            // Tag der Meldung = Reinigungstag
-    const afterHm = cleaningDay === r.slot_date ? (c.check_out_time ?? '10:00').slice(0, 5) : '06:00'
     try {
-      const startedAt = await firstCleaningOpenAt(c.locks, afterHm, cleaningDay)
+      // Reinigung am Abreisetag: Code der abreisenden Buchung kennen (danach erst zählt die Team-Öffnung)
+      let departingBookingId: string | null = null
+      if (cleaningDay === r.slot_date) {
+        const { data: deps } = await supabaseAdmin
+          .from('bookings').select('id, source, payment_status')
+          .eq('listing_id', r.listing_id).eq('status', 'confirmed').eq('check_out', r.slot_date).limit(5)
+        const dep = ((deps ?? []) as { id: string; source: string | null; payment_status: string | null }[])
+          .find((b) => b.source !== 'trimosa' || b.payment_status === 'paid')
+        departingBookingId = dep?.id ?? null
+      }
+      const start = await resolveCleaningStart({
+        listingId: r.listing_id, locks: c.locks, day: cleaningDay,
+        departingBookingId, checkOutHm: cleaningDay === r.slot_date ? (c.check_out_time ?? '10:00') : null,
+        shared, remoteOpens, persist: false,
+      })
+      const startedAt = start.at
       if (!startedAt) continue
       const mins = Math.round((Date.parse(r.confirmed_at) - Date.parse(startedAt)) / 60000)
       if (mins < 1 || mins > 12 * 60) continue
@@ -165,5 +191,5 @@ export async function POST(req: NextRequest) {
       gemessen++
     } catch { /* Schloss nicht erreichbar → überspringen */ }
   }
-  return NextResponse.json({ gemessen, geprueft: rows.length }, NO_STORE)
+  return NextResponse.json({ gemessen, geprueft, offen: rows.length - geprueft }, NO_STORE)
 }

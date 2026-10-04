@@ -8,6 +8,7 @@
  * zurück, sonst schnappt er zurück. Rein additiv — der ‹-Button bleibt.
  */
 import { useRef } from 'react'
+import { flushSync } from 'react-dom'
 
 export function useSwipeBack(onBack: () => void) {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -45,7 +46,10 @@ export function useSwipeBack(onBack: () => void) {
     if (dx > 70) {
       el.style.transform = 'translateX(100%)'
       setTimeout(() => {
-        onBack()
+        // §314: Listenansicht SYNCHRON rendern, erst danach die Verschiebung lösen — sonst
+        // steht der Thread einen Frame lang wieder an seinem Platz (Aufblitzen), bevor
+        // React die Liste zeichnet (Zustandsänderungen aus Timern rendern verzögert).
+        flushSync(() => onBack())
         el.style.transition = 'none'
         el.style.transform = ''
       }, 190)

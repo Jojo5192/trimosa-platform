@@ -54,12 +54,17 @@ export function usePullToRefresh(ref: RefObject<HTMLElement | null>, onRefresh: 
     let active = false
     let dist = 0
     const start = (e: TouchEvent) => {
-      if (busyRef.current || el.scrollTop > 0) { active = false; return }
+      // §314: Der Knoten kann von React für eine ANDERE Ansicht weiterverwendet werden
+      // (mobil wird aus der Chat-Liste der Thread) — der Ref zeigt dann nicht mehr auf
+      // ihn. Ohne diese Prüfung löste jedes Abwärtsziehen im Thread ein Neu-Rendern je
+      // Fingerbewegung und ab ~125 px ein Listen-Neuladen aus.
+      if (ref.current !== el || busyRef.current || el.scrollTop > 0) { active = false; return }
       startY = e.touches[0].clientY
       active = true
       dist = 0
     }
     const move = (e: TouchEvent) => {
+      if (ref.current !== el) { if (active) { active = false; setPull(0) } return }
       if (!active || busyRef.current) return
       dist = e.touches[0].clientY - startY
       if (dist > 0 && el.scrollTop <= 0) setPull(Math.min(84, dist * 0.45))

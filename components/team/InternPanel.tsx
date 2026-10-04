@@ -329,6 +329,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     clearThreadNotifications(`intern-${c.id}`)
     setActive(c)
     setChats((cs) => cs.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)))
+    // Inbox-Badge sofort nachziehen (sonst hängt die Intern-Zahl bis zum nächsten 20-s-Abgleich nach)
+    chatsRef.current = chatsRef.current.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x))
+    onUnread?.(chatsRef.current.filter((x) => (x.unread ?? 0) > 0).length)
     if (isMobile) setMobileView('chat')
   }
   openChatRef.current = openChat
@@ -625,8 +628,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Anlegen fehlgeschlagen.') }
       } finally { setSaving(false) }
     }
-    return (
-      <div onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+    // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container unter der Tab-Leiste
+    if (typeof document === 'undefined') return null
+    return createPortal(
+      <div className="team-shell" onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.4)', color: 'var(--tm-text)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
         <div onClick={(e) => e.stopPropagation()} style={{
           width: '100%', maxWidth: 480, background: 'var(--tm-surface2)', borderRadius: '18px 18px 0 0',
           padding: '18px 18px calc(18px + env(safe-area-inset-bottom))', maxHeight: '85dvh', overflowY: 'auto', overscrollBehavior: 'contain',
@@ -660,7 +665,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
             color: name.trim() && !saving ? '#fff' : 'var(--tm-muted)', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
           }}>{saving ? 'Erstellt…' : 'Gruppe erstellen'}</button>
         </div>
-      </div>
+      </div>,
+      document.body,
     )
   }
 

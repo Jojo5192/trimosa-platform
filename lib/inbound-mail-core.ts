@@ -27,6 +27,8 @@ export interface InboundMailInput {
   /** §238: Quell-Postfach + stabile Mail-ID (Beleg-Inbox-Dedupe) */
   mailbox?: string
   mailKey?: string
+  /** FeWo-Daten 1.10.: Empfangszeit (ISO) — die KI leitet daraus die Jahreszahl ab */
+  receivedAt?: string
 }
 
 export const stripHtml = (html: string) =>
@@ -512,8 +514,111 @@ export async function noteGuestDataInSmoobu(smoobuId: number, want: { name?: str
   return err ? `notiz-fehler: ${err}` : 'notiz'
 }
 
-export async function processInboundMail(input: InboundMailInput, opts: { belegeOnly?: boolean } = {}): Promise<Record<string, unknown>> {
+/* ── FeWo-Daten (1.10.): Helfer für die Zuordnung Mail → Buchung und die Aufgabe „Gastdaten fehlen" ── */
+
+/** Platzhalter, die Smoobu/der Webhook setzen, wenn das Portal keinen Gastnamen liefert */
+const NAME_PLACEHOLDER_RE = /^(externer gast|gast|guest|unbekannt|unknown|reserved|not available|blocked)$/i
+const NAME_STOP = new Set(['dr', 'prof', 'herr', 'frau', 'mr', 'mrs', 'ms', 'und', 'and', 'von', 'van', 'de', 'der', 'den', 'di', 'la', 'le',
+  'fuer', 'fur', 'an', 'from', 'for', 'to', 'gesendet', 'fewo', 'direkt', 'vrbo', 'homeaway', 'trimosa', 'gmbh', 'gast', 'guest', 'externer'])
+/** Betreff-Muster der FeWo-Mails: „Sofortbuchung von X Y: …", „Reservierung für X Y: …", „… gesendet an X Y: …" */
+const FEWO_SUBJ_NAME_RE = /(?:von|für|fuer|an|from|for|to)\s+([\p{L}'’.\- ]{3,60}?)(?:\s+gesendet)?:\s/iu
+
+/** Namens-Tokens für den Abgleich Mail ↔ Buchung: klein, ohne Akzente (Jörg = Joerg), Bindestrich-Namen in Teilen
+ *  (Hans-Dieter → hans, dieter), ohne Titel/Präpositionen. */
+export function nameToks(n: string | null | undefined): string[] {
+  return (n ?? '')
+    .replace(/ß/g, 'ss').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .filter((t) => t.length >= 2 && !NAME_STOP.has(t))
+    .map((t) => t.replace(/([aou])e/g, '$1'))
+}
+
+/** Aufgabe „Nachname fehlt" entsteht erst so viele Tage vor der Anreise (auch für die Diagnose-Zählung). */
+export const FEWO_NAME_TASK_DAYS = 30
+
+/** Was einer FeWo-direkt-Buchung fehlt: E-Mail (= kein Chat-Kanal) und/oder Nachname (einwortiger/leerer Name). */
+export function fewoMissing(b: { guest_name: string | null; guest_email: string | null }): ('E-Mail' | 'Nachname')[] {
+  const out: ('E-Mail' | 'Nachname')[] = []
+  if (!(b.guest_email ?? '').includes('@')) out.push('E-Mail')
+  const n = (b.guest_name ?? '').replace(/\s+/g, ' ').trim()
+  if (!n || NAME_PLACEHOLDER_RE.test(n) || n.split(' ').length < 2) out.push('Nachname')
+  return out
+}
+
+/** Kanal einer Buchung grob einordnen — Substring-Falle (§140/§262): fewo VOR direkt VOR booking.
+ *  null = neutral (Smoobu, iCal-Name, Website, Direktbuchung …). */
+function portalKind(channel: string | null | undefined): 'fewo' | 'airbnb' | 'booking' | 'sonstig' | null {
+  const v = (channel ?? '').toLowerCase()
+  if (/fewo|homeaway|vrbo|abritel/.test(v)) return 'fewo'
+  if (/website|trimosa|direct|direkt/.test(v)) return null
+  if (/airbnb/.test(v)) return 'airbnb'
+  if (/booking/.test(v)) return 'booking'
+  if (/hometogo|holidu|agoda|tripadvisor/.test(v)) return 'sonstig'
+  return null
+}
+
+interface PortalCand { id: string; listing_id: string | null; guest_name: string | null; guest_email: string | null; channel: string | null; status?: string | null }
+
+/**
+ * FeWo-Daten (1.10.): die Buchung zu einer Portal-Buchungsmail wählen — unter den Buchungen mit EXAKT dem
+ * Zeitraum der Mail. Reihenfolge: Relay-Adresse → Wohnung (Objektnummer in der Portal-URL) → Kanal → Name.
+ * Vorher wurde ein einzelner Kandidat blind genommen (auch eine Booking-/Airbnb-Buchung mit gleichem
+ * Wochenende, solange die FeWo-Buchung noch nicht importiert war) und bei mehreren entschied
+ * startsWith(Vorname) — „hans-dieter".startsWith("dieter") ist false. Jetzt: Buchungen eines ANDEREN Portals
+ * scheiden aus, Namen werden über Tokens verglichen, und ohne Wohnungs-Treffer (Wohnung ohne passende
+ * vrbo_url) zählt ein einzelner Kandidat nur, wenn Kanal UND Name nicht widersprechen. Kein Treffer =
+ * die Mail bleibt in der Warteschlange (pending) statt eine fremde Buchung anzureichern.
+ * `strict` (Mail älter als 72 h): Auch MIT Wohnungs-Treffer zählt der einzelne Kandidat nur noch, wenn sein
+ * Name dem der Mail nicht widerspricht — sonst bekäme ein ANDERER Gast, der dieselbe Wohnung später für exakt
+ * denselben Zeitraum bucht (Anfrage ohne Buchung, Storno vor dem Import), Relay-Adresse und Daten der alten Mail.
+ */
+export function pickPortalBooking<T extends PortalCand>(
+  cands: T[],
+  o: { listingId: string | null; portal: 'fewo' | 'booking' | 'airbnb' | null; names: string[]; relayEmail?: string; strict?: boolean },
+): { booking: T | null; grund: string } {
+  const relay = (o.relayEmail ?? '').trim().toLowerCase()
+  if (relay) {
+    const hit = cands.find((b) => (b.guest_email ?? '').trim().toLowerCase() === relay)
+    if (hit) return { booking: hit, grund: 'relay-adresse' }
+  }
+  // unbezahlte Website-Anfragen (status pending) sind nie das Ziel einer Portal-Mail
+  let pool = cands.filter((b) => b.status !== 'pending')
+  if (o.listingId) pool = pool.filter((b) => b.listing_id === o.listingId)
+  const own = o.portal ? pool.filter((b) => portalKind(b.channel) === o.portal) : []
+  // Buchungen eines anderen Portals scheiden aus; kanal-neutrale (Smoobu/iCal) bleiben Kandidaten
+  if (o.portal) pool = own.length ? own : pool.filter((b) => portalKind(b.channel) === null)
+  if (!pool.length) return { booking: null, grund: `kein Kandidat (${cands.length} im Zeitraum, Wohnung/Kanal passt nicht)` }
+  const mailToks = new Set(o.names.flatMap(nameToks))
+  const scored = pool
+    .map((b) => ({ b, n: nameToks(b.guest_name).filter((t) => mailToks.has(t)).length }))
+    .filter((x) => x.n > 0)
+    .sort((a, c) => c.n - a.n)
+  if (scored.length === 1 || (scored.length > 1 && scored[0].n > scored[1].n)) return { booking: scored[0].b, grund: 'name' }
+  if (scored.length > 1) return { booking: null, grund: `mehrdeutig: ${scored.length} Namens-Treffer` }
+  if (pool.length === 1) {
+    // Widerspruch = die Buchung hat einen echten Namen (kein Platzhalter wie „Externer Gast"/„Unbekannt"),
+    // die Mail auch, und kein Namensteil deckt sich (sonst hätte oben der Namens-Treffer gegriffen)
+    const candHasName = !NAME_PLACEHOLDER_RE.test((pool[0].guest_name ?? '').replace(/\s+/g, ' ').trim()) && nameToks(pool[0].guest_name).length > 0
+    const widerspruch = candHasName && mailToks.size > 0
+    // genau eine Buchung dieser Wohnung im Zeitraum → sicher, auch ohne Namens-Treffer (anderer Rufname) —
+    // außer bei einer alten Mail (strict): dann kann es die Buchung eines späteren, anderen Gasts sein
+    if (o.listingId) {
+      return o.strict && widerspruch
+        ? { booking: null, grund: 'einziger Kandidat der Wohnung, aber anderer Name (alte Mail)' }
+        : { booking: pool[0], grund: 'objektnummer' }
+    }
+    // ohne Wohnungs-Treffer: nur wenn der Kanal passt und die Namen sich nicht widersprechen
+    if (own.length === 1 && !widerspruch) return { booking: pool[0], grund: 'kanal+zeitraum' }
+    return { booking: null, grund: own.length === 1 ? 'einziger Kandidat, aber anderer Name' : 'einziger Kandidat ohne Kanal-/Namens-Treffer' }
+  }
+  return { booking: null, grund: `kein Namens-Treffer unter ${pool.length} Kandidaten` }
+}
+
+export async function processInboundMail(input: InboundMailInput, opts: { belegeOnly?: boolean; preParsed?: Record<string, unknown> } = {}): Promise<Record<string, unknown>> {
   const { from, subject, rawText, attachments } = input
+  // FeWo-Daten 1.10.: pending-Wiederholung ohne erneuten KI-/Graph-Abruf — die beim Erstlauf extrahierten
+  // Daten kommen fertig mit (lib/graph-mail). Dann entfallen Klassifikation und Extraktion.
+  const pre = opts.preParsed && typeof opts.preParsed === 'object' ? opts.preParsed : null
   const mailOpts = { mailbox: input.mailbox, mailKey: input.mailKey }
   const relayEmail = input.relayEmail ?? ''
 
@@ -532,7 +637,7 @@ export async function processInboundMail(input: InboundMailInput, opts: { belege
     return { ok: true, skipped: 'belege-only: kein Anhang' }
   }
 
-  if (rawText.trim().length < 80) {
+  if (!pre && rawText.trim().length < 80) {
     // Kurzer Body, aber PDF dran → trotzdem durch den Beleg-Fischer
     if (attachments.length) return handleReceiptMail(attachments, from, subject, rawText, mailOpts)
     console.error('[inbound-mail] Mail-Body leer/zu kurz:', subject.slice(0, 80))
@@ -543,7 +648,7 @@ export async function processInboundMail(input: InboundMailInput, opts: { belege
   // Gast antwortet einfach auf unsere Bestätigungs-Mail von buchung@)
   // — bzw. Lieferanten-Beleg (§236 C3, entscheidet der Handler selbst)
   const relevant = /fewo-direkt|homeaway|vrbo|booking\.com|airbnb/i.test(from + ' ' + subject)
-  if (!relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments, mailOpts)
+  if (!pre && !relevant) return handleWebsiteGuestReply(from, subject, rawText, attachments, mailOpts)
   // Paragraph 296: Bewertungs-Aufforderungen der Portale sind keine Buchungsmails - die KI las daraus
   // Zeitraeume und ordnete sie alten Buchungen zu (Jeannett, 1.9.)
   if (/@reviews?\.homeaway\.com|noreply@review/i.test(from) || /^(Schreiben Sie eine Bewertung|Bewerten Sie|Write a review|Rate your)/i.test(subject.trim())) {
@@ -575,18 +680,24 @@ Regeln: NUR Werte aus der Mail, nichts raten. Jahreszahlen aus dem Kontext
 ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
 
   let parsed: Record<string, unknown> = {}
-  try {
-    const raw = await askClaude(system, rawText.slice(0, 12000), 2000)
+  if (pre) parsed = { ...pre }
+  else try {
+    // FeWo-Daten 1.10.: Empfangsdatum als Kopfzeile — der Prompt verlangt „Jahreszahlen aus dem Mail-Datum",
+    // die KI bekam das Datum aber nie zu sehen
+    const head = `Empfangen am: ${(input.receivedAt || new Date().toISOString()).slice(0, 10)}\n\n`
+    const raw = await askClaude(system, head + rawText.slice(0, 12000), 2000)
     parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
   } catch (e) {
     console.error('[inbound-mail] KI-Extraktion fehlgeschlagen:', e)
-    return { ok: false, error: 'Extraktion fehlgeschlagen' }
+    // retry: der Graph-Scan versucht FeWo-Mails nach einem KI-Aussetzer noch einige Stunden erneut
+    return { ok: false, error: 'Extraktion fehlgeschlagen', retry: true }
   }
   // STORNO-Mails komplett ignorieren — Stornierungen laufen wie gehabt
   // über den Smoobu-Webhook (der setzt die Buchung auf cancelled); eine
   // Storno-Bestätigung darf hier nichts anreichern
   if (parsed.storniert === true) {
-    return { ok: true, skipped: 'Storno-Mail — wird vom Smoobu-Webhook behandelt' }
+    // storno + parsed: lib/graph-mail streicht damit eine noch WARTENDE Buchungsmail derselben Reservierung
+    return { ok: true, skipped: 'Storno-Mail — wird vom Smoobu-Webhook behandelt', storno: true, parsed }
   }
   // Die Relay-Adresse aus dem Reply-To ist die Adresse, über die der Gast
   // tatsächlich erreichbar ist — sie schlägt eine evtl. im Text gefundene
@@ -656,27 +767,47 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   //    2) Zeitraum (+ Kanal-Heuristik als Fallback) ──
   const { data: listings } = await supabaseAdmin
     .from('listings').select('id, title, vrbo_url, booking_url, airbnb_url, smoobu_id').eq('is_active', true)
-  const objektNr = String(parsed.objekt_nr ?? '').replace(/\D/g, '')
-  const listing = objektNr
-    ? (listings ?? []).find((l) => [l.vrbo_url, l.booking_url, l.airbnb_url].some((u) => (u ?? '').includes(objektNr)))
+  const fewoMail = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
+  const portal = fewoMail ? 'fewo' as const
+    : /booking\.com/i.test(from + ' ' + subject) || parsed.portal === 'booking' ? 'booking' as const
+    : /airbnb/i.test(from + ' ' + subject) || parsed.portal === 'airbnb' ? 'airbnb' as const
     : null
+  // FeWo-Daten 1.10.: Die Objektnummer steht bei FeWo deterministisch im Betreff („… FeWo-direkt.de #5490143") —
+  // die KI sieht nur den Body und liefert sie oft nicht (oder eine andere Nummer). Beide Nummern gegen die
+  // URL des jeweiligen Portals prüfen; mindestens 5 Ziffern, sonst träfe includes() jede URL.
+  const objektNrs = [
+    String(parsed.objekt_nr ?? '').replace(/\D/g, ''),
+    fewoMail ? subject.match(/#\s?(\d{5,10})\b/)?.[1] ?? '' : '',
+  ].filter((n, i, a) => n.length >= 5 && a.indexOf(n) === i)
+  const objektNr = objektNrs.join('/')
+  const listing = (listings ?? []).find((l) =>
+    (portal === 'fewo' ? [l.vrbo_url] : portal === 'booking' ? [l.booking_url] : portal === 'airbnb' ? [l.airbnb_url] : [l.vrbo_url, l.booking_url, l.airbnb_url])
+      .some((u) => objektNrs.some((n) => (u ?? '').includes(n)))) ?? null
 
-  let q = supabaseAdmin
+  // Alle Buchungen mit exakt diesem Zeitraum (neueste zuerst) — die Auswahl trifft pickPortalBooking:
+  // Relay-Adresse → Wohnung → Kanal → Namens-Tokens. Kein blinder Einzelkandidat mehr.
+  const { data: cands } = await supabaseAdmin
     .from('bookings')
     .select('id, listing_id, smoobu_reservation_id, total_price, adults, children, guest_name, guest_email, channel, status')
     .eq('check_in', checkin).eq('check_out', checkout).neq('status', 'cancelled')
-  if (listing) q = q.eq('listing_id', listing.id)
-  const { data: cands } = await q.limit(5)
+    .order('created_at', { ascending: false }).limit(40)
   const candList = cands ?? []
-  let booking: (typeof candList)[number] | null = candList[0] ?? null
-  if (candList.length > 1) {
-    // mehrere Buchungen im Zeitraum → über den Vornamen des Buchenden eingrenzen
-    const first = String(parsed.gast_name ?? '').trim().toLowerCase().split(/\s+/)[0]
-    booking = candList.find((b) => (b.guest_name ?? '').toLowerCase().startsWith(first)) ?? null
-  }
+  // Namen aus allen Quellen der Mail: Absender-Anzeigename (nur FeWo-Relay), Betreff, KI (Bucher + Reisender)
+  const matchNames = [
+    fewoMail && /@messages\.homeaway\.com/i.test(from) ? from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? '' : '',
+    fewoMail ? subject.match(FEWO_SUBJ_NAME_RE)?.[1] ?? '' : '',
+    String(parsed.gast_name ?? ''), String(parsed.urlauber_name ?? ''),
+  ]
+  // Prüfung 1.10.: Mail älter als 72 h (lange pending-Wartezeit, Rescan) → strenger — der einzelne Kandidat der
+  // Wohnung zählt nur noch ohne Namens-Widerspruch (sonst träfe eine alte Mail die Buchung eines späteren Gasts)
+  const mailAlt = !!input.receivedAt && Date.now() - Date.parse(input.receivedAt) > 72 * 3600_000
+  const { booking, grund } = pickPortalBooking(candList, { listingId: listing?.id ?? null, portal, names: matchNames, relayEmail, strict: mailAlt })
   if (!booking) {
-    console.log('[inbound-mail] keine passende Buchung:', { checkin, checkout, objektNr, kandidaten: (cands ?? []).length })
-    return { ok: true, skipped: 'keine passende Buchung gefunden', parsed }
+    console.log('[inbound-mail] keine passende Buchung:', { checkin, checkout, objektNr, wohnung: listing?.title ?? null, kandidaten: candList.length, grund })
+    // Der skipped-Text ist der pending-Auslöser in lib/graph-mail — NICHT ändern.
+    // fewo = lange Wartezeit (bis Anreise) nur für echte BUCHUNGSmails — eine Anfrage wird oft nie zur Buchung
+    // und träfe sonst Wochen später einen anderen Gast mit demselben Zeitraum
+    return { ok: true, skipped: 'keine passende Buchung gefunden', grund, fewo: fewoMail && !/anfrage|inquiry|enquiry|request/i.test(subject), objektNr: objektNr || null, parsed }
   }
 
   // ── Unsere Buchung anreichern (nur LEERE Felder — nie überschreiben) ──
@@ -691,17 +822,53 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   // Paragraph 296: voller Name deterministisch aus dem FeWo-Betreff (Sofortbuchung von Michael Barth: ...,
   // Reservierung fuer Johannes Pohlschneider: ..., ... gesendet an Anja Keuter: ...) - die KI-Extraktion
   // liefert aus dem Body oft nur den Vornamen (Pohlschneider blieb beim Rescan 9.9. einwortig)
-  const fewoMail = /fewo-direkt|homeaway|vrbo/i.test(from + ' ' + subject) || parsed.portal === 'fewo-direkt'
-  const subjName = fewoMail
-    ? (subject.match(/(?:von|f\u00fcr|fuer|an|from|for|to)\s+([\p{L}'\u2019.\- ]{3,60}?)(?:\s+gesendet)?:\s/iu)?.[1] ?? '').replace(/\s+/g, ' ').trim()
+  // Paragraph 314 (Hans-Dieter Meinecke, 16.9.): Der Betreff lautete "Sofortbuchung von dieter meinecke: ..." (klein
+  // geschrieben, anderer Rufname) - die Grossbuchstaben-Pruefung und die Praefix-Regel verwarfen ihn. Jetzt drei
+  // Quellen in dieser Reihenfolge: Anzeigename des Absenders (FeWo-Relay-Mails tragen den Gastnamen im From),
+  // Betreff, KI-Extraktion. Kleinschreibung wird normalisiert; der Name wird uebernommen, wenn sich ein
+  // Vornamens-Teil mit unserem bisherigen Namen deckt (Hans-Dieter ~ dieter).
+  const cap = (w: string) => w.split('-').map((x) => (x ? x[0].toLocaleUpperCase('de') + x.slice(1) : x)).join('-')
+  const cleanName = (raw: string) => {
+    // Pruefung 1.10.: Titel/Anrede vorn abschneiden (Dr. Dieter Meinecke -> sonst "Hans-Dieter Dr. Meinecke")
+    const n = raw.replace(/\s+/g, ' ').trim().replace(/^(?:(?:dr|prof|herr|frau|mr|mrs|ms)\.?\s+)+/i, '')
+    if (!/^[\p{L}'\u2019.\- ]{3,60}$/u.test(n) || n.split(' ').length < 2 || n.split(' ').length > 4) return ''
+    if (/fewo|vrbo|homeaway|expedia|booking|airbnb|trimosa/i.test(n)) return ''
+    return n === n.toLowerCase() || n === n.toUpperCase() ? n.toLowerCase().split(' ').map(cap).join(' ') : n
+  }
+  const fromName = fewoMail && /@messages\.homeaway\.com/i.test(from)
+    ? cleanName((from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? ''))
     : ''
-  const subjOk = /^(?:\p{Lu}[\p{L}'\u2019.\-]*\s+){1,3}\p{Lu}[\p{L}'\u2019.\-]*$/u.test(subjName)
-  const aiName = String(parsed.gast_name ?? '').replace(/\s+/g, ' ').trim()
-  const fullName = subjOk && aiName.split(' ').length < 2 ? subjName : aiName
-  const oursName = (booking.guest_name ?? '').trim()
+  const subjName = fewoMail
+    ? cleanName(subject.match(/(?:von|f\u00fcr|fuer|an|from|for|to)\s+([\p{L}'\u2019.\- ]{3,60}?)(?:\s+gesendet)?:\s/iu)?.[1] ?? '')
+    : ''
+  const aiName = cleanName(String(parsed.gast_name ?? ''))
+  // Pruefung 1.10.: Platzhalter ("Externer Gast" aus dem Webhook) zaehlt wie ein leerer Name - sonst wuerde er nie ersetzt
+  const oursRaw = (booking.guest_name ?? '').replace(/\s+/g, ' ').trim()
+  const oursName = NAME_PLACEHOLDER_RE.test(oursRaw) ? '' : oursRaw
+  // Pruefung 1.10.: derselbe Tokenizer wie bei der Zuordnung (Joerg = Jörg, Mueller = Müller)
+  const toks = (n: string) => nameToks(n)
+  const oursToks = new Set(toks(oursName))
+  // Pruefung 1.10.: Haben wir selbst KEINEN Namen, zaehlt der Absender-Anzeigename nur, wenn Betreff oder KI ihn
+  // bestaetigen - sonst landete ein Anzeigename wie "Gastgeber Support" ungeprueft als Gastname in der Buchung
+  const confirmToks = new Set([subjName, aiName].flatMap(nameToks))
+  const fromOk = !!oursName || nameToks(fromName).some((t) => confirmToks.has(t))
+  let fullName = ''
+  if (!oursName || oursName.split(' ').length === 1) {
+    for (const cand of [fromOk ? fromName : '', subjName, aiName]) {
+      if (!cand) continue
+      // Pruefung 1.10.: auch "Anna" -> "Anna-Lena Schmidt" (Bindestrich nach unserem Vornamen) gilt als Praefix -
+      // der Smoobu-Webhook schuetzt den vollen Namen nur, wenn er mit Smoobus Namen BEGINNT
+      const lc = cand.toLowerCase(), ol = oursName.toLowerCase()
+      if (!oursName || lc.startsWith(ol + ' ') || lc.startsWith(ol + '-')) { fullName = cand; break }
+      // anderer Rufname: Nachname = alle Woerter, die NICHT zu unserem Vornamen gehoeren
+      // (some statt every: "Dieter" + "Hans-Dieter Meinecke" -> "Dieter Meinecke")
+      const words = cand.split(' ')
+      const rest = words.filter((w) => !toks(w).some((t) => oursToks.has(t)))
+      if (rest.length && rest.length < words.length) { fullName = `${oursName} ${rest.join(' ')}`; break }
+    }
+  }
   const nameParts = fullName.split(' ')
-  if (nameParts.length >= 2 && fullName.length <= 80
-    && (!oursName || (oursName.split(' ').length === 1 && fullName.toLowerCase().startsWith(oursName.toLowerCase())))) {
+  if (fullName && nameParts.length >= 2 && fullName.length <= 80) {
     upd.guest_name = fullName
   }
   if (Object.keys(upd).length) {
@@ -739,44 +906,121 @@ ableiten (Mail-Datum). Deutsche Zahlen ("465,00 €") als 465.0 ausgeben.`
   const savedMsg = mainMsg.length >= 3 ? await saveGuestMessage(booking.id, booking.guest_name, mainMsg) : false
 
   console.log('[inbound-mail] verarbeitet:', {
-    booking: booking.id, felder: Object.keys(upd), smoobu: smoobu ?? 'ok',
+    booking: booking.id, zuordnung: grund, felder: Object.keys(upd), smoobu: smoobu ?? 'ok',
     portal: parsed.portal, preis, nachricht: savedMsg,
   })
-  return { ok: true, bookingId: booking.id, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok', notiz }
+  return { ok: true, bookingId: booking.id, zuordnung: grund, ergaenzt: Object.keys(upd), nachricht: savedMsg, smoobu: smoobu ?? 'ok', notiz }
 }
 
 /**
  * §293 (Pascal 9.9.): FeWo-direkt-Buchungen, die 2 h nach Anlage noch ohne E-Mail (= ohne Chat-Kanal)
  * sind, bekommen EINE offene Aufgabe „Gastdaten fehlen" fürs Team — statt still leer zu bleiben.
  * Idempotent über source='system' + source_ref='fewo-daten:<booking>'. Läuft am Ende jedes Mail-Scans.
+ *
+ * FeWo-Daten 1.10. (Hans-Dieter, Sweet Spot 23.–25.10.): Die Aufgabe entstand NUR bei fehlender E-Mail und
+ * nur in den ersten 7 Tagen nach Anlage — eine Buchung mit Relay-Adresse, aber einwortigem Namen blieb
+ * unsichtbar. Jetzt: fehlende E-Mail für alle künftigen Aufenthalte; fehlt nur der NACHNAME (Titel „Nachname
+ * fehlt", Prio mittel), entsteht die Aufgabe ab 30 Tagen vor der Anreise (FEWO_NAME_TASK_DAYS — keine
+ * Aufgabenflut für weit entfernte Buchungen). Höchstens 5 neue Aufgaben je Lauf (nächste Anreise zuerst). Offene Aufgaben
+ * schließen sich selbst, sobald die Daten da sind (bzw. die Buchung storniert/vorbei ist). Erledigte oder
+ * verworfene Aufgaben entstehen NICHT neu (Dedupe über source_ref, jeder Status).
+ * `pending` = wartende Buchungsmails des Graph-Scans (nur für den Hinweis in der Beschreibung).
  */
-export async function ensureFewoDataTasks(): Promise<number> {
+export async function ensureFewoDataTasks(pending: { subject: string; checkin?: string; checkout?: string; grund?: string }[] = []): Promise<number> {
   const now = Date.now()
+  const today = new Date(now).toISOString().slice(0, 10)
+  const nameHorizon = new Date(now + FEWO_NAME_TASK_DAYS * 86400_000).toISOString().slice(0, 10)
+  const REF = 'fewo-daten:'
+  const dd = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`
+  const kind = (missing: string[]) => (missing.includes('E-Mail') ? 'Gastdaten fehlen' : 'Nachname fehlt')
+
+  // ── 1) Offene Aufgaben nachführen: Daten inzwischen da → erledigt; nur noch der Nachname fehlt → Titel anpassen ──
+  try {
+    const { data: open } = await supabaseAdmin
+      .from('tasks').select('id, title, description, source_ref')
+      .eq('source', 'system').like('source_ref', `${REF}%`)
+      .in('status', ['offen', 'in_arbeit']).limit(100)
+    const openTasks = (open ?? []) as { id: string; title: string | null; description: string | null; source_ref: string | null }[]
+    const ids = openTasks.map((t) => String(t.source_ref ?? '').slice(REF.length)).filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+    if (ids.length) {
+      const { data: rows } = await supabaseAdmin
+        .from('bookings').select('id, guest_name, guest_email, status, check_out').in('id', ids)
+      const byId = new Map(((rows ?? []) as { id: string; guest_name: string | null; guest_email: string | null; status: string | null; check_out: string }[]).map((r) => [r.id, r]))
+      let closed = 0
+      for (const t of openTasks) {
+        const b = byId.get(String(t.source_ref ?? '').slice(REF.length))
+        if (!b) continue
+        const missing = fewoMissing(b)
+        const grund = b.status === 'cancelled' ? 'Buchung wurde storniert'
+          : b.check_out < today ? 'Aufenthalt ist vorbei'
+          : !missing.length ? 'E-Mail und voller Name sind inzwischen da' : ''
+        if (grund) {
+          const stamp = new Date(now).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+          const { error } = await supabaseAdmin.from('tasks').update({
+            status: 'erledigt', completed_at: new Date(now).toISOString(),
+            description: `${String(t.description ?? '')}\n\n✅ AUTOMATISCH ERLEDIGT ${stamp}: ${grund}`.slice(0, 2000),
+          }).eq('id', t.id)
+          if (error) console.error('[inbound-mail] fewo-daten-aufgabe schließen:', error.message)
+          else closed++
+        } else if (!missing.includes('E-Mail') && String(t.title ?? '').includes('FeWo-direkt: Gastdaten fehlen')) {
+          // E-Mail ist da, es fehlt nur noch der Nachname → Titel/Prio nachziehen (nur unser eigener Titel)
+          await supabaseAdmin.from('tasks').update({
+            title: String(t.title).replace('Gastdaten fehlen', 'Nachname fehlt'), prio: 'mittel',
+          }).eq('id', t.id)
+        }
+      }
+      if (closed) console.log('[inbound-mail] FeWo-Gastdaten-Aufgaben automatisch erledigt:', closed)
+    }
+  } catch (e) { console.error('[inbound-mail] fewo-daten-aufgaben nachführen:', String(e).slice(0, 160)) }
+
+  // ── 2) Neue Aufgaben: künftige FeWo-Buchungen (≥ 2 h alt) ohne E-Mail und/oder ohne Nachnamen ──
   const { data: bks } = await supabaseAdmin
     .from('bookings')
     .select('id, guest_name, guest_email, check_in, check_out, channel, created_at, listing_id, listings(title)')
     .eq('status', 'confirmed')
-    .gte('created_at', new Date(now - 7 * 86400_000).toISOString())
     .lte('created_at', new Date(now - 2 * 3600_000).toISOString())
-    .gte('check_out', new Date(now).toISOString().slice(0, 10))
-    .limit(200)
+    .gte('check_out', today)
+    .order('check_in', { ascending: true })
+    .limit(500)
   const cands = ((bks ?? []) as { id: string; guest_name: string | null; guest_email: string | null; check_in: string; check_out: string; channel: string | null; listing_id: string | null; listings: { title: string } | { title: string }[] | null }[])
-    .filter((b) => /fewo|homeaway|vrbo/i.test(b.channel ?? '') && !(b.guest_email ?? '').includes('@'))
+    .filter((b) => /fewo|homeaway|vrbo/i.test(b.channel ?? '') && fewoMissing(b).length > 0)
+  if (!cands.length) return 0
+  // vorhandene Aufgaben (JEDER Status) in einem Rutsch — exakte Refs, kein Limit-Risiko
+  const have = new Set<string>()
+  for (let i = 0; i < cands.length; i += 60) {
+    const { data: ex, error } = await supabaseAdmin
+      .from('tasks').select('source_ref').eq('source', 'system')
+      .in('source_ref', cands.slice(i, i + 60).map((b) => `${REF}${b.id}`))
+    if (error) { console.error('[inbound-mail] fewo-daten-aufgaben lesen:', error.message); return 0 }
+    for (const t of ex ?? []) have.add(String(t.source_ref))
+  }
   let created = 0
   for (const b of cands) {
-    const ref = `fewo-daten:${b.id}`
-    const { data: existing } = await supabaseAdmin
-      .from('tasks').select('id').eq('source', 'system').eq('source_ref', ref).limit(1).maybeSingle()
-    if (existing?.id) continue
+    if (created >= 5) break
+    const ref = `${REF}${b.id}`
+    if (have.has(ref)) continue
+    const missing = fewoMissing(b)
+    const onlyName = !missing.includes('E-Mail')
+    // „Nachname fehlt" erst ab 30 Tagen vor der Anreise — sonst entstünden nach dem Deploy auf einen Schlag
+    // Aufgaben für ALLE künftigen FeWo-Buchungen mit einwortigem Namen (Smoobu liefert ihn fast nie)
+    if (onlyName && b.check_in > nameHorizon) continue
     const title = ((Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null)?.title ?? 'Wohnung'
-    const dd = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`
+    const wait = pending.find((p) => p.checkin === b.check_in && p.checkout === b.check_out)
+    const hint = wait
+      ? `\n\nHinweis: Eine Buchungsmail mit genau diesem Zeitraum wartet noch auf Zuordnung („${wait.subject.slice(0, 90)}")${wait.grund ? ` — bisher: ${wait.grund}` : ''}. Sie wird bis zur Anreise bei jedem Mail-Scan erneut geprüft.`
+      : ''
+    const description = onlyName
+      ? `Die FeWo-direkt-Buchung hat bei uns nur „${b.guest_name || 'keinen Namen'}" — der Nachname fehlt. Smoobu liefert ihn bei FeWo-direkt meist nicht, und aus der Buchungsbestätigungs-Mail konnte er bislang nicht übernommen werden. Die E-Mail-Adresse ist da, Auto-Nachrichten laufen also.\n\nBitte den vollen Namen in FeWo-direkt (Buchungsdetails) oder in der Bestätigungsmail in fewo@trimosa.de („Sofortbuchung von …" / „Reservierung für …") nachsehen und in Smoobu bei der Reservierung als Vor- und Nachname eintragen. Sobald der volle Name in der App ankommt, erledigt sich diese Aufgabe von selbst.${hint}\n\nBuchung: ${b.id}`
+      : `Die FeWo-direkt-Buchung hat bei uns keine E-Mail-Adresse (und meist keine Personenzahl/keinen Nachnamen) — Smoobu hat sie nicht geliefert und die Buchungsbestätigungs-Mail wurde bislang keiner Buchung zugeordnet. Ohne E-Mail gehen KEINE Auto-Nachrichten (Anreise-Infos, Früh-Check-in) raus.\n\nBitte prüfen: Liegt die Bestätigungsmail („Sofortbuchung von …" / „Reservierung für …") in fewo@trimosa.de? Dann wird sie beim nächsten Mail-Scan automatisch zugeordnet. Sonst Gastdaten in Smoobu nachtragen oder den Gast über den FeWo-direkt-Messenger anschreiben.${hint}\n\nBuchung: ${b.id}`
+    // nur der Nachname fehlt: nicht „heute fällig", sondern rechtzeitig vor der Anreise
+    const dueName = new Date(Date.parse(`${b.check_in}T00:00:00Z`) - 3 * 86400_000).toISOString().slice(0, 10)
     const { error } = await supabaseAdmin.from('tasks').insert({
-      title: `📮 FeWo-direkt: Gastdaten fehlen — ${b.guest_name || 'Gast'} · ${title} · ${dd(b.check_in)}–${dd(b.check_out)}`.slice(0, 120),
-      description: `Die FeWo-direkt-Buchung hat bei uns keine E-Mail-Adresse (und meist keine Personenzahl/keinen Nachnamen) — Smoobu hat sie nicht geliefert und die Buchungsbestätigungs-Mail wurde bislang keiner Buchung zugeordnet. Ohne E-Mail gehen KEINE Auto-Nachrichten (Anreise-Infos, Früh-Check-in) raus.\n\nBitte prüfen: Liegt die Bestätigungsmail („Sofortbuchung von …" / „Reservierung für …") in fewo@trimosa.de? Dann wird sie beim nächsten Mail-Scan automatisch zugeordnet. Sonst Gastdaten in Smoobu nachtragen oder den Gast über den FeWo-direkt-Messenger anschreiben.\n\nBuchung: ${b.id}`,
+      title: `📮 FeWo-direkt: ${kind(missing)} — ${b.guest_name || 'Gast'} · ${title} · ${dd(b.check_in)}–${dd(b.check_out)}`.slice(0, 120),
+      description,
       source: 'system', source_ref: ref,
       listing_id: b.listing_id, is_general: !b.listing_id,
-      prio: 'hoch', status: 'offen', visibility: 'team',
-      due_date: new Date(now).toISOString().slice(0, 10),
+      prio: onlyName ? 'mittel' : 'hoch', status: 'offen', visibility: 'team',
+      due_date: onlyName && dueName > today ? dueName : today,
     })
     if (error) console.error('[inbound-mail] fewo-daten-aufgabe:', error.message)
     else created++

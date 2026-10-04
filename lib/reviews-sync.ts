@@ -20,6 +20,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { askClaude } from '@/lib/ai'
 import { createHash } from 'crypto'
+import { writeSyncLog } from '@/lib/reviews-sync-log'
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -31,6 +32,21 @@ export interface SyncSourceResult {
   score?: number       // per-platform score written to the listing
   count?: number       // per-platform review count written to the listing
   detail?: string      // skip reason / error message
+  /* §314 Protokoll: was der Lauf wirklich gebracht hat (lib/reviews-sync-log.ts) */
+  neu?: number         // davon bisher unbekannte Bewertungen (vor dem Upsert gezählt)
+  newest?: string | null // jüngstes ECHTES Bewertungsdatum im Abruf (geratene Daten zählen nicht)
+  ohneDatum?: number   // Bewertungen ohne lesbares Datum (Heute-Rückfall) — Warnzeichen für ein geändertes Actor-Format
+  partial?: boolean    // Google: Score ok, Volltext-Actor gescheitert
+  errorKind?: SyncErrorKind
+}
+
+/** Fehlerart fürs Protokoll und die Ampel — bewusst grob, damit die Karte Klartext zeigen kann. */
+export type SyncErrorKind = 'kontingent' | 'eingabe' | 'token' | 'actor' | 'timeout' | 'leer' | 'sonst'
+
+export interface SyncOptions {
+  origin?: 'cron' | 'manuell'
+  /** Wartezeit je Actor-Lauf. Der Cron verkürzt sie, damit mehrere Wohnungen in 300 s passen. */
+  timeoutMs?: number
 }
 
 interface NormalizedReview {
@@ -41,6 +57,8 @@ interface NormalizedReview {
   review_text: string | null
   review_date: string     // YYYY-MM-DD
   language: string | null
+  /** nicht persistiert: Datum fehlte im Actor-Ergebnis, review_date ist der Heute-Rückfall */
+  dateGuessed?: boolean
 }
 
 interface ListingRow {
@@ -125,35 +143,94 @@ const APIFY_ACTORS: Record<string, string> = {
  * ~0,25 $. Für einen ERSTBESTAND (neue Wohnung, leere DB) lässt sich das
  * über die Env hochsetzen, ohne den Alltag teuer zu machen. */
 const MAX_REVIEWS_PER_RUN = Number(process.env.REVIEWS_MAX_PER_RUN) || 40
+const SCRAPER_SOURCES = ['airbnb', 'booking', 'vrbo']
+
+/** Apify-Antwort mit HTTP-Status und Apify-Fehlertyp — Grundlage für classifySyncError. */
+class ApifyError extends Error {
+  status: number
+  apifyType: string | null
+  constructor(label: string, status: number, body: string) {
+    let type: string | null = null
+    try { type = (JSON.parse(body) as { error?: { type?: string } }).error?.type ?? null } catch { /* kein JSON */ }
+    super(`${label} → HTTP ${status}: ${body.slice(0, 300)}`)
+    this.name = 'ApifyError'
+    this.status = status
+    this.apifyType = type
+  }
+}
+
+/** Ordnet einen Abruf-Fehler grob ein. Erst Status + Apify-Typ, dann Text (Zeitüberschreitung). */
+export function classifySyncError(e: unknown): SyncErrorKind {
+  const s = String(e)
+  if (/(APIFY_API_TOKEN|GOOGLE_PLACES_API_KEY) fehlt/.test(s)) return 'token'
+  if (e instanceof ApifyError) {
+    const t = e.apifyType ?? ''
+    if (e.status === 401) return 'token'
+    if (e.status === 402 || (e.status === 403 && /platform-feature-disabled|limit/i.test(t)) || /hard limit|usage limit/i.test(s)) return 'kontingent'
+    if (e.status === 400 && /invalid-input/i.test(t)) return 'eingabe'
+    if (e.status === 404 || e.status === 403) return 'actor'
+    if (e.status === 408) return 'timeout'
+  }
+  if (/TimeoutError|timed? ?out|aborted/i.test(s)) return 'timeout'
+  return 'sonst'
+}
+
+/** Fehlertext fürs Ergebnis: gekürzt und OHNE Zugangsschlüssel (der Token steckt in der Aufruf-URL). */
+function errText(e: unknown, max = 300): string {
+  let s = String(e)
+  const token = process.env.APIFY_API_TOKEN
+  if (token) s = s.split(token).join('***')
+  return s.slice(0, max)
+}
+
+/** Apify-Guthaben des laufenden Abrechnungszyklus (für die Status-Karte). Jeder Fehler → null. */
+export async function getApifyBudget(): Promise<{ usedUsd: number; maxUsd: number; zyklusEnde: string | null } | null> {
+  const token = process.env.APIFY_API_TOKEN
+  if (!token) return null
+  try {
+    const res = await fetch('https://api.apify.com/v2/users/me/limits', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6_000),
+    })
+    if (!res.ok) return null
+    const d = (await res.json()) as { data?: { monthlyUsageCycle?: { endAt?: string }; limits?: { maxMonthlyUsageUsd?: number }; current?: { monthlyUsageUsd?: number } } }
+    const usedUsd = Number(d.data?.current?.monthlyUsageUsd)
+    const maxUsd = Number(d.data?.limits?.maxMonthlyUsageUsd)
+    if (!Number.isFinite(usedUsd) || !Number.isFinite(maxUsd) || maxUsd <= 0) return null
+    return { usedUsd: Math.round(usedUsd * 100) / 100, maxUsd, zyklusEnde: d.data?.monthlyUsageCycle?.endAt ?? null }
+  } catch {
+    return null
+  }
+}
 
 /**
  * Runs an Apify actor synchronously and returns its dataset items.
  * Inputs cover the common field names across review-scraper actors; actors
  * ignore fields they don't know.
  */
-async function runApifyActor(actorId: string, url: string, timeoutMs: number): Promise<Record<string, unknown>[]> {
+async function runApifyActor(actorId: string, url: string, timeoutMs: number, source?: 'airbnb' | 'booking' | 'vrbo'): Promise<Record<string, unknown>[]> {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
 
-  const input = {
+  /* Paragraph 314 (1.10.2026): Die Actors validieren ihre Eingabe inzwischen STRENG. Die fruehere Sammel-Eingabe
+   * (sortBy/sortOption/sort/reviewsSort/sortReviewsBy = 'newest' fuer alle) wurde mit HTTP 400 abgelehnt
+   * ("sortBy must be equal to one of the allowed values: most-recent ..." bzw. "sortReviewsBy ... f_recent_desc") -
+   * seit dem 12.8. (Commit 6508168, bis 12.9. zusaetzlich von der Kontingent-Sperre verdeckt) kam deshalb fuer
+   * Airbnb und Booking NICHTS mehr an, ohne dass es jemand sah.
+   * Jetzt je Quelle nur die Felder und Werte, die der jeweilige Actor kennt. NEUESTE ZUERST bleibt kritisch,
+   * weil wir nur einen Ausschnitt (MAX_REVIEWS_PER_RUN) holen. Das Limit-Feld heisst je Actor anders:
+   * Airbnb kennt NUR maxReviewsPerListing, Booking NUR maxReviewsPerHotel - fehlt es, holt (und berechnet)
+   * der Actor ALLE Bewertungen. */
+  const base = {
     startUrls: [{ url }],   // airbnb (tri_angle), booking (voyager)
-    searchUrl: url,         // vrbo (powerai)
-    propertyUrls: [url],
-    url,
     maxReviews: MAX_REVIEWS_PER_RUN,
     maxItems: MAX_REVIEWS_PER_RUN,
-    maxReviewsPerListing: MAX_REVIEWS_PER_RUN,
-    /* NEUESTE ZUERST — kritisch, seit wir nur noch einen Ausschnitt holen:
-     * Bestehende Bewertungen liegen in unserer DB, geholt werden müssen nur
-     * die neu dazugekommenen. Lieferte der Actor die ÄLTESTEN zuerst, würden
-     * wir bei jedem Lauf dieselben alten Zeilen bezahlen und neue verpassen.
-     * Die Feldnamen unterscheiden sich je Actor; unbekannte ignoriert Apify. */
-    sortBy: 'newest',
-    sortOption: 'newest',
-    sort: 'newest',
-    reviewsSort: 'newest',
-    sortReviewsBy: 'newest',
   }
+  const input: Record<string, unknown> =
+    source === 'airbnb' ? { ...base, maxReviewsPerListing: MAX_REVIEWS_PER_RUN, sortBy: 'most-recent' }
+    : source === 'booking' ? { ...base, maxReviewsPerHotel: MAX_REVIEWS_PER_RUN, sortReviewsBy: 'f_recent_desc' }
+    : { ...base, searchUrl: url, propertyUrls: [url], url, maxReviewsPerListing: MAX_REVIEWS_PER_RUN }
 
   const res = await fetch(
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
@@ -166,7 +243,7 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number): P
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Apify ${actorId} → HTTP ${res.status}: ${text.slice(0, 300)}`)
+    throw new ApifyError(`Apify ${actorId}`, res.status, text)
   }
   const data = await res.json()
   return Array.isArray(data) ? data : []
@@ -250,7 +327,7 @@ async function runFewoScraper(url: string, timeoutMs: number): Promise<{
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Apify cheerio-scraper (fewo) → HTTP ${res.status}: ${text.slice(0, 300)}`)
+    throw new ApifyError('Apify cheerio-scraper (fewo)', res.status, text)
   }
   const data = await res.json()
   const all = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
@@ -287,10 +364,10 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
     text = [liked && `👍 ${liked}`, disliked && `👎 ${disliked}`].filter(Boolean).join('\n')
   }
 
-  const date =
+  const realDate =
     toIsoDate(pick(item, 'createdAt', 'created_at', 'date', 'reviewDate', 'publishedAt', 'publishedAtDate', 'postedAt', 'submissionTime', 'stayDate', 'localizedDate')) ??
-    dateFromStayedText(item.stayedText) ??
-    new Date().toISOString().split('T')[0]
+    dateFromStayedText(item.stayedText)
+  const date = realDate ?? new Date().toISOString().split('T')[0]
 
   const rawId = pick(item, 'id', 'reviewId', 'review_id', 'reviewUrl')
   const avatar = pick(item, 'reviewer.pictureUrl', 'author.pictureUrl', 'author.avatar', 'reviewerPhotoUrl', 'avatar', 'profilePicture', 'userAvatar', 'authorAvatar')
@@ -303,6 +380,7 @@ function normalizeScraperItem(item: Record<string, unknown>, source: string): No
     review_text: text ? String(text).slice(0, 5000) : null,
     review_date: date,
     language: (pick(item, 'language', 'locale') as string | undefined)?.slice(0, 8) ?? null,
+    ...(realDate ? {} : { dateGuessed: true }),
   }
 }
 
@@ -359,7 +437,7 @@ async function runGoogleReviewsActor(placeId: string, timeoutMs: number): Promis
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Apify google-reviews → HTTP ${res.status}: ${text.slice(0, 300)}`)
+    throw new ApifyError('Apify google-reviews', res.status, text)
   }
   const data = await res.json()
   // The actor may emit place-level items without a rating; the normalizer drops those.
@@ -467,10 +545,42 @@ async function refreshScoreFromRows(listingId: string, source: string): Promise<
   return { score, count: data.length }
 }
 
+/** Wie viele der abgerufenen Bewertungen kennen wir noch NICHT? VOR dem Upsert aufrufen.
+ *  Bewusst ohne listing_id-Filter: bei geteilten Booking-Unterkünften löscht der Match-Cron (§124)
+ *  die Geschwister-Kopien wieder — die zählten sonst jede Woche als „neu". Fehler → undefined. */
+async function countNew(source: string, reviews: NormalizedReview[]): Promise<number | undefined> {
+  try {
+    const ids = [...new Set(reviews.map((r) => r.source_review_id))]
+    const known = new Set<string>()
+    for (let i = 0; i < ids.length; i += 40) {
+      const { data, error } = await supabaseAdmin
+        .from('reviews').select('source_review_id')
+        .eq('source', source).in('source_review_id', ids.slice(i, i + 40))
+      if (error) return undefined
+      for (const r of data ?? []) known.add(r.source_review_id)
+    }
+    return ids.filter((id) => !known.has(id)).length
+  } catch {
+    return undefined
+  }
+}
+
+/** Jüngstes ECHTES Bewertungsdatum + Anzahl der Bewertungen ohne lesbares Datum. */
+function dateStats(reviews: NormalizedReview[]): { newest: string | null; ohneDatum: number } {
+  let newest: string | null = null
+  let ohneDatum = 0
+  for (const r of reviews) {
+    if (r.dateGuessed) { ohneDatum++; continue }
+    if (!newest || r.review_date > newest) newest = r.review_date
+  }
+  return { newest, ohneDatum }
+}
+
 /* ── Main entry point ───────────────────────────────────── */
 
-export async function syncListingReviews(listing: ListingRow): Promise<SyncSourceResult[]> {
+export async function syncListingReviews(listing: ListingRow, opts: SyncOptions = {}): Promise<SyncSourceResult[]> {
   const results: SyncSourceResult[] = []
+  const timeoutMs = Math.min(Math.max(opts.timeoutMs ?? 150_000, 30_000), 150_000)
 
   const scraperSources: Array<{ source: 'airbnb' | 'booking' | 'vrbo'; url: string | null }> = [
     { source: 'airbnb', url: listing.airbnb_url },
@@ -489,16 +599,18 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
         .eq('id', listing.id)
       return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'keine URL hinterlegt' }
     }
-    if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt' }
+    if (!process.env.APIFY_API_TOKEN) return { source, status: 'skipped', fetched: 0, upserted: 0, detail: 'APIFY_API_TOKEN fehlt', errorKind: 'token' }
     try {
       const cleanUrl = normalizeSourceUrl(source, url)
 
       // Fewo-Direkt: plain-HTML scrape incl. authoritative page score/count
       if (source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)) {
-        const { items, meta } = await runFewoScraper(cleanUrl, 120_000)
+        const { items, meta } = await runFewoScraper(cleanUrl, Math.min(timeoutMs, 120_000))
         const normalized = items
           .map(i => normalizeScraperItem(i, source))
           .filter((r): r is NormalizedReview => r !== null)
+        const neu = await countNew(source, normalized)
+        const ds = dateStats(normalized)
         const upserted = await upsertReviews(listing.id, source, normalized)
         if (meta?.score != null && meta?.count != null) {
           const score5 = Math.round((meta.score / 2) * 100) / 100
@@ -506,21 +618,38 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
             .from('listings')
             .update({ vrbo_score: score5, vrbo_review_count: meta.count })
             .eq('id', listing.id)
-          return { source, status: 'ok', fetched: items.length, upserted, score: score5, count: meta.count }
+          return { source, status: 'ok', fetched: items.length, upserted, score: score5, count: meta.count, neu, ...ds }
         }
         const stats = await refreshScoreFromRows(listing.id, source)
-        return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count }
+        return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count, neu, ...ds }
       }
 
-      const items = await runApifyActor(APIFY_ACTORS[source], cleanUrl, 150_000)
+      const items = await runApifyActor(APIFY_ACTORS[source], cleanUrl, timeoutMs, source)
       const normalized = items
         .map(i => normalizeScraperItem(i, source))
         .filter((r): r is NormalizedReview => r !== null)
+      /* Leer-Wächter (§314): Wir holen „neueste zuerst" — ein gesunder Lauf liefert mindestens die
+       * Bewertungen, die wir schon kennen. Kommt NICHTS Verwertbares, obwohl die Wohnung bei dieser
+       * Quelle Bewertungen hat, ist der Lauf kaputt (Actor-Ausgabe geändert, Seite blockiert) und darf
+       * nicht als „ok, 0 abgerufen" durchgehen. Ohne Bestand ist ein leeres Ergebnis normal. */
+      if (normalized.length === 0) {
+        const { count: bestand } = await supabaseAdmin
+          .from('reviews').select('id', { count: 'exact', head: true })
+          .eq('listing_id', listing.id).eq('source', source)
+        if ((bestand ?? 0) > 0) {
+          const felder = items[0] ? ` · Felder: ${Object.keys(items[0]).slice(0, 8).join(', ')}` : ''
+          return {
+            source, status: 'error', errorKind: 'leer', fetched: items.length, upserted: 0,
+            detail: `Actor lieferte keine verwertbare Bewertung (roh ${items.length}${felder}), obwohl ${bestand} gespeichert sind`.slice(0, 300),
+          }
+        }
+      }
+      const neu = await countNew(source, normalized)
       const upserted = await upsertReviews(listing.id, source, normalized)
       const stats = await refreshScoreFromRows(listing.id, source)
-      return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count }
+      return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count, neu, ...dateStats(normalized) }
     } catch (e) {
-      return { source, status: 'error', fetched: 0, upserted: 0, detail: String(e).slice(0, 300) }
+      return { source, status: 'error', fetched: 0, upserted: 0, detail: errText(e), errorKind: classifySyncError(e) }
     }
   })
 
@@ -533,7 +662,7 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
         .eq('id', listing.id)
       return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'keine Place-ID hinterlegt' }
     }
-    if (!process.env.GOOGLE_PLACES_API_KEY) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'GOOGLE_PLACES_API_KEY fehlt' }
+    if (!process.env.GOOGLE_PLACES_API_KEY) return { source: 'google', status: 'skipped', fetched: 0, upserted: 0, detail: 'GOOGLE_PLACES_API_KEY fehlt', errorKind: 'token' }
     try {
       // Official API → authoritative overall score + count
       const { rating, count, reviews: apiReviews } = await fetchGooglePlace(listing.google_place_id)
@@ -550,36 +679,67 @@ export async function syncListingReviews(listing: ListingRow): Promise<SyncSourc
       let fetched = 0
       let upserted = 0
       let detail: string | undefined
+      let neu: number | undefined
+      let ds: { newest: string | null; ohneDatum: number } | undefined
+      // §314: Volltext-Actor gescheitert → Ergebnis bleibt „ok" (Score stimmt), gilt im Protokoll aber als TEILWEISE
+      let partial: { errorKind: SyncErrorKind } | null = null
+      const store = async (cands: NormalizedReview[]) => {
+        const fresh = await dedupeGoogleCandidates(listing.id, cands)
+        neu = await countNew('google', fresh)
+        ds = dateStats(cands)
+        fetched = cands.length
+        upserted = await upsertReviews(listing.id, 'google', fresh)
+      }
       if (process.env.APIFY_API_TOKEN && count && count > 0) {
         try {
-          const items = await runGoogleReviewsActor(listing.google_place_id, 150_000)
+          const items = await runGoogleReviewsActor(listing.google_place_id, timeoutMs)
           const normalized = items
             .map(i => normalizeScraperItem(i, 'google'))
             .filter((r): r is NormalizedReview => r !== null)
-          fetched = normalized.length
-          upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, normalized))
+          await store(normalized)
         } catch (e) {
-          detail = `Volltexte: ${String(e).slice(0, 220)}`
-          fetched = apiReviews.length
-          upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, apiReviews))
+          detail = `Volltexte: ${errText(e, 220)}`
+          partial = { errorKind: classifySyncError(e) }
+          await store(apiReviews)
         }
       } else {
-        fetched = apiReviews.length
-        upserted = await upsertReviews(listing.id, 'google', await dedupeGoogleCandidates(listing.id, apiReviews))
+        await store(apiReviews)
       }
 
-      return { source: 'google', status: 'ok', fetched, upserted, score: rating ?? undefined, count: count ?? undefined, detail }
+      return {
+        source: 'google', status: 'ok', fetched, upserted, score: rating ?? undefined, count: count ?? undefined, detail,
+        neu, ...(ds ?? {}), ...(partial ? { partial: true, errorKind: partial.errorKind } : {}),
+      }
     } catch (e) {
-      return { source: 'google', status: 'error', fetched: 0, upserted: 0, detail: String(e).slice(0, 300) }
+      return { source: 'google', status: 'error', fetched: 0, upserted: 0, detail: errText(e), errorKind: classifySyncError(e) }
     }
   })()
 
   results.push(...(await Promise.all([...scraperPromises, googlePromise])))
 
-  await supabaseAdmin
-    .from('listings')
-    .update({ reviews_synced_at: new Date().toISOString() })
-    .eq('id', listing.id)
+  /* §314: reviews_synced_at steuert die Montags-Rotation (ältester Stand zuerst). Früher wurde es IMMER
+   * gesetzt — auch wenn alle Portale scheiterten; die Wohnung galt dann als „frisch" und der Ausfall blieb
+   * wochenlang unsichtbar. Jetzt nur noch, wenn mindestens EINE hinterlegte Scraper-Quelle (Airbnb, Booking,
+   * FeWo-direkt) geklappt hat oder gar keine hinterlegt ist. Google zählt bewusst nicht mit: die Places-API
+   * antwortet praktisch immer und würde den Ausfall wieder verdecken. Der „letzte Versuch" steht im
+   * Protokoll (app_settings 'reviews_sync:<listingId>'). */
+  const hinterlegt = results.filter((r) => SCRAPER_SOURCES.includes(r.source) && !(r.status === 'skipped' && !r.errorKind))
+  const scraperOk = hinterlegt.some((r) => r.status === 'ok')
+  if (scraperOk || hinterlegt.length === 0) {
+    await supabaseAdmin
+      .from('listings')
+      .update({ reviews_synced_at: new Date().toISOString() })
+      .eq('id', listing.id)
+  }
+  for (const r of results) {
+    if (r.status === 'error') console.error(`[reviews-sync] ${listing.id} ${r.source}: ${r.detail ?? 'Fehler'}`)
+  }
+  // Protokoll je Wohnung — fail-soft: ein Schreibfehler darf den Sync nie brechen
+  try {
+    await writeSyncLog(listing, results, opts.origin ?? 'manuell')
+  } catch (e) {
+    console.error('[reviews-sync] Protokoll konnte nicht geschrieben werden:', e)
+  }
 
   // Refresh the AI guest summary from the (possibly just updated) review
   // texts. Its outcome is reported as an own results row so failures are

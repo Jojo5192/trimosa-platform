@@ -18,6 +18,7 @@ import type { KulinarikRating } from '@/lib/kulinarik-ratings'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import { t, type UiLang } from '@/lib/i18n'
+import { addBaseTiles } from '@/lib/map-tiles'
 
 interface Props {
   tipps: KulinarikTipp[]
@@ -93,13 +94,9 @@ export default function KulinarikMap({ tipps, ratings = {}, empfehlungen = {}, l
       })
       mapRef.current = map
 
-      L.control.attribution({ position: 'bottomleft', prefix: false })
-        .addAttribution('© <a href="https://carto.com" style="color:#999">CARTO</a> · © <a href="https://openstreetmap.org" style="color:#999">OSM</a>')
-        .addTo(map)
-
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd', maxZoom: 19,
-      }).addTo(map)
+      // Grundkarte + Namensnennung zentral (CARTO mit Schlüssel, sonst bzw. bei
+      // Störung OpenStreetMap) — lib/map-tiles
+      addBaseTiles(L, map, 'voyager')
 
       // Marker + popup styles for this block (own id — the shared
       // #trimosa-map-styles block stays untouched)

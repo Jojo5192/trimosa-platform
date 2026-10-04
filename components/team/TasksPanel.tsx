@@ -9,6 +9,7 @@
  * nach ganz oben.
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import QsBlock from '@/components/team/QsPanel'
 import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 
@@ -101,8 +102,10 @@ function initials(name: string): string {
 
 type Filter = 'aktiv' | 'erledigt' | 'alle' | 'vorschlaege'
 
-export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed }: {
+export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed, visible: tabVisible = true }: {
   role: 'team' | 'provider'; userId: string
+  /** §314: Reiter gerade sichtbar? Das Panel bleibt gemountet — beim Wechsel in den Reiter wird frisch geladen */
+  visible?: boolean
   /** §162: Aufgabe aus dem Kalender fokussieren (scrollen + hervorheben) */
   focusTaskId?: string | null
   onFocusConsumed?: () => void
@@ -138,11 +141,13 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   const personTouched = useRef(false)
   // §162: Kalender-Klick — Aufgabe hervorheben, Filter passend stellen
   const [highlightId, setHighlightId] = useState<string | null>(null)
+  // §314: fehlt die Aufgabe noch in der (älteren) Liste, läuft der Effekt erneut, sobald sie nachgeladen ist
+  const focusFound = !!focusTaskId && tasks.some((x) => x.id === focusTaskId)
   useEffect(() => {
     if (!focusTaskId || loading) return
     // §277: „＋ Neu" vom Heute-Bildschirm → direkt das Formular öffnen
     if (focusTaskId === 'new') {
-      if (manage) setEditing('new')
+      if (manage || createOwn) setEditing('new')
       onFocusConsumed?.()
       return
     }
@@ -159,7 +164,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     const clearTimer = setTimeout(() => { setHighlightId(null); onFocusConsumed?.() }, 3000)
     return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTaskId, loading])
+  }, [focusTaskId, loading, focusFound])
 
   const load = useCallback(async (attempt = 0) => {
     try {
@@ -211,6 +216,13 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
     return () => window.removeEventListener('trimosa-refresh', h)
   }, [load])
   useEffect(() => { load() }, [load])
+  // §314: Das Panel bleibt seit 9.9. dauerhaft gemountet — beim Wechsel IN den
+  // Reiter frisch laden, sonst fehlt z. B. eine auf „Heute" angetippte neue Aufgabe
+  const wasVisible = useRef(tabVisible)
+  useEffect(() => {
+    if (tabVisible && !wasVisible.current) load()
+    wasVisible.current = tabVisible
+  }, [tabVisible, load])
   // App kommt aus dem Hintergrund zurück ODER Netz kehrt zurück → frisch laden
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') load() }
@@ -327,9 +339,10 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
   }
 
   return (
-    // Äußerer Wrapper NICHT scrollbar: iOS klemmt position:fixed-Overlays in
-    // -webkit-overflow-scrolling-Containern fest (Sheet läge sonst unter der
-    // Tab-Bar und scrollt mit) — Sheet + FAB leben deshalb AUSSERHALB des Scrollers.
+    // Äußerer Wrapper NICHT scrollbar — der FAB lebt AUSSERHALB des Scrollers.
+    // §314: TaskSheet + CompleteDialog hängen per createPortal am body (§83):
+    // der Reiter-Container der Shell (tm-enter) bzw. jeder Vorfahr mit transform
+    // fängt position:fixed ein — die Sheets lägen sonst unter Kopf- und Tab-Leiste.
     <div style={{ height: '100%', position: 'relative' }}>
     {/* Hintergrund-Scroll sperren, solange das Sheet offen ist — sonst
         scrollt iOS beim Wischen im Sheet die Liste dahinter (Scroll-Chaining) */}
@@ -581,7 +594,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
               )}
 
               {(!manage || t.editable === false) && !done && (t.assignee_id === userId || t.created_by === userId || manage) && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
+                <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
                       flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'rgba(255,159,10,0.15)',
@@ -595,7 +608,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
                 </div>
               )}
               {(!manage || t.editable === false) && done && (t.assignee_id === userId || t.created_by === userId || manage) && (
-                <button onClick={() => providerStatus(t, 'offen')} style={{
+                <button onClick={(e) => { e.stopPropagation(); providerStatus(t, 'offen') }} style={{
                   marginTop: 10, padding: '7px 14px', borderRadius: 10, border: HAIR, background: 'var(--tm-card)',
                   color: 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>↩︎ Wieder öffnen</button>
@@ -655,9 +668,11 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed 
 /* ── Erledigen-Dialog: kurzer Bericht, was gemacht wurde (→ Kommentar) ── */
 function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: (note: string) => void }) {
   const [note, setNote] = useState('')
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.35)',
+  // §314: Portal an den body (§83) — sonst klemmt der Dialog im Reiter-Container unter der Tab-Leiste
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="team-shell" onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 85, background: 'rgba(0,0,0,0.35)', color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
@@ -684,7 +699,8 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
           }}>✓ Erledigt melden</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -866,9 +882,12 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
     )
   }
 
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.35)',
+  // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container
+  // unter Kopf- und Tab-Leiste (Speichern/Löschen nicht mehr antippbar)
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="team-shell" onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.35)', color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
@@ -1043,7 +1062,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
           }}>{saving ? 'Speichern…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
 
-          {task && (
+          {/* §314: Löschen verlangt das Verwalten-Recht (DELETE → 403 ohne manage) — im eingeschränkten Sheet ausblenden */}
+          {task && !limited && (
             <button onClick={remove} disabled={saving} style={{
               padding: '10px 0', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600,
               background: 'transparent', color: 'var(--tm-red)', cursor: 'pointer',
@@ -1051,7 +1071,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

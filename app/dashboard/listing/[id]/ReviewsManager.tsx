@@ -12,7 +12,7 @@ export default function ReviewsManager({ listingId }: { listingId: string }) {
   const [reviews, setReviews] = useState<{ id: string; source: string; author_name: string; rating: number; review_text: string; review_date: string }[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [fetchingReviews, setFetchingReviews] = useState(false)
-  const [fetchResult, setFetchResult] = useState<{ results: { source: string; status?: string; fetched: number; upserted?: number; score?: number; count?: number; detail?: string }[] } | null>(null)
+  const [fetchResult, setFetchResult] = useState<{ results: { source: string; status?: string; fetched: number; upserted?: number; score?: number; count?: number; detail?: string; neu?: number }[] } | null>(null)
   const [showAddReview, setShowAddReview] = useState(false)
   const [showPasteImport, setShowPasteImport] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -77,8 +77,8 @@ export default function ReviewsManager({ listingId }: { listingId: string }) {
                 {r.source}: {r.status === 'error' ? 'Fehler'
                   : r.status === 'skipped' ? 'übersprungen'
                   : r.score !== undefined
-                    ? `★ ${Number(r.score).toFixed(1)} (${r.count} Bewertungen) · ${r.fetched} abgerufen ✓`
-                    : `${r.fetched} abgerufen ✓`}
+                    ? `★ ${Number(r.score).toFixed(1)} (${r.count} Bewertungen) · ${r.fetched} abgerufen${r.neu != null ? `, ${r.neu} neu` : ''} ✓`
+                    : `${r.fetched} abgerufen${r.neu != null ? `, ${r.neu} neu` : ''} ✓`}
               </span>
               {r.detail && <span style={{ fontSize: '11px', color: '#999' }}>— {r.detail}</span>}
             </div>
