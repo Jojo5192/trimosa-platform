@@ -12,19 +12,27 @@ const LISTING_FIELDS = 'id, host_id, airbnb_url, booking_url, vrbo_url, google_p
 const CRON_FIELDS = 'id, host_id, reviews_synced_at, airbnb_url, booking_url, vrbo_url, google_place_id'
 
 /**
- * POST /api/reviews/sync — { listingId, force? }
+ * POST /api/reviews/sync — { listingId, force?, nurQuelle? }
  * Manually triggered from the listing editor and the team card „⭐ Bewertungs-Abruf".
  * Host of the listing (or admin) only. Jeder Lauf kostet ca. 0,25 $ Apify-Guthaben — deshalb eine
  * Sperrfrist: lief der letzte Abruf vor weniger als 6 Stunden komplett erfolgreich (und wurde seither
  * keine Quelle geändert), wird nicht erneut gescrapt (force: true hebt das auf).
+ * nurQuelle: 'vrbo' ruft NUR FeWo-direkt ab (kein Airbnb/Booking/Google, keine KI-Zusammenfassung; wenige
+ * Cent statt ca. 0,25 $). Ein solcher Teil-Lauf ändert im Protokoll nur den FeWo-Eintrag und zählt nicht als
+ * voller Lauf: reviews_synced_at und Montags-Rotation bleiben, wie sie sind; er löst nie eine Sperrfrist aus,
+ * eine laufende bleibt bestehen, wenn er klappt (scheitert er, ist sie aufgehoben — lib/reviews-sync-protokoll.ts).
  */
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Nicht angemeldet' }, { status: 401 })
 
-  const { listingId, force } = await req.json()
+  const { listingId, force, nurQuelle } = await req.json()
   if (!listingId) return NextResponse.json({ error: 'listingId erforderlich' }, { status: 400 })
+  if (nurQuelle !== undefined && nurQuelle !== null && nurQuelle !== 'vrbo') {
+    return NextResponse.json({ error: "nurQuelle: nur 'vrbo' (FeWo-direkt) wird unterstützt" }, { status: 400 })
+  }
+  const nurFewo = nurQuelle === 'vrbo'
 
   const { data: listing } = await supabaseAdmin
     .from('listings')
@@ -39,6 +47,11 @@ export async function POST(req: NextRequest) {
     if (!profile?.is_admin && !profile?.is_host) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
   }
 
+  // Nur-FeWo-Abruf: nur für fewo-direkt.de-Adressen (eine vrbo.com-Adresse liefe in den bezahlten Sammel-Actor)
+  if (nurFewo && !/fewo-direkt\.de/i.test(listing.vrbo_url ?? '')) {
+    return NextResponse.json({ error: 'Für diese Wohnung ist keine FeWo-direkt-Adresse hinterlegt' }, { status: 400 })
+  }
+
   if (force !== true) {
     const min = await minutenSeitVollemErfolg(listing).catch(() => null)
     if (min !== null) {
@@ -49,8 +62,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const results = await syncListingReviews(listing, { origin: 'manuell' })
-  return NextResponse.json({ listingId, results })
+  const results = await syncListingReviews(listing, { origin: 'manuell', ...(nurFewo ? { nurQuelle: 'vrbo' as const } : {}) })
+  return NextResponse.json({ listingId, ...(nurFewo ? { nurQuelle: 'vrbo' } : {}), results })
 }
 
 /**
@@ -86,7 +99,9 @@ export async function GET(req: NextRequest) {
    * noch Platz für Google-Places (20 s), Abbruch-Puffer (15 s), Schreiben und die KI-Zusammenfassung bleibt
    * (RESERVE). Schlimmster Fall (alle Actors laufen ins Zeitlimit): 2 Wohnungen enden bei ~290 s. Üblich
    * (60–80 s je Wohnung): 3 Wohnungen; 4 nur, wenn jede unter ~50 s bleibt. Was nicht mehr passt, wird
-   * nicht angefangen (ausgelassen) und ist am nächsten Montag wieder vorn. */
+   * nicht angefangen (ausgelassen) und ist am nächsten Montag wieder vorn.
+   * FeWo-direkt: Stufe A (ohne Browser) und Stufe B (Browser) teilen sich dasselbe Fenster je Wohnung
+   * (FEWO_ZEIT in lib/fewo-reviews.ts) — der Zweig dauert weiter höchstens Wartezeit + 15 s. */
   const BUDGET_MS = 290_000
   const RESERVE_MS = 50_000
   const MIN_TIMEOUT_MS = 75_000

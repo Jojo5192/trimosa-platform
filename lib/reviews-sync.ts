@@ -15,6 +15,7 @@
  *  - APIFY_ACTOR_AIRBNB_REVIEWS / _BOOKING_REVIEWS / _VRBO_REVIEWS
  *    (optional actor-id overrides, format "user~actor-name")
  *  - FEWO_REVIEWS_QUERY_HASH u. a. (optional, FeWo-direkt-Abfrage — siehe lib/fewo-reviews.ts)
+ *  - FEWO_BROWSER_STUFE / FEWO_BROWSER_ACTOR / FEWO_BROWSER_MEMORY_MB (optional, Browser-Stufe für FeWo-direkt)
  * Missing env vars simply skip that source (reported in diagnostics).
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -22,7 +23,12 @@ import { revalidatePath } from 'next/cache'
 import { askClaude } from '@/lib/ai'
 import { createHash } from 'crypto'
 import { writeSyncLog } from '@/lib/reviews-sync-log'
-import { auswerteFewoLauf, buildFewoActorInput, planFewoAbloesung, type FewoAuswertung, type FewoBestandZeile } from '@/lib/fewo-reviews'
+import {
+  auswerteFewoLauf, buildFewoActorInput, buildFewoBrowserInput, fewoBrowserSinnvoll, fewoZeitStufeA, fewoZeitStufeB,
+  kombiniereFewoStufen, mischeFewoStufen, planFewoAbloesung,
+  FEWO_BROWSER_ACTOR, FEWO_BROWSER_AN, FEWO_BROWSER_MEMORY_MB, FEWO_SEITE_MEMORY_MB,
+  type FewoAuswertung, type FewoBestandZeile,
+} from '@/lib/fewo-reviews'
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -49,6 +55,9 @@ export interface SyncOptions {
   origin?: 'cron' | 'manuell'
   /** Wartezeit je Actor-Lauf. Der Cron verkürzt sie, damit mehrere Wohnungen in 300 s passen. */
   timeoutMs?: number
+  /** Teil-Lauf: NUR diese Quelle abrufen (heute nur FeWo-direkt) — kein Airbnb/Booking/Google, keine
+   *  KI-Zusammenfassung. Zählt nicht als voller Lauf (reviews_synced_at, Sperrfrist, Rotation bleiben). */
+  nurQuelle?: 'vrbo'
 }
 
 interface NormalizedReview {
@@ -161,6 +170,16 @@ class ApifyError extends Error {
   }
 }
 
+/**
+ * Kontospeicher gerade von anderen Läufen belegt (Airbnb-/Booking-/Google-Actor laufen parallel)? Erkannt am
+ * Apify-Fehlertyp, ersatzweise am Meldungstext („By launching this job you will exceed the memory limit …“) —
+ * HTTP-Status und Typ dieses Falls sind nicht gemessen.
+ */
+function istSpeicherEngpass(e: unknown): boolean {
+  return e instanceof ApifyError
+    && (/actor-memory-limit-exceeded|concurrent-runs-limit-exceeded/i.test(e.apifyType ?? '') || /exceed the memory limit|memory limit of \d+ ?MB/i.test(e.message))
+}
+
 /** Ordnet einen Abruf-Fehler grob ein. Erst Status + Apify-Typ, dann Text (Zeitüberschreitung). */
 export function classifySyncError(e: unknown): SyncErrorKind {
   const s = String(e)
@@ -168,6 +187,9 @@ export function classifySyncError(e: unknown): SyncErrorKind {
   if (e instanceof ApifyError) {
     const t = e.apifyType ?? ''
     if (e.status === 401) return 'token'
+    // Speicher-/Parallel-Limit des Kontos (andere Actor-Läufe belegen den Speicher gerade): vorübergehend —
+    // NICHT als „Guthaben aufgebraucht" melden (der HTTP-Status dafür ist nicht dokumentiert, vermutlich 402).
+    if (istSpeicherEngpass(e)) return 'sonst'
     if (e.status === 402 || (e.status === 403 && /platform-feature-disabled|limit/i.test(t)) || /hard limit|usage limit/i.test(s)) return 'kontingent'
     if (e.status === 400 && /invalid-input/i.test(t)) return 'eingabe'
     if (e.status === 404 || e.status === 403) return 'actor'
@@ -252,40 +274,84 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number, so
   return Array.isArray(data) ? data : []
 }
 
-/**
- * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists, vrbo.com
- * actors can't parse it, and Expedia's bot protection blocks headless
- * browsers. Bis 5.10.2026 standen die Bewertungen im Seiten-HTML; seither
- * rendert Expedia sie erst im Browser per POST /graphql. Deshalb zwei Schritte
- * in EINEM Lauf von Apify's cheerio-scraper (browser-like TLS/headers +
- * residential proxy, no browser fingerprint): Seite (Note, Anzahl,
- * Property-ID) und danach die GraphQL-Abfrage. pageFunction, Eingabe und
- * Auswertung stehen testbar in lib/fewo-reviews.ts.
- *
- * Wirft nur, wenn Apify selbst scheitert. Ein gescheiterter Schritt steht in
- * `fehler` — Note und Anzahl aus Schritt 1 bleiben dann trotzdem nutzbar.
- */
-async function runFewoScraper(url: string, timeoutMs: number): Promise<FewoAuswertung> {
+/** Ein Lauf eines Apify-Standard-Actors mit eigener Eingabe → Dataset-Items. Wirft ApifyError bei HTTP-Fehler. */
+async function runFewoActor(label: string, actorId: string, input: Record<string, unknown>, laufSek: number, memoryMb: number | null): Promise<Record<string, unknown>[]> {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
-
   // Bewusst OHNE clean=true: ein nach allen Wiederholungen blockierter Request (HTTP 429/403) hinterlässt
   // nur ein Item aus '#error'/'#debug' — clean würde es entfernen und die Ursache wäre unsichtbar.
   const res = await fetch(
-    `https://api.apify.com/v2/acts/apify~cheerio-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json`,
+    `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${laufSek}${memoryMb ? `&memory=${memoryMb}` : ''}&format=json`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildFewoActorInput(url, MAX_REVIEWS_PER_RUN)),
-      signal: AbortSignal.timeout(timeoutMs + 15_000),
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(laufSek * 1000 + 15_000),
     },
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new ApifyError('Apify cheerio-scraper (fewo)', res.status, text)
+    throw new ApifyError(label, res.status, text)
   }
   const data = await res.json()
-  return auswerteFewoLauf((Array.isArray(data) ? data : []) as Record<string, unknown>[], MAX_REVIEWS_PER_RUN)
+  return (Array.isArray(data) ? data : []) as Record<string, unknown>[]
+}
+
+/**
+ * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists and vrbo.com
+ * actors can't parse it. Bis 5.10.2026 standen die Bewertungen im Seiten-HTML;
+ * seither rendert Expedia sie erst im Browser per POST /graphql.
+ *
+ * Stufe A (ohne Browser): EIN Lauf von Apify's cheerio-scraper (browser-like
+ * TLS/headers + residential proxy) — Seite (Note, Anzahl, Property-ID) und
+ * danach die GraphQL-Abfrage mit wenigen Wiederholungen.
+ * Stufe B (Browser): nur wenn der GraphQL-Teil von A scheitert und die
+ * Property-ID bekannt ist. /graphql drosselt den HTTP-Client von A am
+ * TLS-Fingerabdruck (HTTP 429, auch mit wechselnder IP); ein echter Chrome kam
+ * durch. Der Browser lädt NICHT die Listing-Seite (dort blockt der Bot-Schutz
+ * Headless-Browser), sondern /robots.txt und sendet von dort den POST.
+ * pageFunctions, Eingaben, Auswertung und das Zeitbudget (fewoZeitStufeA/B)
+ * stehen testbar in lib/fewo-reviews.ts.
+ *
+ * Beide Stufen teilen sich das Fenster timeoutMs; reicht der Rest nicht für
+ * Stufe B, wird sie ausgelassen (Fehler mit Hinweis). Wirft nur, wenn Stufe A
+ * bei Apify scheitert. Ein gescheiterter Schritt steht in `fehler` — Note und
+ * Anzahl aus Stufe A bleiben dann trotzdem nutzbar, auch wenn Stufe B bei
+ * Apify scheitert.
+ */
+async function runFewoScraper(url: string, timeoutMs: number): Promise<FewoAuswertung> {
+  const ende = Date.now() + timeoutMs
+  const rohA = await runFewoActor('Apify cheerio-scraper (fewo)', 'apify~cheerio-scraper', buildFewoActorInput(url, MAX_REVIEWS_PER_RUN), fewoZeitStufeA(timeoutMs), FEWO_SEITE_MEMORY_MB)
+  const a = auswerteFewoLauf(rohA, MAX_REVIEWS_PER_RUN, { stufe: 'A' })
+  if (!fewoBrowserSinnvoll(a) || !a.seite?.propertyId) return a
+  if (!FEWO_BROWSER_AN) return kombiniereFewoStufen(a, null, { text: 'ist abgeschaltet (FEWO_BROWSER_STUFE=aus)' })
+
+  for (let anlauf = 0; ; anlauf++) {
+    const rest = ende - Date.now()
+    const laufSek = fewoZeitStufeB(rest)
+    if (laufSek === null) return kombiniereFewoStufen(a, null, { text: `ausgelassen (nur noch ${Math.max(0, Math.round(rest / 1000))} s Zeit)` })
+    try {
+      const rohB = await runFewoActor(
+        `Apify ${FEWO_BROWSER_ACTOR} (fewo)`, FEWO_BROWSER_ACTOR,
+        buildFewoBrowserInput(a.seite.propertyId, MAX_REVIEWS_PER_RUN, { laufSek }), laufSek, FEWO_BROWSER_MEMORY_MB,
+      )
+      // Diagnose je Versuch ins Log: ob Headless-Chrome über den Proxy durchkommt, zeigt erst die Praxis
+      for (const d of rohB.filter((i) => i.__fewo === 'browser')) {
+        console.log(`[reviews-sync] fewo Stufe B: Versuch ${d.versuch} HTTP ${d.status ?? '—'} (Startseite ${d.navStatus ?? '—'}) nach ${d.laufMs ?? '?'} ms · ${d.browser ?? '?'} · UA ${String(d.userAgent ?? '?').slice(0, 120)} · webdriver ${d.webdriver}`)
+      }
+      return kombiniereFewoStufen(a, auswerteFewoLauf(mischeFewoStufen(rohA, rohB), MAX_REVIEWS_PER_RUN, { stufe: 'B' }))
+    } catch (e) {
+      // Kontospeicher belegt (parallele Actor-Läufe): einmal kurz warten und neu versuchen, sofern die Zeit reicht
+      // (Status und Typ einmal ins Log: beides ist für diesen Fall nicht dokumentiert)
+      if (istSpeicherEngpass(e)) console.warn(`[reviews-sync] fewo Stufe B: Apify-Speicher belegt (HTTP ${(e as ApifyError).status}, Typ ${(e as ApifyError).apifyType ?? '—'}) · ${errText(e, 400)}`)
+      if (anlauf === 0 && istSpeicherEngpass(e)) { await new Promise((r) => setTimeout(r, 8_000)); continue }
+      const art = classifySyncError(e)
+      const grund = istSpeicherEngpass(e) ? 'nicht gestartet: Apify-Speicher von parallelen Abrufen belegt — später oder als Nur-FeWo-Abruf wiederholen'
+        : art === 'timeout' ? `gescheitert: Zeitlimit des Browser-Laufs (${laufSek} s) überschritten`
+        : `gescheitert: ${errText(e, 150)}`
+      return kombiniereFewoStufen(a, null, { text: grund, art })
+    }
+  }
 }
 
 /**
@@ -554,11 +620,17 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
   const results: SyncSourceResult[] = []
   const timeoutMs = Math.min(Math.max(opts.timeoutMs ?? 150_000, 30_000), 150_000)
 
-  const scraperSources: Array<{ source: 'airbnb' | 'booking' | 'vrbo'; url: string | null }> = [
+  /* Teil-Lauf (nurQuelle: 'vrbo'): nur FeWo-direkt — die anderen Zweige entstehen gar nicht erst (sie
+   * schreiben auch ohne URL in listings und kosten Apify-Guthaben). Sind keine anderen Quellen hinterlegt,
+   * ist der Lauf in Wahrheit vollständig und wird auch so protokolliert. */
+  const nur = opts.nurQuelle ?? null
+  const teilLauf = nur !== null && [listing.airbnb_url, listing.booking_url, listing.google_place_id].some((v) => !!v && !!v.trim())
+  const alleQuellen: Array<{ source: 'airbnb' | 'booking' | 'vrbo'; url: string | null }> = [
     { source: 'airbnb', url: listing.airbnb_url },
     { source: 'booking', url: listing.booking_url },
     { source: 'vrbo', url: listing.vrbo_url },
   ]
+  const scraperSources = nur ? alleQuellen.filter((q) => q.source === nur) : alleQuellen
 
   // Run the three scrapers in parallel (each can take 1–2 minutes)
   const scraperPromises = scraperSources.map(async ({ source, url }): Promise<SyncSourceResult> => {
@@ -575,7 +647,7 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     try {
       const cleanUrl = normalizeSourceUrl(source, url)
 
-      // Fewo-Direkt: Seite (maßgebliche Note/Anzahl) + GraphQL (Texte) in einem Lauf
+      // Fewo-Direkt: Seite (maßgebliche Note/Anzahl) + GraphQL (Texte); Stufe B (Browser) nur bei Bedarf
       if (source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)) {
         const lauf = await runFewoScraper(cleanUrl, timeoutMs)
         const normalized = lauf.items
@@ -623,7 +695,7 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
         if (fehler) {
           return { source, status: 'error', errorKind: fehler.art, detail: fehler.text.slice(0, 300), fetched: normalized.length, upserted, score, count, ...ds }
         }
-        return { source, status: 'ok', fetched: normalized.length, upserted, score, count, neu, ...ds }
+        return { source, status: 'ok', fetched: normalized.length, upserted, score, count, neu, ...ds, ...(lauf.weg === 'B' ? { detail: 'Texte über Stufe B (Browser) geholt' } : {}) }
       }
 
       const items = await runApifyActor(APIFY_ACTORS[source], cleanUrl, timeoutMs, source)
@@ -655,8 +727,8 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     }
   })
 
-  // Google in parallel too (fast, official API)
-  const googlePromise = (async (): Promise<SyncSourceResult> => {
+  // Google in parallel too (fast, official API) — als Funktion, damit ein Teil-Lauf sie gar nicht erst startet
+  const googleLauf = async (): Promise<SyncSourceResult> => {
     if (!listing.google_place_id) {
       await supabaseAdmin
         .from('listings')
@@ -715,9 +787,9 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     } catch (e) {
       return { source: 'google', status: 'error', fetched: 0, upserted: 0, detail: errText(e), errorKind: classifySyncError(e) }
     }
-  })()
+  }
 
-  results.push(...(await Promise.all([...scraperPromises, googlePromise])))
+  results.push(...(await Promise.all([...scraperPromises, ...(nur ? [] : [googleLauf()])])))
 
   /* §314: reviews_synced_at steuert die Montags-Rotation (ältester Stand zuerst). Früher wurde es IMMER
    * gesetzt — auch wenn alle Portale scheiterten; die Wohnung galt dann als „frisch" und der Ausfall blieb
@@ -727,7 +799,8 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
    * Protokoll (app_settings 'reviews_sync:<listingId>'). */
   const hinterlegt = results.filter((r) => SCRAPER_SOURCES.includes(r.source) && !(r.status === 'skipped' && !r.errorKind))
   const scraperOk = hinterlegt.some((r) => r.status === 'ok')
-  if (scraperOk || hinterlegt.length === 0) {
+  // Teil-Lauf: nie setzen — sonst gälte die Wohnung als frisch, obwohl Airbnb/Booking nicht abgerufen wurden
+  if (!teilLauf && (scraperOk || hinterlegt.length === 0)) {
     await supabaseAdmin
       .from('listings')
       .update({ reviews_synced_at: new Date().toISOString() })
@@ -738,7 +811,7 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
   }
   // Protokoll je Wohnung — fail-soft: ein Schreibfehler darf den Sync nie brechen
   try {
-    await writeSyncLog(listing, results, opts.origin ?? 'manuell')
+    await writeSyncLog(listing, results, opts.origin ?? 'manuell', { teil: teilLauf })
   } catch (e) {
     console.error('[reviews-sync] Protokoll konnte nicht geschrieben werden:', e)
   }
@@ -747,6 +820,14 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
   // texts. Its outcome is reported as an own results row so failures are
   // visible right in the editor (no Vercel log digging) — but never break
   // the sync itself.
+  if (nur) {
+    // Nur-Quelle-Abruf: keine KI-Zusammenfassung (die läuft beim nächsten vollen Lauf). Sie enthielte den
+    // einzigen revalidatePath — deshalb hier selbst auffrischen, sonst zeigt /listing/[id] die neuen Texte nicht.
+    if (results.some((r) => r.upserted > 0)) {
+      try { revalidatePath('/listing/[id]', 'page') } catch { /* outside request scope */ }
+    }
+    return results
+  }
   try {
     const summaryStatus = await updateGuestSummary(listing.id)
     results.push({ source: 'zusammenfassung', status: summaryStatus === 'ok' ? 'ok' : 'skipped', fetched: 0, upserted: 0, detail: summaryStatus })

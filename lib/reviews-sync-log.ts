@@ -14,17 +14,17 @@
  * der eigentliche Abruf läuft unverändert weiter.
  *
  * Import von reviews-sync NUR als Typ (sonst Zirkelbezug: reviews-sync ruft writeSyncLog).
+ * Die reinen Teile (Typen, Portal-Liste, Fortschreibung des Protokolls) stehen testbar in
+ * lib/reviews-sync-protokoll.ts und werden hier unverändert weitergereicht.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToTeam } from '@/lib/push'
 import type { SyncSourceResult, SyncErrorKind } from '@/lib/reviews-sync'
 import { fewoLuecke } from '@/lib/fewo-reviews'
+import { PORTALE, PORTAL_NAME, istVollerErfolg, naechstesSyncLog, parseLog, zielVon, type ListingSyncLog, type Portal, type PortalLog, type QuellenRow } from '@/lib/reviews-sync-protokoll'
 
-export const PORTALE = ['airbnb', 'booking', 'vrbo', 'google'] as const
-export type Portal = (typeof PORTALE)[number]
-export const PORTAL_NAME: Record<Portal, string> = { airbnb: 'Airbnb', booking: 'Booking', vrbo: 'FeWo-direkt', google: 'Google' }
-/** Portale, die über einen Apify-Scraper laufen (Google hat zusätzlich die offizielle Places-API). */
-const SCRAPER: readonly Portal[] = ['airbnb', 'booking', 'vrbo']
+export { PORTALE, PORTAL_NAME }
+export type { Portal, PortalLog, ListingSyncLog }
 /** Ab so vielen Tagen ohne erfolgreichen Abruf gilt eine Quelle als überfällig (6 Wochen). */
 export const STALE_TAGE = 42
 /** Obergrenze je Abruf — gleiche Formel wie MAX_REVIEWS_PER_RUN in lib/reviews-sync.ts (dort nicht importierbar: Zirkelbezug). */
@@ -35,128 +35,22 @@ const CRON_KEY = 'reviews_sync_cron'
 const ALARM_KEY = 'reviews_sync_alarm'
 const ALARM_PAUSE_MS = 6.5 * 86400_000 // „höchstens 1× pro Woche" — etwas unter 7 Tagen, der Cron läuft nie auf die Sekunde gleich
 
-export interface PortalLog {
-  versuchAm: string                 // letzter Versuch (egal mit welchem Ergebnis)
-  status: 'ok' | 'teilweise' | 'error'
-  fehler: string | null             // Fehlertext des letzten Versuchs (max. 300 Zeichen)
-  fehlerArt: SyncErrorKind | null
-  abgerufen: number                 // vom Portal geliefert (letzter Versuch)
-  neu: number | null                // davon bisher unbekannt
-  okAm: string | null               // letzter VOLLSTÄNDIG erfolgreicher Abruf
-  okAbgerufen: number | null
-  okNeu: number | null
-  fehlerInFolge: number
-  ziel: string | null               // URL/Place-ID, mit der abgerufen wurde (Sperrfrist nur bei unveränderter Quelle)
-}
-export interface ListingSyncLog {
-  v: 1
-  versuchAm: string | null
-  origin: 'cron' | 'manuell' | null
-  /** Läufe in Folge, in denen KEINE hinterlegte Scraper-Quelle geklappt hat (steuert die Rotation). */
-  fehlLaeufe: number
-  portale: Partial<Record<Portal, PortalLog>>
-  verlauf: { am: string; origin: string; kurz: string }[]
-}
-
-interface QuellenRow {
-  id: string
-  airbnb_url: string | null
-  booking_url: string | null
-  vrbo_url: string | null
-  google_place_id: string | null
-}
-
-const isPortal = (s: string): s is Portal => (PORTALE as readonly string[]).includes(s)
 const ts = (s?: string | null) => (s ? Date.parse(s) || 0 : 0)
-
-function zielVon(l: QuellenRow, p: Portal): string | null {
-  const v = p === 'google' ? l.google_place_id : p === 'airbnb' ? l.airbnb_url : p === 'booking' ? l.booking_url : l.vrbo_url
-  return v && v.trim() ? v.trim() : null
-}
-
-function parseLog(value: unknown): ListingSyncLog {
-  const v = (value && typeof value === 'object' ? value : {}) as Partial<ListingSyncLog>
-  return {
-    v: 1,
-    versuchAm: typeof v.versuchAm === 'string' ? v.versuchAm : null,
-    origin: v.origin === 'cron' || v.origin === 'manuell' ? v.origin : null,
-    fehlLaeufe: Number.isFinite(Number(v.fehlLaeufe)) ? Number(v.fehlLaeufe) : 0,
-    portale: v.portale && typeof v.portale === 'object' ? v.portale : {},
-    verlauf: Array.isArray(v.verlauf) ? v.verlauf : [],
-  }
-}
 
 /* ── Protokoll schreiben / lesen ────────────────────────── */
 
 /**
- * Schreibt das Ergebnis EINES Abrufs ins Protokoll der Wohnung. Wirft bei Lese- oder Schreibfehler
- * (der Aufrufer fängt das ab) — bei einem Lesefehler wird bewusst NICHT geschrieben, sonst ginge der
- * letzte erfolgreiche Abruf (okAm) verloren.
+ * Schreibt das Ergebnis EINES Abrufs ins Protokoll der Wohnung (Fortschreibung: naechstesSyncLog in
+ * lib/reviews-sync-protokoll.ts). Wirft bei Lese- oder Schreibfehler (der Aufrufer fängt das ab) — bei einem
+ * Lesefehler wird bewusst NICHT geschrieben, sonst ginge der letzte erfolgreiche Abruf (okAm) verloren.
+ * `opts.teil`: Teil-Lauf (nurQuelle) — fasst nur die abgerufenen Portale an, die Kopf-Felder bleiben.
  */
-export async function writeSyncLog(listing: QuellenRow, results: SyncSourceResult[], origin: 'cron' | 'manuell'): Promise<void> {
+export async function writeSyncLog(listing: QuellenRow, results: SyncSourceResult[], origin: 'cron' | 'manuell', opts: { teil?: boolean } = {}): Promise<void> {
   const key = PREFIX + listing.id
   const { data, error } = await supabaseAdmin.from('app_settings').select('value').eq('key', key).maybeSingle()
   if (error) throw new Error(`Protokoll lesen: ${error.message}`)
-  const alt = parseLog(data?.value)
   const now = new Date().toISOString()
-  const portale: ListingSyncLog['portale'] = { ...alt.portale }
-  const kurz: string[] = []
-  let scraperHinterlegt = 0
-  let scraperOk = 0
-
-  for (const r of results) {
-    if (!isPortal(r.source)) continue
-    const p = r.source
-    const ziel = zielVon(listing, p)
-    if (!ziel) { delete portale[p]; continue } // nicht (mehr) hinterlegt
-    const vorher = portale[p]
-    const istScraper = SCRAPER.includes(p)
-    if (istScraper) scraperHinterlegt++
-    if (r.status === 'ok') {
-      const voll = !r.partial
-      if (istScraper) scraperOk++
-      portale[p] = {
-        versuchAm: now,
-        status: voll ? 'ok' : 'teilweise',
-        fehler: voll ? null : (r.detail ?? 'Volltexte nicht abrufbar').slice(0, 300),
-        fehlerArt: voll ? null : r.errorKind ?? 'sonst',
-        abgerufen: r.fetched,
-        neu: r.neu ?? null,
-        okAm: voll ? now : vorher?.okAm ?? null,
-        okAbgerufen: voll ? r.fetched : vorher?.okAbgerufen ?? null,
-        okNeu: voll ? r.neu ?? null : vorher?.okNeu ?? null,
-        fehlerInFolge: voll ? 0 : (vorher?.fehlerInFolge ?? 0) + 1,
-        ziel,
-      }
-      // „ohne Datum" > 0 heißt: der Actor liefert sein Datumsfeld nicht mehr wie erwartet (Heute-Rückfall)
-      kurz.push(`${PORTAL_NAME[p]} ${voll ? 'ok' : 'teilweise'} ${r.fetched}/${r.neu ?? '?'} neu${r.ohneDatum ? ` (${r.ohneDatum} ohne Datum)` : ''}`)
-    } else {
-      // 'error' — oder 'skipped', obwohl die Quelle hinterlegt ist (Zugangsschlüssel fehlt)
-      portale[p] = {
-        versuchAm: now,
-        status: 'error',
-        fehler: (r.detail ?? 'unbekannter Fehler').slice(0, 300),
-        fehlerArt: r.errorKind ?? 'sonst',
-        abgerufen: r.fetched,
-        neu: null,
-        okAm: vorher?.okAm ?? null,
-        okAbgerufen: vorher?.okAbgerufen ?? null,
-        okNeu: vorher?.okNeu ?? null,
-        fehlerInFolge: (vorher?.fehlerInFolge ?? 0) + 1,
-        ziel,
-      }
-      kurz.push(`${PORTAL_NAME[p]} FEHLER (${r.errorKind ?? 'sonst'})`)
-    }
-  }
-
-  const log: ListingSyncLog = {
-    v: 1,
-    versuchAm: now,
-    origin,
-    fehlLaeufe: scraperHinterlegt > 0 && scraperOk === 0 ? alt.fehlLaeufe + 1 : 0,
-    portale,
-    verlauf: [{ am: now, origin, kurz: kurz.join(' · ') || 'keine Quelle hinterlegt' }, ...alt.verlauf].slice(0, 10),
-  }
+  const log = naechstesSyncLog(parseLog(data?.value), listing, results, origin, now, opts)
   const { error: wErr } = await supabaseAdmin
     .from('app_settings').upsert({ key, value: log, updated_at: now }, { onConflict: 'key' })
   if (wErr) throw new Error(`Protokoll schreiben: ${wErr.message}`)
@@ -191,20 +85,15 @@ export async function readAllSyncLogs(): Promise<Map<string, ListingSyncLog>> {
 /**
  * Sperrfrist für den Handabruf (jeder Lauf kostet ca. 0,25 $ Apify-Guthaben): Minuten seit dem letzten
  * Lauf, wenn dieser weniger als `stunden` zurückliegt, ALLE hinterlegten Portale vollständig geklappt
- * haben und keine Quelle seither geändert wurde — sonst null (Abruf erlaubt).
+ * haben und keine Quelle seither geändert wurde — sonst null (Abruf erlaubt). Die Bedingung steht testbar
+ * in istVollerErfolg (lib/reviews-sync-protokoll.ts); ein Teil-Lauf (nurQuelle) löst die Sperre nie aus.
  */
 export async function minutenSeitVollemErfolg(listing: QuellenRow, stunden = 6): Promise<number | null> {
   const log = await readSyncLog(listing.id)
   if (!log?.versuchAm) return null
   const alter = Date.now() - ts(log.versuchAm)
   if (alter < 0 || alter > stunden * 3600_000) return null
-  const hinterlegt = PORTALE.filter((p) => zielVon(listing, p))
-  if (!hinterlegt.length) return null
-  const alleOk = hinterlegt.every((p) => {
-    const pl = log.portale[p]
-    return !!pl && pl.status === 'ok' && pl.versuchAm === log.versuchAm && pl.ziel === zielVon(listing, p)
-  })
-  return alleOk ? Math.max(1, Math.round(alter / 60_000)) : null
+  return istVollerErfolg(log, listing) ? Math.max(1, Math.round(alter / 60_000)) : null
 }
 
 /* ── Status je Wohnung × Portal ─────────────────────────── */
