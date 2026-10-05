@@ -115,14 +115,23 @@ async function collectHostReplies(listingId: string | null): Promise<string[]> {
     if (ids.length > 0) {
       const { data: live } = await supabaseAdmin
         .from('messages')
-        .select('content, sender_type, booking_id, created_at')
+        .select('id, content, sender_type, booking_id, created_at')
         .in('booking_id', ids)
         .order('booking_id').order('created_at', { ascending: true })
         .limit(1000)
+      // 🤖 KI-Auto-Antworten (Phase 2) nicht zurück in die Wissensbasis destillieren (keine
+      // Selbstverstärkung). Eigene Abfrage, deploy-sicher: fehlt die Spalte ai_auto, bleibt die Menge leer.
+      const autoIds = new Set<string>()
+      try {
+        const { data: auto, error } = await supabaseAdmin
+          .from('messages').select('id').in('booking_id', ids).eq('ai_auto', true).limit(1000)
+        if (!error) for (const a of auto ?? []) autoIds.add(String(a.id))
+      } catch { /* Spalte fehlt noch */ }
       let lg = ''
       let lastBooking: string | null = null
       for (const m of live ?? []) {
         if (m.booking_id !== lastBooking) { lg = ''; lastBooking = m.booking_id }
+        if (autoIds.has(String(m.id))) continue
         if (m.sender_type === 'guest') lg = m.content
         else if (m.sender_type === 'host' && (m.content ?? '').trim().length >= 25) {
           pairs.push(lg ? `GAST: ${lg.slice(0, 300)}\nANTWORT: ${m.content.slice(0, 500)}` : `ANTWORT: ${m.content.slice(0, 500)}`)

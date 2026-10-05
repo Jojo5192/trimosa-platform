@@ -631,23 +631,26 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container unter der Tab-Leiste
     if (typeof document === 'undefined') return null
     return createPortal(
-      <div className="team-shell" onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.4)', color: 'var(--tm-text)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{
-          width: '100%', maxWidth: 480, background: 'var(--tm-surface2)', borderRadius: '18px 18px 0 0',
+      <div className="team-shell tm-scrim" onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, zIndex: 80, color: 'var(--tm-text)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+        {/* iOS-27-Runde: Sheet = Kartenfläche (.tm-sheet), Felder/Zeilen darin auf surface2.
+            KEINE Einblend-Animation: CreateDialog wird im Render definiert und bei jedem
+            Eltern-Render neu gemountet — die Animation liefe dann jedes Mal erneut ab. */}
+        <div className="tm-sheet" onClick={(e) => e.stopPropagation()} style={{
+          width: '100%', maxWidth: 480,
           padding: '18px 18px calc(18px + env(safe-area-inset-bottom))', maxHeight: '85dvh', overflowY: 'auto', overscrollBehavior: 'contain',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--tm-text)' }}>Neue Gruppe</span>
-            <button onClick={() => setShowCreate(false)} style={{ border: 'none', background: 'var(--tm-surface2)', width: 30, height: 30, borderRadius: '50%', fontSize: 14, color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
+            <button type="button" className="tm-close" onClick={() => setShowCreate(false)} aria-label="Schließen">✕</button>
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} style={{ width: 54, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 17, background: 'var(--tm-card)' }} />
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gruppenname (z. B. Handwerker)" autoFocus style={{ flex: 1, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 14, background: 'var(--tm-card)', outline: 'none' }} />
+            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} style={{ width: 54, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 17, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }} />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gruppenname (z. B. Handwerker)" autoFocus style={{ flex: 1, minWidth: 0, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 14, background: 'var(--tm-surface2)', color: 'var(--tm-text)', outline: 'none' }} />
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.06em', margin: '4px 0 8px' }}>MITGLIEDER</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
             {directory.filter((d) => d.id !== userId).map((d) => (
-              <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: 'var(--tm-card)', border: '1px solid #EDEAE2', cursor: 'pointer' }}>
+              <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={selected.has(d.id)}
@@ -860,12 +863,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                     {/* Tapback-Picker (Long-Press / Rechtsklick / Doppeltipp) — §289: am Fingerpunkt
                         fixiert, damit er auch bei langen Blasen im Bild bleibt */}
                     {reactFor === m.id && (
-                      <div style={{
+                      <div className="tm-menu" style={{
                         ...(pickerPos.current
                           ? { position: 'fixed' as const, top: Math.max(8, Math.min(pickerPos.current.y - 64, window.innerHeight - 70)), left: Math.max(8, Math.min(pickerPos.current.x - 130, window.innerWidth - 300)), zIndex: 1200 }
                           : { position: 'absolute' as const, top: -48, ...(mine ? { right: 0 } : { left: 0 }), zIndex: 6 }),
-                        display: 'flex', gap: 2, background: 'var(--tm-card)', borderRadius: 999, padding: '5px 7px',
-                        boxShadow: '0 6px 20px rgba(0,0,0,0.18), inset 0 0 0 0.5px var(--tm-line)',
+                        // iOS-27-Runde: Glas + Kante aus .tm-menu, die Kapselform bleibt
+                        display: 'flex', gap: 2, borderRadius: 999, padding: '5px 7px',
                       }}>
                         {REACTION_SET.map((e) => {
                           const mineHas = (m.reactions?.[e] ?? []).includes(userId)
@@ -879,13 +882,14 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                         {/* ↩︎ Antworten (iMessage-Zitat, Dominik §121.1) */}
                         <button title="Antworten" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); setReplyTo(m); composerRef.current?.focus() }} style={{
                           width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
-                          background: 'var(--tm-surface2)', fontSize: 16, cursor: 'pointer', color: 'var(--tm-muted)',
+                          // neutrale Füllung (--tm-fill): var(--tm-surface2) wäre auf dem Menü-Glas im Dark Mode unsichtbar
+                          background: 'var(--tm-fill)', fontSize: 16, cursor: 'pointer', color: 'var(--tm-muted)',
                         }}>↩︎</button>
                         {/* §289: Kopieren — Blasen sind nicht markierbar (Long-Press gehört dem Menü) */}
                         {m.content && (
                           <button title="Text kopieren" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); navigator.clipboard?.writeText(m.content).then(() => tmToast('Kopiert')).catch(() => tmToast('Kopieren nicht möglich')) }} style={{
                             width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
-                            background: 'var(--tm-surface2)', fontSize: 15, cursor: 'pointer', color: 'var(--tm-muted)',
+                            background: 'var(--tm-fill)', fontSize: 15, cursor: 'pointer', color: 'var(--tm-muted)',
                           }}>📋</button>
                         )}
                       </div>
@@ -1012,9 +1016,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
             aria-label="Nach unten springen"
             style={{
               position: 'absolute', right: 14, bottom: 12, width: 40, height: 40, borderRadius: '50%',
-              border: '0.5px solid var(--tm-line)', background: 'var(--tm-glass)',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
-              color: 'var(--gold, #AE8D2D)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+              border: 'none', background: 'var(--tm-menu-glass)',
+              backdropFilter: 'blur(16px) saturate(1.8)', WebkitBackdropFilter: 'blur(16px) saturate(1.8)',
+              boxShadow: 'var(--tm-edge), 0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
+              // dunkleres Gold: #AE8D2D kam auf dem Glas über einer Navy-Blase nur auf 2,6:1
+              color: 'var(--tm-tab-on-fg)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
             }}
           >↓</button>
         </div>

@@ -513,6 +513,9 @@ export function stripEmailQuote(body: string): string {
 export async function getReservationMessages(
   smoobuReservationId: number,
   apiKey?: string,
+  /** strict: HTTP-Fehler/unerwartete Antwort WERFEN statt still eine leere Liste zu liefern
+   *  (🤖 KI-Auto-Antwort: der „frische Abgleich" vor dem Versand darf nicht fail-open sein) */
+  opts?: { strict?: boolean },
 ): Promise<SmoobuMessage[]> {
   // §152: onlyRelatedToGuest=false ist PFLICHT — ohne den Parameter liefert
   // Smoobu (Default-Änderung ~23.07.2026) NUR noch Gast-Nachrichten; die
@@ -521,6 +524,7 @@ export async function getReservationMessages(
   // PAGINIERT (page/page_count) — alle Seiten holen, nicht nur die erste.
   const msgs: unknown[] = []
   let page = 1
+  let vollstaendig = false
   for (let guard = 0; guard < 30; guard++) {
     const res = await fetch(
       `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages?onlyRelatedToGuest=false&page=${page}`,
@@ -528,6 +532,7 @@ export async function getReservationMessages(
     )
     if (!res.ok) {
       console.error('[Smoobu] getReservationMessages failed', res.status, smoobuReservationId, 'page', page)
+      if (opts?.strict) throw new Error(`Smoobu-Nachrichten nicht abrufbar (${res.status})`)
       break
     }
     const data = await res.json()
@@ -543,13 +548,18 @@ export async function getReservationMessages(
       pageMsgs = data.data
     } else {
       console.warn('[Smoobu] getReservationMessages: unexpected response shape', JSON.stringify(data).slice(0, 200))
+      if (opts?.strict) throw new Error('Smoobu-Nachrichten: unerwartete Antwort')
       pageMsgs = []
     }
     msgs.push(...pageMsgs)
     const pageCount = Number((data as { page_count?: unknown } | null)?.page_count ?? 1)
-    if (!pageMsgs.length || !Number.isFinite(pageCount) || page >= pageCount) break
+    if (Number.isFinite(pageCount) && page >= pageCount) { vollstaendig = true; break }
+    if (!pageMsgs.length || !Number.isFinite(pageCount)) break
     page++
   }
+  // strict: endet die Schleife, OHNE die letzte Seite erreicht zu haben (Seiten-Obergrenze, leere
+  // Zwischenseite, unlesbare Seitenzahl), ist der Abgleich unvollständig → kein stilles „alles da"
+  if (opts?.strict && !vollstaendig) throw new Error('Smoobu-Nachrichten unvollständig abgerufen')
 
   // Log first message to diagnose field format in production
   if (msgs.length > 0) {
@@ -571,14 +581,18 @@ export async function getReservationMessages(
         const d = new Date(s)
         return isNaN(d.getTime()) ? '' : d.toISOString()
       }
-      // No timezone → Smoobu local time. Determine CET (+01:00) vs CEST (+02:00) by month.
+      // No timezone → Smoobu local time (Europe/Berlin). EXAKTER Offset statt Monats-Schätzung:
+      // die Schätzung „April–Oktober = +02:00" lag in den Tagen nach der Zeitumstellung
+      // (z. B. 25.–31.10.) eine Stunde daneben → Nachrichten 1 h zu früh/spät einsortiert.
       s = s.replace(' ', 'T') // normalise "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SS"
-      const monthMatch = s.match(/^(\d{4})-(\d{2})/)
-      const month = monthMatch ? parseInt(monthMatch[2]) : 6
-      // CEST: end of March → end of October (months 4–10 inclusive is a safe approximation)
-      const offset = (month >= 4 && month <= 10) ? '+02:00' : '+01:00'
-      const d = new Date(s + offset)
-      return isNaN(d.getTime()) ? '' : d.toISOString()
+      const asUtc = new Date(s + 'Z').getTime()
+      if (isNaN(asUtc)) return ''
+      // Berlin-Offset (ms) zu einem UTC-Zeitpunkt
+      const berlinOffset = (t: number): number =>
+        new Date(new Date(t).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T') + 'Z').getTime() - t
+      // zwei Schritte: der Offset wird am tatsächlichen Zeitpunkt bestimmt (stimmt auch am Umstellungstag)
+      const utc = asUtc - berlinOffset(asUtc - berlinOffset(asUtc))
+      return isNaN(utc) ? '' : new Date(utc).toISOString()
     }
     // Smoobu uses `type` as a message-category code (1 = text, 2 = ???), NOT as sender type.
     // The actual sender is in `senderType` ("owner"/"guest") or `direction` ("outgoing"/"incoming").

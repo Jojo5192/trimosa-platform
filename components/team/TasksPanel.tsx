@@ -354,7 +354,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         // §276: Titel „Aufgaben" steht in der Shell-Kopfleiste (keine doppelten Titel)
         padding: '10px 16px 10px',
-        boxShadow: `inset 0 -0.5px 0 rgba(60,60,67,0.15)`,
+        boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
       }}>
         {/* §243ag: echtes iOS-Segmented-Control statt Pill-Reihe */}
         <Segmented
@@ -366,7 +366,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           ] as [string, string][]}
           value={filter}
           onChange={(f) => setFilter(f as Filter)}
-          accent={{ vorschlaege: '#6D28D9' }}
+          accent={{ vorschlaege: 'var(--tm-purple)' }}
         />
         {/* Personen-Schnellfilter (nur wer alle Aufgaben sieht) */}
         {viewAll && people.length > 0 && filter !== 'vorschlaege' && (
@@ -491,11 +491,11 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
             <div key={t.id} id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
               onClick={(manage && t.editable !== false) || (!manage && t.editable === true) ? () => setEditing(t) : undefined}
               style={{
-                background: 'var(--tm-card)', borderRadius: 18, padding: '13px 15px', position: 'relative',
+                background: 'var(--tm-card)', borderRadius: 'var(--tm-r-card)', padding: '13px 15px', position: 'relative',
                 boxShadow: t.id === highlightId
                   ? 'inset 0 0 0 2px var(--tm-accent), 0 0 0 4px rgba(18,34,46,0.18)'
-                  : overdue ? 'inset 0 0 0 1.5px var(--tm-red), 0 1px 3px rgba(0,0,0,0.05)'
-                  : 'inset 0 0 0 0.5px var(--tm-line), 0 1px 3px rgba(0,0,0,0.05)',
+                  : overdue ? 'inset 0 0 0 1.5px var(--tm-red), var(--tm-shadow)'
+                  : 'inset 0 0 0 0.5px var(--tm-line), var(--tm-shadow)',
                 cursor: (manage && t.editable !== false) || (!manage && t.editable === true) ? 'pointer' : 'default',
                 opacity: done ? 0.6 : 1,
                 transition: 'box-shadow .3s',
@@ -627,7 +627,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           position: 'absolute', right: 18, bottom: 'calc(var(--tm-nav-pad) + 6px)', width: 54, height: 54, borderRadius: '50%',
           border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
-          boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 0 0 0.5px rgba(0,0,0,0.18), 0 6px 16px rgba(23,26,31,0.2)',
         }}>+</button>
       )}
 
@@ -671,26 +671,30 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
   // §314: Portal an den body (§83) — sonst klemmt der Dialog im Reiter-Container unter der Tab-Leiste
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell" onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 85, background: 'rgba(0,0,0,0.35)', color: 'var(--tm-text)',
+    <div className="team-shell tm-scrim tm-peek" onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 85, color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 560, background: 'var(--tm-surface2)', borderRadius: '20px 20px 0 0',
+      {/* iOS-27-Runde: Sheet = Kartenfläche (.tm-sheet), Felder darin auf surface2 */}
+      <div className="tm-sheet tm-sheet-in" onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 560,
         padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
-        <h2 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px', color: 'var(--tm-text)' }}>✓ „{task.title}" erledigen</h2>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '0 0 4px' }}>
+          <h2 style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, margin: '5px 0 0', color: 'var(--tm-text)', overflowWrap: 'anywhere' }}>✓ „{task.title}" erledigen</h2>
+          <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
+        </div>
         <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '0 0 10px' }}>Kurz festhalten, was gemacht wurde (optional):</p>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
           placeholder="z. B. Duschkopf getauscht, Dichtung erneuert…"
           style={{
             width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12,
-            border: '1px solid var(--tm-line)', fontSize: 14, background: 'var(--tm-card)', resize: 'vertical',
+            border: '1px solid var(--tm-line)', fontSize: 14, background: 'var(--tm-surface2)', color: 'var(--tm-text)', resize: 'vertical',
             overscrollBehavior: 'contain',
           }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={onClose} style={{
-            flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: 'var(--tm-card)',
+            flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: 'var(--tm-surface2)',
             color: 'var(--tm-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>Abbrechen</button>
           <button onClick={() => onDone(note)} style={{
@@ -864,18 +868,20 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
 
   const inputStyle: CSSProperties = {
     width: '100%', padding: '11px 13px', borderRadius: 12, border: '1px solid var(--tm-line)',
-    fontSize: 14, background: 'var(--tm-card)', color: 'var(--tm-text)', boxSizing: 'border-box',
+    // iOS-27-Runde: das Sheet ist jetzt Kartenfläche (.tm-sheet) — Felder heben sich als surface2 ab
+    fontSize: 14, background: 'var(--tm-surface2)', color: 'var(--tm-text)', boxSizing: 'border-box',
   }
   const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', margin: '0 0 5px', display: 'block' }
 
   function Segmented({ options, value, onChange }: { options: [string, string][]; value: string; onChange: (v: string) => void }) {
     return (
-      <div style={{ display: 'flex', gap: 4, background: 'var(--tm-surface2)', borderRadius: 11, padding: 3 }}>
+      <div style={{ display: 'flex', gap: 2, background: 'var(--tm-seg-track)', borderRadius: 999, padding: 3, boxShadow: 'inset 0 0 0 0.5px var(--tm-line)' }}>
         {options.map(([v, label]) => (
-          <button key={v} type="button" onClick={() => onChange(v)} style={{
-            flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', fontSize: 12.5, fontWeight: 600,
-            background: value === v ? 'var(--tm-card)' : 'transparent', color: 'var(--tm-text)',
-            boxShadow: value === v ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', cursor: 'pointer',
+          <button key={v} type="button" className="tm-press-btn" onClick={() => onChange(v)} style={{
+            flex: 1, minWidth: 0, padding: '7px 0', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 600,
+            // inaktive Segmente gedämpft — sonst ist die Auswahl nur über die Fläche erkennbar
+            background: value === v ? 'var(--tm-seg-on)' : 'transparent', color: value === v ? 'var(--tm-text)' : 'var(--tm-muted)',
+            boxShadow: value === v ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge)' : 'none', cursor: 'pointer',
           }}>{label}</button>
         ))}
       </div>
@@ -886,21 +892,21 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
   // unter Kopf- und Tab-Leiste (Speichern/Löschen nicht mehr antippbar)
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell" onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.35)', color: 'var(--tm-text)',
+    <div className="team-shell tm-scrim tm-peek" onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 80, color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
+      <div className="tm-sheet tm-sheet-in" onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560, maxHeight: '88dvh', overflowY: 'auto',
         overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
-        background: 'var(--tm-surface2)', borderRadius: '20px 20px 0 0', padding: '18px 18px',
+        padding: '18px 18px',
         paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: 'var(--tm-text)' }}>
             {task ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}
           </h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'var(--tm-surface2)', width: 30, height: 30, borderRadius: '50%', fontSize: 14, color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
+          <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>

@@ -16,10 +16,17 @@ export async function earlyCheckinBlock(b: { id: string; listing_id: string | nu
   } catch { /* Spalte fehlt noch */ }
   if (!b.listing_id) return { blocked: false, reason: null }
   try {
-    const { data: tasks } = await supabaseAdmin
-      .from('tasks').select('title, status')
-      .eq('listing_id', b.listing_id).eq('due_date', b.check_in).in('status', ['offen', 'in_arbeit']).limit(3)
-    if (tasks && tasks.length) {
+    // 4.10.2026 (live gesehen an Magnolia Flat): Die automatisch erzeugte Aufgabe „📮 FeWo-direkt: Gastdaten
+    // fehlen …" (source 'system', fällig heute) sperrte den Early Check-in als „Arbeiten geplant". Sperren dürfen
+    // nur Aufgaben, hinter denen wirklich jemand in der Wohnung arbeitet – also keine System-, Anruf- oder
+    // Überbuchungs-Aufgaben. KI-Aufgaben (ki_nachricht/ki_bewertung) sperren WEITER: als 'vorschlag' zählen
+    // sie ohnehin nicht, und ein vom Admin angenommener Mangel („Duschkopf tauschen") ist echte Arbeit.
+    const KEINE_ARBEIT = new Set(['system', 'anruf', 'ueberbuchung'])
+    const { data: rows } = await supabaseAdmin
+      .from('tasks').select('title, status, source')
+      .eq('listing_id', b.listing_id).eq('due_date', b.check_in).in('status', ['offen', 'in_arbeit']).limit(12)
+    const tasks = (rows ?? []).filter((t) => !KEINE_ARBEIT.has(String((t as { source?: string | null }).source ?? '')) && !/^(📮|☎️|💬)/u.test(String(t.title ?? '').trim())).slice(0, 3)
+    if (tasks.length) {
       return { blocked: true, reason: `Arbeiten geplant: ${tasks.map((t) => String(t.title).slice(0, 40)).join(', ')}` }
     }
   } catch { /* fail-soft */ }

@@ -100,11 +100,14 @@ export async function POST(request: Request) {
   // "Learning" from past conversations: the host's own earlier replies are the
   // best source for tone AND facts (key-box codes policy, parking, Wi-Fi…).
   // Same-apartment replies first, then general ones from other conversations.
-  const { data: past } = await supabaseAdmin
+  // Bugfix: bei Buchungs-Threads ist conversationId undefined — „neq.undefined" auf der uuid-Spalte
+  // ließ die Abfrage scheitern, der Block „FRÜHERE ECHTE ANTWORTEN" fehlte dann still.
+  let pastQuery = supabaseAdmin
     .from('messages')
     .select('content, conversation_id, conversations!inner(listing_id)')
     .eq('sender_id', conv.host_id)
-    .neq('conversation_id', conversationId)
+  if (typeof conversationId === 'string') pastQuery = pastQuery.neq('conversation_id', conversationId)
+  const { data: past } = await pastQuery
     .order('created_at', { ascending: false })
     .limit(120)
 

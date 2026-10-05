@@ -23,6 +23,7 @@ import LocksPanel from '@/components/team/LocksPanel'
 import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
 import SchuldenPanel from '@/components/team/SchuldenPanel'
+import AutoReplyPanel from '@/components/team/AutoReplyPanel'
 
 const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
 
@@ -34,13 +35,18 @@ function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; o
       aria-pressed={on}
       style={{
         width: 51, height: 31, borderRadius: 16, border: 'none', padding: 2, flexShrink: 0,
-        background: on ? '#34C759' : 'var(--tm-surface2)',
+        // iOS-27-Runde: Spur „aus" als neutrales Grau (Token, bei „Kontrast erhöhen" kräftiger) —
+        // var(--tm-surface2) war auf der Karte kaum zu sehen
+        background: on ? '#34C759' : 'var(--tm-switch-off)',
         opacity: disabled ? 0.45 : 1, cursor: disabled ? 'default' : 'pointer',
-        transition: 'background 0.2s ease', display: 'flex',
+        // transform/filter 'none': der Schalter nimmt am globalen Druck-Feedback nicht teil
+        // (sprang sonst ohne Übergang auf 97 %)
+        transition: 'background 0.2s ease', transform: 'none', filter: 'none', display: 'flex',
         justifyContent: on ? 'flex-end' : 'flex-start', alignItems: 'center',
       }}
     >
-      <span style={{ width: 27, height: 27, borderRadius: '50%', background: 'var(--tm-card)', boxShadow: '0 2px 5px rgba(0,0,0,0.22)' }} />
+      {/* Knopf immer weiß (auch im Dark Mode — dort war er als var(--tm-card) fast schwarz) */}
+      <span style={{ width: 27, height: 27, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 5px rgba(0,0,0,0.22)' }} />
     </button>
   )
 }
@@ -89,6 +95,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
   // 🏦 Schuldenstand (§272) — NUR Chefs (is_admin; probe 403 → aus)
   const [schuldenOk, setSchuldenOk] = useState(false)
   const [showSchulden, setShowSchulden] = useState(false)
+  // 🤖 KI-Auto-Antworten (Phase 2) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
+  const [autoReplyOk, setAutoReplyOk] = useState(false)
+  const [showAutoReply, setShowAutoReply] = useState(false)
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
   const [belegeOk, setBelegeOk] = useState(false)
@@ -122,6 +131,9 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       .catch(() => {})
     fetch('/api/schulden?probe=1', { cache: 'no-store' })
       .then((r) => { if (r.ok) setSchuldenOk(true) })
+      .catch(() => {})
+    fetch('/api/ai/autoreply/log?probe=1', { cache: 'no-store' })
+      .then((r) => { if (r.ok) setAutoReplyOk(true) })
       .catch(() => {})
   }, [])
 
@@ -198,13 +210,13 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
               {themeMode === 'system' ? `Folgt dem System (gerade ${isDark ? 'dunkel' : 'hell'})` : themeMode === 'dark' ? 'Immer dunkel' : 'Immer hell'}
             </span>
           </span>
-          <div role="tablist" style={{ display: 'flex', padding: 3, borderRadius: 999, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', flexShrink: 0 }}>
+          <div role="tablist" style={{ display: 'flex', padding: 3, borderRadius: 999, background: 'var(--tm-seg-track)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', flexShrink: 0 }}>
             {(['system', 'light', 'dark'] as const).map((m) => (
               <button key={m} role="tab" aria-selected={themeMode === m} className="tm-press-btn" onClick={() => { haptic(); setThemeMode(m) }} style={{
                 border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                background: themeMode === m ? 'var(--tm-card)' : 'transparent',
+                background: themeMode === m ? 'var(--tm-seg-on)' : 'transparent',
                 color: themeMode === m ? 'var(--tm-text)' : 'var(--tm-muted)',
-                boxShadow: themeMode === m ? 'var(--tm-shadow)' : 'none',
+                boxShadow: themeMode === m ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge)' : 'none',
                 transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
               }}>{m === 'system' ? 'Auto' : m === 'light' ? 'Hell' : 'Dunkel'}</button>
             ))}
@@ -290,6 +302,20 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Schuldenstand</span>
                     <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Kredite je Standort — Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
+                  </span>
+                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
+                </button>
+              )}
+              {autoReplyOk && (
+                <button onClick={() => setShowAutoReply(true)} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
+                }}>
+                  <span style={{ fontSize: 19 }}>🤖</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>KI-Auto-Antworten</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Modus, Tor-Fortschritt &amp; Entscheidungen der KI bewerten</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -503,6 +529,7 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
       {showPushLog && <PushLogPanel onClose={() => setShowPushLog(false)} />}
       {showDur && <CleaningDurations onClose={() => setShowDur(false)} />}
       {showSchulden && <SchuldenPanel onClose={() => setShowSchulden(false)} />}
+      {showAutoReply && <AutoReplyPanel onClose={() => setShowAutoReply(false)} />}
     </div>
   )
 }

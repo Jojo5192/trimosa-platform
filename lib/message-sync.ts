@@ -17,10 +17,15 @@ export interface SyncTarget {
  * Geteilt vom 10-Min-Poll-Cron (Sicherheitsnetz) und dem Smoobu-
  * newMessage-Webhook (Sofort-Zustellung, §131).
  */
-export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages: number; pushes: number }> {
+export async function syncBookingMessages(
+  b: SyncTarget,
+  /** strict (🤖 letzter Blick der KI-Auto-Antwort): Smoobu-Fehler und nicht speicherbare neue
+   *  Nachrichten WERFEN — der Aufrufer sendet dann nicht (kein stilles „nichts Neues") */
+  opts?: { strict?: boolean },
+): Promise<{ newMessages: number; pushes: number }> {
   let newMessages = 0
   let pushes = 0
-  const msgs = await getReservationMessages(Number(b.smoobu_reservation_id))
+  const msgs = await getReservationMessages(Number(b.smoobu_reservation_id), undefined, opts)
   if (!msgs.length) return { newMessages, pushes }
 
   const ids = msgs.map((m) => String(m.id))
@@ -77,7 +82,11 @@ export async function syncBookingMessages(b: SyncTarget): Promise<{ newMessages:
       content,
       created_at: sm.date || undefined,
     }).select('id').single()
-    if (error || !inserted) continue
+    if (error || !inserted) {
+      // 23505 = ein paralleler Abgleich hat dieselbe Nachricht gerade gespeichert → sie ist da
+      if (opts?.strict && error?.code !== '23505') throw new Error(`Smoobu-Nachricht nicht speicherbar (${error?.message ?? 'unbekannt'})`)
+      continue
+    }
     newMessages++
     if (!isHost) newGuestMsgs.push({ id: inserted.id, text: content })
     else newHostMsgs.push({ id: inserted.id, text: content })

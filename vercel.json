@@ -79,6 +79,10 @@
     {
       "path": "/api/material/scan",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/ai/autoreply",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

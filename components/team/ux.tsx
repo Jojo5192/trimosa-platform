@@ -156,18 +156,20 @@ export function Segmented({ options, value, onChange, accent }: {
   accent?: Record<string, string>
 }) {
   return (
-    <div style={{ display: 'flex', background: 'var(--tm-surface2, rgba(118,118,128,0.14))', borderRadius: 10, padding: 2, gap: 2 }}>
+    // iOS-27-Runde: Pille (Radius 999) mit Haarlinie um die Spur; aktives Segment mit eigenem
+    // Schatten + feinem Rand, im Dark Mode HELLER als die Spur (--tm-seg-on) statt dunkler
+    <div style={{ display: 'flex', background: 'var(--tm-seg-track, var(--tm-surface2, rgba(118,118,128,0.14)))', borderRadius: 999, padding: 3, gap: 2, boxShadow: 'inset 0 0 0 0.5px var(--tm-line, rgba(60,60,67,0.14))' }}>
       {options.map(([v, label]) => {
         const active = value === v
         return (
-          <button key={v} type="button" onClick={() => { haptic(); onChange(v) }} style={{
-            flex: 1, minWidth: 0, padding: '6px 4px', borderRadius: 8, border: 'none',
+          <button key={v} type="button" className="tm-press-btn" onClick={() => { haptic(); onChange(v) }} style={{
+            flex: 1, minWidth: 0, padding: '6px 6px', borderRadius: 999, border: 'none',
             fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             overflow: 'hidden', textOverflow: 'ellipsis',
-            transition: 'background .15s, color .15s, box-shadow .15s',
-            background: active ? 'var(--tm-card, #fff)' : 'transparent',
+            transition: 'background .15s, color .15s, box-shadow .15s, transform .14s',
+            background: active ? 'var(--tm-seg-on, var(--tm-card, #fff))' : 'transparent',
             color: active ? (accent?.[v] ?? 'var(--tm-text, #111)') : 'var(--tm-muted, rgba(60,60,67,0.72))',
-            boxShadow: active ? '0 1px 4px rgba(0,0,0,0.14)' : 'none',
+            boxShadow: active ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge, 0 0 0 0.5px rgba(23,26,31,0.14))' : 'none',
             WebkitTapHighlightColor: 'transparent',
           }}>{label}</button>
         )

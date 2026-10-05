@@ -498,10 +498,10 @@ export default function OffenPanel({ visible, onCount }: {
                       cursor: 'pointer', fontSize: 15,
                     }}>📖</button>
                     {mappeMenu && (
-                      <div style={{
+                      // iOS-27-Runde: Glas, Radius 16 und Kante aus .tm-menu
+                      <div className="tm-menu tm-pop-in" style={{
                         position: 'absolute', top: 48, right: 12, zIndex: 30, width: 220,
-                        background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-                        border: '0.5px solid var(--tm-line)', overflow: 'hidden',
+                        overflow: 'hidden',
                       }}>
                         <button type="button" onClick={() => {
                           const link = `${location.origin}${current.mappeUrl}`
@@ -511,7 +511,7 @@ export default function OffenPanel({ visible, onCount }: {
                         }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                           📎 An Antwort anhängen
                         </button>
-                        <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
+                        <button type="button" onClick={() => { setMappeMenu(false); sendMappeLink() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-tab-on-fg)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                           📤 Nur Link senden
                         </button>
                         {/* §158: 🧾 Rechnung */}
@@ -525,7 +525,7 @@ export default function OffenPanel({ visible, onCount }: {
                                 <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('attach')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}>
                                   {invoiceBusy ? '⏳ Erstellt…' : '📎 Rechnungs-Link anhängen'}
                                 </button>
-                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('send')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)' }}>
+                                <button type="button" disabled={invoiceBusy} onClick={() => invoiceAction('send')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-tab-on-fg)' }}>
                                   {invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}
                                 </button>
                               </>

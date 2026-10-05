@@ -730,15 +730,44 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-yellow-soft: rgba(217, 133, 6, 0.13);
   --tm-red: #dc3d3d;
   --tm-red-soft: rgba(220, 61, 61, 0.13);
-  --tm-glass: rgba(243, 244, 246, 0.72);
+  --tm-glass: rgba(243, 244, 246, 0.74);
   --tm-glass-soft: rgba(243, 244, 246, 0.45);
   --tm-nav-glass: rgba(247, 248, 250, 0.9);
+  /* iOS-27-Runde: Menü-Glas (Aufklapp-/Kontextmenüs): etwas deckender als die Leiste, weil Menüs
+     auch in Leisten mit eigenem backdrop-filter sitzen (dort greift der Blur nicht überall) */
+  --tm-menu-glass: rgba(250, 251, 252, 0.94);
   /* Primär-Knöpfe (Senden, Speichern): Navy hell, im Dunkeln aufgehellt */
   --tm-navy: #12222E;
   /* Semantik-Blau/-Lila (Links, KI, FeWo) — im Dunkeln aufgehellt */
   --tm-blue: #1d4ed8;
   --tm-purple: #6d28d9;
+  /* iOS-27-Runde: Form-Tokens — Radien zentral, Karten bleiben bei 18 px */
+  --tm-r-xs: 10px;
+  --tm-r-sm: 12px;
+  --tm-r-md: 14px;
   --tm-r-card: 18px;
+  --tm-r-xl: 22px;
+  --tm-r-sheet: 26px;
+  --tm-r-pill: 999px;
+  /* iOS-27-Runde: Kanten-Rezept: feine dunkle Außenlinie + helles Glanzlicht innen oben
+     (statt großem Schlagschatten). --tm-edge kombiniert beide. */
+  --tm-rim: rgba(23, 26, 31, 0.14);
+  --tm-hi: rgba(255, 255, 255, 0.85);
+  --tm-edge: 0 0 0 0.5px var(--tm-rim), inset 0 1px 0 var(--tm-hi);
+  /* iOS-27-Runde: Aktiver Tab: kräftigere Goldfläche + dunkleres Gold (4,9:1 auf der Leiste).
+     --tm-tab-on-fg ist zugleich das Gold für Text AUF Glas (Menü-Einträge, Nach-unten-Pfeil):
+     --tm-accent-dark fällt dort über dunklen Chat-Blasen unter 4,5:1. */
+  --tm-tab-on: rgba(174, 141, 45, 0.18);
+  --tm-tab-on-fg: #755E17;
+  /* iOS-27-Runde: Aktives Segment (Segmented/Pillen) + Abdunklung hinter Sheets.
+     --tm-seg-track = Spur der Pillen (hell etwas dunkler als surface2, sonst verschwindet sie
+     auf Seite und Karte); --tm-fill = neutrale Füllung kleiner Kreis-Knöpfe (Schließen, Tapback);
+     --tm-switch-off = Spur des Schalters „aus" (ein Wert für hell und dunkel) */
+  --tm-seg-on: #ffffff;
+  --tm-seg-track: #eceef1;
+  --tm-fill: rgba(120, 120, 128, 0.16);
+  --tm-switch-off: rgba(120, 120, 128, 0.3);
+  --tm-scrim: rgba(23, 26, 31, 0.32);
   --tm-shadow: 0 1px 2px rgba(23, 26, 31, 0.04), 0 2px 8px rgba(23, 26, 31, 0.04);
   --tm-shadow-float: 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06);
   --tm-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -758,12 +787,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-accent: #C9A44A;
   --tm-accent-dark: #E3C878;
   --tm-accent-soft: rgba(201, 164, 74, 0.18);
-  --tm-glass: rgba(15, 17, 20, 0.70);
+  --tm-glass: rgba(15, 17, 20, 0.72);
   --tm-glass-soft: rgba(15, 17, 20, 0.42);
-  --tm-nav-glass: rgba(22, 25, 29, 0.92);
+  --tm-nav-glass: rgba(30, 33, 39, 0.88);
+  --tm-menu-glass: rgba(36, 40, 47, 0.92);
   --tm-navy: #2b4257;
   --tm-blue: #8ab4ff;
   --tm-purple: #b39cff;
+  /* iOS-27-Runde: Kante dunkel: dunkle Außenlinie, dazu innen eine helle Haarlinie rundum
+     und das Glanzlicht oben — sonst verschwindet Glas auf dunklem Grund */
+  --tm-rim: rgba(0, 0, 0, 0.6);
+  --tm-hi: rgba(255, 255, 255, 0.12);
+  --tm-edge: 0 0 0 0.5px var(--tm-rim), inset 0 0 0 0.5px rgba(255, 255, 255, 0.07), inset 0 1px 0 var(--tm-hi);
+  /* aktive Flächen sind im Dunkeln HELLER als ihr Grund (Gold-Text 6,9:1) */
+  --tm-tab-on: rgba(255, 255, 255, 0.12);
+  --tm-tab-on-fg: #E3C878;
+  --tm-seg-on: #3a404a;
+  --tm-seg-track: #22262c;
+  --tm-fill: rgba(120, 120, 128, 0.28);
+  --tm-scrim: rgba(0, 0, 0, 0.5);
   --tm-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
   --tm-shadow-float: 0 10px 30px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -776,10 +818,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Karten, Chips, Abschnittstitel */
 .tm-card {
+  /* iOS-27-Runde: dasselbe Rezept wie Heute- und Aufgabenkarten — Haarlinie innen + weicher Schatten */
   background: var(--tm-card);
-  border: 1px solid var(--tm-line);
+  border: none;
   border-radius: var(--tm-r-card);
-  box-shadow: var(--tm-shadow);
+  box-shadow: inset 0 0 0 0.5px var(--tm-line), var(--tm-shadow);
 }
 .tm-eyebrow {
   font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
@@ -788,12 +831,62 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .tm-num { font-variant-numeric: tabular-nums; }
 .tm-iconbtn {
   width: 40px; height: 40px; border-radius: 50%;
-  background: var(--tm-card); border: 1px solid var(--tm-line);
-  box-shadow: var(--tm-shadow); color: var(--tm-text);
+  background: var(--tm-card); border: none;
+  box-shadow: var(--tm-edge), var(--tm-shadow); color: var(--tm-text);
   display: inline-flex; align-items: center; justify-content: center;
   cursor: pointer; padding: 0; flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ── iOS-27-Runde (Pascal 17.9.): Glas nur in der schwebenden Bedien-Ebene ──
+   Verfeinertes Liquid Glass: stärkere Diffusion, Kante + Glanzlicht statt
+   großem Schlagschatten. Karten/Listen bekommen bewusst KEIN backdrop-filter. */
+/* Schwebende Tab-Leiste (nutzt --tm-nav-glass, nicht --tm-glass der Sticky-Leisten) */
+.tm-glass {
+  background: var(--tm-nav-glass);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: var(--tm-edge), var(--tm-shadow-float);
+}
+/* Aufklapp-/Kontextmenüs. ALLE Tokens mit Ersatzwert: die Klasse sitzt auch im
+   ChatPanel, das im Gäste-/Dashboard-Chat ohne .team-shell (also ohne Tokens) läuft. */
+.tm-menu {
+  /* Trennlinien IM Menü: neutral-transparent, damit sie auf dem Menü-Glas hell wie dunkel
+     sichtbar bleiben (var(--tm-line) der Karte verschwand im Dunkeln: 1,06:1 → jetzt 1,36:1).
+     Gilt nur für Nachfahren des Menüs und liefert auch ohne .team-shell eine gültige Linie. */
+  --tm-line: rgba(120, 120, 128, 0.26);
+  background: var(--tm-menu-glass, rgba(255, 255, 255, 0.96));
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  backdrop-filter: blur(24px) saturate(1.8);
+  border-radius: 16px;
+  box-shadow:
+    var(--tm-edge, 0 0 0 0.5px rgba(23, 26, 31, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85)),
+    var(--tm-shadow-float, 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06));
+}
+/* Abdunklung hinter Sheets/Peek + Bottom-Sheet (oben rund, Kante, Kartenfläche).
+   Bewusst OHNE eigene Animation: das Einblenden kommt über .tm-peek / .tm-sheet-in dazu —
+   aber nur bei Komponenten, die nicht bei jedem Eltern-Render neu gemountet werden
+   (der Gruppen-Dialog im InternPanel wird es, dort würde die Animation flackern). */
+.tm-scrim { background: var(--tm-scrim, rgba(23, 26, 31, 0.32)); }
+.tm-sheet {
+  background: var(--tm-card, #fff);
+  border-radius: var(--tm-r-sheet, 26px) var(--tm-r-sheet, 26px) 0 0;
+  box-shadow:
+    var(--tm-edge, 0 0 0 0.5px rgba(23, 26, 31, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85)),
+    var(--tm-shadow-float, 0 10px 30px rgba(23, 26, 31, 0.12), 0 2px 8px rgba(23, 26, 31, 0.06));
+}
+/* Einheitlicher Schließen-Knopf für Sheets: 32-px-Kreis, ✕ in Textfarbe;
+   ::after vergrößert die Tippfläche auf 44 px */
+.tm-close {
+  position: relative; width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; padding: 0; cursor: pointer;
+  background: var(--tm-fill, rgba(120, 120, 128, 0.16)); color: var(--tm-text, #171a1f);
+  box-shadow: var(--tm-edge, 0 0 0 0.5px rgba(23, 26, 31, 0.14));
+  font-size: 14px; font-weight: 700; line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.tm-close::after { content: ''; position: absolute; inset: -6px; }
 
 /* Druck-Feedback — jede Karte/jeder Knopf reagiert wie ein echter Knopf */
 .tm-press, .tm-press-btn, .tm-press-tab {
@@ -803,6 +896,34 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .tm-press:active { transform: scale(0.99); filter: brightness(0.97); }
 .tm-press-btn:active { transform: scale(0.96); }
 .tm-press-tab:active { transform: scale(0.93); }
+/* iOS-27-Runde: globales Druck-Feedback für ALLE übrigen Knöpfe der Team-App —
+   kurz abdunkeln (dunkel: aufhellen, Abdunkeln sähe man dort nicht) + leicht
+   schrumpfen. Ausgenommen: gesperrte Knöpfe und alles mit eigener Druck-Klasse.
+   Knöpfe mit eigenem Inline-transform/-transition behalten ihr Verhalten
+   (Inline schlägt die Regel) — dort wirkt nur der Helligkeits-Wechsel.
+   Die Ausnahmen stehen in :where(), damit die Regel nur (0,1,1) wiegt und eine
+   spätere „.team-shell .klasse"-Regel sie überschreiben kann. */
+.team-shell button { -webkit-tap-highlight-color: transparent; }
+.team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)) {
+  transition: transform 0.14s var(--tm-ease), filter 0.14s var(--tm-ease);
+}
+.team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active {
+  transform: scale(0.97); filter: brightness(0.94);
+}
+.tm-dark .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active,
+.team-shell.tm-dark button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active {
+  filter: brightness(1.25);
+}
+/* Listenzeilen und Menü-Einträge (linksbündig, meist volle Breite): wie in iOS HERVORHEBEN
+   statt schrumpfen — sonst zieht sich die ganze Zeile samt Trennlinie zusammen. Muss NACH dem
+   Dunkel-Block stehen (gleiche Spezifität, die spätere Regel gewinnt). Beide Schreibweisen:
+   React schreibt serverseitig ohne, der Browser mit Leerzeichen. !important, weil die Zeilen
+   ihren Hintergrund inline setzen. */
+.team-shell button[style*="text-align: left"]:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active,
+.team-shell button[style*="text-align:left"]:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active {
+  transform: none; filter: none;
+  background-image: linear-gradient(rgba(120, 120, 128, 0.14), rgba(120, 120, 128, 0.14)) !important;
+}
 
 /* Bildschirmwechsel, Chat-Slide, Blätter, Menüs
    §314: bewusst fill-mode 'backwards' statt 'both' — ein stehender Endwert
@@ -817,7 +938,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @keyframes tmSlideIn { from { opacity: 0.5; transform: translateX(28px); } to { opacity: 1; transform: none; } }
 .tm-slide-in { animation: tmSlideIn 0.3s var(--tm-ease) backwards; }
 @keyframes tmSheetIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
-.tm-sheet-in { animation: tmSheetIn 0.36s var(--tm-ease) both; }
+.tm-sheet-in { animation: tmSheetIn 0.36s var(--tm-ease) backwards; }
 @keyframes tmPopIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
 .tm-pop-in { animation: tmPopIn 0.22s var(--tm-ease) backwards; transform-origin: top right; }
 @keyframes tmMsgIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
@@ -849,6 +970,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 @media (prefers-reduced-motion: reduce) {
   .tm-press, .tm-press-btn, .tm-press-tab { transition: none; }
+  /* globales Druck-Feedback: nur Helligkeit, keine Skalierung */
+  .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)) { transition: none; }
+  .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active { transform: none; }
   .tm-enter, .tm-slide-in, .tm-sheet-in, .tm-pop-in, .tm-msg-in, .tm-spin-once, .tm-toast { animation: none; }
   .tm-loadbar::before { animation: none; left: 0; width: 100%; opacity: 0.5; }
 }
@@ -1003,7 +1127,9 @@ html.tm-dark { color-scheme: dark; }
 /* 2 Progressive Unschärfe: Inhalt verschwimmt weich in die Tab-Leiste */
 .tm-fade-bottom {
   position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 39;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  /* Präfix ZUERST: bei umgekehrter Reihenfolge wirft der CSS-Minifier die Angabe ohne Präfix weg
+     (dann fehlte der Weichzeichner in Chrome/Android) */
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%); mask-image: linear-gradient(to bottom, transparent, #000 60%);
   background: linear-gradient(to bottom, rgba(243,244,246,0), rgba(243,244,246,0.45));
 }
@@ -1049,3 +1175,56 @@ html, body { overscroll-behavior-y: none; }
    Nachrichten-Verlauf anwenden — das Ans-Ende-Pinnen braucht die exakte Scrollhöhe.
    Bei Auffälligkeiten (Springen beim Hochscrollen) nur diese eine Regel entfernen. */
 .tm-conv-row { content-visibility: auto; contain-intrinsic-block-size: auto 100px; }
+
+/* ═══════════ iOS-27-Runde: Bedienungshilfen (Pascal 17.9.) ═══════════
+   MUSS am Dateiende stehen — hinter den Token-Blöcken und hinter .tm-glass/.tm-menu/
+   .tm-fade-bottom (gleiche Spezifität, die spätere Regel gewinnt).
+   „Kontrast erhöhen" (iOS/macOS → prefers-contrast: more): deckende Flächen statt Glas,
+   kräftigere Linien und Nebentexte. Safari kennt prefers-reduced-transparency (Stand
+   iOS 26) nicht — deshalb stehen die deckenden Glas-Tokens AUCH hier. */
+@media (prefers-contrast: more) {
+  .team-shell {
+    --tm-line: #8b929c;
+    --tm-muted: #4a515b;
+    --tm-muted2: #646b76;
+    --tm-rim: rgba(23, 26, 31, 0.5);
+    --tm-glass: #f3f4f6;
+    --tm-glass-soft: #f3f4f6;
+    --tm-nav-glass: #ffffff;
+    --tm-menu-glass: #ffffff;
+    --tm-scrim: rgba(23, 26, 31, 0.5);
+    /* Schalter-Spur „aus": 3,25:1 gegen Weiß, 5,2:1 gegen die dunkle Karte (gilt hell und dunkel) */
+    --tm-switch-off: #8a8f98;
+  }
+  .tm-dark .team-shell, .team-shell.tm-dark {
+    --tm-line: #6b7480;
+    --tm-muted: #c3c9d1;
+    --tm-muted2: #9aa3ad;
+    --tm-rim: rgba(255, 255, 255, 0.45);
+    --tm-glass: #0f1114;
+    --tm-glass-soft: #0f1114;
+    --tm-nav-glass: #1e2127;
+    --tm-menu-glass: #24282f;
+    --tm-scrim: rgba(0, 0, 0, 0.65);
+  }
+  /* .tm-menu setzt seine Trennlinie selbst — hier auf die kräftigen Linien der App anheben */
+  .tm-menu { --tm-line: #8b929c; }
+  .tm-dark .tm-menu { --tm-line: #6b7480; }
+  .tm-glass, .tm-menu, .tm-fade-bottom { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* „Transparenz reduzieren" (derzeit nur Chromium): Glas wird deckend, kein Weichzeichner */
+@media (prefers-reduced-transparency: reduce) {
+  .team-shell {
+    --tm-glass: #f3f4f6;
+    --tm-glass-soft: #f3f4f6;
+    --tm-nav-glass: #ffffff;
+    --tm-menu-glass: #ffffff;
+  }
+  .tm-dark .team-shell, .team-shell.tm-dark {
+    --tm-glass: #0f1114;
+    --tm-glass-soft: #0f1114;
+    --tm-nav-glass: #1e2127;
+    --tm-menu-glass: #24282f;
+  }
+  .tm-glass, .tm-menu, .tm-fade-bottom { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

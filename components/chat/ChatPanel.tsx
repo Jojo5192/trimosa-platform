@@ -219,6 +219,8 @@ interface Message {
   /** translation layer: detected/sent language + German version */
   lang?: string | null
   content_de?: string | null
+  /** 🤖 KI-Auto-Antwort (Phase 2) — nur im Team sichtbar, die API liefert das Feld Gästen nie */
+  ai_auto?: boolean | null
 }
 
 const FLAGS: Record<string, string> = {
@@ -571,6 +573,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       .catch(() => {})
   }, [team, active?.bookingId]) // eslint-disable-line react-hooks/exhaustive-deps
   const [msgs, setMsgs]         = useState<Message[]>([])
+  /** Thread, für den msgs einen echten Stand (Cache/Server) zeigt — vorher kein „Noch keine Nachrichten" */
+  const [msgsLoadedId, setMsgsLoadedId] = useState<string | null>(null)
   const [draft, setDraft]       = useState('')
   const [busy, setBusy]         = useState(false)
   const [aiBusy, setAiBusy]     = useState(false)
@@ -904,6 +908,12 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   // §156: In-Memory-Cache je Thread — beim Wieder-Öffnen erscheint der
   // Verlauf INSTANT, frische Daten ersetzen ihn still (wie die Listen-§52)
   const msgsCacheRef  = useRef<Map<string, Message[]>>(new Map())
+  /* §314-Nachtrag: Nachrichten-Abrufe sind durchnummeriert (wie guardList bei der Liste). Eine
+     überholte Antwort — etwa der volle 5-s-Abruf, der VOR dem eigenen Senden gelesen hat und
+     wegen der KI-Übersetzung erst danach zurückkommt — fasst weder Cache noch Anzeige an;
+     sonst verschwände die eben bestätigte Nachricht noch einmal bis zum nächsten Abruf. */
+  const msgReqSeqRef     = useRef(0)                          // zuletzt vergebene Abruf-Nummer
+  const msgAppliedSeqRef = useRef<Map<string, number>>(new Map()) // je Thread: höchste angewendete bzw. entwertete Nummer
   // §157: iMessage-Swipe vom linken Rand → zurück zur Liste (mobil)
   /* §314 Zurück zur Liste: die Shell (Kopf-/Tab-Leiste) im SELBEN Render mitnehmen statt
      erst über den Effekt unten — spart einen zweiten Render und einen Frame ohne Leisten */
@@ -1086,6 +1096,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         sender_id: m.sender_type === 'guest' ? 'guest' : userId,
         content: m.content, read_at: m.read_at ?? null, created_at: m.created_at,
         lang: m.lang ?? null, content_de: m.content_de ?? null,
+        ai_auto: m.ai_auto === true,
       })) as Message[]
     }
     const r = await fetch(`/api/chat?conversationId=${id}${q ? `&${q}` : ''}`)
@@ -1094,6 +1105,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   }, [userId])
 
   const getMsgs = useCallback(async (id: string, kind?: 'direct' | 'booking', fast = false) => {
+    const seq = ++msgReqSeqRef.current
     // setMsgs nur bei echter Änderung (Signatur-Diff) — sonst Voll-Re-Render
     // + Scroll-Sprung bei jedem 5s-Poll (§110-Lektion aus dem InternPanel).
     const apply = (list: Message[]) => {
@@ -1101,6 +1113,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // §314: Antwort eines inzwischen verlassenen Threads landet nur im Cache — sonst
       // stünden seine Nachrichten unter dem Kopf des jetzt offenen Gasts
       if (activeIdRef.current !== id) return
+      setMsgsLoadedId(id)
       const sig = msgsSig(id, list)
       if (sig !== msgsSigRef.current) {
         msgsSigRef.current = sig
@@ -1116,7 +1129,11 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     const clearUnread = () =>
       setConvs(cs => cs.some(c => c.id === id && c.unread > 0) ? cs.map(c => c.id === id ? { ...c, unread: 0 } : c) : cs)
     const list = await fetchMsgList(id, kind, fast)
-    if (list) { apply(list); clearUnread() }
+    if (!list) return
+    // überholt (neuerer Abruf schon angewendet) bzw. durch eigenes Senden entwertet
+    if (seq < (msgAppliedSeqRef.current.get(id) ?? 0)) return
+    msgAppliedSeqRef.current.set(id, seq)
+    apply(list); clearUnread()
   }, [fetchMsgList]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* §288 (Pascal 9.9., „im Hintergrund vorladen"): die ersten Threads der Liste
@@ -1213,7 +1230,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     // via fast=1 ohne Smoobu-Sync/Übersetzung, danach der volle Stand —
     // Thread öffnet ohne Haker
     const cached = msgsCacheRef.current.get(active.id)
-    if (cached) { msgsSigRef.current = msgsSig(active.id, cached); setMsgs(cached) }
+    if (cached) { msgsSigRef.current = msgsSig(active.id, cached); setMsgs(cached); setMsgsLoadedId(active.id) }
+    // kein Cache: nie den Verlauf des vorherigen Gasts unter dem neuen Kopf stehen lassen (der
+    // Abruf kann länger dauern als die 450-ms-Notbremse) — leer, bis der Stand da ist
+    else if (!msgsSigRef.current.startsWith(active.id + '::')) { msgsSigRef.current = msgsSig(active.id, []); setMsgs([]) }
     getMsgs(active.id, active.kind, true).then(() => getMsgs(active.id, active.kind)).catch(() => {})
     // §280: offline pausieren, nach 10 Min ohne Bedienung seltener
     timer.current = setInterval(() => { if (shouldPoll('chat-msgs')) getMsgs(active.id, active.kind) }, 5000)
@@ -1247,7 +1267,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     const lastId = msgs.length ? msgs[msgs.length - 1].id : null
     if (lastId === lastMsgIdRef.current) return
     lastMsgIdRef.current = lastId
-    if (!lastId) return
+    // geleerter Feed (Thread ohne Cache geöffnet): der nächste Stand zählt wieder als Thread-Öffnung
+    if (!lastId) { scrolledThreadRef.current = null; return }
     if (active?.id !== scrolledThreadRef.current) {
       scrolledThreadRef.current = active?.id ?? null
       pinToBottom()
@@ -1551,6 +1572,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         const row = sentRow(d?.message, conv.id, conv.kind, userId)
         const here = activeIdRef.current === conv.id
         if (row) {
+          // laufende Abrufe kennen die neue Zeile evtl. noch nicht (vor dem Insert gelesen) → entwerten
+          msgAppliedSeqRef.current.set(conv.id, ++msgReqSeqRef.current)
           // echte Zeile übernehmen — nach id entdoppelt (der 5-s-Abruf kann sie schon gebracht haben)
           const cached = msgsCacheRef.current.get(conv.id)
           if (cached && !cached.some((m) => m.id === row.id)) msgsCacheRef.current.set(conv.id, [...cached, row])
@@ -1723,13 +1746,14 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   /* §282.7 Peek-Menü (langer Druck / Rechtsklick auf eine Karte): Hintergrund
      verschwimmt, die Karte hebt sich ab, darunter die Aktionen */
   const peekSheet = (c: Conversation) => (
-    <div className="team-shell tm-peek" onClick={() => setPeek(null)} style={{
+    <div className="team-shell tm-scrim tm-peek" onClick={() => setPeek(null)} style={{
       position: 'fixed', inset: 0, zIndex: 1200, padding: 20,
-      background: 'rgba(23,26,31,0.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+      backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     }}>
       <div className="tm-pop-in" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420 }}>
-        <div className="tm-card" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: 'var(--tm-shadow-float)' }}>
+        {/* iOS-27-Runde: Karte + Aktionsliste als .tm-sheet (Kante + Glanzlicht), rundum gerundet */}
+        <div className="tm-sheet" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 'var(--tm-r-xl, 22px)' }}>
           <span style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: portalColor(c.platform), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15 }}>{initials(partner(c))}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>{partner(c)}</div>
@@ -1738,7 +1762,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap' }}><ThreadBadges c={c} /></div>
           </div>
         </div>
-        <div className="tm-card" style={{ marginTop: 10, overflow: 'hidden', boxShadow: 'var(--tm-shadow-float)' }}>
+        <div className="tm-sheet" style={{ marginTop: 10, overflow: 'hidden', borderRadius: 'var(--tm-r-xl, 22px)' }}>
           {([
             ['💬', 'Antworten', () => { setPeek(null); selectConv(c) }],
             ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt — keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
@@ -2158,7 +2182,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
           onWheel={stopPin}
           style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column', background: 'var(--tm-card)', position: 'relative', transition: 'opacity .18s var(--tm-ease, ease)' }}
         >
-          {msgs.length === 0 && calls.length === 0 && sendingHere.length === 0 && (
+          {msgsLoadedId === active.id && msgs.length === 0 && calls.length === 0 && sendingHere.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
               <div style={{ fontSize: 13, color: 'var(--tm-muted)' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
@@ -2443,6 +2467,13 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                         </button>
                       )}
 
+                      {/* 🤖 KI-Auto-Antwort (Phase 2): Kennzeichnung nur im Team-Thread */}
+                      {team && isMe && msg.ai_auto === true && (
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted, #646b76)', padding: '0 3px' }}>
+                          🤖 automatisch beantwortet
+                        </span>
+                      )}
+
                       {isLast && (
                         <span style={{ fontSize: 10.5, color: 'var(--tm-muted)', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
                           {fmtMsgT(msg.created_at, uiLang)}
@@ -2466,14 +2497,15 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   onClick={p.failed ? () => adoptFailed(p) : undefined}
                   style={{
                     padding: '10px 14px', borderRadius: '18px 18px 4px 18px',
-                    background: 'var(--tm-navy)', color: '#fff',
+                    // Ersatzwerte: der Chat läuft auch ohne .team-shell (Gäste-Chat, Dashboard, Overlay)
+                    background: 'var(--tm-navy, #12222E)', color: '#fff',
                     fontSize: 15.5, lineHeight: 1.4, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
                     opacity: p.failed ? 1 : 0.6,
-                    boxShadow: p.failed ? '0 0 0 2px var(--tm-red)' : 'none',
+                    boxShadow: p.failed ? '0 0 0 2px var(--tm-red, #dc3d3d)' : 'none',
                     cursor: p.failed ? 'pointer' : 'default',
                   }}
                 >{p.text}</div>
-                <span style={{ fontSize: 10.5, fontWeight: p.failed ? 700 : 400, color: p.failed ? 'var(--tm-red)' : 'var(--tm-muted)', paddingRight: 3, textAlign: 'right' }}>
+                <span style={{ fontSize: 10.5, fontWeight: p.failed ? 700 : 400, color: p.failed ? 'var(--tm-red, #dc3d3d)' : 'var(--tm-muted, #646b76)', paddingRight: 3, textAlign: 'right' }}>
                   {p.failed ? t(uiLang, 'Nicht gesendet — antippen, um den Text zu übernehmen') : t(uiLang, 'Wird gesendet …')}
                 </span>
               </div>
@@ -2505,9 +2537,11 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               aria-label="Nach unten springen"
               style={{
                 position: 'absolute', right: 14, bottom: 12, width: 40, height: 40, borderRadius: '50%',
-                border: '0.5px solid var(--tm-line)', background: 'var(--tm-glass)',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
-                color: 'var(--gold, #AE8D2D)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+                border: 'none', background: 'var(--tm-menu-glass, rgba(255,255,255,0.96))',
+                backdropFilter: 'blur(16px) saturate(1.8)', WebkitBackdropFilter: 'blur(16px) saturate(1.8)',
+                boxShadow: 'var(--tm-edge, 0 0 0 0.5px rgba(23,26,31,0.14)), 0 4px 14px rgba(0,0,0,0.16)', cursor: 'pointer', fontSize: 18,
+                // dunkleres Gold: #AE8D2D kam auf dem Glas über einer Navy-Blase nur auf 2,6:1
+                color: 'var(--tm-tab-on-fg, #755E17)', fontWeight: 700, WebkitTapHighlightColor: 'transparent',
               }}
             >↓</button>
           </div>
@@ -2560,10 +2594,11 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
                 <button onClick={openTplMenu} className="tm-press-btn" title="Vorlage mit den Buchungsdaten als Entwurf einfügen" style={{ ...TOOL_PILL, background: tplMenu ? 'rgba(174,141,45,0.22)' : TOOL_PILL.background }}>📨 Vorlagen</button>
               {tplMenu && (
-                <div style={{
-                  position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 250, maxHeight: 320, overflowY: 'auto',
-                  background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-                  border: '0.5px solid var(--tm-line)',
+                // iOS-27-Runde: Glas, Radius 16 und Kante kommen aus .tm-menu (mit Ersatzwerten für den Chat ohne .team-shell)
+                <div className="tm-menu tm-pop-in" style={{
+                  // Breite 244: mit 250 ragte die rechte Menükante bei 375 px knapp 1 px über den Rand
+                  position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 244, maxHeight: 320, overflowY: 'auto',
+                  transformOrigin: 'bottom left',
                 }}>
                   <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
                     📨 VORLAGE EINFÜGEN
@@ -2591,10 +2626,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <button onClick={() => setMappeMenu(v => !v)} title="Anhängen: Gästemappe oder Rechnung" aria-label="Anhängen" style={{ ...TOOL_CIRCLE, background: mappeMenu ? 'rgba(174,141,45,0.22)' : 'var(--tm-surface2)' }}>📎</button>
               {mappeMenu && (
-                <div style={{
+                <div className="tm-menu tm-pop-in" style={{
                   position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 220,
-                  background: 'var(--tm-card)', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
-                  border: '0.5px solid var(--tm-line)', overflow: 'hidden',
+                  overflow: 'hidden', transformOrigin: 'bottom left',
                 }}>
                   <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
                     📎 ANHÄNGEN — GÄSTEMAPPE & RECHNUNG
@@ -2613,7 +2647,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                       setMappeMenu(false)
                       reallySend(`${location.origin}${active.mappeUrl}`)
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-tab-on-fg, #755E17)', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}
                   >📤 Nur Link senden</button>
 
                   {/* §158: 🧾 Rechnung — ab Anreisetag Link, vorher Erläuterung */}
@@ -2649,7 +2683,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                               } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
                               finally { setInvoiceBusy(false) }
                             }}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-accent-dark)' }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-tab-on-fg, #755E17)' }}
                           >{invoiceBusy ? '⏳ Erstellt…' : '📤 Rechnung senden'}</button>
                         </>
                       ) : (

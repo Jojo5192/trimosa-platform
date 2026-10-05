@@ -480,22 +480,23 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     <div style={{ flexShrink: 0, padding: '8px 16px 4px' }}>
       <div role="tablist" style={{
         display: 'flex', padding: 3, borderRadius: 999, maxWidth: 420,
-        background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)',
+        // ein Pillen-Rezept app-weit: Spur --tm-seg-track + Haarlinie als Schatten (kein 1-px-Rahmen)
+        background: 'var(--tm-seg-track)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
       }}>
         {([['gaeste', 'Gäste', guestOpen], ['intern', 'Intern', internUnread]] as const).map(([id, label, n]) => {
           const on = seg === id
           return (
             <button key={id} role="tab" aria-selected={on} className="tm-press-btn" onClick={() => { haptic(); setSeg(id) }} style={{
               flex: 1, border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 999,
-              background: on ? 'var(--tm-card)' : 'transparent',
-              boxShadow: on ? 'var(--tm-shadow)' : 'none',
+              background: on ? 'var(--tm-seg-on)' : 'transparent',
+              boxShadow: on ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge)' : 'none',
               color: on ? 'var(--tm-text)' : 'var(--tm-muted)',
               fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap',
               transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
             }}>
               {label}
-              {n > 0 && <span className="tm-num" style={{ fontSize: 11.5, color: on ? 'var(--tm-accent-dark)' : 'var(--tm-muted2)' }}>· {n}</span>}
+              {n > 0 && <span className="tm-num" style={{ fontSize: 11.5, color: on ? 'var(--tm-accent-dark)' : 'var(--tm-muted)' }}>· {n}</span>}
             </button>
           )
         })}
@@ -520,7 +521,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
         {tab === 'offen' ? (
           <button className="tm-press-btn" onClick={() => goTab('einstellungen')} style={{
             border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-            color: 'var(--tm-accent-dark)', fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2,
+            color: 'var(--tm-tab-on-fg)', fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2,
           }}><span style={{ fontSize: 22, lineHeight: 1, marginTop: -2 }}>‹</span> Mehr</button>
         ) : (
           <>
@@ -559,9 +560,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
     return (
       <button key={t.id} className="tm-press-tab" onClick={() => goTab(t.id)} aria-current={active ? 'page' : undefined} style={{
         border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-        background: active ? 'var(--tm-accent-soft)' : 'transparent',
-        color: active ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
-        borderRadius: sidebar ? 12 : 22,
+        // iOS-27-Runde: aktiver Tab klar abgesetzt — hell dunkleres Gold auf kräftigerer
+        // Goldfläche (4,9:1), dunkel hellere Fläche als die Leiste mit Gold-Text (6,9:1)
+        background: active ? 'var(--tm-tab-on)' : 'transparent',
+        color: active ? 'var(--tm-tab-on-fg)' : 'var(--tm-muted)',
+        borderRadius: sidebar ? 12 : 24,
         transition: 'background .2s var(--tm-ease), color .2s var(--tm-ease)',
         ...(sidebar
           ? { display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 12px', textAlign: 'left' as const }
@@ -589,12 +592,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 40, pointerEvents: 'none',
       padding: '0 12px calc(12px + env(safe-area-inset-bottom))',
     }}>
-      <nav style={{
-        pointerEvents: 'auto', height: 76, borderRadius: 28,
-        background: 'var(--tm-nav-glass)',
-        backdropFilter: 'blur(22px) saturate(1.6)', WebkitBackdropFilter: 'blur(22px) saturate(1.6)',
-        border: '1px solid var(--tm-line)', boxShadow: 'var(--tm-shadow-float)',
-        display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px',
+      {/* iOS-27-Runde: Kapsel (Radius = halbe Höhe); Glas, Weichzeichner und Kante kommen aus
+          .tm-glass (globals.css), damit die Bedienungshilfen-Media-Queries sie überschreiben können */}
+      <nav className="tm-glass" style={{
+        pointerEvents: 'auto', height: 76, borderRadius: 38,
+        display: 'flex', alignItems: 'center', gap: 2, padding: '0 7px',
       }}>
         {tabs.map((t) => tabButton(t, false))}
       </nav>
@@ -633,11 +635,11 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       {linkSheet && (
         <div role="dialog" aria-label="Link" style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', background: 'var(--tm-bg, #F3F4F6)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(env(safe-area-inset-top) + 8px) 10px 8px', background: 'var(--tm-glass)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '0.5px solid var(--tm-line)' }}>
-            <button onClick={() => { haptic(); setLinkSheet(null) }} style={{ border: 'none', background: 'var(--tm-surface2)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹ Zurück</button>
+            <button onClick={() => { haptic(); setLinkSheet(null) }} style={{ border: 'none', background: 'var(--tm-surface2)', boxShadow: 'var(--tm-edge)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹ Zurück</button>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'center' }}>
               {linkSheet.title || linkSheet.url.replace(/^https?:\/\//, '')}
             </span>
-            <button onClick={() => window.open(linkSheet.url, '_blank', 'noopener')} title="Im Browser öffnen" style={{ border: 'none', background: 'var(--tm-surface2)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>↗</button>
+            <button onClick={() => window.open(linkSheet.url, '_blank', 'noopener')} title="Im Browser öffnen" aria-label="Im Browser öffnen" style={{ border: 'none', background: 'var(--tm-surface2)', boxShadow: 'var(--tm-edge)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>↗</button>
           </div>
           <iframe src={linkSheet.url} title={linkSheet.title || 'Link'} style={{ flex: 1, border: 'none', width: '100%', background: '#fff' }} />
         </div>

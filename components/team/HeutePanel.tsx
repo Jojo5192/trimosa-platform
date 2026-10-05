@@ -65,7 +65,8 @@ function dateLabel(tag: string, heute: string): string {
 }
 
 /* ── kleine Bausteine ── */
-const CARD: CSSProperties = { background: 'var(--tm-card)', border: '1px solid var(--tm-line)', borderRadius: 20, boxShadow: 'var(--tm-shadow)', overflow: 'hidden' }
+// iOS-27-Runde: eine Kartenform app-weit — Radius-Token + Kanten-Rezept light (Haarlinie innen + weicher Schatten), kein backdrop-filter
+const CARD: CSSProperties = { background: 'var(--tm-card)', borderRadius: 'var(--tm-r-card)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line), var(--tm-shadow)', overflow: 'hidden' }
 function Card({ title, count, right, children }: { title: string; count?: number; right?: ReactNode; children: ReactNode }) {
   return (
     <section className="tm-stagger" style={CARD}>
@@ -507,7 +508,7 @@ export default function HeutePanel({ role, visible, onCount }: {
 
         {/* 🔑 Türcode — bleibt an jedem Tag oben stehen */}
         {code ? (
-          <section style={{ borderRadius: 20, padding: '12px 14px 13px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
+          <section style={{ borderRadius: 'var(--tm-r-card)', padding: '12px 14px 13px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
             {/* Pascal 9.9. (Chefsache): kein Schlüssel-Symbol; Name größer mit Rolle dahinter,
                 „TÜRCODE" als eigene Zeile, Code etwas kleiner — ruhig und symmetrisch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -515,7 +516,7 @@ export default function HeutePanel({ role, visible, onCount }: {
                 <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName ?? 'Team'}</span>
                 {roleLabel && <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>· {roleLabel}</span>}
               </span>
-              <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(6px)', flexShrink: 0 }}>Kopieren</button>
+              <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>Kopieren</button>
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', opacity: 0.8, marginTop: 12 }}>Türcode</div>
             <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 24, fontWeight: 800, letterSpacing: '5px', marginTop: 2, lineHeight: 1.1 }}>{code.code}</div>

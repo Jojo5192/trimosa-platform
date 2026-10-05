@@ -124,12 +124,53 @@ export type VoiceDelivery = 'smoobu' | 'email' | 'intern' | 'none'
 export async function deliverToGuest(
   bookingId: string,
   textDe: string,
-  opts: { testMode: boolean },
-): Promise<{ delivery: VoiceDelivery; detail?: string }> {
+  opts: {
+    testMode: boolean
+    /**
+     * 🤖 KI-Auto-Antwort (Phase 2, lib/ai-autoreply.ts) — strenger Modus:
+     *  - die Übersetzung MUSS gelingen (sonst kein Versand, kein deutscher Rückfall),
+     *  - guard() läuft NACH dem Übersetzen und unmittelbar VOR dem Versand; liefert er einen
+     *    Grund, wird NICHT gesendet (Mensch-hat-Vorrang-/Ziffern-Abgleich),
+     *  - genau EIN Kanal-Versuch (kein E-Mail-Rückfall nach gescheitertem Smoobu-Push — der
+     *    könnte doppelt zustellen) und keine „NICHT ZUSTELLBAR"-Notiz im Thread,
+     *  - die gespeicherte Zeile trägt ai_auto = true (deploy-sicher: fehlt die Spalte, wird
+     *    ohne sie gespeichert).
+     */
+    auto?: { guard: (sentText: string, lang: string) => Promise<string | null> }
+  },
+): Promise<{ delivery: VoiceDelivery; detail?: string; messageId?: string | null; sentText?: string; lang?: string }> {
   const note = async (content: string): Promise<void> => {
     await supabaseAdmin.from('messages').insert({
       booking_id: bookingId, sender_type: 'host', content, lang: 'de',
     })
+  }
+  /** Thread-Zeile speichern; im Auto-Modus mit Kennzeichnung und Rückgabe der id. */
+  const saveRow = async (r: Record<string, unknown>): Promise<string | null> => {
+    if (!opts.auto) {
+      await supabaseAdmin.from('messages').insert(r)
+      return null
+    }
+    const first = await supabaseAdmin.from('messages').insert({ ...r, ai_auto: true }).select('id').single()
+    if (!first.error) return first.data?.id ? String(first.data.id) : null
+    // Der Smoobu-Abgleich (Webhook/Poll) hat die eben gesendete Nachricht schon importiert
+    // (Unique-Index auf smoobu_message_id): die vorhandene Zeile kennzeichnen statt zu scheitern —
+    // sonst fehlte „🤖 automatisch beantwortet" und das Protokoll hielte sie für eine Team-Antwort
+    if (first.error.code === '23505' && r.smoobu_message_id) {
+      const { data: ex } = await supabaseAdmin
+        .from('messages').select('id').eq('smoobu_message_id', String(r.smoobu_message_id)).maybeSingle()
+      if (ex?.id) {
+        const upd = { content_de: r.content_de ?? null, lang: r.lang ?? null }
+        const u1 = await supabaseAdmin.from('messages').update({ ...upd, ai_auto: true }).eq('id', ex.id)
+        if (u1.error) await supabaseAdmin.from('messages').update(upd).eq('id', ex.id)
+        return String(ex.id)
+      }
+    }
+    // Spalte ai_auto fehlt noch (Migration) oder Insert scheiterte: ohne Kennzeichnung speichern —
+    // die Nachricht IST beim Gast und muss im Thread stehen
+    console.error('[deliver] ai_auto-Insert fehlgeschlagen, speichere ohne Kennzeichnung:', first.error.message)
+    const second = await supabaseAdmin.from('messages').insert(r).select('id').single()
+    if (second.error) console.error('[deliver] Thread-Zeile nicht gespeichert:', second.error.message)
+    return second.data?.id ? String(second.data.id) : null
   }
 
   if (opts.testMode) {
@@ -156,11 +197,26 @@ export async function deliverToGuest(
     lang = await guestLangFor({ id: b.id, guest_id: b.guest_id, guest_lang: b.guest_lang })
     if (lang !== 'de') {
       const { translateOutgoing } = await import('@/lib/translate')
-      text = (await translateOutgoing(textDe, lang)) ?? textDe
+      const tr = await translateOutgoing(textDe, lang)
+      // Auto-Modus: ohne gelungene Übersetzung geht nichts raus
+      if (!tr && opts.auto) return { delivery: 'none', detail: 'Übersetzung fehlgeschlagen', lang }
+      text = tr ?? textDe
     }
   } catch (e) {
     console.error('[voice-deliver] Übersetzung fehlgeschlagen:', e)
+    if (opts.auto) return { delivery: 'none', detail: 'Übersetzung fehlgeschlagen' }
     lang = 'de'; text = textDe
+  }
+
+  // 🤖 Auto-Modus: letzter Blick unmittelbar vor dem Versand (Thread erneut prüfen, Ziffern-Abgleich)
+  if (opts.auto) {
+    let veto: string | null
+    try {
+      veto = await opts.auto.guard(text, lang)
+    } catch (e) {
+      veto = `Prüfung vor dem Versand fehlgeschlagen (${e instanceof Error ? e.message : String(e)})`.slice(0, 200)
+    }
+    if (veto) return { delivery: 'none', detail: veto, sentText: text, lang }
   }
 
   const row = {
@@ -174,14 +230,19 @@ export async function deliverToGuest(
       const { sendMessageToGuest } = await import('@/lib/smoobu')
       const push = await sendMessageToGuest(Number(b.smoobu_reservation_id), text)
       if (push.sent) {
-        await supabaseAdmin.from('messages').insert({
+        const messageId = await saveRow({
           ...row, ...(push.id != null ? { smoobu_message_id: String(push.id) } : {}),
         })
-        return { delivery: 'smoobu' }
+        return { delivery: 'smoobu', messageId, sentText: text, lang }
       }
     } catch (e) {
       console.error('[voice-deliver] Smoobu-Push fehlgeschlagen:', e)
+      // Auto-Modus: Zustellung unklar (Timeout nach dem Absenden möglich) → der Aufrufer protokolliert
+      // „unklar" und versucht es nie erneut
+      if (opts.auto) throw e
     }
+    // Auto-Modus: kein zweiter Kanal nach einem abgelehnten Smoobu-Push
+    if (opts.auto) return { delivery: 'none', detail: 'Smoobu-Versand fehlgeschlagen', sentText: text, lang }
   }
 
   // 2) E-Mail-Brücke (§140) — FeWo-Relay bzw. Login-Mail des Gast-Kontos
@@ -196,14 +257,16 @@ export async function deliverToGuest(
       await sendGuestChatEmail({
         to, guestName: b.guest_name, listingTitle: b.listings?.title ?? null, text, lang,
       })
-      await supabaseAdmin.from('messages').insert(row)
-      return { delivery: 'email', detail: to }
+      const messageId = await saveRow(row)
+      return { delivery: 'email', detail: to, messageId, sentText: text, lang }
     } catch (e) {
       console.error('[voice-deliver] Gast-Mail fehlgeschlagen:', e)
+      if (opts.auto) throw e
     }
   }
 
-  // 3) Kein Kanal — ehrlich als interne Notiz festhalten
+  // 3) Kein Kanal — ehrlich als interne Notiz festhalten (Auto-Modus: nur ans Protokoll melden)
+  if (opts.auto) return { delivery: 'none', detail: 'kein Kanal', sentText: text, lang }
   await note(`☎️ NICHT ZUSTELLBAR (kein Portal-Chat, keine E-Mail-Adresse):\n${textDe}`)
   return { delivery: 'none', detail: 'kein Kanal' }
 }

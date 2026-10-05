@@ -236,14 +236,14 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
 
   const body = (
     <div className="team-shell" style={{
-      position: 'fixed', inset: 0, zIndex: 90, background: '#F5F5F7',
+      position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-bg)',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 8px', flexShrink: 0 }}>
         <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.6px' }}>🛒 Material</span>
-        <button onClick={onClose} style={{ border: 'none', background: 'var(--tm-surface2)', fontSize: 15, color: 'var(--tm-text)', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer' }}>✕</button>
+        <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
       </div>
 
       {/* Standort-Chips */}
@@ -253,7 +253,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
             style={{
               border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700,
               whiteSpace: 'nowrap', cursor: 'pointer',
-              background: ort === s ? NAVY : '#fff', color: ort === s ? '#fff' : 'var(--tm-text)',
+              background: ort === s ? NAVY : 'var(--tm-card)', color: ort === s ? '#fff' : 'var(--tm-text)',
               boxShadow: ort === s ? 'none' : 'inset 0 0 0 0.5px var(--tm-line)',
             }}>{ort === s ? '📍 ' : ''}{s}</button>
         ))}
@@ -288,7 +288,9 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                     style={{
                       border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700,
                       whiteSpace: 'nowrap', cursor: 'pointer',
-                      background: kat === k ? NAVY : 'rgba(118,118,128,0.1)', color: kat === k ? '#fff' : '#444',
+                      background: kat === k ? NAVY : 'var(--tm-surface2)', color: kat === k ? '#fff' : 'var(--tm-muted)',
+                      // Haarlinie wie bei den Standort-Chips — surface2 allein ist auf der hellen Karte kaum zu sehen
+                      boxShadow: kat === k ? 'none' : 'inset 0 0 0 0.5px var(--tm-line)',
                     }}>{k || 'Alle'}</button>
                 ))}
               </div>

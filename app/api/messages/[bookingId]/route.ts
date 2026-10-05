@@ -190,6 +190,12 @@ export async function GET(
   // Telefonnachrichten) sind nur fürs Team — Gäste sehen sie nicht
   if (!isHost) {
     out = out.filter((m) => !String(m.content ?? '').startsWith('☎️'))
+    // 🤖 KI-Auto-Antworten (Phase 2): die Kennzeichnung ai_auto ist nur fürs Team
+    out = out.map((m) => {
+      const c = { ...m } as Record<string, unknown>
+      delete c.ai_auto
+      return c as typeof m
+    })
   }
 
   return NextResponse.json({ messages: out })
@@ -302,5 +308,8 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ message: msg })
+  // 🤖 Der Feldname ai_auto erreicht Gäste nie — auch nicht in der Antwort auf die eigene Nachricht
+  const outMsg = msg ? { ...(msg as Record<string, unknown>) } : msg
+  if (outMsg) delete outMsg.ai_auto
+  return NextResponse.json({ message: outMsg })
 }

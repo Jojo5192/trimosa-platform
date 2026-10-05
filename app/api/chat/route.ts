@@ -208,6 +208,12 @@ export async function GET(req: NextRequest) {
       } catch (err) {
         console.error('[Chat] guest translate failed:', err)
       }
+      // 🤖 KI-Auto-Antworten (Phase 2): die Kennzeichnung ai_auto ist nur fürs Team
+      out = out.map((m) => {
+        const c = { ...m } as Record<string, unknown>
+        delete c.ai_auto
+        return c as typeof m
+      })
     }
 
     return NextResponse.json(out)
@@ -449,5 +455,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ message, conversationId: convId })
+  // 🤖 Der Feldname ai_auto erreicht Gäste nie — auch nicht in der Antwort auf die eigene Nachricht
+  const outMessage = message ? { ...(message as Record<string, unknown>) } : message
+  if (outMessage) delete outMessage.ai_auto
+  return NextResponse.json({ message: outMessage, conversationId: convId })
 }
