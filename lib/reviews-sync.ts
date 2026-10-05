@@ -14,6 +14,7 @@
  *  - GOOGLE_PLACES_API_KEY      (required for google)
  *  - APIFY_ACTOR_AIRBNB_REVIEWS / _BOOKING_REVIEWS / _VRBO_REVIEWS
  *    (optional actor-id overrides, format "user~actor-name")
+ *  - FEWO_REVIEWS_QUERY_HASH u. a. (optional, FeWo-direkt-Abfrage — siehe lib/fewo-reviews.ts)
  * Missing env vars simply skip that source (reported in diagnostics).
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -21,6 +22,7 @@ import { revalidatePath } from 'next/cache'
 import { askClaude } from '@/lib/ai'
 import { createHash } from 'crypto'
 import { writeSyncLog } from '@/lib/reviews-sync-log'
+import { auswerteFewoLauf, buildFewoActorInput, planFewoAbloesung, type FewoAuswertung, type FewoBestandZeile } from '@/lib/fewo-reviews'
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -171,7 +173,8 @@ export function classifySyncError(e: unknown): SyncErrorKind {
     if (e.status === 404 || e.status === 403) return 'actor'
     if (e.status === 408) return 'timeout'
   }
-  if (/TimeoutError|timed? ?out|aborted/i.test(s)) return 'timeout'
+  // „TIMED-OUT": so meldet Apify einen Lauf, der sein Zeitlimit gerissen hat (HTTP 400 run-failed)
+  if (/TimeoutError|timed?[ -]?out|aborted/i.test(s)) return 'timeout'
   return 'sonst'
 }
 
@@ -252,76 +255,28 @@ async function runApifyActor(actorId: string, url: string, timeoutMs: number, so
 /**
  * Fewo-Direkt (Vrbo's German storefront): no dedicated actor exists, vrbo.com
  * actors can't parse it, and Expedia's bot protection blocks headless
- * browsers. But the reviews are SERVER-RENDERED into the initial HTML — so a
- * plain HTML fetch via Apify's cheerio-scraper (browser-like TLS/headers +
- * residential proxy, no browser fingerprint) plus regex parsing suffices.
- * The page also carries the authoritative overall score ("9,6 von 10.") and
- * verified review count, which we use for the listing columns directly.
+ * browsers. Bis 5.10.2026 standen die Bewertungen im Seiten-HTML; seither
+ * rendert Expedia sie erst im Browser per POST /graphql. Deshalb zwei Schritte
+ * in EINEM Lauf von Apify's cheerio-scraper (browser-like TLS/headers +
+ * residential proxy, no browser fingerprint): Seite (Note, Anzahl,
+ * Property-ID) und danach die GraphQL-Abfrage. pageFunction, Eingabe und
+ * Auswertung stehen testbar in lib/fewo-reviews.ts.
+ *
+ * Wirft nur, wenn Apify selbst scheitert. Ein gescheiterter Schritt steht in
+ * `fehler` — Note und Anzahl aus Schritt 1 bleiben dann trotzdem nutzbar.
  */
-const FEWO_CHEERIO_FUNCTION = `async function pageFunction(context) {
-  // Decode the entities we match against — the raw SSR body may encode them.
-  const html = (context.body || '')
-    .replace(/&#x2013;|&#8211;|&ndash;/g, '\\u2013')
-    .replace(/&#xFC;|&#252;|&uuml;/g, '\\u00fc')
-    .replace(/&#xE4;|&#228;|&auml;/g, '\\u00e4');
-  const debug = {
-    __debug: true, len: html.length,
-    title: (html.match(/<title>([^<]*)/) || [])[1] || '',
-    h3: (html.match(/<h3/g) || []).length,
-    para: (html.match(/uitk-paragraph-2/g) || []).length,
-  };
-
-  const meta = { __meta: true, score: null, count: null };
-  const s = html.match(/(\\d+(?:,\\d+)?) von 10\\./);
-  if (s) meta.score = parseFloat(s[1].replace(',', '.'));
-  const c = html.match(/Alle (\\d+) Bewertungen anzeigen/) || html.match(/aria-label="(\\d+) gepr\\u00fcfte Bewertung/) || html.match(/(\\d+) gepr\\u00fcfte Bewertung/);
-  if (c) meta.count = parseInt(c[1], 10);
-
-  const MONTHS = { januar: 1, februar: 2, m\u00e4rz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12 };
-  const out = [];
-  const chunks = html.split(/(?=<h3[^>]*>\\d+\\/10 \\u2013 )/).slice(1);
-  for (const chunk of chunks) {
-    const rating = parseInt((chunk.match(/^<h3[^>]*>(\\d+)\\/10 \\u2013 /) || [])[1], 10);
-    if (!rating) continue;
-    const author = (chunk.match(/uitk-text uitk-type-300 uitk-type-medium uitk-text-standard-theme">([^<]+)</) || [])[1];
-    const stay = chunk.match(/Aufenthalt von \\d+ (?:Nacht|N\\u00e4chten) im ([A-Za-z\\u00e4\\u00f6\\u00fc\\u00c4\\u00d6\\u00dc]+) (\\d{4})/);
-    let reviewDate = null;
-    if (stay) { const m = MONTHS[stay[1].toLowerCase()]; if (m) reviewDate = stay[2] + '-' + String(m).padStart(2, '0') + '-01'; }
-    const text = (chunk.match(/<p class="uitk-paragraph uitk-paragraph-2">([\\s\\S]*?)<\\/p>/) || [])[1];
-    out.push({
-      author: author || 'Gast',
-      rating,
-      reviewText: text ? text.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim() : null,
-      reviewDate,
-    });
-  }
-  if (out.length === 0) debug.snippet = html.slice(0, 200);
-  return [debug, meta, ...out];
-}`
-
-async function runFewoScraper(url: string, timeoutMs: number): Promise<{
-  items: Record<string, unknown>[]
-  meta: { score: number | null; count: number | null } | null
-}> {
+async function runFewoScraper(url: string, timeoutMs: number): Promise<FewoAuswertung> {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('APIFY_API_TOKEN fehlt')
 
-  const input = {
-    startUrls: [{ url }],
-    pageFunction: FEWO_CHEERIO_FUNCTION,
-    maxPagesPerCrawl: 1,
-    // Expedia's bot protection blocks probabilistically — retry generously
-    // with rotating German residential IPs (most natural for fewo-direkt.de).
-    maxRequestRetries: 10,
-    proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'], apifyProxyCountry: 'DE' },
-  }
-
+  // Bewusst OHNE clean=true: ein nach allen Wiederholungen blockierter Request (HTTP 429/403) hinterlässt
+  // nur ein Item aus '#error'/'#debug' — clean würde es entfernen und die Ursache wäre unsichtbar.
   const res = await fetch(
-    `https://api.apify.com/v2/acts/apify~cheerio-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json&clean=true`,
+    `https://api.apify.com/v2/acts/apify~cheerio-scraper/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(timeoutMs / 1000)}&format=json`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify(buildFewoActorInput(url, MAX_REVIEWS_PER_RUN)),
       signal: AbortSignal.timeout(timeoutMs + 15_000),
     },
   )
@@ -330,16 +285,28 @@ async function runFewoScraper(url: string, timeoutMs: number): Promise<{
     throw new ApifyError('Apify cheerio-scraper (fewo)', res.status, text)
   }
   const data = await res.json()
-  const all = (Array.isArray(data) ? data : []) as Record<string, unknown>[]
+  return auswerteFewoLauf((Array.isArray(data) ? data : []) as Record<string, unknown>[], MAX_REVIEWS_PER_RUN)
+}
 
-  const debug = all.find(i => i.__debug)
-  const metaItem = all.find(i => i.__meta) as { score?: number | null; count?: number | null } | undefined
-  const items = all.filter(i => !i.__debug && !i.__meta)
-  if (items.length === 0 && (!metaItem || metaItem.score == null)) {
-    if (!debug) throw new Error('Fewo: Seite wurde nicht geladen (Bot-Schutz/Proxy?)')
-    throw new Error(`Fewo: geladen, aber nichts extrahiert — ${JSON.stringify(debug).slice(0, 220)}`)
+/**
+ * Hängt Alt-Zeilen des früheren HTML-Parsers auf die stabile Portal-ID um (Plan: planFewoAbloesung) und
+ * liefert den Bestand der Wohnung. Wirft bei jedem Datenbank-Fehler — dann wird NICHTS geschrieben: lieber
+ * ein sichtbarer Fehler als Dubletten (z. B. Unique-Konflikt, wenn ein Parallel-Lauf schneller war).
+ */
+async function abloeseFewoAltZeilen(listingId: string, reviews: NormalizedReview[], vollstaendig: boolean): Promise<{ anzahl: number; bekannt: Set<string> }> {
+  const { data, error } = await supabaseAdmin
+    .from('reviews').select('id, source_review_id, author_name, rating, review_date, review_text')
+    .eq('listing_id', listingId).eq('source', 'vrbo').limit(2000)
+  if (error) throw new Error(`Fewo-Bestand lesen: ${error.message}`)
+  const bestand = (data ?? []) as FewoBestandZeile[]
+  const bekannt = new Set(bestand.map((z) => String(z.source_review_id ?? '')).filter(Boolean))
+  for (const p of planFewoAbloesung(bestand, reviews, { vollstaendig })) {
+    const { error: uErr } = await supabaseAdmin.from('reviews').update({ source_review_id: p.auf }).eq('id', p.id)
+    if (uErr) throw new Error(`Fewo-Ablösung (${p.von} → ${p.auf}): ${uErr.message}`)
+    bekannt.delete(p.von)
+    bekannt.add(p.auf)
   }
-  return { items, meta: metaItem ? { score: metaItem.score ?? null, count: metaItem.count ?? null } : null }
+  return { anzahl: bestand.length, bekannt }
 }
 
 /** Maps one raw scraper item to our review shape (tolerant across actors). */
@@ -500,9 +467,14 @@ async function fetchGooglePlace(placeId: string): Promise<{
 
 /* ── Persistence ────────────────────────────────────────── */
 
-async function upsertReviews(listingId: string, source: string, reviews: NormalizedReview[]): Promise<number> {
+async function upsertReviews(
+  listingId: string, source: string, reviews: NormalizedReview[],
+  /** createdAtAusDatum: created_at = Bewertungsdatum (nur für die Nachholung alter Bewertungen, s. FeWo-Zweig) */
+  opts?: { createdAtAusDatum?: boolean },
+): Promise<number> {
   if (reviews.length === 0) return 0
   const rows = reviews.map(r => ({
+    ...(opts?.createdAtAusDatum ? { created_at: `${r.review_date}T12:00:00.000Z` } : {}),
     listing_id: listingId,
     source,
     source_review_id: r.source_review_id,
@@ -603,25 +575,55 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     try {
       const cleanUrl = normalizeSourceUrl(source, url)
 
-      // Fewo-Direkt: plain-HTML scrape incl. authoritative page score/count
+      // Fewo-Direkt: Seite (maßgebliche Note/Anzahl) + GraphQL (Texte) in einem Lauf
       if (source === 'vrbo' && /fewo-direkt\.de/i.test(cleanUrl)) {
-        const { items, meta } = await runFewoScraper(cleanUrl, Math.min(timeoutMs, 120_000))
-        const normalized = items
-          .map(i => normalizeScraperItem(i, source))
+        const lauf = await runFewoScraper(cleanUrl, timeoutMs)
+        const normalized = lauf.items
+          .map(i => normalizeScraperItem(i as unknown as Record<string, unknown>, source))
           .filter((r): r is NormalizedReview => r !== null)
-        const neu = await countNew(source, normalized)
+        // Alt-Zeilen VOR countNew und Upsert umhängen — sonst zählten sie als „neu" und entstünden doppelt
+        const { anzahl: bestand, bekannt } = await abloeseFewoAltZeilen(listing.id, normalized, lauf.vollstaendig)
+        const neu = normalized.length ? await countNew(source, normalized) : undefined
         const ds = dateStats(normalized)
-        const upserted = await upsertReviews(listing.id, source, normalized)
-        if (meta?.score != null && meta?.count != null) {
-          const score5 = Math.round((meta.score / 2) * 100) / 100
+        /* Nachholung (Erstimport nach dem 5.10.2026: rund 60 Texte, teils von 2023): NEUE Zeilen, deren
+         * Aufenthaltsmonat länger als 60 Tage zurückliegt, bekommen created_at = Bewertungsdatum. Wochenbericht
+         * (lib/weekly-digest.ts) und KI-Aufgaben (lib/task-suggest.ts) lesen „neu" über created_at und würden
+         * jahrealte Bewertungen sonst als Bewertungen dieser Woche behandeln. */
+        const altGrenze = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10)
+        const nachholung = normalized.filter((r) => !bekannt.has(r.source_review_id) && !r.dateGuessed && r.review_date < altGrenze)
+        const aktuell = normalized.filter((r) => !nachholung.includes(r))
+        const upserted = (await upsertReviews(listing.id, source, aktuell))
+          + (await upsertReviews(listing.id, source, nachholung, { createdAtAusDatum: true }))
+
+        /* Ehrlicher Status: Ein Lauf ohne Texte ist nur dann in Ordnung, wenn es nachweislich keine gibt.
+         * Scheitert ein Schritt (Property-ID fehlt, GraphQL blockiert, Hash veraltet, leere Antwort) oder
+         * kommt nichts, obwohl wir Bewertungen gespeichert haben, ist das ein FEHLER — auch wenn Note und
+         * Anzahl gelesen wurden (bis 5.10.2026 lief genau das wochenlang als „ok, 0 geholt"). */
+        const fehler = lauf.fehler ?? (normalized.length === 0 && bestand > 0
+          ? { art: 'leer' as const, text: `FeWo: keine Bewertung geliefert, obwohl ${bestand} gespeichert sind` }
+          : null)
+
+        // Note/Anzahl der Portalseite schreiben — auch im Fehlerfall (Schritt 1 bleibt gültig) und auch bei
+        // genau 1 Bewertung. Fehlt die Angabe, aus den Zeilen rechnen; im Fehlerfall NICHT (refreshScoreFromRows
+        // würde bei 0 Zeilen die Spalten leeren).
+        let score: number | undefined
+        let count: number | undefined
+        if (lauf.seite?.score != null && lauf.portalCount != null) {
+          score = Math.round((lauf.seite.score / 2) * 100) / 100
+          count = lauf.portalCount
           await supabaseAdmin
             .from('listings')
-            .update({ vrbo_score: score5, vrbo_review_count: meta.count })
+            .update({ vrbo_score: score, vrbo_review_count: count })
             .eq('id', listing.id)
-          return { source, status: 'ok', fetched: items.length, upserted, score: score5, count: meta.count, neu, ...ds }
+        } else if (!fehler) {
+          const stats = await refreshScoreFromRows(listing.id, source)
+          score = stats?.score
+          count = stats?.count
         }
-        const stats = await refreshScoreFromRows(listing.id, source)
-        return { source, status: 'ok', fetched: items.length, upserted, score: stats?.score, count: stats?.count, neu, ...ds }
+        if (fehler) {
+          return { source, status: 'error', errorKind: fehler.art, detail: fehler.text.slice(0, 300), fetched: normalized.length, upserted, score, count, ...ds }
+        }
+        return { source, status: 'ok', fetched: normalized.length, upserted, score, count, neu, ...ds }
       }
 
       const items = await runApifyActor(APIFY_ACTORS[source], cleanUrl, timeoutMs, source)

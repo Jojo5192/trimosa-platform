@@ -765,9 +765,15 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   const [tplMenu, setTplMenu] = useState(false)
   const [tplList, setTplList] = useState<{ id: string; name: string; enabled?: boolean }[] | null>(null)
   const [tplBusy, setTplBusy] = useState(false)
+  // Live-Fund 5.10.: Das 244 px breite Menü reichte bei 375 px bis an den rechten Bildschirmrand (1 px darüber).
+  // Beim Öffnen so verschieben, dass links und rechts mindestens 12 px Abstand zum Bildschirmrand bleiben.
+  const tplWrapRef = useRef<HTMLDivElement>(null)
+  const [tplLeft, setTplLeft] = useState(-6)
   async function openTplMenu() {
     haptic()
     setMappeMenu(false)
+    const wr = tplWrapRef.current?.getBoundingClientRect()
+    if (wr) setTplLeft(Math.round(Math.max(12, Math.min(wr.left - 6, window.innerWidth - 244 - 12)) - wr.left))
     setTplMenu(v => !v)
     if (tplList === null) {
       try {
@@ -1944,6 +1950,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             {showBack && (
             <button
               onClick={backToList}
+              aria-label="Zurück zur Liste"
               style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)', flexShrink: 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -2591,13 +2598,13 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               <button onClick={toggleDictation} className="tm-press-btn" title="Sprich, was du antworten willst — die KI schreibt die Nachricht mit Chat-Verlauf und Buchungsdaten" style={TOOL_PILL}>🎤 Diktieren</button>
             )}
             {team && active && (
-              <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
+              <div ref={tplWrapRef} style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
                 <button onClick={openTplMenu} className="tm-press-btn" title="Vorlage mit den Buchungsdaten als Entwurf einfügen" style={{ ...TOOL_PILL, background: tplMenu ? 'rgba(174,141,45,0.22)' : TOOL_PILL.background }}>📨 Vorlagen</button>
               {tplMenu && (
                 // iOS-27-Runde: Glas, Radius 16 und Kante kommen aus .tm-menu (mit Ersatzwerten für den Chat ohne .team-shell)
                 <div className="tm-menu tm-pop-in" style={{
-                  // Breite 244: mit 250 ragte die rechte Menükante bei 375 px knapp 1 px über den Rand
-                  position: 'absolute', bottom: 42, left: -6, zIndex: 30, width: 244, maxHeight: 320, overflowY: 'auto',
+                  // Breite 244; die waagerechte Lage rechnet openTplMenu aus (12 px Abstand zu beiden Bildschirmrändern)
+                  position: 'absolute', bottom: 42, left: tplLeft, zIndex: 30, width: 244, maxHeight: 320, overflowY: 'auto',
                   transformOrigin: 'bottom left',
                 }}>
                   <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>

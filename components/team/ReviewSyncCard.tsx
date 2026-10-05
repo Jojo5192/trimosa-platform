@@ -20,6 +20,8 @@ type Zelle = {
   abgerufen: number | null; neu: number | null
   anzahl: number; neuesteBewertung: string | null; letzterImport: string | null
   tageSeit: number | null; ueberfaellig: boolean
+  // optional: ein offline gespeicherter älterer Stand kennt die Felder noch nicht
+  portalAnzahl?: number | null; luecke?: boolean
 }
 type Zeile = { id: string; title: string; versuchAm: string | null; zellen: Zelle[] }
 type Status = {
@@ -96,7 +98,7 @@ function nebenText(c: Zelle): string {
     if (c.fehlerInFolge > 1) teile.push(`${c.fehlerInFolge}× in Folge`)
   }
   if (c.neuesteBewertung) teile.push(`neueste Bewertung ${tag(c.neuesteBewertung)}`)
-  teile.push(`${c.anzahl} gespeichert`)
+  teile.push(c.portalAnzahl != null ? `Portal nennt ${c.portalAnzahl} · ${c.anzahl} gespeichert` : `${c.anzahl} gespeichert`)
   return teile.join(' · ')
 }
 
@@ -270,7 +272,7 @@ export default function ReviewSyncCard() {
                             <span style={{ flexShrink: 0, width: 78, fontSize: 12.5, fontWeight: 700, color: 'var(--tm-text)' }}>{c.name}</span>
                             <span style={{ flex: 1, minWidth: 0 }}>
                               <span className="tm-num" style={{ display: 'block', fontSize: 12.5, lineHeight: 1.35, color: c.ampel === 'rot' ? 'var(--tm-red)' : 'var(--tm-text)', overflowWrap: 'anywhere' }}>
-                                {hauptText(c)}{c.ueberfaellig && c.status === 'ok' ? ' · überfällig' : ''}
+                                {hauptText(c)}{c.ueberfaellig && c.status === 'ok' ? ' · überfällig' : ''}{c.luecke && c.status !== 'error' ? ' · Texte fehlen' : ''}
                               </span>
                               <span className="tm-num" style={{ display: 'block', marginTop: 1, fontSize: 11.5, lineHeight: 1.35, color: 'var(--tm-muted)', overflowWrap: 'anywhere' }}>{nebenText(c)}</span>
                               {c.fehler && (

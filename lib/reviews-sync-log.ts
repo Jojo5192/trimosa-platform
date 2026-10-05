@@ -18,6 +18,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToTeam } from '@/lib/push'
 import type { SyncSourceResult, SyncErrorKind } from '@/lib/reviews-sync'
+import { fewoLuecke } from '@/lib/fewo-reviews'
 
 export const PORTALE = ['airbnb', 'booking', 'vrbo', 'google'] as const
 export type Portal = (typeof PORTALE)[number]
@@ -26,6 +27,8 @@ export const PORTAL_NAME: Record<Portal, string> = { airbnb: 'Airbnb', booking: 
 const SCRAPER: readonly Portal[] = ['airbnb', 'booking', 'vrbo']
 /** Ab so vielen Tagen ohne erfolgreichen Abruf gilt eine Quelle als überfällig (6 Wochen). */
 export const STALE_TAGE = 42
+/** Obergrenze je Abruf — gleiche Formel wie MAX_REVIEWS_PER_RUN in lib/reviews-sync.ts (dort nicht importierbar: Zirkelbezug). */
+const MAX_PRO_LAUF = Number(process.env.REVIEWS_MAX_PER_RUN) || 40
 
 const PREFIX = 'reviews_sync:'
 const CRON_KEY = 'reviews_sync_cron'
@@ -224,6 +227,10 @@ export interface StatusZelle {
   letzterImport: string | null    // wann zuletzt eine NEUE Bewertung in die DB kam
   tageSeit: number | null         // Tage seit dem letzten belegten Erfolg (okAm, sonst letzterImport)
   ueberfaellig: boolean
+  /** Nur FeWo-direkt: Anzahl laut Portalseite (listings.vrbo_review_count); sonst null. */
+  portalAnzahl: number | null
+  /** Deutlich weniger gespeichert, als das Portal nennt → mindestens Gelb. */
+  luecke: boolean
 }
 export interface StatusZeile {
   id: string
@@ -270,7 +277,7 @@ const HARTE_FEHLER: SyncErrorKind[] = ['eingabe', 'token', 'actor', 'leer', 'kon
 export async function buildSyncStatus(): Promise<StatusZeile[]> {
   const { data: listings, error } = await supabaseAdmin
     .from('listings')
-    .select('id, title, reviews_synced_at, airbnb_url, booking_url, vrbo_url, google_place_id')
+    .select('id, title, reviews_synced_at, airbnb_url, booking_url, vrbo_url, google_place_id, vrbo_review_count')
     .eq('is_active', true)
     .order('title', { ascending: true })
   if (error) throw new Error(`Wohnungen lesen: ${error.message}`)
@@ -288,10 +295,15 @@ export async function buildSyncStatus(): Promise<StatusZeile[]> {
       const tageSeit = referenz ? Math.max(0, Math.floor((now - ts(referenz)) / 86400_000)) : null
       const ueberfaellig = konfiguriert && (tageSeit === null || tageSeit > STALE_TAGE)
       const status: StatusZelle['status'] = !konfiguriert ? 'aus' : !pl ? 'nie' : pl.status
+      /* Nur FeWo-direkt: dort ist vrbo_review_count die Zahl der Portalseite. Bei Airbnb/Booking ist die
+       * Spalte nur die eigene Zeilenzahl, bei Google sind bewusst nur Ausschnitte gespeichert. */
+      const portalRoh = p === 'vrbo' && konfiguriert && /fewo-direkt\.de/i.test(l.vrbo_url ?? '') ? Number(l.vrbo_review_count) : NaN
+      const portalAnzahl = Number.isFinite(portalRoh) && portalRoh > 0 ? portalRoh : null
+      const luecke = fewoLuecke(portalAnzahl, a?.anzahl ?? 0, MAX_PRO_LAUF)
       const harterFehler = status === 'error' && (HARTE_FEHLER.includes(pl?.fehlerArt ?? 'sonst') || (pl?.fehlerInFolge ?? 0) >= 2)
       const ampel: StatusZelle['ampel'] = !konfiguriert ? 'aus'
         : ueberfaellig || harterFehler ? 'rot'
-        : status === 'error' || status === 'teilweise' ? 'gelb'
+        : status === 'error' || status === 'teilweise' || luecke ? 'gelb'
         : 'gruen'
       return {
         portal: p,
@@ -311,6 +323,8 @@ export async function buildSyncStatus(): Promise<StatusZeile[]> {
         letzterImport: a?.letzterImport ?? null,
         tageSeit,
         ueberfaellig,
+        portalAnzahl,
+        luecke,
       }
     })
     return { id: l.id, title: l.title ?? 'Wohnung', reviewsSyncedAt: l.reviews_synced_at ?? null, versuchAm: log?.versuchAm ?? null, zellen }
