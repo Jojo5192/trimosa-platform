@@ -30,6 +30,7 @@ import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
+import { VORSCHAU_NAME, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 import SearchOverlay from '@/components/team/SearchOverlay'
 import HeutePanel from '@/components/team/HeutePanel'
 
@@ -72,9 +73,12 @@ function Wordmark({ big = false }: { big?: boolean }) {
   )
 }
 
-export default function TeamShell({ userId, role, initialConvId, initialTab, initialInternChatId, initialTaskId }: {
+export default function TeamShell({ userId, role, vorschau = null, darfVorschau = false, initialConvId, initialTab, initialInternChatId, initialTaskId }: {
   userId: string
   role: 'team' | 'provider'
+  /** 👀 Rollen-Vorschau (lib/rollen-vorschau.ts): aktive Vorschau-Rolle (Banner) und ob der echte Nutzer Chef ist (Umschalter) */
+  vorschau?: VorschauRolle | null
+  darfVorschau?: boolean
   initialConvId: string | null
   initialTab?: string
   initialInternChatId?: string | null
@@ -648,6 +652,28 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
       {isDesktop && sidebar}
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {vorschau && (
+          // 👀 Rollen-Vorschau: immer sichtbar (auch im Thread), damit kein Chef versehentlich in der Vorschau bleibt
+          <div role="status" style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', flexShrink: 0,
+            background: 'var(--tm-accent-soft, rgba(174,141,45,0.16))', borderBottom: '0.5px solid var(--tm-line)',
+            fontSize: 12.5, color: 'var(--tm-text)',
+          }}>
+            <span aria-hidden="true">👀</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <strong>Vorschau: {VORSCHAU_NAME[vorschau]}</strong> — so sieht diese Rolle die App. Aktionen wirken echt.
+            </span>
+            <button
+              className="tm-press-btn"
+              onClick={async () => {
+                haptic()
+                try { await fetch('/api/team/vorschau', { method: 'DELETE' }) } catch { /* Seite lädt ohnehin neu */ }
+                location.replace('/team?tab=einstellungen')
+              }}
+              style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '5px 11px', fontSize: 12.5, fontWeight: 700, background: 'var(--tm-text)', color: 'var(--tm-bg)', flexShrink: 0 }}
+            >Beenden</button>
+          </div>
+        )}
         {!navHidden && header}
         {tab === 'inbox' && role === 'team' && !navHidden && segmented}
         {offlineBar}
@@ -677,7 +703,7 @@ export default function TeamShell({ userId, role, initialConvId, initialTab, ini
             <TasksPanel role={role} userId={userId} visible={tab === 'aufgaben'} focusTaskId={taskFocus} onFocusConsumed={() => setTaskFocus(null)} />, true
           )}
           {wrap('kalender', <CalendarPanel />, true)}
-          {wrap('einstellungen', <SettingsPanel role={role} />, true)}
+          {wrap('einstellungen', <SettingsPanel role={role} vorschau={vorschau} darfVorschau={darfVorschau} />, true)}
 
           {/* §282.2 Progressive Unschärfe: Inhalt verschwimmt weich in die Tab-Leiste */}
           {!isDesktop && !navHidden && <div aria-hidden="true" className="tm-fade-bottom" style={{ height: 'calc(var(--tm-nav-pad, 92px) + 8px)' }} />}

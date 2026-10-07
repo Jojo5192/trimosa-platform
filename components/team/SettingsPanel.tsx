@@ -11,7 +11,7 @@
  *    ALLE Geräte des Nutzers (Server filtert beim Senden)
  */
 import { useEffect, useState } from 'react'
-import { haptic } from '@/components/team/ux'
+import { haptic, tmToast } from '@/components/team/ux'
 import { useThemeMode, useIsDark, setThemeMode } from '@/lib/theme'
 import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
@@ -24,6 +24,7 @@ import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
 import SchuldenPanel from '@/components/team/SchuldenPanel'
 import AutoReplyPanel from '@/components/team/AutoReplyPanel'
+import { VORSCHAU_HINWEIS, VORSCHAU_NAME, VORSCHAU_ROLLEN, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 
 const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
 
@@ -68,7 +69,35 @@ function Row({ title, subtitle, last, children }: {
   )
 }
 
-export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
+export default function SettingsPanel({ role, vorschau = null, darfVorschau = false }: {
+  role: 'team' | 'provider'
+  /** 👀 Rollen-Vorschau (lib/rollen-vorschau.ts): aktive Vorschau und ob der ECHTE Nutzer Chef ist */
+  vorschau?: VorschauRolle | null
+  darfVorschau?: boolean
+}) {
+  // 👀 Umschalten = Cookie setzen/löschen und die App neu laden (Seite und alle Routen lesen die Rolle neu)
+  const [vorschauBusy, setVorschauBusy] = useState(false)
+  async function waehleVorschau(rolle: VorschauRolle | null) {
+    if (vorschauBusy || rolle === vorschau) return
+    haptic()
+    setVorschauBusy(true)
+    try {
+      const r = rolle
+        ? await fetch('/api/team/vorschau', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rolle }) })
+        : await fetch('/api/team/vorschau', { method: 'DELETE' })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({})) as { error?: string }
+        tmToast(d.error ?? 'Vorschau konnte nicht umgeschaltet werden')
+        setVorschauBusy(false)
+        return
+      }
+      location.replace('/team?tab=einstellungen')
+    } catch {
+      tmToast('Vorschau konnte nicht umgeschaltet werden')
+      setVorschauBusy(false)
+    }
+  }
+
   // 🌗 §284 Dark Mode mit Schalter (Inhaber 9.9.)
   const themeMode = useThemeMode()
   const isDark = useIsDark()
@@ -222,6 +251,36 @@ export default function SettingsPanel({ role }: { role: 'team' | 'provider' }) {
             ))}
           </div>
         </div>
+
+        {/* 👀 Rollen-Vorschau — nur für Chefs (echte Rolle), auch WÄHREND einer Vorschau sichtbar, um zurückzuschalten */}
+        {darfVorschau && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>ANSICHT ALS …</div>
+            <div className="tm-card" style={{ padding: '12px 16px', marginBottom: 22 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 19 }}>👀</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Rollen-Vorschau</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>
+                    {vorschau ? `Du siehst die App gerade ${VORSCHAU_HINWEIS[vorschau]}.` : 'Die App so sehen, wie sie eine andere Rolle sieht. Aktionen wirken dabei echt.'}
+                  </span>
+                </span>
+              </div>
+              <div role="tablist" aria-label="Rolle für die Vorschau" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                {([null, ...VORSCHAU_ROLLEN] as (VorschauRolle | null)[]).map((r) => {
+                  const on = r === vorschau
+                  return (
+                    <button key={r ?? 'eigene'} role="tab" aria-selected={on} disabled={vorschauBusy} className="tm-press-btn" onClick={() => waehleVorschau(r)} style={{
+                      border: 'none', cursor: vorschauBusy ? 'wait' : 'pointer', padding: '7px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700,
+                      background: on ? 'var(--tm-text)' : 'var(--tm-seg-track)', color: on ? 'var(--tm-bg)' : 'var(--tm-text)',
+                      boxShadow: on ? 'none' : 'inset 0 0 0 0.5px var(--tm-line)', opacity: vorschauBusy ? 0.6 : 1,
+                    }}>{r ? VORSCHAU_NAME[r] : '👑 Eigene Rolle'}</button>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
         {role === 'team' && (
           <>

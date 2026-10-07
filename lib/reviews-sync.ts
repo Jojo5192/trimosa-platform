@@ -345,8 +345,13 @@ async function runFewoScraper(url: string, timeoutMs: number): Promise<FewoAuswe
       // (Status und Typ einmal ins Log: beides ist für diesen Fall nicht dokumentiert)
       if (istSpeicherEngpass(e)) console.warn(`[reviews-sync] fewo Stufe B: Apify-Speicher belegt (HTTP ${(e as ApifyError).status}, Typ ${(e as ApifyError).apifyType ?? '—'}) · ${errText(e, 400)}`)
       if (anlauf === 0 && istSpeicherEngpass(e)) { await new Promise((r) => setTimeout(r, 8_000)); continue }
-      const art = classifySyncError(e)
-      const grund = istSpeicherEngpass(e) ? 'nicht gestartet: Apify-Speicher von parallelen Abrufen belegt — später oder als Nur-FeWo-Abruf wiederholen'
+      // Live 5.10.2026: Apify lehnt den Browser-Actor mit HTTP 403 „full-permission-actor-not-approved" ab, solange
+      // er im Apify-Konto nicht einmalig freigegeben wurde. Das ist kein Defekt des Abrufs: maßgeblich bleibt der
+      // Grund der Stufe A (gedrosselt) — deshalb Art 'sonst' (erst gelb) statt 'actor' (sofort rot) und ein Klartext.
+      const nichtFrei = e instanceof ApifyError && /actor-not-approved/i.test(`${e.apifyType ?? ''} ${e.message}`)
+      const art = nichtFrei ? 'sonst' : classifySyncError(e)
+      const grund = nichtFrei ? `nicht freigegeben: ${FEWO_BROWSER_ACTOR.replace('~', '/')} braucht eine einmalige Freigabe im Apify-Konto`
+        : istSpeicherEngpass(e) ? 'nicht gestartet: Apify-Speicher von parallelen Abrufen belegt — später oder als Nur-FeWo-Abruf wiederholen'
         : art === 'timeout' ? `gescheitert: Zeitlimit des Browser-Laufs (${laufSek} s) überschritten`
         : `gescheitert: ${errText(e, 150)}`
       return kombiniereFewoStufen(a, null, { text: grund, art })

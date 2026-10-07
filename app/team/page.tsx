@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { supabaseAdminOhneVorschau } from '@/lib/supabase-admin'
+import { VORSCHAU_COOKIE, leseVorschauCookie, rollenAnwenden } from '@/lib/rollen-vorschau'
 import { redirect, notFound } from 'next/navigation'
 import TeamShell from '@/components/team/TeamShell'
 import StartCurtain from '@/components/team/StartCurtain'
@@ -25,8 +26,15 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
 
   // select('*') statt Spaltenliste: bricht nicht, falls is_provider (Migration
   // 20260716) noch nicht ausgeführt ist — Deploy-Reihenfolge egal.
-  const { data: me } = await supabaseAdmin
+  // 👀 Rollen-Vorschau (lib/rollen-vorschau.ts): hier bewusst die ECHTE Zeile lesen — nur so ist bekannt, dass
+  // der Nutzer Chef ist (Umschalter unter „Mehr") — und die Vorschau danach selbst anwenden.
+  const jar = await cookies()
+  const { data: echt } = await supabaseAdminOhneVorschau
     .from('profiles').select('*').eq('id', user.id).maybeSingle()
+  const darfVorschau = echt?.is_admin === true
+  const cookieVorschau = leseVorschauCookie(jar.get(VORSCHAU_COOKIE)?.value)
+  const vorschau = darfVorschau && cookieVorschau?.uid === user.id ? cookieVorschau : null
+  const me = vorschau ? rollenAnwenden(echt, vorschau, user.id) : echt
 
   const role = (me?.is_admin || me?.is_host || me?.is_staff)
     ? 'team' as const
@@ -35,7 +43,6 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
     : null
   if (!role) notFound()
 
-  const jar = await cookies()
   const lastCurtain = Number(jar.get(cookieFor(COOKIE_CURTAIN, user.id))?.value ?? 0) || null
   const showCurtain = curtainDueOnLoad(lastCurtain)
   const firstName = String(me?.display_name ?? '').trim().split(/\s+/)[0] || null
@@ -46,7 +53,7 @@ export default async function TeamAppPage({ searchParams }: { searchParams: Prom
   return (
     <main className="team-page" style={{ height: '100dvh', overflow: 'hidden' }}>
       <StartCurtain initialShow={showCurtain} firstName={firstName} initialGreeting={greeting} initialSpruch={spruch} userId={user.id} />
-      <TeamShell userId={user.id} role={role} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} initialTaskId={task ?? null} />
+      <TeamShell userId={user.id} role={role} vorschau={vorschau?.rolle ?? null} darfVorschau={darfVorschau} initialConvId={conv ?? null} initialTab={tab} initialInternChatId={chat ?? null} initialTaskId={task ?? null} />
     </main>
   )
 }
