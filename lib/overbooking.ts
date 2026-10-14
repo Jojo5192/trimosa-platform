@@ -32,6 +32,8 @@ export type OverbookingSide = {
   source?: string | null
   paidAt?: string | null
   price?: number | null
+  /** Website-Checkout läuft noch (status pending_payment): unbezahlt, verfällt automatisch nach ≤ 40 Min */
+  schwebend?: boolean
 }
 
 type BookingRow = {
@@ -112,6 +114,7 @@ async function sideFromRow(b: BookingRow): Promise<OverbookingSide> {
     paidAt: b.paid_at,
     bookingId: b.id,
     price: b.total_price == null ? null : Number(b.total_price),
+    schwebend: (b as { status?: string | null }).status === 'pending_payment',
   }
 }
 
@@ -124,6 +127,7 @@ function describe(label: string, s: OverbookingSide): string {
   ]
   if (s.paidAt) lines.push(`   Bezahlt: ${fmtStamp(s.paidAt)}`)
   if (s.price != null && s.price > 0) lines.push(`   Betrag: ${s.price.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €`)
+  if (s.schwebend) lines.push('   Status: Website-Checkout läuft noch (unbezahlt) — verfällt automatisch nach spätestens 40 Min, wird bei Zahlung sofort zur echten Buchung')
   return lines.join('\n')
 }
 
@@ -153,9 +157,9 @@ export async function reportOverbooking(input: {
   // Kollidierende Buchungen in unserer DB (bestätigt, überlappend)
   let clashQ = supabaseAdmin
     .from('bookings')
-    .select('id, guest_id, guest_name, check_in, check_out, channel, source, smoobu_reservation_id, created_at, paid_at, payment_status, total_price')
+    .select('id, guest_id, guest_name, check_in, check_out, channel, source, smoobu_reservation_id, created_at, paid_at, payment_status, total_price, status')
     .eq('listing_id', listingId)
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'pending_payment']) // pending_payment = laufender Website-Checkout (≤ 40 Min)
     .lt('check_in', neu.checkOut)
     .gt('check_out', neu.checkIn)
     .order('created_at', { ascending: true })
@@ -171,6 +175,9 @@ export async function reportOverbooking(input: {
   if (neu.smoobuId != null) {
     for (const b of clashes) {
       if (b.source !== 'trimosa') continue
+      // Ein Echo gibt es nur für bezahlte Website-Buchungen (Smoobu-Push erst nach Zahlung) — ein laufender
+      // Checkout (pending_payment) darf nie die Portal-Nummer bekommen (sonst wird die Portalbuchung nie importiert)
+      if (b.payment_status !== 'paid') continue
       if (b.check_in !== neu.checkIn || b.check_out !== neu.checkOut) continue
       const sameOrNoId = b.smoobu_reservation_id == null || String(b.smoobu_reservation_id) === String(neu.smoobuId)
       if (!sameOrNoId) continue
@@ -238,8 +245,8 @@ export async function reportOverbooking(input: {
     ? others.map((o) => `${o.name?.trim() || 'Gast unbekannt'} (${fmtRange(o.checkIn, o.checkOut)}, ${channelLabel(o.channel, o.source)})`).join(' + ')
     : 'bestehende Buchung (nur in Smoobu sichtbar)'
   await sendPushToTeam(
-    `🚨 ÜBERBUCHUNG · ${title}`,
-    `${neu.name?.trim() || 'Gast unbekannt'} (${fmtRange(neu.checkIn, neu.checkOut)}, ${channelLabel(neu.channel, neu.source)}) ↔ ${gegenText} — alle Daten in der Aufgabe.`,
+    `⚠️ Überbuchung · ${title}`,
+    `${neu.name?.trim() || 'Gast unbekannt'} (${fmtRange(neu.checkIn, neu.checkOut)}, ${channelLabel(neu.channel, neu.source)}) ↔ ${gegenText}. Bitte sofort klären, alle Daten in der Aufgabe.`,
     taskId ? `/team?tab=aufgaben&task=${taskId}` : '/team?tab=aufgaben',
     { category: 'system' },
   ).catch((e) => console.error('[overbooking] push:', e))
@@ -282,7 +289,7 @@ export async function resolveOverbooking(input: {
   const { data: lst } = await supabaseAdmin.from('listings').select('title').eq('id', listingId).maybeSingle()
   await sendPushToTeam(
     `✅ Überbuchung aufgelöst · ${(lst?.title as string | undefined) ?? 'Wohnung'}`,
-    `${fmtRange(checkIn, checkOut)}: ${grund}`,
+    `${fmtRange(checkIn, checkOut)}: ${grund}. Die Aufgabe ist erledigt.`,
     `/team?tab=aufgaben&task=${hits[0].id}`,
     { category: 'system' },
   ).catch((e) => console.error('[overbooking] resolve push:', e))

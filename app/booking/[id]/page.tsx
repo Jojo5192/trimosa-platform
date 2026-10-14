@@ -37,6 +37,7 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
 
   const statusColors: Record<string, { bg: string; color: string; label: string }> = {
     pending:   { bg: '#FFF7ED', color: '#92400E', label: t(lang, 'Anfrage eingegangen') },
+    pending_payment: { bg: '#F5F5F7', color: '#6B7280', label: t(lang, 'Zahlung ausstehend') },
     confirmed: { bg: '#F0FDF4', color: '#16A34A', label: t(lang, 'Bestätigt') },
     cancelled: { bg: '#FEF2F2', color: '#DC2626', label: t(lang, 'Storniert') },
   }

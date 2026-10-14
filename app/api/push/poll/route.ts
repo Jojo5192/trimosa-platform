@@ -84,8 +84,8 @@ export async function GET(request: Request) {
   if (totalausfall) {
     await meldeAusfall('smoobu-poll', 'Smoobu-Abgleich',
       failed === checked && checked >= 3
-        ? `Keine Gast-Nachricht abrufbar (${failed} von ${checked} Buchungen): ${ersterFehler || 'ohne Fehlertext'} — Smoobu-API-Schlüssel und Smoobu-Status prüfen.`
-        : 'Der Abgleich fehlender Buchungen ist gescheitert (Vercel-Log „[push-poll] booking-import").')
+        ? `Keine Gast-Nachricht abrufbar (${failed} von ${checked} Buchungen). Bitte Smoobu-Zugang und Smoobu-Status prüfen. Fehler: ${ersterFehler || 'ohne Fehlertext'}`
+        : 'Fehlende Buchungen konnten nicht aus Smoobu nachgeholt werden. Bitte Smoobu prüfen, Details im Server-Protokoll (push-poll).')
     return NextResponse.json({ checked, failed, newMessages, pushes, bookingImport, ausfall: true }, { status: 500 })
   }
   await ausfallBehoben('smoobu-poll', 'Smoobu-Abgleich')

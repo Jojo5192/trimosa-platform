@@ -1,5 +1,6 @@
 // server-only (Kommentar-Konvention §243 — kein 'server-only'-Package installiert)
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { stripe, toCents } from '@/lib/stripe'
 
 /**
@@ -87,7 +88,7 @@ export async function erstelleZahllink(input: {
 }): Promise<Zahllink> {
   const b = await ladeBuchung(input.bookingId)
   if (!b) throw new Error('Buchung nicht gefunden')
-  if (b.status === 'cancelled') throw new Error('Die Buchung ist storniert')
+  if (istInaktiveBuchung(b.status)) throw new Error('Die Buchung ist storniert oder noch nicht bezahlt')
   const betrag = Math.round(input.betrag * 100) / 100
   if (!(betrag >= 1 && betrag <= 5000)) throw new Error('Betrag muss zwischen 1 und 5.000 € liegen')
   const zweck = String(input.zweck || 'Zusatzleistung').slice(0, 60)
@@ -167,7 +168,7 @@ export async function verlaengerungAngebot(bookingId: string, naechteRoh: number
   if (b.listing_id) {
     const { data: kollision } = await supabaseAdmin
       .from('bookings').select('id')
-      .eq('listing_id', b.listing_id).eq('status', 'confirmed').neq('id', b.id)
+      .eq('listing_id', b.listing_id).in('status', ['confirmed', 'pending_payment']) // laufender Website-Checkout zählt als belegt.neq('id', b.id)
       .lt('check_in', bis).gt('check_out', von).limit(1)
     if (kollision?.length) return leer('Die Wohnung ist in diesem Zeitraum leider schon belegt', von, bis)
   }
@@ -325,7 +326,7 @@ export async function verbucheZahllink(session: { id: string; payment_link?: str
     const r = await createSevZusatzRechnung({ bookingId: meta.bookingId, betrag, zweck, text: e?.text ?? null })
     if (e) e.rechnung = r.ok ? { sevdeskId: r.sevdeskId ?? null, number: r.number ?? null } : { fehler: r.error ?? r.skipped ?? 'unbekannt' }
     rechnungNr = r.ok ? r.number ?? null : null
-    if (!r.ok) await teamPush('⚠️ Rechnung für Zahllink fehlt', `${zweck} ${fmtEuro(betrag)}: ${String(r.error ?? r.skipped ?? '').slice(0, 100)} — bitte in sevdesk anlegen`, meta.bookingId)
+    if (!r.ok) await teamPush(`💶 Rechnung fehlt · ${zweck}`, `Zahllink über ${fmtEuro(betrag)} bezahlt, Rechnung nicht erstellt (${String(r.error ?? r.skipped ?? '').slice(0, 100)}). Bitte in sevdesk anlegen.`, meta.bookingId)
   } catch (err) {
     if (e) e.rechnung = { fehler: String(err instanceof Error ? err.message : err).slice(0, 200) }
     console.error('[zahlungen] Zusatz-Rechnung:', err)
@@ -392,12 +393,12 @@ export async function verbucheVerlaengerung(session: {
     if (piId && /exclusion|overlap|conflict/i.test(insErr?.message ?? '')) {
       await stripe.refunds.create({ payment_intent: piId, reason: 'requested_by_customer' }).catch((e) => console.error('[zahlungen] Erstattung:', e))
       await interneNotiz(bookingId, `💶 Verlängerung ${m.von}–${m.bis} konnte nicht gebucht werden (inzwischen belegt) — ${fmtEuro(preis)} automatisch erstattet, der Gast bekommt automatisch Bescheid.`)
-      await teamPush(`⚠️ Verlängerung belegt · ${vorname}`, `${wohnung} ${m.von}–${m.bis}: Zahlung automatisch erstattet, Gast informiert`, bookingId)
+      await teamPush(`💶 Verlängerung belegt · ${vorname}`, `${wohnung} ${m.von}–${m.bis}: Zahlung automatisch erstattet, der Gast ist informiert.`, bookingId)
       await bestaetigeGast(bookingId,
         `Hallo ${vorname}, leider war die Wohnung für die gewünschten zusätzlichen Nächte inzwischen schon vergeben. Wir haben dir die ${fmtEuro(preis)} sofort erstattet — je nach Bank ist der Betrag in wenigen Tagen wieder auf deinem Konto. Melde dich gern, falls wir eine andere Lösung finden sollen.`)
       return 'erstattet'
     }
-    await teamPush(`⚠️ Verlängerung bezahlt, aber nicht angelegt · ${vorname}`, `${wohnung} ${m.von}–${m.bis} (${fmtEuro(preis)}): bitte von Hand in Smoobu anlegen — ${String(insErr?.message ?? '').slice(0, 80)}`, bookingId)
+    await teamPush(`💶 Verlängerung nicht angelegt · ${vorname}`, `${wohnung} ${m.von}–${m.bis} (${fmtEuro(preis)}) ist bezahlt. Bitte von Hand in Smoobu anlegen. ${String(insErr?.message ?? '').slice(0, 80)}`, bookingId)
     return 'fehler'
   }
 
@@ -435,7 +436,7 @@ export async function verbucheVerlaengerung(session: {
   }
 
   await interneNotiz(bookingId, `💶 Verlängert bis ${m.bis} (${naechte} ${naechte === 1 ? 'Nacht' : 'Nächte'}, ${fmtEuro(preis)} bezahlt) — eigene Zusatzbuchung mit eigenem Türcode, die Mappe zeigt ihn an; Rechnung entsteht am ${m.von} automatisch. Bestätigung an den Gast geht automatisch raus.${smoobuHinweis}`)
-  await teamPush(`💶 Verlängerung bezahlt · ${vorname}`, `${wohnung} bis ${m.bis} · ${fmtEuro(preis)}${smoobuHinweis ? ' · Smoobu von Hand!' : ''}`, bookingId)
+  await teamPush(`💶 Verlängerung bezahlt · ${vorname}`, `${wohnung} bis ${m.bis} · ${fmtEuro(preis)}${smoobuHinweis ? '. Bitte in Smoobu von Hand eintragen.' : ''}`, bookingId)
   const mappe = mappeUrl(b)
   await bestaetigeGast(bookingId,
     `Hallo ${vorname}, danke dir — deine Verlängerung ist gebucht: Du bleibst jetzt bis ${tagUndDatum(m.bis)} (${naechte} ${naechte === 1 ? 'zusätzliche Nacht' : 'zusätzliche Nächte'}, ${fmtEuro(preis)} bezahlt).${mappe ? ` Deinen Türcode für die zusätzlichen Nächte und später die Rechnung findest du in deiner Gästemappe: ${mappe}#verlaengern` : ''}`)

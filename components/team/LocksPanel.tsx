@@ -42,7 +42,7 @@ function fmtWhen(iso: string): string {
 }
 function fmtRange(from: string | null, to: string | null): string {
   const f = (s: string | null) => (s ? new Date(s + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '?')
-  return `${f(from)} – ${f(to)}`
+  return `${f(from)}–${f(to)}`
 }
 
 export default function LocksPanel({ onClose }: { onClose: () => void }) {
@@ -57,10 +57,14 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
     setLoading(true); setError(null)
     try {
       const r = await fetch('/api/locks/control', { cache: 'no-store' })
-      if (!r.ok) throw new Error(r.status === 403 ? 'Kein Zugriff auf die Türschlösser.' : `Fehler ${r.status}`)
+      if (!r.ok) {
+        setError(r.status === 403 ? 'Für die Türschlösser fehlt dir die Berechtigung.' : 'Die Türschlösser konnten nicht geladen werden. Bitte versuch es gleich noch einmal.')
+        return
+      }
       setData(await r.json())
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e))
+      console.error('locks/control', e)
+      setError('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
       setLoading(false)
     }
@@ -77,11 +81,16 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ listingId, lockId: lock.id }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(j.error || `Fehler ${r.status}`)
-      setToast(`✅ ${lock.label} aufgeschlossen`)
+      if (!r.ok) {
+        console.error('locks/control', r.status, j.error)
+        setToast(r.status === 403 ? '⚠️ Zum Aufschließen fehlt dir die Berechtigung.' : `⚠️ ${lock.label} ließ sich nicht öffnen. Bitte versuch es gleich noch einmal.`)
+        return
+      }
+      setToast(`✓ ${lock.label} aufgeschlossen`)
       load()
     } catch (e) {
-      setToast(`⚠️ ${e instanceof Error ? e.message : e}`)
+      console.error('locks/control', e)
+      setToast('📵 Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
       setBusyKey(null)
       setTimeout(() => setToast(null), 3500)
@@ -100,7 +109,7 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>🔑 Türschlösser</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
@@ -114,9 +123,9 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
           {/* Eigener Personen-Code */}
           {data?.meinCode && (
             <div style={{ borderRadius: 14, background: 'var(--tm-navy)', color: '#fff', padding: '14px 16px', marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--tm-muted2)', fontWeight: 700, letterSpacing: '0.04em' }}>👤 DEIN ZUGANGS-CODE</div>
+              <div style={{ fontSize: 12, color: 'var(--tm-muted2)', fontWeight: 700, letterSpacing: '0.04em' }}>👤 DEIN TÜRCODE</div>
               <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '0.12em', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{data.meinCode.code}</div>
-              <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 3 }}>gilt auf {data.meinCode.listingIds.length} Wohnung(en)</div>
+              <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 3 }}>gilt für {data.meinCode.listingIds.length} {data.meinCode.listingIds.length === 1 ? 'Wohnung' : 'Wohnungen'}</div>
             </div>
           )}
 
@@ -133,11 +142,11 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
                 {/* Gäste-Türcode */}
                 {w.guestCode ? (
                   <div style={{ padding: '0 16px 10px', fontSize: 13, color: 'var(--tm-text)' }}>
-                    🔑 Gäste-Code <b style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.06em', color: 'var(--tm-text)' }}>{w.guestCode}</b>
+                    🔑 Türcode <b style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.06em', color: 'var(--tm-text)' }}>{w.guestCode}</b>
                     {w.guestName && <span style={{ color: 'var(--tm-muted)' }}> · {w.guestName} · {fmtRange(w.guestFrom, w.guestTo)}</span>}
                   </div>
                 ) : (
-                  <div style={{ padding: '0 16px 10px', fontSize: 12.5, color: 'var(--tm-muted2)' }}>Kein aktiver Gäste-Code</div>
+                  <div style={{ padding: '0 16px 10px', fontSize: 12.5, color: 'var(--tm-muted2)' }}>Kein aktiver Türcode</div>
                 )}
 
                 {/* Schlösser öffnen */}
@@ -199,8 +208,8 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
               <div style={{ borderRadius: 14, background: 'var(--tm-card)', boxShadow: '0 0 0 0.5px var(--tm-line)', overflow: 'hidden' }}>
                 {(data?.protokoll ?? []).map((e, i) => (
                   <div key={i} style={{ padding: '9px 14px', fontSize: 12.5, color: 'var(--tm-text)', boxShadow: i ? 'inset 0 0.5px 0 var(--tm-line)' : 'none' }}>
-                    <span style={{ color: 'var(--tm-muted)' }}>{fmtWhen(e.at)}</span>{' — '}
-                    <b>{e.byName}</b>{e.ok ? ' öffnete ' : ' (Fehler) '}{e.lockLabel} · {e.title}
+                    <span style={{ color: 'var(--tm-muted)' }}>{fmtWhen(e.at)}</span>{' – '}
+                    <b>{e.byName}</b>{e.ok ? ' öffnete ' : ' konnte nicht öffnen: '}{e.lockLabel} · {e.title}
                   </div>
                 ))}
               </div>
@@ -208,8 +217,8 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
           )}
 
           <div style={{ marginTop: 18, fontSize: 11.5, color: 'var(--tm-muted2)', lineHeight: 1.5, padding: '0 4px' }}>
-            „Aufschließen" entriegelt den Zylinder wie ein Keypad-Code — der Gast/Handwerker drückt dann die Klinke.
-            Jede Öffnung wird protokolliert und die anderen Berechtigten bekommen einen Info-Push.
+            „Aufschließen“ entriegelt den Zylinder wie ein Türcode – danach drückt der Gast oder Handwerker die Klinke.
+            Die App protokolliert jede Öffnung und schickt den anderen Berechtigten eine Push-Mitteilung.
           </div>
         </div>
       </div>

@@ -84,7 +84,7 @@ export default function MappeChat({ token, labels, lang = 'de', phone, note }: {
       })
       if (!r.ok) {
         const d = await r.json().catch(() => ({}))
-        setError(d.error ?? 'Senden fehlgeschlagen.')
+        setError(d.error ?? 'Senden hat nicht geklappt. Bitte versuch es gleich noch einmal.')
         return
       }
       setDraft('')

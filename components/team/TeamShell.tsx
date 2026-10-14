@@ -57,7 +57,7 @@ const segFor = (id: string): Seg | null => id === 'chat' ? 'gaeste' : id === 'in
 
 function fmtSync(d: Date) {
   const p = (n: number) => String(n).padStart(2, '0')
-  return `Sync ${p(d.getDate())}.${p(d.getMonth() + 1)}., ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `Stand ${p(d.getDate())}.${p(d.getMonth() + 1)}., ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** Wortmarke: Gold-Emblem (= Markenteil in Akzentfarbe) + TRIMOSA gesperrt */
@@ -350,7 +350,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
         })
       })
     }).catch(() => {})
-    const onChange = () => tmToast('✨ App aktualisiert')
+    const onChange = () => tmToast('✓ App aktualisiert')
     navigator.serviceWorker.addEventListener('controllerchange', onChange)
     return () => navigator.serviceWorker.removeEventListener('controllerchange', onChange)
   }, [userId])
@@ -395,8 +395,8 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
       borderBottom: '1px solid var(--tm-line, #e3e6ea)',
     }}>
       {online
-        ? '✅ Wieder online — gleiche ab …'
-        : `📴 Offline — du siehst den letzten Stand${outboxCount > 0 ? ` · ${outboxCount} ${outboxCount === 1 ? 'Nachricht wartet' : 'Nachrichten warten'}` : ''}`}
+        ? '✓ Wieder online – gleiche ab…'
+        : `📵 Offline – du siehst den letzten Stand${outboxCount > 0 ? ` · ${outboxCount} ${outboxCount === 1 ? 'Nachricht wartet' : 'Nachrichten warten'}` : ''}`}
     </div>
   ) : null
 
@@ -414,6 +414,12 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     const task = u.searchParams.get('task')
     const call = u.searchParams.get('call')
     const wunschTab = u.searchParams.get('tab')
+    // 🌅 /team?verlauf=1 (Sammel-Mitteilung nach der Ruhezeit) → „Mehr" + Mitteilungs-Verlauf öffnen
+    if (u.searchParams.get('verlauf')) {
+      setTab('einstellungen')
+      window.dispatchEvent(new CustomEvent('trimosa-open-pushlog'))
+      return
+    }
     // 🎧 /team?call=<id> → Telefonate öffnen und den Anruf aufklappen (Push/Aufgaben-Link)
     if (call) {
       window.dispatchEvent(new CustomEvent('trimosa-open-call', { detail: { id: call } }))
@@ -444,6 +450,12 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
   }
   const applyPushUrlRef = useRef(applyPushUrl)
   applyPushUrlRef.current = applyPushUrl
+  // Kaltstart aus einer Mitteilung: ?call=… und ?verlauf=1 kommen nicht als initial*-Props — die Panels sind
+  // dauerhaft gemountet und hören schon (Kind-Effekte laufen vor diesem), also das Ziel einmal nachspielen
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('call') || q.get('verlauf')) applyPushUrlRef.current(window.location.href)
+  }, [])
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const onMsg = (e: MessageEvent) => {
@@ -551,7 +563,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
       )}
       <span
         className={online && syncing ? 'tm-live' : undefined}
-        title={online ? `${syncing ? 'Gleicht ab' : 'Synchron'}${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
+        title={online ? `${syncing ? 'Gleicht ab' : 'Aktuell'}${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
         aria-label={online ? 'Verbunden' : 'Offline'}
         style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginRight: 2, background: online ? 'var(--tm-green)' : 'var(--tm-muted2)', transition: 'background .3s var(--tm-ease)' }}
       />
@@ -669,7 +681,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
           }}>
             <span aria-hidden="true">👀</span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              <strong>Vorschau: {VORSCHAU_NAME[vorschau]}</strong> — so sieht diese Rolle die App. Aktionen wirken echt.
+              <strong>Vorschau: {VORSCHAU_NAME[vorschau]}</strong> – so sieht diese Rolle die App. Was du tust, wirkt echt.
             </span>
             <button
               className="tm-press-btn"

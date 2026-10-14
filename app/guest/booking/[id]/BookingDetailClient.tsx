@@ -104,6 +104,7 @@ export default function BookingDetailClient({
   const statusMap: Record<string, { label: string; color: string; bg: string }> = {
     confirmed:  { label: t(uiLang, 'Bestätigt'),     color: '#16A34A', bg: '#DCFCE7' },
     pending:    { label: t(uiLang, 'Ausstehend'),    color: '#92400E', bg: '#FEF9EC' },
+    pending_payment: { label: t(uiLang, 'Zahlung ausstehend'), color: '#6B7280', bg: '#F5F5F7' },
     cancelled:  { label: t(uiLang, 'Storniert'),     color: '#DC2626', bg: '#FEE2E2' },
     completed:  { label: t(uiLang, 'Abgeschlossen'), color: '#555',    bg: '#F0F0F5' },
   }
@@ -237,13 +238,17 @@ export default function BookingDetailClient({
               <button
                 onClick={() => setShowConfirm(true)}
                 style={{ display: 'block', width: '100%', padding: '14px', borderRadius: '14px', border: '1.5px solid #FECACA', background: '#FFF', color: '#DC2626', fontWeight: 600, fontSize: '14px', cursor: 'pointer' }}>
-                {t(uiLang, 'Buchung stornieren')}
+                {booking.status === 'pending_payment' ? t(uiLang, 'Buchung abbrechen') : t(uiLang, 'Buchung stornieren')}
               </button>
             ) : (
               <div style={{ background: '#FEF2F2', borderRadius: '16px', border: '1.5px solid #FECACA', padding: '18px 20px' }}>
-                <p style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>{t(uiLang, 'Buchung wirklich stornieren?')}</p>
+                <p style={{ fontSize: '14px', fontWeight: 700, color: '#DC2626', margin: '0 0 8px' }}>
+                  {booking.status === 'pending_payment' ? t(uiLang, 'Buchung wirklich abbrechen?') : t(uiLang, 'Buchung wirklich stornieren?')}
+                </p>
                 <p style={{ fontSize: '12px', color: '#EF4444', margin: '0 0 14px', lineHeight: 1.6 }}>
-                  {buildPolicyText(listing, uiLang)}
+                  {booking.status === 'pending_payment'
+                    ? t(uiLang, 'Die Zahlung wurde noch nicht abgeschlossen — es wird nichts berechnet.')
+                    : buildPolicyText(listing, uiLang)}
                 </p>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button

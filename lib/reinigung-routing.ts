@@ -21,6 +21,7 @@
  * Reine Logik (Vorfilter, KI-Auswertung, Texte, Dedupe, Cursor) liegt in lib/reinigung-routing-logik.ts.
  */
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { askClaude, FAST_MODEL } from '@/lib/ai'
 import { sendPushToUser } from '@/lib/push'
 import { getTaskPermissions } from '@/lib/tasks'
@@ -331,7 +332,7 @@ async function lauf(dryRun: boolean, stunden?: number): Promise<RoutingErgebnis>
   }
 
   if (erg.abgebrochen === 'ki-fehler' && erg.kiGeprueft === 0) {
-    erg.ausfall = `KI-Einordnung nicht erreichbar (${kiFehler}) — Late-Check-out-Fragen und Reinigungsmängel gehen gerade nicht an die Reinigung.`
+    erg.ausfall = `Late-Check-out-Fragen und Reinigungsmängel gehen gerade nicht an die Reinigung, die KI-Einordnung ist nicht erreichbar (${kiFehler}).`
   }
 
   if (!dryRun) {
@@ -351,7 +352,7 @@ async function verarbeiteTreffer(e: Eintrag, k: Klassifikation, ctx: Kontext): P
   const basis = { herkunft: e.herkunft, ref: e.ref, thema: k.thema }
   const skip = (grund: string): VorschauEintrag => ({ ...basis, ergebnis: 'uebersprungen', grund })
   const booking = e.bookingId ? ctx.buchungen.get(e.bookingId) ?? null : null
-  if (booking?.status === 'cancelled') return skip('Buchung storniert')
+  if (booking && istInaktiveBuchung(booking.status)) return skip(booking.status === 'cancelled' ? 'Buchung storniert' : 'Buchung noch nicht bezahlt')
   const listing = listingVon(ctx, booking, e)
   const vorname = vornameVon(booking?.guest_name ?? e.gastName ?? (e.herkunft === 'bewertung' ? e.autor : null))
   const zitat = zitatFuer(e, k)

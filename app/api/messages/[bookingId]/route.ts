@@ -5,6 +5,9 @@ import { isFewoRelayEmail } from '@/lib/fewo'
 import { sendMessageToGuest, getReservationMessages, isSmoobuSystemMessage, stripSubjectEcho, stripEmailQuote } from '@/lib/smoobu'
 import { translateIncoming } from '@/lib/translate'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Smoobu-Abruf + bis zu 25 Übersetzungen
+export const maxDuration = 60
+
 /**
  * GET /api/messages/[bookingId]
  * Returns all messages for a booking (from our DB + synced from Smoobu).

@@ -302,9 +302,9 @@ export async function confirmCleaning(token: string): Promise<ConfirmResult> {
   try {
     const { sendPushToTeam } = await import('@/lib/push')
     await sendPushToTeam(
-      `🧹 ${l.title ?? 'Wohnung'} als gereinigt gemeldet`,
+      `🧹 Gereinigt · ${l.title ?? 'Wohnung'}`,
       `${personName ?? 'Vor Ort'} · ${now.hm} Uhr${durationLabel}`
-        + (earlyCheckinSent ? ' · Früh-Check-in-Info an den Gast gesendet' : ''),
+        + (earlyCheckinSent ? '. Früh-Check-in-Info ging an den Gast.' : ''),
       // v4: eigene Kategorie 'reinigung' — Fertigmeldungen sind einzeln
       // abschaltbar, ohne die Aufgaben-Zuweisungen (tasks) mitzukillen
       '/team', { category: 'reinigung' },

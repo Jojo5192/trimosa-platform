@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { sanitizeRecipient } from '@/lib/lexoffice'
 import { SEV_ENGINE_STICHTAG, reissueSevInvoice, saveSevRecipient } from '@/lib/sevdesk-engine'
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     .from('bookings')
     .select('id, status, check_in, check_out, guest_name, listings(title)')
     .eq('portal_token', token).maybeSingle()
-  if (!b || b.status === 'cancelled') return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
+  if (!b || istInaktiveBuchung(b.status)) return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
   if (String(b.check_in) < SEV_ENGINE_STICHTAG) {
     return NextResponse.json({ error: 'Für diese Buchung bitte kurz über den Chat melden.' }, { status: 400 })
   }
@@ -76,8 +77,8 @@ export async function POST(req: NextRequest) {
       // Wunsch ist gespeichert (reissue macht saveSevRecipient vor dem
       // Update) — Team entscheidet über Storno + Neu-Ausstellung
       await sendPushToTeam(
-        '🧾 Empfänger-Wunsch auf FESTGESCHRIEBENER Rechnung',
-        `${gast} · ${wohnung} → „${recipient.name}" (${inv.invoice_number ?? '—'}) — bitte manuell prüfen (Storno + Neu nur bewusst).`,
+        `💶 Rechnungsempfänger-Wunsch · ${gast}`,
+        `${wohnung}: „${recipient.name}" für die festgeschriebene Rechnung ${inv.invoice_number ?? '—'}. Bitte von Hand prüfen (Storno + neu nur bewusst).`,
         '/buchhaltung', { buchhaltung: true },
       ).catch(() => {})
       return NextResponse.json({ ok: true, gespeichert: true })
@@ -88,15 +89,15 @@ export async function POST(req: NextRequest) {
       // ehrliche Antwort statt eines stillen Fehlschlags
       await saveSevRecipient(String(b.id), recipient).catch(() => {})
       await sendPushToTeam(
-        '🧾 Empfänger-Wunsch (Rechnung) — bitte prüfen',
-        `${gast} · ${wohnung}: „${recipient.name}" — automatische Änderung schlug fehl (${(r.error ?? '').slice(0, 100)}).`,
+        `💶 Rechnungsempfänger-Wunsch · ${gast}`,
+        `${wohnung}: „${recipient.name}" — automatische Änderung hat nicht geklappt (${(r.error ?? '').slice(0, 100)}). Bitte von Hand ändern.`,
         '/buchhaltung', { buchhaltung: true },
       ).catch(() => {})
       return NextResponse.json({ error: 'Die Änderung hat gerade nicht geklappt — das Team wurde informiert und kümmert sich.' }, { status: 502 })
     }
     await sendPushToTeam(
-      '🧾 Gast hat Rechnungsempfänger geändert',
-      `${gast} · ${wohnung} → „${recipient.name}"${r.updated ? ` (Rechnung ${r.number ?? ''} direkt aktualisiert)` : r.oldNumber ? ` (${r.oldNumber} storniert → neu ${r.number ?? ''})` : ''}`,
+      `💶 Rechnungsempfänger geändert · ${gast}`,
+      `${wohnung} → „${recipient.name}"${r.updated ? ` · Rechnung ${r.number ?? ''} direkt aktualisiert` : r.oldNumber ? ` · ${r.oldNumber} storniert, neu ${r.number ?? ''}` : ''}.`,
       '/buchhaltung', { buchhaltung: true },
     ).catch(() => {})
     return NextResponse.json({ ok: true, aktualisiert: true, number: r.number ?? inv.invoice_number ?? null })
@@ -110,8 +111,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Das Speichern hat gerade nicht geklappt — bitte später erneut versuchen oder kurz über den Chat melden.' }, { status: 502 })
   }
   await sendPushToTeam(
-    '🧾 Gast hat Rechnungsempfänger festgelegt',
-    `${gast} · ${wohnung} → „${recipient.name}" — wird bei der Rechnungs-Erstellung verwendet.`,
+    `💶 Rechnungsempfänger festgelegt · ${gast}`,
+    `${wohnung} → „${recipient.name}". Kommt so auf die Rechnung.`,
     '/buchhaltung', { buchhaltung: true },
   ).catch(() => {})
   return NextResponse.json({ ok: true, gespeichert: true })

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('[auto-messages] cron:', err)
     await meldeAusfall('auto-messages', 'Auto-Nachrichten',
-      `Der Versand-Lauf ist abgebrochen: ${String(err instanceof Error ? err.message : err).slice(0, 140)} — es gehen keine Auto-Nachrichten raus.`)
+      `Es gehen gerade keine Auto-Nachrichten raus, der Versand ist abgebrochen. Fehler: ${String(err instanceof Error ? err.message : err).slice(0, 140)}`)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

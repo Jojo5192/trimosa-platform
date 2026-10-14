@@ -370,6 +370,10 @@ export default function BookingBox({
     if (res.status === 409) { setStatus('unavailable'); setSubmitting(false); return }
     if (!res.ok) { setStatus('error'); setSubmitting(false); return }
 
+    // Seit 14.10.2026 liefert /api/bookings die Checkout-URL direkt (Session entsteht serverseitig im selben
+    // Request); der zweite Aufruf unten bleibt nur als Rückfall für einen Deploy-Übergang.
+    if (data.checkoutUrl) { window.location.href = data.checkoutUrl; return }
+
     // Redirect to Stripe payment
     const payRes = await fetch('/api/payments/checkout', {
       method: 'POST',

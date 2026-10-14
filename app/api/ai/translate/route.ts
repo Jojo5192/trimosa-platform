@@ -4,6 +4,9 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { translateOutgoing } from '@/lib/translate'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): KI-Übersetzung
+export const maxDuration = 60
+
 /**
  * POST /api/ai/translate { text, targetLang } — translates a German team
  * reply into the guest's language for the send preview (team only).

@@ -1357,7 +1357,8 @@ export async function checkLockBatteries(): Promise<{ geprueft: number; schwach:
       if (jetzt - letzte < WARN_WIEDERHOLUNG_MS) continue  // erst in 3 Tagen wieder
       const grund = h.keypadCritical && !(h.battery !== null && h.battery <= BATTERIE_WARN_PROZENT)
         ? 'Keypad-Batterie kritisch' : h.battery !== null ? `nur noch ${h.battery} %` : 'Batterie kritisch'
-      const text = `${ref.label} in ${l.title as string}: ${grund} — bitte beim nächsten Besuch die Batterien tauschen.`
+      const titel = `🔑 Batterie schwach · ${l.title as string}`
+      const text = `${ref.label}: ${grund}. Bitte beim nächsten Besuch die Batterien tauschen.`
       const respId = (l.cleaning_responsible as string | null) ?? null
       try {
         // dynamischer Import wie beim Türcode-Fehler-Push (kein Zirkel push↔locks)
@@ -1366,10 +1367,10 @@ export async function checkLockBatteries(): Promise<{ geprueft: number; schwach:
         // Subscription / Kategorie stumm), MUSS die Warnung ans Team —
         // sonst warnt der Wächter jahrelang ins Leere.
         const geraete = respId
-          ? await sendPushToUser(respId, '🪫 Batterie schwach', text, '/team?tab=einstellungen', `batt-${key}`, 'system')
+          ? await sendPushToUser(respId, titel, text, '/team?tab=einstellungen', `batt-${key}`, 'system')
           : 0
         if (!geraete) {
-          await sendPushToTeam('🪫 Batterie schwach', text, '/team?tab=einstellungen', { category: 'system' })
+          await sendPushToTeam(titel, text, '/team?tab=einstellungen', { category: 'system' })
         }
       } catch { /* Push-Fehler bricht den Wächter nie */ }
       state[key] = { warnedAt: new Date().toISOString(), level: h.battery }
@@ -1752,7 +1753,7 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   let created = 0, skipped = 0
   const errors: string[] = []
   // DB-Fehler war bisher „0 angelegt, keine Fehler" → jetzt ein Fehler, der den Team-Push unten auslöst
-  if (rowsErr) errors.push(`Buchungen ohne Türcode nicht ladbar (${rowsErr.message.slice(0, 120)}) — es werden gerade KEINE Codes angelegt`)
+  if (rowsErr) errors.push(`Buchungen ohne Türcode nicht ladbar (${rowsErr.message.slice(0, 120)}) — es werden gerade keine Codes angelegt`)
   const usedLocks = new Set<number>()
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
@@ -1787,7 +1788,7 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   if (errors.length) {
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam('⚠️ Türcode konnte nicht angelegt werden', errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} weitere)` : ''), '/team?tab=aufgaben', { category: 'system' })
+      await sendPushToTeam(`🔑 Türcode nicht angelegt${errors.length > 1 ? ` · ${errors.length} Fälle` : ''}`, `${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} weitere)` : ''}. Bitte prüfen und den Code von Hand anlegen.`, '/team?tab=aufgaben', { category: 'system' })
     } catch { /* best effort */ }
     console.error('[locks] Fehler:', errors)
   }

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       const kaputt = new Set(report.postfachFehler ?? [])
       if (grund || (state.mailboxes.length > 0 && kaputt.size >= state.mailboxes.length)) {
         await meldeAusfall('mail-scan', 'Mail-Scan',
-          grund ?? `Kein Postfach abrufbar (${kaputt.size} von ${state.mailboxes.length}): ${report.fehler[0]?.error ?? 'ohne Fehlertext'} — Microsoft-Graph-Zugang (MS_CLIENT_SECRET) prüfen.`)
+          grund ?? `Kein Postfach abrufbar (${kaputt.size} von ${state.mailboxes.length}). Bitte den Microsoft-Zugang prüfen. Fehler: ${report.fehler[0]?.error ?? 'ohne Fehlertext'}`)
         return NextResponse.json({ ...report, ausfall: true }, { status: 500 })
       }
       await ausfallBehoben('mail-scan', 'Mail-Scan')

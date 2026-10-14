@@ -24,9 +24,11 @@ export default async function DashboardPage() {
   const smoobuChannelId = (profile as Record<string, unknown> | null)?.smoobu_channel_id as number | null
 
   // Single-Host-Firma: ALLE Team-Gastgeber sehen ALLE Inserate & Buchungen
+  // Spaltenliste statt '*': seit Migration 20261014_listings_column_privileges hat der Cookie-Client
+  // (Rolle authenticated) kein SELECT mehr auf sensible Spalten — select('*') liefe auf 42501
   const { data: listings } = await supabase
     .from('listings')
-    .select('*')
+    .select('id, title, location, max_guests, bedrooms, is_active, created_at')
     .order('created_at', { ascending: false })
 
   const listingIds = listings?.map((l) => l.id) ?? []

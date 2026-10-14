@@ -304,7 +304,7 @@ export async function checkWarenkoerbe(): Promise<{ posts: number }> {
       const { sendPushToTeam } = await import('@/lib/push')
       await sendPushToTeam(
         `🛒 Bestellung fällig · ${standort}`,
-        `${offen.length} Artikel zum Nachbestellen${adr ? ` — Adresse „${adr.label}"` : ''}. Liste + Warenkorb im Material-Bereich (Mehr-Tab).`,
+        `${offen.length} Artikel zum Nachbestellen${adr ? `, Adresse „${adr.label}"` : ''}. Liste und Warenkorb unter Mehr → Material.`,
         '/team?tab=einstellungen',
         { category: 'material' },
       )

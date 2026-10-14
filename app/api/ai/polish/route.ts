@@ -5,6 +5,9 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { askClaude } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): KI-Antwort
+export const maxDuration = 60
+
 /**
  * POST /api/ai/polish — writing help for hosts inside the listing editor.
  * Improves (or drafts, when empty) a listing text field. Strict rule in the

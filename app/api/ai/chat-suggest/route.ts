@@ -6,6 +6,9 @@ import { askClaude } from '@/lib/ai'
 import { getChatKnowledge } from '@/lib/chat-knowledge'
 import { getPrompt } from '@/lib/prompts'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): KI-Antwort
+export const maxDuration = 60
+
 /**
  * POST /api/ai/chat-suggest { conversationId } — drafts a host reply to the
  * guest's latest message. Only the conversation's host (or an admin) may ask;

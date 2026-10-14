@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendNewBookingPush } from '@/lib/push'
+import { sendNewBookingPush, sendPushToTeam } from '@/lib/push'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createReservation, cancelReservation } from '@/lib/smoobu'
@@ -7,12 +7,81 @@ import { claimSmoobuPush, releaseSmoobuPush } from '@/lib/smoobu-claim'
 import { resolveOverbooking } from '@/lib/overbooking'
 import { sendBookingEmail, sendHostBookingAlert, sendBookingCancelledEmail } from '@/lib/email'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Stripe: Website-Buchung bzw. Verlängerung (Smoobu-Anlage, Rechnung, Mails, Gast-Bestätigung) — nie am Standard-Zeitlimit abbrechen
+export const maxDuration = 120
+
 /**
  * POST /api/payments/webhook
  * Stripe sends events here. Set up in Stripe Dashboard:
  *   Webhook URL: https://trimosa-app.vercel.app/api/payments/webhook
  *   Events: checkout.session.completed, checkout.session.expired, charge.refunded
  */
+
+/**
+ * 🧯 Zahlung eingegangen, aber die Buchung darf nicht bestätigt werden (14.10.2026): Sie war beim Eintreffen
+ * des Webhooks schon storniert/verfallen (Aufräumer, Gast-Abbruch) oder der Zeitraum ist inzwischen anderweitig
+ * belegt (Overlap-Schutz 23P01). Dann NICHT 500 (Stripe wiederholt endlos, Gast hat bezahlt, nichts passiert),
+ * sondern: automatisch erstatten, Buchung storniert lassen, Team-Push, Gast im Chat informieren — Vorbild
+ * lib/zahlungen.ts (Verlängerung gegen belegten Zeitraum).
+ */
+async function erstatteNachZahlung(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  session: any,
+  booking: { id: string; guest_id: string | null; check_in: string; check_out: string },
+  listing: { title: string; host_id: string } | null,
+  grund: string,
+): Promise<'erstattet' | 'nicht_erstattet' | 'db_fehler'> {
+  const piId: string | null = typeof session.payment_intent === 'string'
+    ? session.payment_intent
+    : (session.payment_intent?.id ?? null)
+  let refundId: string | null = null
+  try {
+    // Idempotency-Key: bei Stripe-Wiederholung desselben Events kommt derselbe Refund zurück statt „already refunded"
+    if (piId) refundId = (await stripe.refunds.create({ payment_intent: piId }, { idempotencyKey: `refund-${session.id}` })).id
+  } catch (e) {
+    console.error('[Webhook] automatische Erstattung fehlgeschlagen:', booking.id, e)
+  }
+  const { error: dbErr } = await supabaseAdmin.from('bookings').update({
+    status: 'cancelled',
+    payment_status: 'paid',
+    paid_at: new Date().toISOString(),
+    stripe_payment_intent_id: piId,
+    ...(refundId ? { refunded_at: new Date().toISOString(), stripe_refund_id: refundId } : {}),
+  }).eq('id', booking.id)
+  if (dbErr) {
+    // 500 → Stripe wiederholt; der Refund ist per Idempotency-Key derselbe, nur der DB-Stand wird nachgezogen
+    console.error('[Webhook] Erstattung verbucht, DB-Update fehlgeschlagen:', booking.id, dbErr.message)
+    return 'db_fehler'
+  }
+
+  const betrag = ((session.amount_total ?? 0) / 100).toFixed(2)
+  const wo = `${listing?.title ?? 'Wohnung'} ${booking.check_in} – ${booking.check_out}`
+  await sendPushToTeam(
+    `💶 ${refundId ? 'Zahlung automatisch erstattet' : 'Zahlung ohne Buchung'} · ${listing?.title ?? 'Wohnung'}`,
+    `${wo}, ${betrag} €: ${grund}.${refundId ? ' Nichts mehr zu tun.' : ` Bitte im Stripe-Dashboard erstatten (Zahlungs-ID ${piId ?? '?'}).`}`,
+    // Erstattung gescheitert = Handarbeit nötig → 'system' (kommt auch in der Ruhezeit sofort durch)
+    '/team', { category: refundId ? 'bookings' : 'system' },
+  ).catch((e) => console.error('[Webhook] Team-Push Erstattung:', e))
+
+  try {
+    const { data: conv } = await supabaseAdmin.from('conversations').select('id').eq('booking_id', booking.id).maybeSingle()
+    if (conv) {
+      await supabaseAdmin.from('messages').insert({
+        conversation_id: conv.id,
+        sender_id: listing?.host_id ?? booking.guest_id,
+        content: refundId
+          ? `❌ Leider konnten wir deine Buchung (${booking.check_in} – ${booking.check_out}) nicht mehr bestätigen: ${grund}. Deine Zahlung von €${betrag} wurde automatisch erstattet und erscheint in 5–10 Werktagen auf deiner Zahlungsmethode. Entschuldige die Umstände — gern helfen wir bei einem anderen Zeitraum.`
+          : `❌ Leider konnten wir deine Buchung (${booking.check_in} – ${booking.check_out}) nicht mehr bestätigen: ${grund}. Wir erstatten deine Zahlung von €${betrag} umgehend und melden uns hier.`,
+      })
+      await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+    }
+  } catch (e) {
+    console.error('[Webhook] Chat-Hinweis Erstattung:', e)
+  }
+  console.warn('[Webhook] Zahlung nicht in Buchung umgesetzt → erstattet:', booking.id, grund, refundId ?? 'OHNE Refund')
+  return refundId ? 'erstattet' : 'nicht_erstattet'
+}
+
 export async function POST(req: NextRequest) {
   const sig = req.headers.get('stripe-signature') ?? ''
   const body = await req.text()
@@ -65,12 +134,22 @@ export async function POST(req: NextRequest) {
     const listing = booking.listings as unknown as { id: string; title: string; smoobu_id: string | null; host_id: string; cancellation_policy: string } | null
 
     // Determine new booking status
-    // instant → confirmed immediately; request → stays pending until host confirms
+    // instant: pending_payment → confirmed (erst jetzt, nach Zahlung); request → stays pending until host confirms
     const newStatus = bookingType === 'instant' ? 'confirmed' : 'pending'
+
+    // Buchung war beim Zahlungseingang schon storniert/verfallen (Aufräumer nach 40 Min, Gast-Abbruch,
+    // Zahlung einer alten Session) → nicht wiederbeleben, sondern erstatten
+    if (booking.status === 'cancelled') {
+      const r = await erstatteNachZahlung(session, booking, listing, 'die Buchung war beim Zahlungseingang bereits verfallen oder storniert')
+      if (r === 'db_fehler') return NextResponse.json({ error: 'Erstattung nicht verbucht' }, { status: 500 })
+      return NextResponse.json({ ok: true, erstattet: r })
+    }
 
     // Update booking — scheitert es, mit 500 antworten: Stripe wiederholt dann, statt dass der Gast eine
     // Bestätigung bekommt, während die Buchung unbezahlt bleibt
-    const { error: updErr } = await supabaseAdmin
+    // Bedingtes Update = Claim: Die Erfolgsseite (app/booking/success) setzt 'paid' ggf. zuerst und verschickt
+    // dann selbst Mail/Alarm/Push — hier nur weitermachen, wenn DIESER Aufruf den Übergang gemacht hat
+    const { data: claimed, error: updErr } = await supabaseAdmin
       .from('bookings')
       .update({
         payment_status: 'paid',
@@ -79,10 +158,19 @@ export async function POST(req: NextRequest) {
         status: newStatus,
       })
       .eq('id', bookingId)
+      .neq('payment_status', 'paid')
+      .select('id')
+    if (updErr && (updErr.code === '23P01' || /exclusion|overlap|conflict/i.test(updErr.message ?? ''))) {
+      // Overlap-Schutz: Zeitraum inzwischen anderweitig belegt (z. B. Portalbuchung nach Verfall) → kein Retry-Loop
+      const r = await erstatteNachZahlung(session, booking, listing, 'der Zeitraum ist inzwischen anderweitig belegt')
+      if (r === 'db_fehler') return NextResponse.json({ error: 'Erstattung nicht verbucht' }, { status: 500 })
+      return NextResponse.json({ ok: true, erstattet: r })
+    }
     if (updErr) {
       console.error('[Webhook] Buchung nicht als bezahlt gespeichert:', bookingId, updErr.message)
       return NextResponse.json({ error: 'Buchung konnte nicht aktualisiert werden' }, { status: 500 })
     }
+    if (!claimed?.length) return NextResponse.json({ ok: true, schonBezahlt: true, durch: 'erfolgsseite' })
 
     // Notify the host now that payment is confirmed — requests ask for
     // accept/decline, instant bookings just inform. AWAIT ist Pflicht
@@ -256,12 +344,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // A booking row is created (status 'confirmed'/'pending') before the
+  // A booking row is created (status 'pending_payment'/'pending') before the
   // guest ever reaches Stripe Checkout. If the session expires unpaid
-  // (30 min, see /api/payments/checkout), that row would otherwise sit
-  // there indefinitely, looking like a real booking and — for instant
-  // bookings — blocking the calendar via the confirmed-only exclusion
-  // constraint on bookings.
+  // (30 min, see lib/checkout.ts), that row would otherwise sit there
+  // indefinitely — for instant bookings blocking the calendar via the
+  // exclusion constraint (confirmed + pending_payment). Sicherheitsnetz
+  // für verlorene Events: Cron /api/bookings/sweep (lib/booking-sweep.ts).
   if (event.type === 'checkout.session.expired') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const session = event.data.object as any
@@ -273,17 +361,23 @@ export async function POST(req: NextRequest) {
 
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('id, payment_status, listing_id, check_in, check_out')
+      .select('id, status, payment_status, listing_id, check_in, check_out, stripe_checkout_session_id')
       .eq('id', bookingId)
       .maybeSingle()
 
     // Only cancel if it's still unpaid — a completed payment always wins
-    // over an expiry event, regardless of arrival order.
-    if (booking && booking.payment_status !== 'paid') {
+    // over an expiry event, regardless of arrival order. Und nur, wenn es
+    // die AKTUELLE Session der Buchung ist: nach „Zahlung erneut starten"
+    // darf das Ablaufen der alten Session die neue nicht stornieren.
+    // (Buchungen ohne gespeicherte Session-ID räumt der Sweep nach 40 Min auf.)
+    const sessionPasst = !!booking?.stripe_checkout_session_id && booking.stripe_checkout_session_id === session.id
+    if (booking && booking.payment_status !== 'paid' && booking.status !== 'cancelled' && sessionPasst) {
       await supabaseAdmin
         .from('bookings')
         .update({ status: 'cancelled' })
         .eq('id', bookingId)
+        .eq('stripe_checkout_session_id', session.id)
+        .neq('payment_status', 'paid')
       // §274 Entwarnung (Fall Margit/Heidi 27.8.): Der unbezahlte Website-
       // Checkout blockte den Zeitraum und löste gegen eine Portal-Buchung
       // den Überbuchungs-Alarm aus — mit dem Verfall ist der Konflikt weg.

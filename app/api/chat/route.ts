@@ -8,6 +8,9 @@ import { sendPushToTeam } from '@/lib/push'
 import { makeTr } from '@/lib/static-translate'
 import { getUiLang } from '@/lib/i18n-server'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Abgleich + Übersetzung
+export const maxDuration = 60
+
 // ── Smoobu sync helper ───────────────────────────────────────
 async function syncSmoobuMessages(
   conversationId: string,

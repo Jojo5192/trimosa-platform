@@ -592,7 +592,7 @@ export async function autoNachlauf(limit = 2): Promise<{ versucht: number; gebuc
         delete state[id]
         try {
           const { sendPushToTeam } = await import('@/lib/push')
-          await sendPushToTeam('✅ Beleg automatisch verbucht (Nachlauf)', r.text, '/buchhaltung', { buchhaltung: true })
+          await sendPushToTeam('💶 Beleg nachträglich verbucht', r.text, '/buchhaltung', { buchhaltung: true })
         } catch { /* best effort */ }
       }
     }

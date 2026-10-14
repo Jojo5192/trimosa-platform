@@ -61,7 +61,7 @@ async function compressToJpeg(file: File): Promise<Blob> {
 }
 
 const VIS_META: Record<string, string> = {
-  admin: '🔒 Nur Admins', team: '👥 + Mitarbeiter', alle: '🌐 Alle',
+  admin: '🔒 Nur Chefs', team: '👥 + Mitarbeiter', alle: '🌐 Alle',
 }
 
 type Person = { id: string; name: string; isProvider: boolean }
@@ -178,7 +178,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       let json: { [k: string]: any } = {}
       try { json = JSON.parse(text) } catch {
         if (attempt < 1) { setTimeout(() => load(1), 1200); return }
-        setError(`Unerwartete Antwort vom Server (HTTP ${res.status}).`)
+        console.error('tasks: keine gültige Antwort', res.status)
+        setError('Die Aufgaben konnten nicht geladen werden. Bitte versuch es gleich noch einmal.')
         setLoading(false)
         return
       }
@@ -198,12 +199,15 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           setPersonFilter(userId)
         }
         setError(null)
-      } else setError(json.error ?? `Fehler beim Laden (${res.status}).`)
+      } else {
+        console.error('tasks', res.status, json.error)
+        setError(res.status === 403 ? 'Für die Aufgaben fehlt dir die Berechtigung.' : 'Die Aufgaben konnten nicht geladen werden. Bitte versuch es gleich noch einmal.')
+      }
     } catch (e) {
       // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
       if (attempt < 1) { setTimeout(() => load(1), 1200); return }
-      const detail = e instanceof Error && e.message ? ` (${e.message.slice(0, 80)})` : ''
-      setError(`Netzwerkfehler beim Laden${detail}`)
+      console.error('tasks', e)
+      setError('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     }
     setLoading(false)
   }, [userId])
@@ -290,9 +294,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           ? `${j.vorschlaege} neue Vorschläge (aus ${j.nachrichten} Nachrichten, ${j.bewertungen} Bewertungen).`
           : j.note ?? `Nichts Neues gefunden (${j.nachrichten} Nachrichten, ${j.bewertungen} Bewertungen geprüft).`)
         load()
-      } else setAiNote(j.error ?? 'Analyse fehlgeschlagen.')
+      } else setAiNote(res.status < 500 && j.error ? j.error : 'Die KI-Analyse hat nicht geklappt. Bitte versuch es gleich noch einmal.')
     } catch {
-      setAiNote('Netzwerkfehler bei der Analyse.')
+      setAiNote('Keine Verbindung – die KI-Analyse ist gerade nicht möglich.')
     }
     setAnalyzing(false)
   }
@@ -303,7 +307,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'verworfen' }),
     })
-    if (!res.ok) { setError('Verwerfen fehlgeschlagen.'); load() }
+    if (!res.ok) { setError('Verwerfen hat nicht geklappt. Bitte versuch es gleich noch einmal.'); load() }
   }
 
   async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
@@ -314,7 +318,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
-    if (!res.ok) { setError('Speichern fehlgeschlagen.'); load() }
+    if (!res.ok) { setError('Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); load() }
   }
 
   function scopeChip(t: Task): string {
@@ -332,10 +336,10 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       const res = await fetch(`/api/tasks/${task.id}/photos`, { method: 'POST', body: fd })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        setError(j.error ?? 'Foto-Upload fehlgeschlagen.')
+        setError(res.status < 500 && j.error ? j.error : 'Das Foto konnte nicht hochgeladen werden. Bitte versuch es noch einmal.')
       } else await load()
     } catch {
-      setError('Foto-Upload fehlgeschlagen.')
+      setError('Das Foto konnte nicht hochgeladen werden. Bitte prüf die Verbindung und versuch es noch einmal.')
     }
     setUploadingFor(null)
   }
@@ -400,7 +404,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       {oncall && filter !== 'vorschlaege' && filter !== 'erledigt' && calls.length > 0 && (
         <div style={{ padding: '12px 16px 0' }}>
           <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-red)', margin: '0 0 8px' }}>
-            ☎️ Telefonische Meldungen ({calls.length}) — Gast wartet auf Rückmeldung
+            ☎️ Telefonische Meldungen ({calls.length}) – Gast wartet auf Rückmeldung
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {calls.map((t) => (
@@ -426,14 +430,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
             <button onClick={analyze} disabled={analyzing} style={{
               padding: '5px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700,
               background: 'var(--tm-surface2)', color: 'var(--tm-purple)', cursor: analyzing ? 'default' : 'pointer', opacity: analyzing ? 0.6 : 1,
-            }}>{analyzing ? 'Analysiere… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
+            }}>{analyzing ? 'Analysiert… (bis ~1 Min.)' : 'Jetzt analysieren'}</button>
           </div>
           {aiNote && <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: '0 0 8px' }}>{aiNote}</p>}
           {suggestions.length === 0 && !analyzing && (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--tm-muted)' }}>
               <p style={{ fontSize: 36, margin: '0 0 8px' }}>🤖</p>
               <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Keine offenen Vorschläge.</p>
-              <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Der tägliche Lauf (4:45 Uhr) analysiert neue Gastnachrichten & Bewertungen automatisch.</p>
+              <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Die KI prüft jeden Morgen um 4:45 Uhr neue Gast-Nachrichten und Bewertungen.</p>
             </div>
           )}
           {suggestions.length > 0 && (
@@ -483,7 +487,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
         {loading ? (
           <SkeletonRows kind="card" count={5} />
         ) : visible.length === 0 ? (
-          <EmptyState icon="check" title={filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich — alles erledigt!' : 'Keine offenen Aufgaben.'} />
+          <EmptyState icon="check" title={filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich – alles erledigt!' : 'Keine offenen Aufgaben.'} />
         ) : visible.map((t) => {
           const overdue = isOverdue(t)
           const prio = PRIO_META[t.prio] ?? PRIO_META.mittel
@@ -584,7 +588,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                   padding: '6px 13px', borderRadius: 999, border: 'none', background: 'var(--tm-surface2)',
                   color: 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>
-                  {uploadingFor === t.id ? '⏳ lädt…' : '📷 Foto'}
+                  {uploadingFor === t.id ? '⏳ Lädt…' : '📷 Foto'}
                   <input type="file" accept="image/*" style={{ display: 'none' }}
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(t, f); e.target.value = '' }} />
                 </label>
@@ -684,10 +688,10 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
         padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '0 0 4px' }}>
-          <h2 style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, margin: '5px 0 0', color: 'var(--tm-text)', overflowWrap: 'anywhere' }}>✓ „{task.title}" erledigen</h2>
+          <h2 style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, margin: '5px 0 0', color: 'var(--tm-text)', overflowWrap: 'anywhere' }}>✓ „{task.title}“ erledigen</h2>
           <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
         </div>
-        <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '0 0 10px' }}>Kurz festhalten, was gemacht wurde (optional):</p>
+        <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '0 0 10px' }}>Halt kurz fest, was du gemacht hast (optional):</p>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
           placeholder="z. B. Duschkopf getauscht, Dichtung erneuert…"
           style={{
@@ -718,12 +722,13 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
 
+  const [ladeFehler, setLadeFehler] = useState(false)
   const loadComments = useCallback(async () => {
     try {
       const res = await fetch(`/api/tasks/${taskId}/comments`, { cache: 'no-store' })
       const j = await res.json()
-      if (res.ok) setComments(j.comments ?? [])
-    } catch { /* Leerzustand bleibt */ }
+      if (res.ok) { setComments(j.comments ?? []); setLadeFehler(false) } else setLadeFehler(true)
+    } catch { setLadeFehler(true) }
     setLoading(false)
   }, [taskId])
   useEffect(() => { loadComments() }, [loadComments])
@@ -737,9 +742,9 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
         body: JSON.stringify({ content: text.trim() }),
       })
       if (res.ok) { setText(''); onPosted(); loadComments() }
-      else tmToast('Kommentar nicht gesendet — bitte erneut versuchen')
+      else tmToast('⚠️ Kommentar nicht gesendet. Bitte versuch es noch einmal.')
     } catch {
-      tmToast('Keine Verbindung — Kommentar nicht gesendet')
+      tmToast('📵 Keine Verbindung – Kommentar nicht gesendet.')
     } finally {
       setSending(false)
     }
@@ -747,9 +752,11 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
 
   return (
     <div style={{ marginTop: 9, padding: '10px 12px', borderRadius: 12, background: 'var(--tm-surface2)' }}>
-      {loading ? <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Laden…</p> : (
+      {loading ? <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Lädt…</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {comments.length === 0 && <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Noch keine Kommentare.</p>}
+          {comments.length === 0 && (ladeFehler
+            ? <p style={{ fontSize: 12, color: 'var(--tm-red)', margin: 0 }}>Kommentare konnten nicht geladen werden. <button type="button" onClick={() => { setLoading(true); void loadComments() }} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--tm-text)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>Erneut laden</button></p>
+            : <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Noch keine Kommentare.</p>)}
           {comments.map((c) => (
             <div key={c.id}>
               <p style={{ fontSize: 11, fontWeight: 700, color: c.mine ? 'var(--tm-accent-dark)' : 'var(--tm-muted)', margin: '0 0 2px' }}>
@@ -811,7 +818,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
   const isIOS = typeof navigator !== 'undefined' && /iP(hone|ad|od)/.test(navigator.userAgent)
 
   async function save() {
-    if (!title.trim()) { setErr('Titel fehlt.'); return }
+    if (!title.trim()) { setErr('Bitte gib einen Titel ein.'); return }
     setSaving(true)
     setErr(null)
     const payload = {
@@ -830,7 +837,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
         : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     } catch {
       // offline/Netzabbruch: Knopf wieder freigeben statt dauerhaft „Speichern…"
-      setErr('Keine Verbindung — die Aufgabe wurde nicht gespeichert. Bitte erneut versuchen.')
+      setErr('Keine Verbindung – die Aufgabe ist nicht gespeichert. Bitte versuch es noch einmal.')
       setSaving(false)
       return
     }
@@ -842,7 +849,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
         if (newId) {
           for (let i = 0; i < pendingFiles.length; i++) {
             try {
-              setUploadNote(`Foto ${i + 1}/${pendingFiles.length} wird hochgeladen…`)
+              setUploadNote(`Lädt Foto ${i + 1}/${pendingFiles.length} hoch…`)
               const blob = await compressToJpeg(pendingFiles[i])
               const fd = new FormData()
               fd.append('file', new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' }))
@@ -862,7 +869,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
     }
     else {
       const json = await res.json().catch(() => ({}))
-      setErr(json.error ?? 'Speichern fehlgeschlagen.')
+      setErr(res.status < 500 && json.error ? json.error : 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       setSaving(false)
     }
   }
@@ -874,13 +881,13 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
     try {
       res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
     } catch {
-      setErr('Keine Verbindung — die Aufgabe wurde nicht gelöscht.')
+      setErr('Keine Verbindung – die Aufgabe ist nicht gelöscht. Bitte versuch es noch einmal.')
       setSaving(false)
       return
     }
     // (früher ging nach dem Löschen noch ein „✅ Erledigt"-Kommentar an die gelöschte Aufgabe — Kopierrest aus save)
     if (res.ok) onSaved()
-    else { setErr('Löschen fehlgeschlagen.'); setSaving(false) }
+    else { setErr('Löschen hat nicht geklappt. Bitte versuch es gleich noch einmal.'); setSaving(false) }
   }
 
   const inputStyle: CSSProperties = {
@@ -970,10 +977,16 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           <div>
             <label style={labelStyle}>Sichtbar für (Zugewiesene sehen ihre Aufgabe immer)</label>
             <Segmented
-              options={[['admin', '🔒 Nur Admins'], ['team', '👥 + Mitarbeiter'], ['alle', '🌐 Alle']]}
+              options={[['admin', '🔒 Nur Chefs'], ['team', '👥 + Mitarbeiter'], ['alle', '🌐 Alle']]}
               value={visibility}
               onChange={setVisibility}
             />
+            {/* 7.10.: Vanessa sah keine „+ Mitarbeiter"-Aufgaben, weil die Rolle in den Aufgaben-Rechten auf „Nur eigene" stand */}
+            {visibility !== 'admin' && (
+              <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45, marginTop: 6 }}>
+                Wirkt nur für Rollen, die in den Aufgaben-Rechten (Website → Admin → „Aufgaben-Rechte“) auf „Freigegebene“ stehen – sonst sehen sie nur ihnen zugewiesene Aufgaben.
+              </div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>🔁 Wiederholen (nach Erledigung startet automatisch die nächste Runde)</label>
@@ -1034,7 +1047,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
               schmalen Screens stapeln sich die Spalten deshalb untereinander */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-              <label style={labelStyle}>Rotfrist (fällig bis)</label>
+              <label style={labelStyle}>Fällig bis</label>
               <div style={{ position: 'relative' }}>
                 {/* iOS-date-Inputs ignorieren width:100% mit nativem Appearance
                     (rendern breiter als der Container) → appearance: none */}
@@ -1056,7 +1069,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
               <label style={labelStyle}>Zugewiesen an</label>
               <select value={assignee} onChange={(e) => setAssignee(e.target.value)}
                 style={{ ...inputStyle, minHeight: 44, maxWidth: '100%' }}>
-                <option value="">— niemand —</option>
+                <option value="">– niemand –</option>
                 {people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isProvider ? ' · Dienstleister' : ''}</option>)}
               </select>
             </div>
@@ -1074,7 +1087,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           )}
           {task && status === 'erledigt' && task.status !== 'erledigt' && (
             <div>
-              <label style={labelStyle}>Was wurde gemacht? (optional — wird als Kommentar gespeichert)</label>
+              <label style={labelStyle}>Was hast du gemacht? (optional, erscheint als Kommentar)</label>
               <textarea value={doneNote} onChange={(e) => setDoneNote(e.target.value)} rows={2}
                 style={{ ...inputStyle, resize: 'vertical' }} />
             </div>
@@ -1086,7 +1099,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
             padding: '13px 0', borderRadius: 999, border: 'none', fontSize: 15, fontWeight: 700,
             background: 'var(--tm-navy)', color: '#fff',
             cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1,
-          }}>{saving ? 'Speichern…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
+          }}>{saving ? 'Speichert…' : task ? 'Speichern' : 'Aufgabe anlegen'}</button>
 
           {/* §314: Löschen verlangt das Verwalten-Recht (DELETE → 403 ohne manage) — im eingeschränkten Sheet ausblenden */}
           {task && !limited && (
@@ -1158,9 +1171,9 @@ function CallCard({ task, onDone, onError }: {
       })
       const j = await res.json().catch(() => ({}))
       if (res.ok) setOptions(j.options ?? [])
-      else onError(j.error ?? 'KI-Vorschlag fehlgeschlagen.')
+      else onError(res.status < 500 && j.error ? j.error : 'Die KI konnte gerade keine Lösung vorschlagen. Bitte versuch es gleich noch einmal.')
     } catch {
-      onError('Netzwerkfehler beim KI-Vorschlag.')
+      onError('Keine Verbindung – kein KI-Vorschlag möglich. Bitte versuch es noch einmal.')
     }
     setLoadingAi(false)
   }
@@ -1221,9 +1234,9 @@ function CallCard({ task, onDone, onError }: {
       })
       const j = await res.json().catch(() => ({}))
       if (res.ok && j.solution) setDoneText(j.solution)
-      else onError(j.error ?? 'Formulieren fehlgeschlagen.')
+      else onError(res.status < 500 && j.error ? j.error : 'Die KI konnte die Lösung gerade nicht formulieren. Bitte versuch es noch einmal.')
     } catch {
-      onError('Netzwerkfehler beim Formulieren.')
+      onError('Keine Verbindung – die KI konnte die Lösung nicht formulieren.')
     }
     setDoneBusy(false)
   }
@@ -1247,9 +1260,9 @@ function CallCard({ task, onDone, onError }: {
       })
       const j = await res.json().catch(() => ({}))
       if (res.ok) setCallResult(j.hinweis ?? 'Rückruf gestartet.')
-      else onError(j.error ?? 'Rückruf fehlgeschlagen.')
+      else onError(res.status < 500 && j.error ? j.error : 'Der Rückruf hat nicht geklappt. Bitte versuch es gleich noch einmal.')
     } catch {
-      onError('Netzwerkfehler beim Rückruf.')
+      onError('Keine Verbindung – der Rückruf ist nicht gestartet.')
     }
     setCallBusy(false)
   }
@@ -1323,7 +1336,7 @@ function CallCard({ task, onDone, onError }: {
       {/* ✨ Lösungs-Optionen: anklickbar, ⓘ zeigt die Herleitung */}
       {open && !doneOpen && (
         <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(174,141,45,0.25)' }}>
-          {loadingAi && <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: 0 }}>✨ Claude prüft das Anliegen gegen die Wissensbasis…</p>}
+          {loadingAi && <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: 0 }}>✨ Die KI prüft das Anliegen gegen die Wissensbasis…</p>}
           {!loadingAi && options && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {options.map((o, i) => (
@@ -1336,7 +1349,7 @@ function CallCard({ task, onDone, onError }: {
                     <span style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
                       {selected === i ? '✓ ' : ''}{o.text}
                     </span>
-                    <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt Claude darauf?" style={{
+                    <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt die KI darauf?" style={{
                       width: 24, height: 24, borderRadius: 999, border: 'none', flexShrink: 0, fontSize: 12, fontWeight: 800,
                       background: infoOpen === i ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: infoOpen === i ? '#fff' : 'var(--tm-muted)', cursor: 'pointer',
@@ -1351,7 +1364,7 @@ function CallCard({ task, onDone, onError }: {
               ))}
               {selected !== null && (
                 <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '2px 2px 0' }}>
-                  Gewählte Lösung wird beim ✓ Erledigen automatisch übernommen.
+                  Beim ✓ Erledigen übernimmt die App die gewählte Lösung automatisch.
                 </p>
               )}
             </div>
@@ -1360,11 +1373,11 @@ function CallCard({ task, onDone, onError }: {
             <button onClick={() => recRef.current?.stop()} style={{
               marginTop: 10, width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
               background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>🔴 Ich höre zu… — zum Fertigstellen antippen</button>
+            }}>🔴 Ich höre zu… – zum Beenden antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
               {speechOk && (
-                <button onClick={() => startDictation('instruction')} title="Sagen, was geantwortet werden soll" style={{
+                <button onClick={() => startDictation('instruction')} title="Sag, was die Antwort sein soll" style={{
                   width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
                   background: 'rgba(174,141,45,0.14)', cursor: 'pointer', fontSize: 15,
                 }}>🎤</button>
@@ -1393,12 +1406,12 @@ function CallCard({ task, onDone, onError }: {
             🤖 Was soll die KI dem Anrufer ausrichten? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(sie ruft {phone} an)</span>
           </p>
           {callResult ? (
-            <p style={{ fontSize: 13, color: 'var(--tm-green)', margin: 0, fontWeight: 600 }}>✅ {callResult}</p>
+            <p style={{ fontSize: 13, color: 'var(--tm-green)', margin: 0, fontWeight: 600 }}>✓ {callResult}</p>
           ) : recording === 'callback' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
               background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>🔴 Ich höre zu… — Ansage sprechen, dann antippen</button>
+            }}>🔴 Ich höre zu… – Ansage sprechen, dann antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               {speechOk && (
@@ -1411,7 +1424,7 @@ function CallCard({ task, onDone, onError }: {
                 value={callText}
                 onChange={(e) => setCallText(e.target.value)}
                 rows={2}
-                placeholder={'z. B. Später Check-in geht klar, Code kommt in die Gästemappe'}
+                placeholder={'z. B. Später Check-in geht klar, der Türcode steht in der Gästemappe'}
                 style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)', resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>
@@ -1431,26 +1444,26 @@ function CallCard({ task, onDone, onError }: {
       {doneOpen && (
         <div style={{ marginTop: 11, background: 'var(--tm-card)', borderRadius: 12, padding: '11px 13px', boxShadow: 'inset 0 0 0 1px rgba(22,101,52,0.3)' }}>
           <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--tm-green)', margin: '0 0 7px' }}>
-            ✅ Wie wurde das Anliegen gelöst? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(fließt in die KI-Wissensbasis)</span>
+            ✅ Wie hast du das Anliegen gelöst? <span style={{ fontWeight: 400, color: 'var(--tm-muted)' }}>(fließt in die KI-Wissensbasis)</span>
           </p>
           {recording === 'solution' ? (
             <button onClick={() => recRef.current?.stop()} style={{
               width: '100%', border: 'none', borderRadius: 10, padding: '10px 12px',
               background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>🔴 Ich höre zu… — kurz erklären, dann antippen</button>
+            }}>🔴 Ich höre zu… – kurz erklären, dann antippen</button>
           ) : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               {speechOk && (
-                <button onClick={() => startDictation('solution')} title="Lösung kurz mündlich erklären — Claude formuliert sie aus" style={{
+                <button onClick={() => startDictation('solution')} title="Lösung kurz mündlich erklären – die KI formuliert sie aus" style={{
                   width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
                   background: 'rgba(22,101,52,0.12)', cursor: 'pointer', fontSize: 15,
                 }}>🎤</button>
               )}
               <textarea
-                value={doneBusy ? 'Claude formuliert…' : doneText}
+                value={doneBusy ? 'KI formuliert…' : doneText}
                 onChange={(e) => setDoneText(e.target.value)}
                 rows={2}
-                placeholder="Kurz reicht — oder 🎤 antippen und erklären"
+                placeholder="Kurz reicht – oder 🎤 antippen und erklären"
                 style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)', resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>

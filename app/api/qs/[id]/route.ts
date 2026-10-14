@@ -94,7 +94,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Admin verschiebt fremden Termin → zuständige Person informieren
     if (check.assignee_id && check.assignee_id !== me.userId) {
       const [y, m, d] = body.dueDate.split('-')
-      await sendPushToUser(check.assignee_id, '🧾 QS-Termin verschoben', `Neuer Termin: ${Number(d)}.${Number(m)}.${y}`, '/team?tab=aufgaben', undefined, 'tasks').catch(() => {})
+      await sendPushToUser(check.assignee_id, '📋 QS-Termin verschoben', `Neuer Termin: ${Number(d)}.${Number(m)}.${y}. Details in den Aufgaben.`, '/team?tab=aufgaben', undefined, 'tasks').catch(() => {})
     }
     return NextResponse.json({ ok: true, dueDate: body.dueDate }, NO_STORE)
   }
@@ -172,8 +172,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     } catch (e) { console.error('[qs] defect suggestions failed:', e) }
 
     await sendPushToTeam(
-      '🧾 QS-Protokoll abgeschlossen',
-      `${listing?.title ?? 'Wohnung'} — geprüft von ${inspectorName.split(/\s+/)[0]}${maengelCount ? ` · ${maengelCount === 1 ? '1 Mangel' : `${maengelCount} Mängel`} → Aufgaben-Vorschläge` : ' · ohne Mängel'}`,
+      `📋 QS abgeschlossen · ${listing?.title ?? 'Wohnung'}`,
+      `Geprüft von ${inspectorName.split(/\s+/)[0]}${maengelCount ? ` · ${maengelCount === 1 ? '1 Mangel' : `${maengelCount} Mängel`}. Bitte die Aufgaben-Vorschläge ansehen.` : ' · ohne Mängel.'}`,
       '/team?tab=aufgaben', { category: 'tasks' }
     ).catch(() => {})
     return NextResponse.json({ ok: true }, NO_STORE)

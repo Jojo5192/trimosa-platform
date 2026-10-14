@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { findLegacySevInvoice } from '@/lib/sevdesk-legacy'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getInvoicePdf } from '@/lib/lexoffice'
 import { getSevInvoicePdf } from '@/lib/sevdesk'
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
   const { data: b } = await supabaseAdmin
     .from('bookings').select('id, status, check_in, smoobu_reservation_id').eq('portal_token', token).maybeSingle()
-  if (!b || b.status === 'cancelled') return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
+  if (!b || istInaktiveBuchung(b.status)) return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
 
   // 💶 ?zusatz=<Zahllink-ID>: Rechnung einer Zusatzzahlung (lib/zahlungen.ts) — nur Links DIESER Buchung
   const zusatz = req.nextUrl.searchParams.get('zusatz')

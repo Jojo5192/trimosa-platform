@@ -47,12 +47,15 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     fetch('/api/push/log', { cache: 'no-store' })
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 403 ? 'Kein Zugriff.' : `Fehler ${r.status}`)
+        if (!r.ok) {
+          setError(r.status === 403 ? 'Für die Mitteilungen fehlt dir die Berechtigung. Sprich bei Bedarf einen Chef an.' : 'Die Mitteilungen konnten nicht geladen werden. Bitte versuch es gleich noch einmal.')
+          return
+        }
         const d = await r.json()
         setEntries(d.entries ?? [])
         if (d.hinweis) setHinweis(d.hinweis)
       })
-      .catch((e) => setError(String(e instanceof Error ? e.message : e)))
+      .catch((e) => { console.error('push/log', e); setError('Die Mitteilungen konnten nicht geladen werden. Bitte prüf die Verbindung und öffne sie noch einmal.') })
   }, [])
 
   const openEntry = (e: Eintrag) => {
@@ -85,7 +88,7 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
         <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>🔔 Mitteilungen</div>
         <div style={{ flex: 1 }} />
-        {entries === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
+        {entries === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
@@ -102,7 +105,7 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
           )}
           {entries !== null && entries.length === 0 && !hinweis && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14 }}>
-              Noch keine Mitteilungen — hier erscheint ab jetzt jede Push, die an dich rausgeht (30 Tage).
+              Noch keine Mitteilungen. Hier siehst du ab jetzt jede Push-Mitteilung an dich – 30 Tage lang.
             </div>
           )}
 

@@ -72,7 +72,8 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
       setPage(p)
       setError(null)
     } catch (e) {
-      setError((e as Error).message)
+      console.error('wallbox', e)
+      setError('Die Wallbox-Daten konnten nicht geladen werden. Bitte versuch es später noch einmal.')
     } finally {
       setLoading(false)
     }
@@ -119,7 +120,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
               padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)',
               fontSize: 13, lineHeight: 1.5, marginBottom: 14,
             }}>
-              ⚠️ Wallbox-Daten nicht abrufbar: {error}
+              ⚠️ {error}
             </div>
           )}
 

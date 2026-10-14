@@ -25,8 +25,15 @@ import CleaningDurations from '@/components/team/CleaningDurations'
 import SchuldenPanel from '@/components/team/SchuldenPanel'
 import AutoReplyPanel from '@/components/team/AutoReplyPanel'
 import { VORSCHAU_HINWEIS, VORSCHAU_NAME, VORSCHAU_ROLLEN, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
+import { RUHE_STANDARD, ruheErklaerung, type Ruhezeit } from '@/lib/push-ruhe'
 
 const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
+// 🌙 Ruhezeiten: Auswahl in vollen Stunden (0–23 Uhr)
+const STUNDEN = Array.from({ length: 24 }, (_, h) => h)
+const STUNDEN_SELECT: React.CSSProperties = {
+  fontSize: 14, fontWeight: 600, padding: '6px 8px', borderRadius: 10,
+  border: '0.5px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-text)',
+}
 
 // label = Zeilentitel: zugänglicher Name für VoiceOver (der Schalter selbst hat keinen Text)
 function Switch({ on, disabled, onChange, label }: { on: boolean; disabled?: boolean; onChange: () => void; label: string }) {
@@ -91,13 +98,13 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
         : await fetch('/api/team/vorschau', { method: 'DELETE' })
       if (!r.ok) {
         const d = await r.json().catch(() => ({})) as { error?: string }
-        tmToast(d.error ?? 'Vorschau konnte nicht umgeschaltet werden')
+        tmToast(d.error ?? '⚠️ Die Vorschau ließ sich nicht umschalten. Bitte versuch es noch einmal.')
         setVorschauBusy(false)
         return
       }
       location.replace('/team?tab=einstellungen')
     } catch {
-      tmToast('Vorschau konnte nicht umgeschaltet werden')
+      tmToast('📵 Keine Verbindung – die Vorschau ließ sich nicht umschalten.')
       setVorschauBusy(false)
     }
   }
@@ -108,6 +115,8 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
   const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean; tv: boolean } | null>(null)
+  // 🌙 Ruhezeiten (Pascal, Chefsache 7.10.2026) — push_prefs.ruhe über /api/push/prefs
+  const [ruhe, setRuhe] = useState<Ruhezeit | null>(null)
   const [showQs, setShowQs] = useState(false)
   const [showTrends, setShowTrends] = useState(false)
   // ☎️ Bereitschaft (§175) — nur Admins (GET liefert sonst 403 → Sektion bleibt aus)
@@ -125,7 +134,13 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
       setShowCalls(true)
     }
     window.addEventListener('trimosa-open-call', onOpenCall)
-    return () => window.removeEventListener('trimosa-open-call', onOpenCall)
+    // 🌅 Sammel-Mitteilung nach der Ruhezeit → Mitteilungs-Verlauf öffnen
+    const onOpenPushLog = () => setShowPushLog(true)
+    window.addEventListener('trimosa-open-pushlog', onOpenPushLog)
+    return () => {
+      window.removeEventListener('trimosa-open-call', onOpenCall)
+      window.removeEventListener('trimosa-open-pushlog', onOpenPushLog)
+    }
   }, [])
   const [showBeleg, setShowBeleg] = useState(false)
   // 🔑 Türschlösser (§253) — Admins/Hosts/Staff (probe 403 → Eintrag bleibt aus)
@@ -154,7 +169,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
     }).catch(() => setPushState('unsupported'))
     fetch('/api/push/prefs', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, material: d.material !== false, system: d.system !== false, tv: d.tv !== false }) })
+      .then((d) => { if (d) setPrefs({ guestChats: d.guestChats !== false, teamChats: d.teamChats !== false, bookings: d.bookings !== false, tasks: d.tasks !== false, reinigung: d.reinigung !== false, calls: d.calls !== false, buchhaltung: d.buchhaltung !== false, material: d.material !== false, system: d.system !== false, tv: d.tv !== false }); if (d) setRuhe(d.ruhe ?? { ...RUHE_STANDARD }) })
       .catch(() => {})
     fetch('/api/admin/oncall', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -239,6 +254,19 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
     window.dispatchEvent(new Event('trimosa-prefs-changed'))
   }
 
+  // 🌙 Ruhezeiten speichern — sofort anzeigen, bei Fehler zurückdrehen
+  async function saveRuhe(next: Ruhezeit) {
+    if (!ruhe) return
+    const vorher = ruhe
+    haptic()
+    setRuhe(next)
+    const ok = await fetch('/api/push/prefs', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ruhe: next }),
+    }).then((r) => r.ok).catch(() => false)
+    if (!ok) { setRuhe(vorher); tmToast('Ruhezeit konnte nicht gespeichert werden') }
+  }
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--tm-bg)', WebkitOverflowScrolling: 'touch' }}>
       {/* §276: Titel „Mehr" steht in der Shell-Kopfleiste */}
@@ -277,7 +305,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Rollen-Vorschau</span>
                   <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>
-                    {vorschau ? `Du siehst die App gerade ${VORSCHAU_HINWEIS[vorschau]}.` : 'Die App so sehen, wie sie eine andere Rolle sieht. Aktionen wirken dabei echt.'}
+                    {vorschau ? `Du siehst die App gerade ${VORSCHAU_HINWEIS[vorschau]}.` : 'Die App so sehen, wie sie eine andere Rolle sieht. Was du dabei tust, wirkt echt.'}
                   </span>
                 </span>
               </div>
@@ -310,7 +338,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                 <span style={{ fontSize: 19 }}>📥</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Offen abarbeiten</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel — Antwort, ✓, 📞, Aufgabe</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel – Antwort, ✓, 📞, Aufgabe</span>
                 </span>
                 <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
@@ -322,7 +350,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                 <span style={{ fontSize: 19 }}>📈</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Entwicklung</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Bewertungs-Scores im Zeitverlauf — gesamt & je Plattform</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Bewertungen im Zeitverlauf – gesamt & je Plattform</span>
                 </span>
                 <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
@@ -334,7 +362,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                 <span style={{ fontSize: 19 }}>☎️</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Telefonate</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Alle Anrufe der KI-Assistentin — Transkript lesen & abhören</span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Alle Anrufe der KI-Assistentin – Transkript lesen & abhören</span>
                 </span>
                 <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
               </button>
@@ -347,7 +375,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                   <span style={{ fontSize: 19 }}>🔑</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Türschlösser</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Fernöffnen & Codes einsehen je Wohnung</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Fernöffnen & Türcodes je Wohnung</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -375,7 +403,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                   <span style={{ fontSize: 19 }}>🏦</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Schuldenstand</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Kredite je Standort — Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Kredite je Standort – Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -415,7 +443,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                   <span style={{ fontSize: 19 }}>💶</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Buchhaltung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Eigene Vollbild-Oberfläche — Belege, Zahlungen, Verbuchen (nur Admins)</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Eigene Vollbild-Oberfläche – Belege, Zahlungen, Verbuchen (nur Chefs)</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -429,7 +457,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                   <span style={{ fontSize: 19 }}>⚡</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Wallbox</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ladehistorie — kWh, Umsatz & Gewinn</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ladehistorie – kWh, Umsatz & Gewinn</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -442,7 +470,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
                   <span style={{ fontSize: 19 }}>📺</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>TV-Steuerung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ferienwohnungs-TVs — Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ferienwohnungs-TVs – Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
                   </span>
                   <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                 </button>
@@ -462,7 +490,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
             <span style={{ fontSize: 19 }}>🛒</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Material & Bestellungen</span>
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Standort wählen, Produkt antippen — fertig. Warenkorb kommt automatisch</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Standort wählen, Produkt antippen – fertig. Der Warenkorb kommt automatisch.</span>
             </span>
             <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
@@ -481,7 +509,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
             <span style={{ fontSize: 19 }}>🧾</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Beleg einreichen</span>
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren — die Buchhaltung übernimmt</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren – die Buchhaltung übernimmt</span>
             </span>
             <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
           </button>
@@ -512,6 +540,26 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
               ? <span style={{ fontSize: 13, color: 'var(--tm-muted2)' }}>…</span>
               : <Switch label="Push auf diesem Gerät" on={pushState === 'on'} disabled={pushState === 'unsupported' || busy} onChange={toggleDevice} />}
           </Row>
+          {/* 🌙 Ruhezeiten (Pascal, Chefsache 7.10.2026): gilt für alle Geräte — Dringendes sofort, der Rest gesammelt */}
+          <Row title="🌙 Ruhezeiten" subtitle={ruheErklaerung(ruhe ?? RUHE_STANDARD)}>
+            <Switch label="Ruhezeiten" on={(ruhe ?? RUHE_STANDARD).an} disabled={!ruhe} onChange={() => { if (ruhe) saveRuhe({ ...ruhe, an: !ruhe.an }) }} />
+          </Row>
+          {ruhe?.an && (
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, padding: '9px 16px', boxShadow: HAIR, background: 'var(--tm-card)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--tm-text)' }}>
+                Von
+                <select value={ruhe.von} onChange={(e) => saveRuhe({ ...ruhe, von: Number(e.target.value) })} style={STUNDEN_SELECT}>
+                  {STUNDEN.map((h) => <option key={h} value={h}>{h} Uhr</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--tm-text)' }}>
+                bis
+                <select value={ruhe.bis} onChange={(e) => saveRuhe({ ...ruhe, bis: Number(e.target.value) })} style={STUNDEN_SELECT}>
+                  {STUNDEN.map((h) => <option key={h} value={h}>{h} Uhr</option>)}
+                </select>
+              </label>
+            </div>
+          )}
           {role === 'team' && (
             <Row title="Neue Buchungen" subtitle="Buchungen & Anfragen aus allen Kanälen">
               <Switch label="Neue Buchungen" on={prefs?.bookings ?? true} disabled={!prefs} onChange={() => togglePref('bookings')} />

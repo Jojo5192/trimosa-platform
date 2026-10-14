@@ -39,6 +39,8 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
   const [groups, setGroups] = useState<Record<string, unknown>[]>([])
   const [tasks, setTasks] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
+  // Quellen, die nicht geladen werden konnten — sonst sähe ein Fehler aus wie „Keine Treffer"
+  const [fehlend, setFehlend] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -52,6 +54,11 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
       setThreads((inbox?.threads ?? []) as Record<string, unknown>[])
       setGroups((tc?.chats ?? []) as Record<string, unknown>[])
       setTasks((tk?.tasks ?? []) as Record<string, unknown>[])
+      setFehlend([
+        ...(role === 'team' && !inbox ? ['Gäste-Chats'] : []),
+        ...(!tc ? ['Gruppen'] : []),
+        ...(!tk ? ['Aufgaben'] : []),
+      ])
       setLoading(false)
     })
   }, [role])
@@ -137,7 +144,7 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
               style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, padding: '11px 0', color: 'var(--tm-text)' }}
             />
             {q && (
-              <button onClick={() => setQ('')} aria-label="Leeren" style={{ border: 'none', background: 'var(--tm-line)', color: 'var(--tm-muted)', width: 20, height: 20, borderRadius: '50%', fontSize: 11, cursor: 'pointer', padding: 0, lineHeight: '20px' }}>✕</button>
+              <button onClick={() => setQ('')} aria-label="Suchfeld leeren" style={{ border: 'none', background: 'var(--tm-line)', color: 'var(--tm-muted)', width: 20, height: 20, borderRadius: '50%', fontSize: 11, cursor: 'pointer', padding: 0, lineHeight: '20px' }}>✕</button>
             )}
           </div>
           <button className="tm-press-btn" onClick={onClose} style={{ border: 'none', background: 'none', color: 'var(--tm-accent-dark)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: '6px 2px', flexShrink: 0 }}>Abbrechen</button>
@@ -159,12 +166,13 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
               </>
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px', lineHeight: 1.6 }}>
-                {loading ? 'Lade …' : 'Suche in Chats, Gruppen und Aufgaben.'}
+                {loading ? 'Lädt…' : 'Suche in Chats, Gruppen und Aufgaben.'}
               </div>
             )
           ) : hits.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px' }}>
-              {loading ? 'Lade …' : `Keine Treffer für „${q.trim()}“.`}
+              {loading ? 'Lädt…' : `Keine Treffer für „${q.trim()}“.`}
+              {!loading && fehlend.length > 0 && <span style={{ display: 'block', marginTop: 6, color: 'var(--tm-red)' }}>⚠️ Gerade nicht durchsuchbar: {fehlend.join(', ')}. Öffne die Suche gleich noch einmal.</span>}
             </div>
           ) : (
             grouped.map(([label, list]) => list.length === 0 ? null : (

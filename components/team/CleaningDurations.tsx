@@ -96,8 +96,16 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
 
   useEffect(() => {
     fetch('/api/cleaning/durations', { cache: 'no-store' })
-      .then(async (r) => { if (!r.ok) throw new Error(r.status === 403 ? 'Kein Zugriff.' : `Fehler ${r.status}`); return r.json() })
-      .then(setData).catch((e) => setError(String(e instanceof Error ? e.message : e))).finally(() => setLoading(false))
+      .then(async (r) => {
+        if (!r.ok) {
+          setError(r.status === 403 ? 'Die Reinigungs-Dauer sehen nur Chefs.' : 'Die Reinigungs-Dauer konnte nicht geladen werden. Bitte versuch es gleich noch einmal.')
+          return null
+        }
+        return r.json()
+      })
+      .then((d) => { if (d) setData(d) })
+      .catch((e) => { console.error('cleaning/durations', e); setError('Die Reinigungs-Dauer konnte nicht geladen werden. Bitte prüf die Verbindung und versuch es noch einmal.') })
+      .finally(() => setLoading(false))
   }, [])
 
   // Roh-Einsätze (chronologisch alt → neu); Fallback über `letzte` für den
@@ -159,7 +167,7 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
         <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⏱ Reinigungs-Dauer</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       {/* §266b: Wohnungs-Filter — horizontale Chip-Leiste im iOS-Stil */}
@@ -183,8 +191,8 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
           {data && alle.length === 0 && !error && (
             <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '30px 12px', lineHeight: 1.6 }}>
               Noch keine gemessenen Reinigungen.<br />
-              Die Dauer entsteht automatisch, sobald eine Reinigung über den NFC-Aufkleber
-              als fertig gemeldet wird (Start = erste Türöffnung an dem Tag).
+              Die App misst die Dauer automatisch, sobald jemand eine Reinigung über den
+              NFC-Aufkleber als fertig meldet (Start = erste Türöffnung an dem Tag).
             </div>
           )}
 
@@ -311,10 +319,10 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
 
           <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--tm-muted2)', lineHeight: 1.55, padding: '0 4px' }}>
             <b>Median</b> = der typische Wert (unempfindlich gegen einzelne Ausreißer), <b>Ø</b> = Durchschnitt.
-            Der <b>Trend</b> vergleicht die neuere mit der älteren Hälfte der Reinigungen — <span style={{ color: 'var(--tm-green)' }}>▼ grün</span> heißt schneller geworden,
+            Der <b>Trend</b> vergleicht die neuere mit der älteren Hälfte der Reinigungen – <span style={{ color: 'var(--tm-green)' }}>▼ grün</span> heißt schneller geworden,
             <span style={{ color: 'var(--tm-red)' }}> ▲ rot</span> langsamer (ab 4 Messungen).<br />
-            Gemessen vom ersten Aufschließen der Tür (Schloss-Protokoll, Gäste-Codes ausgenommen)
-            bis zur „Fertig"-Meldung am NFC-Aufkleber. Nur sichtbar für Chefs.
+            Gemessen vom ersten Aufschließen der Tür (Schloss-Protokoll, Türcodes der Gäste ausgenommen)
+            bis zur „Fertig“-Meldung am NFC-Aufkleber. Nur sichtbar für Chefs.
           </div>
         </div>
       </div>

@@ -2,6 +2,11 @@ import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePh
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
+/** %, _ und \ sind in ILIKE Platzhalter — aus Sprach-Eingaben wörtlich nehmen (Server-Prüfung 9.10.) */
+function likeSicher(v: string): string {
+  return v.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
@@ -102,7 +107,7 @@ export async function POST(request: Request) {
       .select('id, guest_name, adults, children, check_in, check_out, door_code, portal_token, listings(title, check_in_time, locks)')
       .eq('status', 'confirmed')
       .eq('check_in', arrival)
-      .ilike('guest_name', `%${lastName}%`)
+      .ilike('guest_name', `%${likeSicher(lastName)}%`)
       .limit(3)
     const rows = (data ?? []) as unknown as BRow[]
     const filtered = apartment
@@ -117,8 +122,8 @@ export async function POST(request: Request) {
   if (!booking && lastName && /^\d{4}-\d{2}-\d{2}$/.test(arrival)) {
     try {
       const [byDisplay, byLast] = await Promise.all([
-        supabaseAdmin.from('profiles').select('id').ilike('display_name', `%${lastName}%`).limit(10),
-        supabaseAdmin.from('profiles').select('id').ilike('guest_last_name', `%${lastName}%`).limit(10),
+        supabaseAdmin.from('profiles').select('id').ilike('display_name', `%${likeSicher(lastName)}%`).limit(10),
+        supabaseAdmin.from('profiles').select('id').ilike('guest_last_name', `%${likeSicher(lastName)}%`).limit(10),
       ])
       const ids = [...new Set([...(byDisplay.data ?? []), ...(byLast.data ?? [])].map((p) => String(p.id)))]
       if (ids.length) {

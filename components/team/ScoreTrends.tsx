@@ -204,9 +204,8 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
                 <p style={{ fontSize: 13, color: 'var(--tm-muted)', margin: '20px 0' }}>Lädt…</p>
               ) : !chart ? (
                 <p style={{ fontSize: 13, color: 'var(--tm-muted)', lineHeight: 1.6, margin: '14px 0' }}>
-                  Noch keine Datenpunkte für diese Auswahl. Die Historie wächst ab jetzt
-                  mit jedem Tag — der nächtliche Bewertungs-Sync speichert täglich einen
-                  Snapshot aller Scores.
+                  Für diese Auswahl gibt es noch keine Werte. Jede Nacht kommt ein neuer
+                  Stand aller Bewertungen dazu – der Verlauf wächst also täglich.
                 </p>
               ) : (
                 <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>

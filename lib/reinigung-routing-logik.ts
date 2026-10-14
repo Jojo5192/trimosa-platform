@@ -362,10 +362,10 @@ export function antwortPushTitel(aufgabenTitel: string, source: ReinigungsSource
   const t = String(aufgabenTitel ?? '').trim()
   if (source === 'reinigung_frage') {
     const rest = t.replace(/^🕐\s*/u, '').replace(/\s+angefragt:\s*/, ' · ')
-    return `🕐 Antwort der Reinigung: ${rest}`.slice(0, 120)
+    return `🧹 Antwort der Reinigung · ${rest}`.slice(0, 120)
   }
   const rest = t.replace(/^🧹\s*Reinigungsmangel:\s*/u, '')
-  return `🧹 Rückmeldung der Reinigung: ${rest}`.slice(0, 120)
+  return `🧹 Rückmeldung der Reinigung · ${rest}`.slice(0, 120)
 }
 
 /* ── Dedupe ──────────────────────────────────────────────────────────────────── */

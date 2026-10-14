@@ -127,7 +127,7 @@ export default function ReviewSyncCard() {
       if (res.status === 403 || res.status === 401) { setOk(false); return }
       // 500 gibt es erst NACH der Rechteprüfung → Karte mit Fehlerhinweis zeigen. Alles andere (z. B. 503
       // offline ohne gespeicherten Stand) sagt nichts über die Berechtigung — Karte bleibt, wie sie ist.
-      if (res.status === 500) { setOk(true); setError('Status konnte nicht geladen werden.'); return }
+      if (res.status === 500) { setOk(true); setError('Der Abruf-Status konnte nicht geladen werden. Bitte versuch es gleich noch einmal.'); return }
       if (!res.ok) return
       const j = (await res.json()) as Status
       const cachedAt = Number(res.headers.get('X-Trimosa-Cached-At'))
@@ -158,7 +158,7 @@ export default function ReviewSyncCard() {
 
   const abrufen = async (z: Zeile) => {
     if (busy) return
-    if (offlineStand) { tmToast('Offline — Abruf erst wieder mit Verbindung möglich.'); return }
+    if (offlineStand) { tmToast('📵 Offline – abrufen kannst du erst wieder mit Verbindung.'); return }
     if (!window.confirm(`Bewertungen für „${z.title}“ jetzt abrufen?\n\nKostet ca. 0,25 $ Apify-Guthaben und dauert bis zu 3 Minuten.`)) return
     haptic()
     setBusy(z.id)
@@ -170,11 +170,11 @@ export default function ReviewSyncCard() {
       })
       const j = (await res.json().catch(() => ({}))) as { results?: SyncResult[]; error?: string }
       if (!res.ok) {
-        setErgebnis({ id: z.id, zeilen: [], hinweis: j.error ?? `Abruf fehlgeschlagen (HTTP ${res.status}).` })
+        setErgebnis({ id: z.id, zeilen: [], hinweis: j.error ?? 'Der Abruf hat nicht geklappt. Bitte versuch es später noch einmal.' })
       } else {
         const zeilen = (j.results ?? []).filter((r) => r.source in PORTAL_NAME && !(r.status === 'skipped' && !r.errorKind))
         setErgebnis({ id: z.id, zeilen, hinweis: zeilen.length ? null : 'Keine Quelle hinterlegt.' })
-        tmToast(zeilen.some((r) => r.status === 'error') ? 'Abruf beendet — mit Fehlern' : 'Bewertungen abgerufen')
+        tmToast(zeilen.some((r) => r.status === 'error') ? '⚠️ Abruf beendet – mit Fehlern' : '✓ Bewertungen abgerufen')
       }
     } catch {
       setErgebnis({ id: z.id, zeilen: [], hinweis: 'Abruf abgebrochen (Verbindung oder Zeitlimit). Der Stand oben zeigt, was angekommen ist.' })
@@ -228,7 +228,7 @@ export default function ReviewSyncCard() {
               </p>
               {offlineStand && (
                 <p style={{ margin: '6px 0 0', fontSize: 11.5, fontWeight: 700, color: 'var(--tm-yellow)' }}>
-                  Offline — gespeicherter Stand{offlineStand !== 'unbekannt' ? ` vom ${zeitpunkt(offlineStand)}` : ''}.
+                  Offline – gespeicherter Stand{offlineStand !== 'unbekannt' ? ` vom ${zeitpunkt(offlineStand)}` : ''}.
                 </p>
               )}
               {b && (
@@ -259,12 +259,12 @@ export default function ReviewSyncCard() {
                             fontSize: 12, fontWeight: 700, color: 'var(--tm-accent-dark)', whiteSpace: 'nowrap',
                             cursor: busy ? (laeuft ? 'wait' : 'default') : 'pointer', opacity: (busy && !laeuft) || offlineStand ? 0.5 : 1,
                           }}>
-                            {laeuft ? 'Wird abgerufen …' : 'Jetzt abrufen'}
+                            {laeuft ? 'Ruft ab…' : 'Jetzt abrufen'}
                           </button>
                         )}
                       </div>
                       {laeuft && (
-                        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>Die Portale werden abgefragt — das dauert bis zu 3 Minuten. Bitte die Seite offen lassen.</p>
+                        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--tm-muted)' }}>Die App fragt die Portale ab – das dauert bis zu 3 Minuten. Bitte lass die Seite offen.</p>
                       )}
                       {aktiv.length === 0 ? (
                         <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--tm-muted2)' }}>Kein Portal hinterlegt.</p>
@@ -299,8 +299,8 @@ export default function ReviewSyncCard() {
                           {ergebnis.zeilen.map((r) => (
                             <div key={r.source} className="tm-num" style={{ fontSize: 12, lineHeight: 1.45, overflowWrap: 'anywhere', color: r.status === 'ok' ? (r.partial ? 'var(--tm-yellow)' : 'var(--tm-green)') : 'var(--tm-red)' }}>
                               {PORTAL_NAME[r.source]}: {r.status === 'ok'
-                                ? `${r.fetched ?? 0} geholt${r.neu != null ? `, ${r.neu} neu` : ''}${r.partial ? ' — nur Kurzfassung, Volltexte nicht abrufbar' : ' ✓'}`
-                                : `Fehler — ${FEHLER_LABEL[r.errorKind ?? 'sonst'] ?? 'Fehler'}${r.detail ? `: ${r.detail.slice(0, 160)}` : ''}`}
+                                ? `${r.fetched ?? 0} geholt${r.neu != null ? `, ${r.neu} neu` : ''}${r.partial ? ' – nur Kurzfassung, Volltexte nicht abrufbar' : ' ✓'}`
+                                : `Fehler – ${FEHLER_LABEL[r.errorKind ?? 'sonst'] ?? 'Fehler'}${r.detail ? `: ${r.detail.slice(0, 160)}` : ''}`}
                             </div>
                           ))}
                         </div>

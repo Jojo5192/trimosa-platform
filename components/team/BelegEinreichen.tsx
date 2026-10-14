@@ -56,6 +56,8 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
   const senden = async () => {
     if (!files.length) { setErr('Bitte zuerst ein Foto oder eine Datei wählen.'); return }
     setBusy(true); setErr('')
+    // Text für die Anzeige: Meldung des Servers bzw. klare Standardtexte statt roher Technik-Fehler
+    let anzeige: string | null = null
     try {
       // mehrere Fotos = EIN mehrseitiger Beleg → Client-PDF (§243ad)
       const pdfs = files.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
@@ -80,12 +82,18 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
         if (notiz.trim()) fd.append('notiz', notiz.trim())
         const r = await fetch('/api/belege/einreichen', { method: 'POST', body: fd })
         const j = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+        if (!r.ok) {
+          anzeige = j.error ?? 'Hochladen hat nicht geklappt. Bitte versuch es gleich noch einmal.'
+          throw new Error(`HTTP ${r.status}`)
+        }
       }
       haptic()
       setFertig(true)
     } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e))
+      console.error('beleg-einreichen', e)
+      setErr(anzeige ?? (e instanceof TypeError
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : 'Der Beleg konnte nicht vorbereitet werden. Bitte versuch es noch einmal oder lade ihn als PDF hoch.'))
     } finally {
       setBusy(false)
     }
@@ -107,7 +115,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
           {fertig ? (
             <div style={{ background: 'var(--tm-card)', borderRadius: 14, padding: '38px 22px', textAlign: 'center', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
               <div style={{ fontSize: 44 }}>✅</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: INK, marginTop: 10 }}>Danke — Beleg eingereicht!</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: INK, marginTop: 10 }}>Danke – Beleg eingereicht!</div>
               <div style={{ fontSize: 14, color: SUB, marginTop: 6, lineHeight: 1.5 }}>Die Buchhaltung übernimmt ab hier. Du musst nichts weiter tun.</div>
               <button onClick={reset} style={{ marginTop: 18, background: GOLD, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 18px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
                 Weiteren Beleg einreichen
@@ -128,7 +136,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                     : 'Foto aufnehmen / Datei wählen'}
                 </div>
                 <div style={{ fontSize: 12.5, color: SUB, marginTop: 3, lineHeight: 1.45 }}>
-                  Rechnung, Kassenbon, Quittung — mehrere Fotos werden zu EINEM Beleg zusammengefasst
+                  Rechnung, Kassenbon, Quittung – mehrere Fotos ergeben einen Beleg
                 </div>
                 <input type="file" accept="image/*,application/pdf" multiple disabled={busy}
                   style={{ display: 'none' }}
@@ -176,7 +184,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                 cursor: busy || !files.length ? 'default' : 'pointer',
                 opacity: busy || !files.length ? 0.55 : 1,
               }}>
-                {busy ? '⏳ Wird hochgeladen…' : '📤 Beleg einreichen'}
+                {busy ? '⏳ Lädt hoch…' : '📤 Beleg einreichen'}
               </button>
             </>
           )}

@@ -43,12 +43,14 @@ export default async function BookingsPage({
 
   const statusLabel: Record<string, string> = {
     pending: 'Anfrage',
+    pending_payment: 'Zahlung ausstehend',
     confirmed: 'Bestätigt',
     cancelled: 'Storniert',
     completed: 'Abgeschlossen',
   }
   const statusColor: Record<string, { bg: string; color: string }> = {
     pending:   { bg: '#FFF7E6', color: '#92400E' },
+    pending_payment: { bg: '#F5F5F7', color: '#6B7280' },
     confirmed: { bg: '#DCFCE7', color: '#16A34A' },
     cancelled: { bg: '#FEE2E2', color: '#DC2626' },
     completed: { bg: '#F0F9FF', color: '#0369A1' },

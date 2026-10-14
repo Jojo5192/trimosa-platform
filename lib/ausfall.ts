@@ -52,7 +52,7 @@ export async function meldeAusfall(key: string, titel: string, text: string): Pr
   if (faellig) {
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam(`⚠️ Störung: ${titel}`, `${text.slice(0, 140)} (${seitText(z.seit)})`, '/team?tab=einstellungen', { category: 'system' })
+      await sendPushToTeam(`⚠️ Störung · ${titel}`, `${text.slice(0, 130)} (${seitText(z.seit)})`, '/team?tab=einstellungen', { category: 'system' })
       z.gemeldetAm = jetzt
     } catch (e) {
       console.error('[ausfall] Push fehlgeschlagen:', key, e)
@@ -68,7 +68,7 @@ export async function ausfallBehoben(key: string, titel: string): Promise<void> 
   if (alt.gemeldetAm) {
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam(`✅ Läuft wieder: ${titel}`, `Die Störung ${seitText(alt.seit).replace('seit', 'von vor')} ist behoben.`, '/team?tab=einstellungen', { category: 'system' })
+      await sendPushToTeam(`✅ Läuft wieder · ${titel}`, `Die Störung ${seitText(alt.seit).replace('seit', 'von vor')} ist behoben. Nichts mehr zu tun.`, '/team?tab=einstellungen', { category: 'system' })
     } catch { /* egal */ }
   }
   await schreibe(key, null)

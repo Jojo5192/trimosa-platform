@@ -366,7 +366,7 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
           details.push(`${regel.zweckPrefix} \u00B7 ${monat} (${betrag.toFixed(2)} \u20AC)`)
           try {
             const { sendPushToTeam } = await import('@/lib/push')
-            await sendPushToTeam('\u{1F4D8} Automatisch gebucht', `${regel.zweckPrefix} \u00B7 ${monat} \u00B7 ${betrag.toFixed(2).replace('.', ',')} \u20AC`, '/buchhaltung', { buchhaltung: true })
+            await sendPushToTeam(`\u{1F4B6} Eigenbeleg gebucht \u00B7 ${regel.zweckPrefix}`, `${monat} \u00B7 ${betrag.toFixed(2).replace('.', ',')} \u20AC, automatisch verbucht.`, '/buchhaltung', { buchhaltung: true })
           } catch { /* best effort */ }
         } else if (r.ok) {
           // v4: Beleg entstand, Zahlung NICHT verkn\u00FCpft (bookSevVoucher meldet
@@ -378,7 +378,7 @@ export async function runEigenbelegRegeln(): Promise<{ gebucht: number; details:
           details.push(`\u26A0\uFE0F ${regel.zweckPrefix} \u00B7 ${monat}: Beleg gebucht, Zahlung NICHT verkn\u00FCpft \u2014 im Bankabgleich zuordnen`)
           try {
             const { sendPushToTeam } = await import('@/lib/push')
-            await sendPushToTeam('\u26A0\uFE0F Eigenbeleg ohne Zahlungs-Verkn\u00FCpfung', `${regel.zweckPrefix} \u00B7 ${monat} \u2014 bitte im Bankabgleich zuordnen`, '/buchhaltung', { buchhaltung: true })
+            await sendPushToTeam(`\u{1F4B6} Eigenbeleg ohne Zahlung \u00B7 ${regel.zweckPrefix}`, `${monat}: Beleg gebucht, Zahlung nicht verkn\u00FCpft. Bitte im Bankabgleich zuordnen.`, '/buchhaltung', { buchhaltung: true })
           } catch { /* best effort */ }
         } else {
           details.push(`FEHLER ${regel.zweckPrefix}: ${(r.error ?? '?').slice(0, 100)}`)

@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const { count } = await supabaseAdmin
       .from('push_subscriptions')
       .select('id', { count: 'exact', head: true })
-    await sendPushToTeam('🔔 Test von TRIMOSA', 'Push-Benachrichtigungen funktionieren! 🎉 Genau so sehen Gast-Nachrichten aus.', '/team')
+    await sendPushToTeam('🔔 Test-Mitteilung · TRIMOSA', 'Push funktioniert. So sehen auch Gastnachrichten aus.', '/team')
     return NextResponse.json({ ok: true, geraete: count ?? 0, hinweis: 'Test-Push an alle registrierten Team-Geräte gesendet.' })
   }
 

@@ -36,6 +36,11 @@ export async function GET(request: Request) {
     const grenze = new Date(Date.now() - 30 * 86_400_000).toISOString()
     await supabaseAdmin.from('push_log').delete().lt('created_at', grenze)
   } catch { /* Tabelle fehlt noch → nichts zu tun */ }
+  // rate_limits: eine Zeile je IP/Token/Rufnummer — wuchs bisher unbegrenzt (Server-Prüfung 9.10.); alle Fenster
+  // sind höchstens 1 Tag lang, ältere Zeilen sind wirkungslos
+  try {
+    await supabaseAdmin.from('rate_limits').delete().lt('window_start', new Date(Date.now() - 2 * 86_400_000).toISOString())
+  } catch { /* egal */ }
 
   console.log('[locks-sync]', JSON.stringify({ ...result, batterien }))
   return NextResponse.json({ ...result, batterien })

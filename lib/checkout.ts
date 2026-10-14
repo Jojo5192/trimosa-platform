@@ -22,6 +22,10 @@ export async function createStripeCheckout(
 
   if (!booking) return { ok: false, error: 'Buchung nicht gefunden', status: 404 }
   if (booking.payment_status === 'paid') return { ok: false, error: 'Bereits bezahlt', status: 400 }
+  // Verfallene/stornierte Buchung bekommt keine neue Session (14.10.2026) — sonst könnte eine Zahlung eine
+  // längst freigegebene Buchung „wiederbeleben" (der Webhook erstattet so etwas zwar, aber besser gar nicht erst)
+  if (booking.status === 'cancelled') return { ok: false, error: 'Die Buchung ist nicht mehr aktiv — bitte neu buchen.', status: 409 }
+
 
   const listing = booking.listings as unknown as { title: string; cancellation_policy: string; host_id: string } | null
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://trimosa-app.vercel.app'
@@ -56,10 +60,20 @@ export async function createStripeCheckout(
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 min expiry
     })
 
-    await supabaseAdmin
+    const { error: updErr } = await supabaseAdmin
       .from('bookings')
       .update({ stripe_checkout_session_id: session.id, payment_status: 'pending' })
       .eq('id', bookingId)
+    if (updErr) console.error('[checkout] Session-ID nicht gespeichert:', bookingId.slice(0, 8), updErr.message)
+
+    // ERST JETZT (nach dem Speichern der neuen ID) eine ältere, noch offene Session derselben Buchung schließen,
+    // damit nicht zwei Sessions bezahlbar sind. Ihr expired-Event trifft dann auf eine abweichende Session-ID und
+    // wird vom Webhook ignoriert — andersherum (erst expire, dann speichern) stornierte das Event die Buchung
+    // im Zeitfenster zwischen beiden Aufrufen (Review 14.10.2026).
+    const alteSession = booking.stripe_checkout_session_id ? String(booking.stripe_checkout_session_id) : null
+    if (alteSession && alteSession !== session.id && !updErr) {
+      await stripe.checkout.sessions.expire(alteSession).catch(() => { /* schon abgelaufen/abgeschlossen */ })
+    }
 
     return { ok: true, url: session.url }
   } catch (e) {

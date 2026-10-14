@@ -93,7 +93,7 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
         if (confirm(d.warning)) { setMoving(false); return move(check, true) }
         return
       }
-      if (!r.ok) { alert(d.error ?? 'Verschieben fehlgeschlagen.'); return }
+      if (!r.ok) { alert(d.error ?? 'Verschieben hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
       setMoveFor(null)
       await load()
     } finally { setMoving(false) }
@@ -191,7 +191,7 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
             display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', width: '100%',
           }}>
             <span style={{ fontSize: 12.5, color: 'var(--tm-muted)' }}>
-              ✅ {c.listingTitle} · {c.completedAt ? fmtDate(c.completedAt.slice(0, 10)) : fmtDate(c.dueDate)}
+              ✓ {c.listingTitle} · {c.completedAt ? fmtDate(c.completedAt.slice(0, 10)) : fmtDate(c.dueDate)}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: TEAL, flexShrink: 0 }}>Ansehen ›</span>
           </button>
@@ -239,7 +239,7 @@ function QsProtocol({ check, template, onClose }: {
     })
     if (!r.ok) {
       const d = await r.json().catch(() => ({}))
-      alert(d.error ?? 'Speichern fehlgeschlagen.')
+      alert(d.error ?? 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       return false
     }
     return true
@@ -257,8 +257,8 @@ function QsProtocol({ check, template, onClose }: {
     if (completing) return
     const open = total - answered
     const msg = open > 0
-      ? `${open} ${open === 1 ? 'Punkt ist' : 'Punkte sind'} noch nicht geprüft. Trotzdem abschließen? Das Protokoll wird als PDF abgelegt und kann danach nicht mehr geändert werden.`
-      : 'Protokoll abschließen? Es wird als PDF abgelegt und kann danach nicht mehr geändert werden.'
+      ? `${open} ${open === 1 ? 'Punkt ist' : 'Punkte sind'} noch nicht geprüft. Trotzdem abschließen? Die App legt das Protokoll als PDF ab – danach lässt es sich nicht mehr ändern.`
+      : 'Protokoll abschließen? Die App legt es als PDF ab – danach lässt es sich nicht mehr ändern.'
     if (!confirm(msg)) return
     setCompleting(true)
     const ok = await save(true)
@@ -275,7 +275,7 @@ function QsProtocol({ check, template, onClose }: {
       fd.append('file', new File([blob], 'qs.jpg', { type: 'image/jpeg' }))
       const r = await fetch(`/api/qs/${check.id}/photos`, { method: 'POST', body: fd })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) alert(d.error ?? 'Foto-Upload fehlgeschlagen.')
+      if (!r.ok) alert(d.error ?? 'Das Foto konnte nicht hochgeladen werden. Bitte versuch es noch einmal.')
       else setPhotos((p) => [...p, d.photo])
     } finally { setUploading(false) }
   }
@@ -359,7 +359,7 @@ function QsProtocol({ check, template, onClose }: {
                       <textarea
                         value={v.note ?? ''}
                         onChange={(e) => setItem(item.id, { note: e.target.value })}
-                        placeholder="Was ist zu tun? (z. B. „2 Bezüge vergilbt — waschen“)"
+                        placeholder="Was ist zu tun? (z. B. „2 Bezüge vergilbt – waschen“)"
                         rows={2}
                         style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', border: '1px solid var(--tm-line)', background: 'var(--tm-surface2)', borderRadius: 10, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', color: 'var(--tm-text)', outline: 'none' }}
                       />
@@ -420,7 +420,7 @@ function QsProtocol({ check, template, onClose }: {
         <button onClick={finish} disabled={completing} style={{
           flex: 1.4, padding: '12px 0', borderRadius: 999, border: 'none', fontSize: 14, fontWeight: 800,
           background: completing ? '#9CA3AF' : TEAL, color: '#fff', cursor: 'pointer',
-        }}>{completing ? 'PDF wird erstellt…' : '✅ Abschließen'}</button>
+        }}>{completing ? 'Erstellt PDF…' : '✅ Abschließen'}</button>
       </div>
     </div>
   )
@@ -453,7 +453,7 @@ export function QsView({ check, template, onClose }: {
         body: JSON.stringify({ generatePdf: true }),
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) alert(d.error ?? 'PDF-Erzeugung fehlgeschlagen.')
+      if (!r.ok) alert(d.error ?? 'Das PDF konnte nicht erstellt werden. Bitte versuch es gleich noch einmal.')
       else if (d.pdfUrl) setPdfUrl(d.pdfUrl)
     } finally { setPdfBusy(false) }
   }
@@ -565,7 +565,7 @@ export function QsView({ check, template, onClose }: {
             width: '100%', padding: '12px 0', borderRadius: 999, border: 'none',
             background: pdfBusy ? '#9CA3AF' : 'rgba(15,118,110,0.1)', color: pdfBusy ? '#fff' : TEAL,
             fontSize: 14, fontWeight: 800, cursor: 'pointer',
-          }}>{pdfBusy ? 'PDF wird erstellt…' : '📄 Als PDF erzeugen'}</button>
+          }}>{pdfBusy ? 'Erstellt PDF…' : '📄 Als PDF erzeugen'}</button>
         )}
       </div>
     </div>
@@ -641,12 +641,12 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '14px 16px 30px' }}>
         {loading ? (
-          <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: 40 }}>Laden…</p>
+          <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: 40 }}>Lädt…</p>
         ) : apartments.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--tm-muted)' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>🧾</p>
             <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Noch keine QS-Termine.</p>
-            <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Termine werden automatisch geplant, sobald im Admin-Bereich eine zuständige Person gesetzt ist.</p>
+            <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Die App plant Termine automatisch, sobald im Admin-Bereich eine zuständige Person hinterlegt ist.</p>
           </div>
         ) : (
           <>
@@ -655,7 +655,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
                 background: TEAL_BG, borderRadius: 12, padding: '10px 13px', marginBottom: 10,
                 boxShadow: TEAL_RING, fontSize: 12.5, color: '#0F5A54',
               }}>
-                📅 Nächster Termin: <strong>{fmtDate(c.dueDate)}</strong> — Protokoll im Aufgaben-Tab ausfüllen.
+                📅 Nächster Termin: <strong>{fmtDate(c.dueDate)}</strong> – Protokoll im Aufgaben-Tab ausfüllen.
               </div>
             ))}
             {done.length === 0 && (

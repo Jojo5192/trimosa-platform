@@ -21,6 +21,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/push/morgen",
+      "schedule": "3 * * * *"
+    },
+    {
       "path": "/api/tasks/suggest",
       "schedule": "45 4 * * *"
     },
@@ -87,6 +91,10 @@
     {
       "path": "/api/reinigung/routing",
       "schedule": "7-59/15 * * * *"
+    },
+    {
+      "path": "/api/bookings/sweep",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

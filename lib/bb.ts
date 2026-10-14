@@ -618,8 +618,8 @@ export async function bbSyncAlle(nurRowId?: string, maxBelege?: number): Promise
     if (pruefNeu) {
       const { sendPushToTeam } = await import('@/lib/push')
       await sendPushToTeam(
-        '🏢 UG-Belege ohne Zahlungs-Treffer',
-        `${pruefNeu} Beleg${pruefNeu === 1 ? '' : 'e'} ohne passende Zahlung in BuchhaltungsButler — Prüfliste in der Buchhaltung (🏢-Karte).`,
+        '💶 Belege ohne Zahlung · UG',
+        `${pruefNeu} Beleg${pruefNeu === 1 ? '' : 'e'} ohne passende Zahlung in BuchhaltungsButler. Prüfliste in der Buchhaltung (🏢-Karte).`,
         '/buchhaltung', { buchhaltung: true },
       ).catch(() => {})
     }

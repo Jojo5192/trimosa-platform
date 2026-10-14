@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
     }
     await pushOncall(
-      `${icon} Anruf: ${booking.guestName.split(/\s+/)[0] ?? name} · ${booking.listingTitle}`,
+      `${icon} Anruf · ${booking.guestName.split(/\s+/)[0] ?? name} · ${booking.listingTitle}`,
       message.replace(/\s+/g, ' ').slice(0, 120),
       '/team?conv=' + booking.id,
     ).catch(() => {})
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       }).eq('id', gleich.id)
       if (!uErr) {
         await pushOncall(
-          `${icon} Erneuter Anruf (${zahl}.): ${name}`,
+          `${icon} ${zahl}. Anruf · ${name}`,
           message.replace(/\s+/g, ' ').slice(0, 120),
           '/team?task=' + gleich.id,
         ).catch(() => {})
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Speichern fehlgeschlagen' }, { status: 500 })
   }
   await pushOncall(
-    `${icon} Neue Anruf-Nachricht: ${name}`,
+    `${icon} Anruf-Nachricht · ${name}`,
     message.replace(/\s+/g, ' ').slice(0, 120),
     '/team?tab=aufgaben',
   ).catch(() => {})

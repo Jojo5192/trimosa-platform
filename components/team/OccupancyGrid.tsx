@@ -219,7 +219,7 @@ export default function OccupancyGrid({ stays, listings }: {
               {selected.guestName ?? 'Belegt'} · {listings[selected.listingId]?.title ?? 'Wohnung'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 2 }}>
-              {fmt(selected.checkIn)} – {fmt(selected.checkOut)} · {dayDiff(selected.checkIn, selected.checkOut)} {dayDiff(selected.checkIn, selected.checkOut) === 1 ? 'Nacht' : 'Nächte'}
+              {fmt(selected.checkIn)}–{fmt(selected.checkOut)} · {dayDiff(selected.checkIn, selected.checkOut)} {dayDiff(selected.checkIn, selected.checkOut) === 1 ? 'Nacht' : 'Nächte'}
               {selected.persons ? ` · ${selected.persons} ${selected.persons === 1 ? 'Person' : 'Personen'}` : ''}
               {selected.channel ? ` · ${selected.channel}` : ''}
               {selected.totalPrice ? ` · ${Number(selected.totalPrice).toLocaleString('de-DE', { maximumFractionDigits: 0 })} €` : ''}

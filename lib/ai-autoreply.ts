@@ -190,8 +190,8 @@ async function aufSchattenZurueck(grund: string): Promise<boolean> {
     const { error } = await supabaseAdmin.from('app_settings').upsert({ key: SETTINGS_KEY, value: next }, { onConflict: 'key' })
     if (error) { console.error('[ai-autoreply] Zurückstellen fehlgeschlagen:', error.message); return false }
     console.log('[ai-autoreply] Modus auf „schatten“ zurückgestellt:', grund)
-    await sendPushToTeam('🤖 KI-Auto-Antworten pausiert',
-      `Das Tor ist nicht mehr erfüllt (${grund.slice(0, 120)}). Der Modus wurde auf „Schatten“ zurückgestellt – wieder einschalten kann nur ein Admin.`,
+    await sendPushToTeam('🤖 KI-Auto-Antworten pausiert · Schatten-Modus',
+      `Die Freigabe-Bedingung ist nicht mehr erfüllt (${grund.slice(0, 120)}). Wieder einschalten kann nur ein Admin.`,
       '/team', { guestChat: true }).catch(() => {})
     return true
   } catch (e) {
@@ -1160,7 +1160,7 @@ export async function runAutoReply(): Promise<AutoReplyReport> {
     .update({ entscheidung: 'fehler', kanal: 'unklar', grund: 'Abbruch während des Versands – Zustellung unklar, bitte den Thread prüfen' })
     .eq('entscheidung', 'sendet').lt('created_at', alt).select('booking_id')
   for (const h of haenger ?? []) {
-    await sendPushToTeam('⚠️ KI-Auto-Antwort: Versand unklar', 'Ein automatischer Versand wurde unterbrochen – bitte im Thread prüfen, ob die Antwort beim Gast ankam.', '/team?conv=' + h.booking_id, { guestChat: true }).catch(() => {})
+    await sendPushToTeam('🤖 Auto-Antwort unklar · Versand unterbrochen', 'Bitte im Thread prüfen, ob die Antwort beim Gast ankam.', '/team?conv=' + h.booking_id, { guestChat: true }).catch(() => {})
   }
 
   const { date: today, hour } = berlinNow()
@@ -1278,7 +1278,7 @@ export async function runAutoReply(): Promise<AutoReplyReport> {
         // Zustellung UNKLAR (z. B. Timeout nach dem Absenden) → nie erneut senden, Team benachrichtigen
         console.error('[ai-autoreply] Versand abgebrochen:', e)
         await finish('fehler', 'Abbruch während des Versands – Zustellung unklar, bitte den Thread prüfen', undefined, { kanal: 'unklar' })
-        await sendPushToTeam('⚠️ KI-Auto-Antwort: Versand unklar', 'Ein automatischer Versand wurde unterbrochen – bitte im Thread prüfen, ob die Antwort beim Gast ankam.', '/team?conv=' + c.booking.id, { guestChat: true }).catch(() => {})
+        await sendPushToTeam(`🤖 Auto-Antwort unklar · ${(c.booking.guest_name ?? 'Gast').trim().split(/\s+/)[0] || 'Gast'}`, 'Der Versand wurde unterbrochen. Bitte im Thread prüfen, ob die Antwort beim Gast ankam.', '/team?conv=' + c.booking.id, { guestChat: true }).catch(() => {})
         report.fehler++
         continue
       }

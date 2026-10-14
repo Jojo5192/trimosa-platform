@@ -2,9 +2,22 @@
  * Team web push (chat PWA). Sends a notification to every subscribed team
  * device; dead subscriptions (410/404) are pruned automatically. Requires
  * VAPID_PRIVATE_KEY + NEXT_PUBLIC_VAPID_PUBLIC_KEY in the environment.
+ *
+ * 🌙 Ruhezeiten (Pascal, Chefsache 7.10.2026): nicht dringende Kategorien
+ * landen in der Ruhezeit des Empfängers (Standard 22–7 Uhr) in der
+ * Nacht-Warteschlange statt auf dem Gerät; /api/push/morgen schickt danach
+ * EINE Sammel-Mitteilung. Regeln + reine Funktionen: lib/push-ruhe.ts.
+ *
+ * ✍️ Schema für alle Push-Texte: Titel „<Emoji> <was> · <wo/wer>" (≤ ~50
+ * Zeichen), Text „<Kernfakten>. <nächster Schritt>" (≤ ~120 Zeichen) — per
+ * Du, ohne Großbuchstaben-Rufe und ohne Technik-Begriffe.
  */
 import webpush from 'web-push'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import {
+  istDringend, berlinStunde, inRuhezeit, ruheAusPrefs, nachtLesen, nachtEinreihen, sammelMitteilung,
+  NACHT_PREFIX, MORGEN_URL, type NachtEintrag,
+} from '@/lib/push-ruhe'
 
 /**
  * 🔔 §254: Alle steuerbaren Benachrichtigungs-Kategorien. Präferenzen liegen
@@ -65,10 +78,8 @@ function ensureConfigured(): boolean {
 
 type Sub = { id: string; endpoint: string; p256dh: string; auth: string; user_id?: string | null }
 
-async function sendToSubs(subs: Sub[], title: string, body: string, url: string, tag?: string, category?: PushCategory): Promise<void> {
-  // tag: gleiche Mitteilungen stapeln sich je Thread und lassen sich beim
-  // Lesen in der App gezielt aus der Mitteilungszentrale räumen (§122)
-  const payload = JSON.stringify({ title, body: body.slice(0, 180), url, tag: tag ?? url })
+/** Zustellung an die Geräte; tote Subscriptions (404/410) werden entfernt */
+async function zustellen(subs: Sub[], payload: string): Promise<void> {
   await Promise.all(subs.map(async (s) => {
     try {
       await webpush.sendNotification(
@@ -84,11 +95,84 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
       }
     }
   }))
+}
+
+/**
+ * 🌙 Nacht-Warteschlange: Eintrag an app_settings push_nacht:<userId> anhängen.
+ * Konfliktfrei ohne Migration über den Versionszähler v (Update nur, wenn v
+ * noch stimmt — sonst neu lesen). false = nicht gespeichert → Aufrufer sendet
+ * lieber sofort, als die Mitteilung zu verlieren.
+ */
+async function nachtAnhaengen(userId: string, eintrag: NachtEintrag): Promise<boolean> {
+  const key = NACHT_PREFIX + userId
+  for (let versuch = 0; versuch < 6; versuch++) {
+    // Wiederholung mit kurzer Zufallspause — gleichzeitige Schreiber laufen sonst im Gleichschritt
+    if (versuch) await new Promise((r) => setTimeout(r, 20 + Math.random() * 80 * versuch))
+    try {
+      const { data, error } = await supabaseAdmin.from('app_settings').select('value').eq('key', key).maybeSingle()
+      if (error) { console.error('[push-ruhe] Warteschlange nicht lesbar:', error.message); return false }
+      const alt = nachtLesen(data?.value)
+      const neu = nachtEinreihen(alt, eintrag)
+      if (!data) {
+        // noch keine Warteschlange — parallel angelegt? Dann scheitert insert am Schlüssel → neu lesen
+        const { error: insErr } = await supabaseAdmin.from('app_settings').insert({ key, value: neu })
+        if (!insErr) return true
+        continue
+      }
+      const { data: upd, error: updErr } = await supabaseAdmin.from('app_settings')
+        .update({ value: neu, updated_at: new Date().toISOString() })
+        .eq('key', key).eq('value->>v', String(alt.v))
+        .select('key')
+      if (updErr) { console.error('[push-ruhe] Warteschlange nicht gespeichert:', updErr.message); return false }
+      if (upd?.length) return true
+      // jemand war schneller (oder die Morgen-Sammlung hat gerade geleert) → neu lesen
+    } catch (e) {
+      console.error('[push-ruhe] Warteschlange:', e)
+      return false
+    }
+  }
+  return false
+}
+
+/**
+ * 🌙 Wer bekommt diese Mitteilung jetzt NICHT aufs Gerät? Nur nicht dringende
+ * Kategorien, nur Empfänger in ihrer Ruhezeit — und nur, wenn die
+ * Warteschlange den Eintrag wirklich gespeichert hat. Fail-open: Fehler beim
+ * Lesen der Einstellungen → sofort senden (wie vor den Ruhezeiten).
+ */
+async function nachtZurueckhalten(userIds: string[], title: string, body: string, url: string, category?: PushCategory): Promise<Set<string>> {
+  const zurueck = new Set<string>()
+  if (istDringend(category) || !userIds.length) return zurueck
+  let ruhend: string[] = []
+  try {
+    const { data, error } = await supabaseAdmin.from('profiles').select('id, push_prefs').in('id', userIds)
+    if (error) { console.error('[push-ruhe] Einstellungen nicht lesbar — sende sofort:', error.message); return zurueck }
+    const stunde = berlinStunde()
+    ruhend = ((data ?? []) as { id: string; push_prefs: unknown }[])
+      .filter((p) => inRuhezeit(ruheAusPrefs(p.push_prefs), stunde))
+      .map((p) => p.id)
+  } catch { return zurueck }
+  if (!ruhend.length) return zurueck
+  const eintrag: NachtEintrag = { titel: title, text: body, url, kategorie: category ?? null, zeit: new Date().toISOString() }
+  await Promise.all(ruhend.map(async (id) => { if (await nachtAnhaengen(id, eintrag)) zurueck.add(id) }))
+  return zurueck
+}
+
+async function sendToSubs(subs: Sub[], title: string, body: string, url: string, tag?: string, category?: PushCategory): Promise<void> {
+  const text = body.slice(0, 180)
+  const userIds = [...new Set(subs.map((s) => s.user_id).filter((x): x is string => !!x))]
+  // 🌙 Ruhezeit: zurückgehaltene Empfänger bekommen die Mitteilung morgens in
+  // der Sammel-Mitteilung; Geräte ohne user_id kennen keine Ruhezeit → sofort
+  const zurueck = await nachtZurueckhalten(userIds, title, text, url, category)
+  const sofort = zurueck.size ? subs.filter((s) => !s.user_id || !zurueck.has(s.user_id)) : subs
+  // tag: gleiche Mitteilungen stapeln sich je Thread und lassen sich beim
+  // Lesen in der App gezielt aus der Mitteilungszentrale räumen (§122)
+  if (sofort.length) await zustellen(sofort, JSON.stringify({ title, body: text, url, tag: tag ?? url }))
   /* §265 Push-Historie: je EMPFÄNGER eine Zeile (nicht je Gerät) — die
    * Team-App zeigt daraus den anklickbaren Verlauf. Fail-soft: fehlt die
-   * Migration, geht der Push trotzdem raus. Aufräumen macht der 3:40-Cron. */
+   * Migration, geht der Push trotzdem raus. Aufräumen macht der 3:40-Cron.
+   * 🌙 Auch zurückgehaltene Mitteilungen stehen SOFORT im Verlauf. */
   try {
-    const userIds = [...new Set(subs.map((s) => s.user_id).filter((x): x is string => !!x))]
     if (userIds.length) {
       // supabase-js WIRFT bei DB-Fehlern nicht — error explizit ansehen,
       // damit „Migration fehlt" wenigstens einmal im Log auftaucht.
@@ -105,6 +189,7 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
  *  push_guest_chats=false (Pascal-Präferenz §97.5) werden übersprungen. */
 export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean; category?: PushCategory } = {}): Promise<number> {
   // Rückgabe = Anzahl angesprochener Geräte (0 = niemand erreicht). Ausfälle werden geloggt statt still zu enden.
+  // 🌙 In der Ruhezeit zurückgehaltene Geräte zählen mit (die Mitteilung kommt morgens gesammelt an).
   if (!ensureConfigured()) { console.error('[push] VAPID-Schlüssel fehlen (Vercel-Env) — Push nicht gesendet:', title); return 0 }
   const { data: subs, error: subsErr } = await supabaseAdmin
     .from('push_subscriptions')
@@ -156,6 +241,8 @@ export async function sendPushToUser(userId: string, title: string, body: string
   // §265: Rückgabe = Anzahl bedienter Geräte (0 = Empfänger unerreichbar —
   // keine Subscription oder Kategorie stummgeschaltet). Aufrufer wie der
   // Batterie-Wächter fallen dann auf einen Team-Broadcast zurück.
+  // 🌙 In der Ruhezeit zurückgehaltene Geräte zählen als erreicht — sonst
+  // lösten Rückfall-Logiken nachts unnötige Team-Pushes aus.
   if (!ensureConfigured()) return 0
   if (category) {
     const ok = await prefAllows([userId], category)
@@ -205,10 +292,12 @@ export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cance
     const channel = b.source === 'trimosa' || /^(direct|trimosa)$/i.test(rawChannel) ? 'Website (trimosa.de)' : rawChannel
     // „Anfrage" nur für Website-Buchungen — externe sind immer fix (§139)
     const isRequest = b.source === 'trimosa' && (b.booking_type === 'request' || b.status === 'pending')
+    // Schema (Pascal 7.10.): Titel = was · wo (Wohnung), Text = wer · wann · Kanal (Betrag nur für Chefs)
+    const wohnung = listing?.title ?? 'Wohnung'
     const title = kind === 'cancelled'
-      ? `❌ Stornierung · ${channel}`
-      : isRequest ? `🔔 Neue Anfrage · ${channel}` : `🎉 Neue Buchung · ${channel}`
-    const base = `${listing?.title ?? 'Wohnung'} · ${guest || 'Gast'} · ${fmtD(b.check_in)}–${fmtD(b.check_out)}`
+      ? `❌ Stornierung · ${wohnung}`
+      : isRequest ? `🔔 Neue Anfrage · ${wohnung}` : `🎉 Neue Buchung · ${wohnung}`
+    const base = `${guest || 'Gast'} · ${fmtD(b.check_in)}–${fmtD(b.check_out)} · ${channel}`
     const amount = Number(b.total_price) > 0
       ? ` · ${Number(b.total_price).toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
       : ''
@@ -234,4 +323,41 @@ export async function sendNewBookingPush(bookingId: string, kind: 'new' | 'cance
   } catch (e) {
     console.error('[push] booking push failed:', e)
   }
+}
+
+/**
+ * 🌅 Morgen-Sammlung (Cron /api/push/morgen, stündlich zu Minute 3): je Nutzer
+ * mit Nacht-Warteschlange, dessen Ruhezeit gerade NICHT läuft, EINE
+ * Sammel-Mitteilung („🌅 Über Nacht: N Mitteilungen") — danach ist die
+ * Warteschlange leer. Idempotent: die Warteschlange wird per Löschen mit
+ * Rückgabe übernommen; läuft der Cron doppelt, bekommt nur EIN Lauf die
+ * Einträge. Kein push_log-Eintrag — die Einzel-Mitteilungen stehen dort schon.
+ */
+export async function sendeMorgenSammlung(jetzt: Date = new Date()): Promise<{ wartend: number; nochRuhe: number; gesendet: number; geraete: number; ohneGeraet: number }> {
+  const bericht = { wartend: 0, nochRuhe: 0, gesendet: 0, geraete: 0, ohneGeraet: 0 }
+  // ohne VAPID nichts übernehmen — die Warteschlangen bleiben bis zum nächsten Lauf liegen
+  if (!ensureConfigured()) throw new Error('VAPID-Schlüssel fehlen (Vercel-Env) — Sammel-Mitteilungen nicht gesendet')
+  const { data: zeilen, error } = await supabaseAdmin.from('app_settings').select('key').like('key', `${NACHT_PREFIX}%`)
+  if (error) throw new Error(`Warteschlangen nicht lesbar: ${error.message}`)
+  const ids = (zeilen ?? []).map((z) => String(z.key).slice(NACHT_PREFIX.length)).filter(Boolean)
+  bericht.wartend = ids.length
+  if (!ids.length) return bericht
+  const { data: profs } = await supabaseAdmin.from('profiles').select('id, push_prefs').in('id', ids)
+  const prefsVon = new Map(((profs ?? []) as { id: string; push_prefs: unknown }[]).map((p) => [p.id, p.push_prefs]))
+  const stunde = berlinStunde(jetzt)
+  for (const id of ids) {
+    if (inRuhezeit(ruheAusPrefs(prefsVon.get(id)), stunde)) { bericht.nochRuhe++; continue }
+    // Übernehmen = Löschen mit Rückgabe: nur wer die Zeile wirklich gelöscht hat, sendet
+    const { data: weg, error: delErr } = await supabaseAdmin.from('app_settings').delete().eq('key', NACHT_PREFIX + id).select('value')
+    if (delErr) { console.error('[push-morgen] Warteschlange nicht übernommen:', id.slice(0, 8), delErr.message); continue }
+    if (!weg?.length) continue
+    const m = sammelMitteilung(nachtLesen(weg[0].value))
+    if (!m) continue
+    const { data: subs } = await supabaseAdmin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('user_id', id)
+    if (!subs?.length) { bericht.ohneGeraet++; continue }
+    await zustellen(subs as Sub[], JSON.stringify({ title: m.title, body: m.body, url: MORGEN_URL, tag: 'push-morgen' }))
+    bericht.gesendet++
+    bericht.geraete += subs.length
+  }
+  return bericht
 }

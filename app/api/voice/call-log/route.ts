@@ -226,8 +226,8 @@ export async function POST(request: Request) {
         console.error('[call-log] 🚨 Bot nannte Code(s) ohne Deckung:', falsche.length, 'Stück · echter Code hinterlegt:', realCode ? 'ja' : 'nein', convId)
         vorfaelle.push(`🚨 FALSCHER TÜRCODE am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig ist ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!`)
         await pushOncall(
-          '🚨 Bot nannte FALSCHEN Türcode!',
-          `Am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig wäre ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!${caller ? ` Rückruf: ${caller}` : ''}`,
+          '🚨 Falscher Türcode · Telefon-Assistent',
+          `Genannt: ${falsche.join(', ')}, ${realCode ? `richtig wäre ${realCode}` : 'zur Buchung ist kein Code hinterlegt'}. Bitte den Gast sofort kontaktieren.${caller ? ` Rückruf: ${caller}` : ''}`,
           booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
         ).catch((e) => console.error('[call-log] code push:', e))
       }
@@ -248,8 +248,8 @@ export async function POST(request: Request) {
       console.warn('[call-log] 🚨 Notfall OHNE take-message — Sicherheitsnetz-Push:', convId)
       vorfaelle.push('🚨 NOTFALL im Gespräch erkannt, aber der Bot hat KEINE Meldung ans Team ausgelöst — Anrufer wartet vermutlich noch auf Hilfe.')
       await pushOncall(
-        '🚨 NOTFALL-Anruf — Bot hat NICHT eskaliert!',
-        `${summary.slice(0, 150)}${caller ? ` — Rückruf: ${caller}` : ''}`,
+        '🚨 Notfall-Anruf · ohne Meldung ans Team',
+        `${summary.slice(0, 110)}${caller ? ` — bitte sofort zurückrufen: ${caller}` : ' — bitte sofort reagieren.'}`,
         booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
       ).catch((e) => console.error('[call-log] notfall push:', e))
     }
@@ -269,8 +269,8 @@ export async function POST(request: Request) {
       console.warn('[call-log] ☎️ Rückruf zugesagt OHNE take-message — Zusagen-Netz greift:', convId)
       vorfaelle.push('☎️ Der Bot hat dem Anrufer eine Weitergabe ans Team bzw. einen Rückruf ZUGESAGT, aber keine Meldung angelegt — diese Aufgabe ersetzt sie. Bitte zurückrufen!')
       await pushOncall(
-        '☎️ Rückruf zugesagt — Meldung fehlte!',
-        `${summary.slice(0, 150)}${(info.rueckrufnummer || caller) ? ` — Rückruf: ${info.rueckrufnummer || caller}` : ''}`,
+        '☎️ Rückruf zugesagt · Meldung fehlte',
+        `${summary.slice(0, 110)}${(info.rueckrufnummer || caller) ? ` — bitte zurückrufen: ${info.rueckrufnummer || caller}` : ' — bitte zurückrufen.'}`,
         booking ? `/team?conv=${booking.id}` : '/team?tab=aufgaben',
       ).catch((e) => console.error('[call-log] promise push:', e))
     }

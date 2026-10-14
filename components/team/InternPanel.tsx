@@ -7,6 +7,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
 import { openLightbox } from '@/components/team/Lightbox'
+import { VIDEO_LIMIT_BYTES, VIDEO_MAX_SEKUNDEN, kannVideoVerkleinern, videoDauer, verkleinereVideo, neuerVideoName } from '@/lib/video-verkleinern'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 
 /** §280 Sofortstart: letzter Gruppen-Stand im Gerätespeicher */
@@ -128,6 +129,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
+  /** 🎬 Video über 50 MB: erst fragen (der Tipp ist die Nutzer-Geste, die iOS zum Abspielen braucht), dann verkleinern */
+  const [videoJob, setVideoJob] = useState<{
+    chatId: string; file: File; caption: string; dauer: number | null; phase: 'frage' | 'laeuft'; anteil: number
+  } | null>(null)
+  const videoAbbruch = useRef<AbortController | null>(null)
+  const activeIdRef = useRef<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   // §157: iMessage-Swipe vom linken Rand → zurück zur Gruppen-Liste (mobil)
@@ -170,6 +177,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   // Schaut der Nutzer den Thread gerade wirklich an? (Basis des markRead-Gates)
   const viewingRef = useRef(true)
   useEffect(() => { viewingRef.current = !isMobile || mobileView === 'chat' }, [isMobile, mobileView])
+  useEffect(() => { activeIdRef.current = active?.id ?? null }, [active])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const recRef = useRef<MediaRecorder | null>(null)
   const recChunks = useRef<Blob[]>([])
@@ -196,7 +204,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const loadChats = useCallback(async () => {
     try {
       const r = await fetch('/api/team-chat', { cache: 'no-store' })
-      if (!r.ok) { setError(`Laden fehlgeschlagen (HTTP ${r.status})`); return }
+      if (!r.ok) { console.error('team-chat', r.status); setError('Die Gruppen konnten nicht geladen werden.'); return }
       const d = await r.json()
       setChats(d.chats ?? [])
       chatsRef.current = d.chats ?? []
@@ -213,7 +221,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       // Threads statt Nachrichten zählen (konsistent mit App-Badge, Pascal 19.7.)
       onUnread?.((d.chats ?? []).filter((c: TeamChat) => (c.unread ?? 0) > 0).length)
     } catch {
-      setError('Keine Verbindung.')
+      setError('Keine Verbindung. Bitte prüf dein Internet.')
     } finally {
       setLoading(false)
     }
@@ -371,7 +379,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         loadChats()
       } else {
         haptic('error')
-        tmToast(`Senden fehlgeschlagen (HTTP ${r.status}) — Entwurf bleibt erhalten.`)
+        console.error('team-chat/senden', r.status)
+        tmToast('⚠️ Senden hat nicht geklappt – der Entwurf bleibt erhalten.')
       }
     } catch (e) {
       if (isNetworkError(e) || !isOnline()) {
@@ -381,16 +390,27 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         setDraft('')
         setReplyTo(null)
         if (composerRef.current) composerRef.current.style.height = 'auto'
-        tmToast('📴 Offline — Nachricht wartet auf Verbindung')
+        tmToast('📵 Offline – die Nachricht wartet auf Verbindung')
       } else {
-        tmToast('Senden fehlgeschlagen — Entwurf bleibt erhalten.')
+        tmToast('⚠️ Senden hat nicht geklappt – der Entwurf bleibt erhalten.')
       }
     } finally { setBusy(false) }
   }
 
   async function sendFile(file: File, caption?: string) {
     if (!active || uploading) return
-    if (file.size > 50 * 1024 * 1024) { alert('Datei zu groß (max. 50 MB).') ; return }
+    if (file.size > VIDEO_LIMIT_BYTES) {
+      if (file.type.startsWith('video/') && kannVideoVerkleinern()) {
+        if (videoJob) { tmToast('Es wird schon ein Video verkleinert.'); return }
+        setVideoJob({ chatId: active.id, file, caption: (caption ?? draft).trim(), dauer: null, phase: 'frage', anteil: 0 })
+        void videoDauer(file).then((d) => setVideoJob((j) => (j && j.file === file ? { ...j, dauer: d } : j)))
+        return
+      }
+      alert(file.type.startsWith('video/')
+        ? 'Das Video ist zu groß (max. 50 MB) und dieser Browser kann es nicht verkleinern. Kürze es bitte in der Fotos-App.'
+        : 'Die Datei ist zu groß (max. 50 MB).')
+      return
+    }
     setUploading(true)
     try {
       const isImage = file.type.startsWith('image/')
@@ -417,6 +437,74 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       setReplyTo(null)
       await loadMsgs(active.id)
       loadChats()
+    } finally { setUploading(false) }
+  }
+
+  /** 🎬 Startet die Verkleinerung — läuft SYNCHRON im Klick (iOS: AudioContext + play() brauchen die Geste) */
+  function startVideoVerkleinern() {
+    const job = videoJob
+    if (!job || job.phase !== 'frage') return
+    const ac = new AbortController()
+    videoAbbruch.current = ac
+    const lauf = verkleinereVideo(job.file, {
+      dauerSek: job.dauer,
+      signal: ac.signal,
+      onFortschritt: (a) => setVideoJob((j) => (j && j.file === job.file ? { ...j, anteil: a } : j)),
+    })
+    setVideoJob({ ...job, phase: 'laeuft', anteil: 0 })
+    // Bildunterschrift stammt aus dem Eingabefeld → Feld frei machen, solange das Video läuft
+    if (job.caption) setDraft((d) => (d.trim() === job.caption ? '' : d))
+    lauf
+      .then(async (erg) => {
+        setVideoJob(null)
+        const ok = await sendeVideoBlob(job.chatId, erg.blob, erg.mime, neuerVideoName(job.file.name, erg.mime), job.caption)
+        if (!ok) setDraft((d) => (d.trim() ? d : job.caption))
+        else if (erg.ohneTon) tmToast('Video gesendet – ohne Ton, weil der Browser den Ton nicht freigegeben hat.')
+      })
+      .catch((e: unknown) => {
+        setVideoJob(null)
+        setDraft((d) => (d.trim() ? d : job.caption))
+        if ((e as DOMException)?.name === 'AbortError') return
+        alert(e instanceof Error && e.message ? e.message : 'Das Video ließ sich nicht verkleinern. Kürze es bitte in der Fotos-App.')
+      })
+      .finally(() => { if (videoAbbruch.current === ac) videoAbbruch.current = null })
+  }
+
+  function videoAbbrechen() {
+    const job = videoJob
+    videoAbbruch.current?.abort()
+    videoAbbruch.current = null
+    setVideoJob(null)
+    if (job?.caption) setDraft((d) => (d.trim() ? d : job.caption))
+  }
+
+  /** Lädt das verkleinerte Video hoch und schickt die Nachricht in den Chat, in dem es ausgewählt wurde */
+  async function sendeVideoBlob(chatId: string, blob: Blob, mime: string, name: string, caption: string): Promise<boolean> {
+    setUploading(true)
+    try {
+      const r = await fetch(`/api/team-chat/${chatId}/upload`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType: mime, fileName: name }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { console.error('[video-upload]', r.status, d); alert('Hochladen hat nicht geklappt. Bitte versuch es noch einmal.'); return false }
+      const { error: upErr } = await supabase.storage
+        .from(d.bucket)
+        .uploadToSignedUrl(d.path, d.token, blob, { contentType: mime })
+      if (upErr) { console.error('[video-upload]', upErr); alert('Hochladen hat nicht geklappt. Bitte versuch es noch einmal.'); return false }
+      const post = await fetch(`/api/team-chat/${chatId}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: caption, attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: name }),
+      })
+      if (!post.ok) { alert('Das Video ist hochgeladen, aber die Nachricht kam nicht an. Bitte noch einmal senden.'); return false }
+      haptic('success')
+      if (activeIdRef.current === chatId) await loadMsgs(chatId)
+      loadChats()
+      return true
+    } catch (e) {
+      console.error('[video-upload]', e)
+      alert('Hochladen hat nicht geklappt. Prüf die Verbindung und versuch es noch einmal.')
+      return false
     } finally { setUploading(false) }
   }
 
@@ -569,7 +657,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       stream?.getTracks().forEach((t) => t.stop())
       if (recTimer.current) clearInterval(recTimer.current)
       setRecording(false)
-      alert('Mikrofon-Zugriff nicht möglich — bitte in den Einstellungen erlauben.')
+      alert('Kein Zugriff aufs Mikrofon. Bitte erlaub ihn in den Einstellungen.')
     }
   }
 
@@ -593,11 +681,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         body: JSON.stringify({ fileType: mime, fileName }),
       })
       const d = await r.json()
-      if (!r.ok) { alert(d.error ?? 'Upload fehlgeschlagen.'); return }
+      if (!r.ok) { alert(r.status < 500 && d.error ? d.error : 'Die Sprachnachricht konnte nicht hochgeladen werden. Bitte versuch es noch einmal.'); return }
       const { error: upErr } = await supabase.storage
         .from(d.bucket)
         .uploadToSignedUrl(d.path, d.token, blob, { contentType: mime })
-      if (upErr) { alert('Upload fehlgeschlagen: ' + upErr.message); return }
+      if (upErr) { console.error('[voice-upload]', upErr); alert('Die Sprachnachricht konnte nicht hochgeladen werden. Bitte versuch es noch einmal.'); return }
       await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -626,7 +714,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           body: JSON.stringify({ name, emoji, memberIds: [...selected] }),
         })
         if (r.ok) { setShowCreate(false); loadChats() }
-        else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Anlegen fehlgeschlagen.') }
+        else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Die Gruppe konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.') }
       } finally { setSaving(false) }
     }
     // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container unter der Tab-Leiste
@@ -667,7 +755,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
             width: '100%', padding: '13px 0', borderRadius: 999, border: 'none',
             background: name.trim() && !saving ? 'var(--tm-navy)' : 'var(--tm-surface2)',
             color: name.trim() && !saving ? '#fff' : 'var(--tm-muted)', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
-          }}>{saving ? 'Erstellt…' : 'Gruppe erstellen'}</button>
+          }}>{saving ? 'Legt an…' : 'Gruppe anlegen'}</button>
         </div>
       </div>,
       document.body,
@@ -724,11 +812,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       {loading && <SkeletonRows kind="chat" count={6} />}
       {error && !loading && (
         <div style={{ margin: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 12.5 }}>
-          ⚠️ {error} <button onClick={() => { setLoading(true); loadChats() }} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Erneut</button>
+          ⚠️ {error} <button onClick={() => { setLoading(true); loadChats() }} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Erneut laden</button>
         </div>
       )}
       {!loading && !error && chats.length === 0 && (
-        <EmptyState icon="chat" title="Noch keine internen Gruppen" hint={canCreate ? 'Lege oben mit + die erste Gruppe an — z. B. „Geschäftsführung" oder „Handwerker".' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'} />
+        <EmptyState icon="chat" title="Noch keine internen Gruppen" hint={canCreate ? 'Lege oben mit + die erste Gruppe an – z. B. „Geschäftsführung“ oder „Handwerker“.' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'} />
       )}
       {!loading && !error && chats.length > 0 && visibleChats.length === 0 && (
         <EmptyState icon="chat" title="Nichts Ungelesenes." />
@@ -888,7 +976,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                         }}>↩︎</button>
                         {/* §289: Kopieren — Blasen sind nicht markierbar (Long-Press gehört dem Menü) */}
                         {m.content && (
-                          <button title="Text kopieren" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); navigator.clipboard?.writeText(m.content).then(() => tmToast('Kopiert')).catch(() => tmToast('Kopieren nicht möglich')) }} style={{
+                          <button title="Text kopieren" onClick={(ev) => { ev.stopPropagation(); setReactFor(null); navigator.clipboard?.writeText(m.content).then(() => tmToast('✓ Kopiert')).catch(() => tmToast('⚠️ Kopieren hat nicht geklappt.')) }} style={{
                             width: 34, height: 34, borderRadius: '50%', border: 'none', padding: 0,
                             background: 'var(--tm-fill)', fontSize: 15, cursor: 'pointer', color: 'var(--tm-muted)',
                           }}>📋</button>
@@ -1061,6 +1149,41 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         </div>
       ) : (
       <div style={{ flexShrink: 0 }}>
+      {/* 🎬 Großes Video: erst fragen, dann mit Fortschritt verkleinern */}
+      {videoJob && videoJob.chatId === active?.id && (() => {
+        const laeuft = videoJob.phase === 'laeuft'
+        const zuLang = videoJob.dauer != null && videoJob.dauer > VIDEO_MAX_SEKUNDEN + 1
+        const mb = Math.round(videoJob.file.size / 1024 / 1024)
+        const pct = Math.round(videoJob.anteil * 100)
+        const dauerText = videoJob.dauer != null ? `${Math.floor(videoJob.dauer / 60)}:${String(Math.round(videoJob.dauer % 60)).padStart(2, '0')} Min.` : null
+        const knopf = { height: 32, padding: '0 14px', borderRadius: 16, fontSize: 13, fontWeight: 700, cursor: 'pointer' } as const
+        return (
+          <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 14px', background: 'var(--tm-glass)', borderTop: HAIR }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--tm-text)' }}>
+              {laeuft
+                ? <>🎬 <strong>Video wird verkleinert … {pct} %</strong> – lass die App dabei offen.</>
+                : zuLang
+                  ? <>🎬 <strong>Video zu lang</strong> ({dauerText}). Verkleinern geht bis 10 Minuten – kürze es bitte in der Fotos-App.</>
+                  : <>🎬 <strong>Video zu groß</strong> ({mb} MB, max. 50 MB). Die App kann es verkleinern. Das dauert so lange wie das Video{dauerText ? ` (${dauerText})` : ''} – lass die App dabei offen.</>}
+            </div>
+            {laeuft && (
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--tm-surface2)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: 'var(--tm-navy)', transition: 'width .5s linear' }} />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={videoAbbrechen} style={{ ...knopf, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)' }}>
+                {zuLang ? 'Schließen' : 'Abbrechen'}
+              </button>
+              {!laeuft && !zuLang && (
+                <button type="button" onClick={startVideoVerkleinern} style={{ ...knopf, border: 'none', background: 'var(--tm-navy)', color: '#fff' }}>
+                  Verkleinern und senden
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
       {/* ↩︎ Antwort-Leiste: worauf gerade geantwortet wird (iMessage-Stil) */}
       {replyTo && (
         <div style={{
@@ -1097,7 +1220,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
               if (!f) return
               // §292 (Pascal): Bildunterschrift beim Hochladen — steht schon Text im Feld, wird er
               // genommen; sonst kurz nachfragen. Mit @c schaut sich Claude das Bild an.
-              const caption = draft.trim() ? draft : (window.prompt('Bildunterschrift (optional) — mit @c fragst du Claude dazu', '') ?? '')
+              const caption = draft.trim() ? draft : (window.prompt('Bildunterschrift (optional) – mit @c fragst du die KI dazu', '') ?? '')
               sendFile(f, caption)
             }} />
         </label>
@@ -1196,14 +1319,15 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
   const [selected, setSelected] = useState<Set<string>>(new Set(chat.members.map((m) => m.id)))
   const [saving, setSaving] = useState(false)
   const [media, setMedia] = useState<TeamMsg[] | null>(null)
+  const [mediaFehler, setMediaFehler] = useState(false)
   const [tab, setTab] = useState<(typeof MEDIA_TABS)[number][0]>('alle')
   const [q, setQ] = useState('')
 
   useEffect(() => {
     fetch(`/api/team-chat/${chat.id}?media=1`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setMedia(d?.messages ?? []))
-      .catch(() => setMedia([]))
+      .then((d) => { if (!d) setMediaFehler(true); setMedia(d?.messages ?? []) })
+      .catch(() => { setMediaFehler(true); setMedia([]) })
   }, [chat.id])
 
   async function saveName() {
@@ -1214,7 +1338,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), emoji: emoji.trim() || '💬' }),
       })
-      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern fehlgeschlagen.'); return }
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
       onUpdate({ name: name.trim(), emoji: emoji.trim() || '💬' })
       setEditName(false)
     } finally { setSaving(false) }
@@ -1222,14 +1346,14 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
 
   async function saveMembers() {
     if (saving) return
-    if (!selected.has(userId) && !confirm('Du entfernst dich selbst aus der Gruppe — fortfahren?')) return
+    if (!selected.has(userId) && !confirm('Du entfernst dich selbst aus der Gruppe. Trotzdem speichern?')) return
     setSaving(true)
     try {
       const r = await fetch(`/api/team-chat/${chat.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberIds: [...selected] }),
       })
-      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern fehlgeschlagen.'); return }
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
       const byId = new Map(directory.map((d) => [d.id, d]))
       onUpdate({ members: [...selected].map((id) => ({ id, name: byId.get(id)?.name ?? '—', avatar: null })) })
       setEditMembers(false)
@@ -1237,9 +1361,9 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
   }
 
   async function removeGroup() {
-    if (!confirm(`Gruppe „${chat.name}" mit allen Nachrichten endgültig löschen?`)) return
+    if (!confirm(`Gruppe „${chat.name}“ mit allen Nachrichten endgültig löschen?`)) return
     const r = await fetch(`/api/team-chat/${chat.id}`, { method: 'DELETE' })
-    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Löschen fehlgeschlagen.'); return }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Löschen hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
     onDeleted()
   }
 
@@ -1362,7 +1486,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
           <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, padding: 20 }}>Lädt…</p>
         ) : filtered.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, padding: 20 }}>
-            {media.length === 0 ? 'Noch keine Medien in dieser Gruppe.' : 'Keine Treffer.'}
+            {mediaFehler ? 'Die Medien konnten nicht geladen werden. Bitte öffne die Gruppen-Info gleich noch einmal.' : media.length === 0 ? 'Noch keine Medien in dieser Gruppe.' : 'Keine Treffer.'}
           </p>
         ) : tab === 'image' ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>

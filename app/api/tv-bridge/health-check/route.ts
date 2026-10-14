@@ -44,14 +44,14 @@ export async function GET(req: NextRequest) {
   let pushed: string | null = null
   if (ok && wasDown) {
     // Wieder online → Entwarnung
-    await sendPushToTeam('📺 TV-Server wieder online', 'tv.trimosa.de ist wieder erreichbar.', '/team', { category: 'tv' })
+    await sendPushToTeam('📺 TV-Server wieder online · tv.trimosa.de', 'Wieder erreichbar, nichts mehr zu tun.', '/team', { category: 'tv' })
     pushed = 'recovered'
     await supabaseAdmin.from('app_settings').upsert({ key: 'tv_server_state', value: { down: false, fails: 0 } })
   } else if (!ok && !wasDown && fails >= 2) {
     // Zweiter Fehlschlag in Folge → als offline bestätigen + Alarm
     await sendPushToTeam(
-      '📺 TV-Server offline',
-      'tv.trimosa.de antwortet nicht mehr. Die TV-Oberflächen der Gäste könnten betroffen sein — Hetzner-Server prüfen.',
+      '📺 TV-Server offline · tv.trimosa.de',
+      'Antwortet nicht mehr, die TV-Oberflächen der Gäste können betroffen sein. Bitte den Server bei Hetzner prüfen.',
       '/team', { category: 'tv' },
     )
     pushed = 'offline_alert'

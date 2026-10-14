@@ -289,7 +289,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                   )
                   : (
                     <span style={{ fontSize: 11.5, color: '#B45309' }}>
-                      ⚠️ Ohne Google-Place-ID am Inserat bleibt der Baustein beim Gast unsichtbar (Inserats-Editor → Plattform-URLs).
+                      ⚠️ Gäste sehen diesen Baustein erst, wenn am Inserat eine Google-Place-ID hinterlegt ist (Inserats-Editor → Plattform-URLs).
                     </span>
                   )}
               </div>
@@ -441,7 +441,7 @@ export default function GuideBlocks({ blocks, ctx, labels, preview = false }: {
                     </div>
                     {!(b.phone || b.note) && (
                       <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(245,240,232,0.45)' }}>
-                        Tipp: Ein 📞-Kontakt-Baustein füllt hier Telefon + Hinweis mit aus.
+                        Tipp: Mit einem 📞-Kontakt-Baustein stehen hier auch Telefon und Hinweis.
                       </p>
                     )}
                   </div>

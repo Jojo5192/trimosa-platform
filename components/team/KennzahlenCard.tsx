@@ -128,7 +128,7 @@ export default function KennzahlenCard() {
     try {
       const res = await fetch(`/api/kennzahlen?monat=${encodeURIComponent(ym)}`, { cache: 'no-store' })
       if (res.status === 403) { setOk(false); return }
-      if (!res.ok) { setError('Kennzahlen konnten nicht geladen werden.'); return }
+      if (!res.ok) { setError('Die Kennzahlen konnten nicht geladen werden. Bitte versuch es gleich noch einmal.'); return }
       const j = (await res.json()) as Kennzahlen
       setOk(true)
       setError(null)
@@ -141,7 +141,7 @@ export default function KennzahlenCard() {
           .catch(() => {})
       }
     } catch {
-      setError('Kennzahlen konnten nicht geladen werden.')
+      setError('Die Kennzahlen konnten nicht geladen werden. Bitte prüf die Verbindung und versuch es noch einmal.')
     } finally {
       setLoading(false)
     }
@@ -177,10 +177,10 @@ export default function KennzahlenCard() {
         body: JSON.stringify({ monat: m.monat, ziel }),
       })
       if (!res.ok) throw new Error()
-      tmToast(ziel != null ? `Ziel ${m.label}: ${fmtEur(ziel)}` : `Ziel ${m.label} wieder automatisch`)
+      tmToast(ziel != null ? `✓ Ziel ${m.label}: ${fmtEur(ziel)}` : `✓ Ziel ${m.label} wieder automatisch`)
       void load(monat)
     } catch {
-      tmToast('Ziel konnte nicht gespeichert werden.')
+      tmToast('⚠️ Das Ziel konnte nicht gespeichert werden. Bitte versuch es gleich noch einmal.')
     }
   }
 
@@ -217,7 +217,7 @@ export default function KennzahlenCard() {
           {/* Je Wohnung — standardmäßig ausgeklappt, Zustand gemerkt */}
           <button type="button" onClick={toggleDetails} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: '12px 0 6px', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--tm-accent-dark, #8A7020)' }}>
             <span style={{ fontSize: 11 }}>{showDetails ? '▾' : '▸'}</span>
-            {showDetails ? 'Details ausblenden' : 'Je Wohnung anzeigen'}
+            {showDetails ? 'Je Wohnung ausblenden' : 'Je Wohnung anzeigen'}
           </button>
           {showDetails && (
             <div key={data!.monat} style={{ borderTop: '1px solid var(--tm-line, #e3e6ea)' }}>

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { teamNutzer } from '@/lib/chat-access'
 import { erstelleZahllink, listeZahllinks } from '@/lib/zahlungen'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Stripe-Preis + Zahllink
+export const maxDuration = 30
+
 /**
  * 💶 Zahllink für Extras aus dem Gäste-Chat (Pascal 5.10.2026) — lib/zahlungen.ts.
  *  GET  ?bookingId=…                          → { links } (offen/bezahlt) der Buchung

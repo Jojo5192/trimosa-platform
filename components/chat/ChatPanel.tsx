@@ -58,7 +58,7 @@ const SWIPE_W = 132
 
 /** §158: Erläuterung für Rechnungsanfragen VOR dem Anreisetag (wird beim
  *  Senden automatisch in die Gastsprache übersetzt). */
-const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt — ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
+const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt – ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
 
 /** §277 Inbox-Filter (Pascal-Spec): Alle · Offen · Ungelesen · Aktuell zu Gast ·
  *  Dringend · Kommend · je Portal · Erledigt. Portal-Chips heißen `p:<Portal>`;
@@ -275,7 +275,7 @@ function fmtMsgT(iso: string, lang: UiLang = 'de') {
 function fmtDateRange(checkIn: string | null, checkOut: string | null) {
   if (!checkIn || !checkOut) return null
   const fmt = (s: string) => new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
-  return `${fmt(checkIn)} – ${fmt(checkOut)}`
+  return `${fmt(checkIn)}–${fmt(checkOut)}`
 }
 /** „09.09.–13.09." für die Inbox-Karten (Pascal-Spec, ohne Jahr) */
 function fmtRangeShort(checkIn: string | null, checkOut: string | null) {
@@ -442,8 +442,8 @@ const ConvCard = memo(function ConvCard({ c, name, avatar, isSel, swipeOpen, can
         )}
         {c.lastPreview && (
           <div style={{ fontSize: 12.5, color: unread ? 'var(--tm-text, #171a1f)' : 'var(--tm-muted, #646b76)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread ? 600 : 400, marginTop: 3 }}>
-            {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort erforderlich" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
-            {c.lastSender === 'guest' && c.phoneResolved && <span title="Per Telefonat geklärt" style={{ fontSize: 12 }}>📞 </span>}
+            {c.lastSender === 'guest' && c.noReplyNeeded && <span title="Keine Antwort nötig" style={{ color: 'var(--tm-green, #1a9d57)', fontWeight: 700 }}>✓ </span>}
+            {c.lastSender === 'guest' && c.phoneResolved && <span title="Telefonisch geklärt" style={{ fontSize: 12 }}>📞 </span>}
             {c.lastSender === 'host' && <span style={{ color: 'var(--tm-muted2, #959ca7)' }}>Du: </span>}
             {c.lastPreview}
           </div>
@@ -503,6 +503,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   const [taskBusy, setTaskBusy] = useState(false)
   const [taskInfo, setTaskInfo] = useState<string | null>(null)
   const [authExpired, setAuthExpired] = useState(false)
+  // Liste konnte nicht geladen werden (Server-/Netzfehler) — vorher sah das aus wie „Keine Nachrichten"
+  const [listFehler, setListFehler] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [active, setActive]     = useState<Conversation | null>(null)
   // ☎️ §227c/d: Telefonate zu dieser Buchung (team-only) — als Chip im
@@ -547,9 +549,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         body: JSON.stringify({ toNumber: num, instruction: cbText.trim() }),
       })
       const j = await r.json().catch(() => ({}))
-      if (r.ok) { setCbNote('✅ Die KI ruft gleich zurück.'); setCbText(''); setCbFor(null) }
-      else setCbNote(`⚠️ ${j?.error ?? 'Rückruf konnte nicht gestartet werden.'}`)
-    } catch { setCbNote('⚠️ Netzwerkfehler — bitte erneut versuchen.') }
+      if (r.ok) { setCbNote('✓ Die KI ruft gleich zurück.'); setCbText(''); setCbFor(null) }
+      else setCbNote(`⚠️ ${r.status < 500 && j?.error ? j.error : 'Der Rückruf konnte nicht gestartet werden. Bitte versuch es gleich noch einmal.'}`)
+    } catch { setCbNote('📵 Keine Verbindung – der Rückruf ist nicht gestartet.') }
     finally { setCbBusy(false) }
   }
   const [openCallId, setOpenCallId] = useState<string | null>(null)
@@ -639,13 +641,17 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'booking', id: c.id, value: mode, field: 'mute' }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        console.error('chat/inbox mute', res.status, j.error)
+        throw new Error(res.status < 500 && j.error ? j.error : 'Nicht gespeichert. Bitte versuch es noch einmal.')
+      }
       tmToast(next === 'alle' ? 'Auto-Nachrichten stumm (außer Check-out)' : next === 'bewertung' ? 'Keine Bewertungsbitte mehr' : 'Auto-Nachrichten wieder an')
       reloadListSoon()
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, msgMute: prev } : x))
       setActive(a => (a && a.id === c.id ? { ...a, msgMute: prev } : a))
-      tmToast(String(e instanceof Error ? e.message : e).slice(0, 90))
+      tmToast(e instanceof TypeError ? '📵 Keine Verbindung – nicht gespeichert.' : `⚠️ ${String(e instanceof Error ? e.message : e).slice(0, 90)}`)
     }
   }
 
@@ -660,13 +666,17 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'booking', id: c.id, value: next, field: 'early_block' }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
-      tmToast(next ? 'Early Check-in gesperrt — keine Früh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        console.error('chat/inbox early_block', res.status, j.error)
+        throw new Error(res.status < 500 && j.error ? j.error : 'Nicht gespeichert. Bitte versuch es noch einmal.')
+      }
+      tmToast(next ? 'Early Check-in gesperrt – keine Früh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
       reloadListSoon()
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: !next } : x))
       setActive(a => (a && a.id === c.id ? { ...a, earlyBlocked: !next } : a))
-      tmToast(String(e instanceof Error ? e.message : e).slice(0, 90))
+      tmToast(e instanceof TypeError ? '📵 Keine Verbindung – nicht gespeichert.' : `⚠️ ${String(e instanceof Error ? e.message : e).slice(0, 90)}`)
     }
   }
 
@@ -701,9 +711,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // gespeichert → Liste mit dem Serverstand abgleichen (schließt das Wettrennen mit
       // einem Abgleich, der zwischen Tipp und Speichern gestartet ist)
       if (res.ok) reloadListSoon()
-      else zurueck('Markierung nicht gespeichert — bitte erneut versuchen')
+      else zurueck('⚠️ Markierung nicht gespeichert. Bitte versuch es noch einmal.')
     } catch {
-      zurueck('Keine Verbindung — Markierung nicht gespeichert')
+      zurueck('📵 Keine Verbindung – Markierung nicht gespeichert.')
     }
   }
   async function toggleMark(field: 'no_reply' | 'phone') {
@@ -741,16 +751,20 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       })
       if (!res.ok) throw new Error('HTTP ' + res.status)
       setTaskOpen(false)
-      setTaskInfo('✓ Aufgabe erstellt — liegt im Aufgaben-Tab.')
+      setTaskInfo('✓ Aufgabe angelegt – sie liegt im Aufgaben-Tab.')
       setTimeout(() => setTaskInfo((cur) => (cur?.startsWith('✓') ? null : cur)), 6000)
     } catch (e) {
-      setTaskInfo('Aufgabe konnte nicht erstellt werden (' + (e as Error).message + ').')
+      console.error('tasks aus Chat', e)
+      setTaskInfo(e instanceof TypeError
+        ? 'Keine Verbindung – die Aufgabe ist nicht angelegt.'
+        : 'Die Aufgabe konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.')
     } finally {
       setTaskBusy(false)
     }
   }
 
-  async function suggestReply() {
+  /** manuell = Knopf „✨ KI schreibt" — dann wird ein Fehlschlag gemeldet (der automatische Vorschlag beim Öffnen bleibt still) */
+  async function suggestReply(manuell = false) {
     if (!active || aiBusy) return
     setAiBusy(true)
     try {
@@ -758,10 +772,12 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(active.kind === 'booking' ? { bookingId: active.id } : { conversationId: active.id }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (res.ok && data.suggestion) setDraft(data.suggestion)
-    } catch { /* silent — composer stays untouched */ }
-    finally { setAiBusy(false) }
+      else if (manuell) tmToast('⚠️ Die KI konnte gerade keinen Vorschlag schreiben. Bitte versuch es noch einmal.')
+    } catch {
+      if (manuell) tmToast('📵 Keine Verbindung – kein KI-Vorschlag möglich.')
+    } finally { setAiBusy(false) }
   }
   const [loading, setLoading]   = useState(false)
   const [isMobile, setIsMobile] = useState(false)
@@ -801,12 +817,12 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       const key = (active.kind ?? 'direct') === 'booking' ? 'booking' : 'conv'
       const r = await fetch(`/api/auto-messages/render?template=${encodeURIComponent(tid)}&${key}=${encodeURIComponent(active.id)}`, { cache: 'no-store' })
       const d = await r.json()
-      if (!r.ok || !d.text) { tmToast(d.error ?? 'Vorlage konnte nicht gefüllt werden'); return }
+      if (!r.ok || !d.text) { tmToast(r.status < 500 && d.error ? `⚠️ ${d.error}` : '⚠️ Die Vorlage konnte nicht gefüllt werden. Bitte versuch es noch einmal.'); return }
       setDraft(d.text)
       setTplMenu(false)
-      tmToast(`Vorlage „${d.name}" eingefügt — bitte prüfen und senden`)
+      tmToast(`✓ Vorlage „${d.name}“ eingefügt – bitte prüfen und senden`)
       setTimeout(() => taRef.current?.focus(), 50)
-    } catch { tmToast('Vorlage konnte nicht geladen werden') }
+    } catch { tmToast('⚠️ Die Vorlage konnte nicht geladen werden. Bitte versuch es noch einmal.') }
     finally { setTplBusy(false) }
   }
   const [invoiceBusy, setInvoiceBusy] = useState(false)
@@ -835,7 +851,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
           zip: f.zip || rec.zip || '',
           city: f.city || rec.city || '',
           country: rec.countryCode ? (CC[rec.countryCode] ?? rec.countryCode) : f.country,
-          result: '✨ Aus dem Chat übernommen — bitte prüfen und übernehmen.',
+          result: '✨ Aus dem Chat übernommen – bitte prüfen und übernehmen.',
         }) : f)
       }
     } catch { /* best effort */ }
@@ -854,14 +870,17 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         } }),
       })
       const d = await r.json().catch(() => null)
-      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`)
+      if (!r.ok) {
+        console.error('invoices empfänger', r.status, d?.error)
+        throw new Error(r.status < 500 && d?.error ? d.error : 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.')
+      }
       setInvForm(f => ({
         ...f, busy: false,
         result: d.hinweis ?? (d.status === 'bereit' ? 'Rechnung mit diesen Daten ausgestellt.' : 'Empfänger gespeichert.'),
         url: d.url ? `${location.origin}${d.url}` : null,
       }))
     } catch (e) {
-      setInvForm(f => ({ ...f, busy: false, result: `⚠️ ${e instanceof Error ? e.message : 'Fehler.'}` }))
+      setInvForm(f => ({ ...f, busy: false, result: `⚠️ ${e instanceof TypeError || !(e instanceof Error) ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.' : e.message}` }))
     }
   }
 
@@ -870,7 +889,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   async function ensureInvoiceUrl(bid: string): Promise<string> {
     const r = await fetch(`/api/invoices/${bid}`, { method: 'POST' })
     const d = await r.json().catch(() => null)
-    if (!r.ok || !d?.url) throw new Error(d?.error ?? 'Rechnung nicht verfügbar.')
+    if (!r.ok || !d?.url) {
+      console.error('invoices', r.status, d?.error)
+      throw new Error(r.status < 500 && d?.error ? d.error : 'Die Rechnung ist gerade nicht verfügbar. Bitte versuch es später noch einmal.')
+    }
     return `${location.origin}${d.url}`
   }
   const [refining, setRefining] = useState(false)
@@ -1008,9 +1030,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // Ein Hintergrund-Abruf setzt das Sitzungs-Banner nie (ein einzelner 401-Aussetzer
       // bliebe sonst dauerhaft stehen); jeder geglückte Abruf nimmt es zurück.
       if (r.status === 401 || r.status === 403) { if (!soft) setAuthExpired(true); return null }
-      if (!r.ok) return null
+      if (!r.ok) { if (!soft) setListFehler(true); return null }
       const { threads, teamNames: tn } = await r.json()
       setAuthExpired(false)
+      setListFehler(false)
       if (seq < appliedSeqRef.current) return null // überholt bzw. durch ✓/📞 entwertet
       appliedSeqRef.current = seq
       listLoadedRef.current = true
@@ -1191,7 +1214,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // der Desktop-Fallback (neueste Konversation) darf ihn nie überschreiben.
       if (!data || data.length === 0 || active || hatAuswahlRef.current) return
       if (window.innerWidth >= 680) setActive(data[0])
-    }).finally(() => setLoading(false))
+    }).catch(() => setListFehler(true)).finally(() => setLoading(false))
   }, [open, getConvs, initialConvId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* §265: Push-Tap, während die App LÄUFT — der Service Worker schickt eine
@@ -1476,7 +1499,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     }>
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition
     if (!SR) {
-      alert('Spracherkennung wird von diesem Browser nicht unterstützt — bitte das 🎤 der Tastatur nutzen.')
+      alert('Dieser Browser kann keine Sprache erkennen. Nutz bitte das 🎤 auf der Tastatur.')
       return
     }
     const rec = new SR()
@@ -1574,9 +1597,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         // Thread und geht automatisch raus, sobald Netz da ist
         enqueueOutbox({ kind: 'guest', targetId: conv.id, url, body: payload, text: content })
         dropSending(tempId) // die „wartet auf Verbindung"-Blase der Warteschlange übernimmt
-        tmToast('📴 Offline — Nachricht wartet auf Verbindung')
+        tmToast('📵 Offline – die Nachricht wartet auf Verbindung')
       } else {
-        rollbackSend(tempId, conv, draftText, 'Keine Verbindung — Entwurf bleibt erhalten, bitte erneut versuchen.')
+        rollbackSend(tempId, conv, draftText, 'Keine Verbindung – der Entwurf bleibt erhalten. Bitte versuch es noch einmal.')
       }
       setBusy(false)
       return
@@ -1610,7 +1633,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       } else {
         const d = await r.json().catch(() => null)
         haptic('error')
-        rollbackSend(tempId, conv, draftText, d?.error ?? `Senden fehlgeschlagen (${r.status}) — Entwurf bleibt erhalten.`)
+        console.error('senden', r.status, d?.error)
+        rollbackSend(tempId, conv, draftText, r.status < 500 && d?.error ? d.error : 'Senden hat nicht geklappt – der Entwurf bleibt erhalten. Bitte versuch es noch einmal.')
       }
     } finally {
       setBusy(false)
@@ -1653,7 +1677,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         }
       } catch {
         // Netzfehler der Übersetzung: nichts gesendet → Rollback, Text zurück in den Entwurf
-        rollbackSend(pre.tempId, conv, text, 'Übersetzung fehlgeschlagen — Entwurf bleibt erhalten, bitte erneut senden.')
+        rollbackSend(pre.tempId, conv, text, 'Übersetzen hat nicht geklappt – der Entwurf bleibt erhalten. Bitte sende ihn noch einmal.')
         return
       } finally { setTranslating(false) }
       if (translated) await reallySend(translated, text, lang, pre)
@@ -1784,7 +1808,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         <div className="tm-sheet" style={{ marginTop: 10, overflow: 'hidden', borderRadius: 'var(--tm-r-xl, 22px)' }}>
           {([
             ['💬', 'Antworten', () => { setPeek(null); selectConv(c) }],
-            ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt — keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
+            ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt – keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
             ['📞', c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt', () => { setPeek(null); markConv(c, 'phone') }],
             ...((c.kind ?? 'direct') === 'booking' ? [
               ['🔕', c.msgMute === 'alle' ? 'Auto-Nachrichten wieder einschalten' : 'Auto-Nachrichten stumm (nur noch Check-out)', () => { setPeek(null); muteConv(c, c.msgMute === 'alle' ? '' : 'alle') }],
@@ -1871,12 +1895,20 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             background: 'var(--tm-accent-soft)', border: '1px solid var(--tm-line)',
             fontSize: 11.5, lineHeight: 1.55, color: 'var(--tm-accent-dark)',
           }}>
-            Diese Threads zählen im <strong>Wochenbericht</strong> als unbeantwortet.
-            Bereits geklärt? Im Thread oben markieren: <strong>📞 telefonisch geklärt</strong> · <strong>✓ keine Antwort nötig</strong> — dann stimmt eure Antwortzeit-Statistik.
+            Diese Chats zählen im <strong>Wochenbericht</strong> als unbeantwortet.
+            Schon geklärt? Markier sie oben im Chat: <strong>📞 telefonisch geklärt</strong> · <strong>✓ keine Antwort nötig</strong> – dann stimmt eure Antwortzeit-Statistik.
           </div>
         )}
         {loading && <SkeletonRows kind="chat" count={7} />}
-        {!loading && filtered.length === 0 && (
+        {!loading && filtered.length === 0 && listFehler && (
+          <div role="alert" style={{ margin: '24px 16px', padding: '14px 16px', borderRadius: 14, background: 'var(--tm-red-soft, #FEF2F2)', color: 'var(--tm-text, #171a1f)', fontSize: 13.5, lineHeight: 1.5, textAlign: 'center' }}>
+            Die Nachrichten konnten gerade nicht geladen werden.
+            <div style={{ marginTop: 10 }}>
+              <button type="button" onClick={() => { setListFehler(false); setLoading(true); void getConvs().catch(() => setListFehler(true)).finally(() => setLoading(false)) }} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 700, background: 'var(--tm-text, #171a1f)', color: 'var(--tm-bg, #fff)' }}>Erneut laden</button>
+            </div>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && !listFehler && (
           <EmptyState icon="chat" title={t(uiLang, 'Keine Nachrichten')} hint={team && inboxFilter !== 'alle' ? 'Kein Chat passt zu diesem Filter.' : 'Gäste können über die Inseratsseite schreiben.'} />
         )}
         {rows.map(c => {
@@ -1927,7 +1959,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span style={{ fontSize: 14, color: 'var(--tm-muted2)' }}>Unterhaltung auswählen</span>
+        <span style={{ fontSize: 14, color: 'var(--tm-muted2)' }}>Chat auswählen</span>
       </div>
     )
 
@@ -1992,7 +2024,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                 {team && (
                   <button
                     onClick={openTaskPanel}
-                    title="Aufgabe aus diesem Chat erstellen"
+                    title="Aufgabe aus diesem Chat anlegen"
                     style={{
                       width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
                       background: taskOpen ? 'var(--tm-navy)' : 'var(--tm-surface2)',
@@ -2018,7 +2050,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   <>
                     <button
                       onClick={() => toggleMark('phone')}
-                      title={active.phoneResolved ? 'Telefon-Markierung entfernen' : 'Per Telefonat geklärt'}
+                      title={active.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt'}
                       style={{
                         width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
                         background: active.phoneResolved ? 'linear-gradient(135deg, #2E7CF6, #1D5FD1)' : 'var(--tm-surface2)',
@@ -2029,7 +2061,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                     >📞</button>
                     <button
                       onClick={() => toggleMark('no_reply')}
-                      title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort erforderlich'}
+                      title={active.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Keine Antwort nötig'}
                       style={{
                         width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
                         background: active.noReplyNeeded ? 'linear-gradient(135deg, #34A853, #2C8C46)' : 'var(--tm-surface2)',
@@ -2109,7 +2141,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   background: 'var(--tm-navy)', color: '#fff',
                   fontSize: 13, fontWeight: 700, opacity: taskBusy || !taskTitle.trim() ? 0.5 : 1,
                 }}
-              >{taskBusy ? '…' : '✓ Aufgabe erstellen'}</button>
+              >{taskBusy ? '…' : '✓ Aufgabe anlegen'}</button>
               <button
                 onClick={() => setTaskOpen(false)}
                 style={{ padding: '8px 12px', borderRadius: 999, border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, cursor: 'pointer' }}
@@ -2147,7 +2179,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               borderBottom: '0.5px solid var(--tm-line)',
               display: 'flex', flexDirection: 'column', gap: 5,
             }}>
-              {row('📅', 'Aufenthalt:', `${fmtFull(active.check_in)} – ${fmtFull(active.check_out)}${nights ? ` · ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'}` : ''}`)}
+              {row('📅', 'Aufenthalt:', `${fmtFull(active.check_in)}–${fmtFull(active.check_out)}${nights ? ` · ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'}` : ''}`)}
               {row('👥', 'Personen:', persons > 0 ? `${persons}${active.children ? ` (${active.adults} Erw. + ${active.children} Kind${active.children === 1 ? '' : 'er'})` : ''}` : '— (Plattform-Buchung)')}
               {row('🏠', 'Wohnung:', active.listing_title ?? '—')}
               {row('🛎️', 'Kanal:', `${active.platform ?? '—'}${guestLang && guestLang !== 'de' ? ` · Gast schreibt ${LANG_LABEL[guestLang] ?? guestLang}${guestLangGuessed ? ' (geschätzt aus Telefon-Vorwahl)' : ''}` : ''}`)}
@@ -2164,7 +2196,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   }}>{active.doorCode}</span>
                   <button
                     onClick={() => { navigator.clipboard?.writeText(String(active.doorCode)); haptic() }}
-                    title="Code kopieren"
+                    title="Türcode kopieren"
                     aria-label="Türcode kopieren"
                     style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--tm-muted)', padding: 0 }}
                   >⧉</button>
@@ -2209,7 +2241,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
             background: 'var(--tm-surface2)', borderBottom: '0.5px solid rgba(46,124,246,0.25)', color: 'var(--tm-blue)',
           }}>
-            ✓ Erledigt — <strong>denk dran:</strong> Bei Booking.com-Gästen den Haken „Keine Antwort nötig" zusätzlich in der Booking-App setzen (zählt für eure Antwortquote).
+            ✓ Erledigt – <strong>denk dran:</strong> Setz bei Booking.com-Gästen den Haken „Keine Antwort nötig“ zusätzlich in der Booking-App (zählt für eure Antwortquote).
           </div>
         )}
 
@@ -2262,7 +2294,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--tm-blue)' }}>
                               Telefonat · {fmtMsgT(msg.created_at, uiLang)}
                             </span>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tm-muted)' }}>NUR INTERN</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tm-muted)' }}>nur intern</span>
                             <span style={{ marginLeft: 'auto', color: 'var(--tm-muted2)', fontSize: 12 }}>{openC ? '▾' : '▸ Anhören / Lesen'}</span>
                           </div>
                           {c.summary && !openC && (
@@ -2280,7 +2312,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                             {c.hasAudio ? (
                               <audio controls preload="none" src={`/api/voice/calls/${c.id}/audio`} style={{ width: '100%', marginBottom: 8 }} />
                             ) : (
-                              <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginBottom: 8 }}>🎧 Kein Audio verfügbar.</div>
+                              <div style={{ fontSize: 11.5, color: 'var(--tm-muted)', marginBottom: 8 }}>🎧 Keine Aufnahme vorhanden.</div>
                             )}
                             {c.transcript ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -2307,7 +2339,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                   padding: '8px 11px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--tm-green)',
                                 }}>
                                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, marginBottom: 3 }}>
-                                    ✅ SO WURDE ES GELÖST — fließt in die KI-Wissensbasis
+                                    ✅ So wurde es gelöst – fließt in die KI-Wissensbasis
                                   </div>
                                   {c.solution}
                                   <button
@@ -2320,7 +2352,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                   <textarea
                                     value={solText}
                                     onChange={(e) => setSolText(e.target.value)}
-                                    placeholder="Wie wurde das Anliegen gelöst? z. B. „Router im Flurschrank neu gestartet, WLAN lief danach wieder.“"
+                                    placeholder="Wie hast du das Anliegen gelöst? z. B. „Router im Flurschrank neu gestartet, WLAN lief danach wieder.“"
                                     rows={3}
                                     style={{
                                       width: '100%', borderRadius: 10, border: '1px solid var(--tm-line)',
@@ -2339,7 +2371,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                         fontSize: 13, fontWeight: 700, background: solBusy ? 'var(--tm-green-soft, #BBF7D0)' : 'var(--tm-green, #16A34A)',
                                         color: solBusy ? 'var(--tm-green, #16A34A)' : '#fff', cursor: solBusy ? 'default' : 'pointer',
                                       }}
-                                    >{solBusy ? '⏳ Speichern…' : '✅ Lösung speichern'}</button>
+                                    >{solBusy ? '⏳ Speichert…' : '✅ Lösung speichern'}</button>
                                     <button
                                       onClick={() => { setSolFor(null); setSolText('') }}
                                       style={{ border: '1px solid var(--tm-line)', background: 'var(--tm-card)', color: 'var(--tm-muted)', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
@@ -2354,7 +2386,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                     color: 'var(--tm-green)', borderRadius: 10, padding: '9px 12px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                                   }}
-                                >✅ So wurde es gelöst — erfassen</button>
+                                >✅ So wurde es gelöst – erfassen</button>
                               )}
                             </div>
                             {/* 📞 §246g Rückruf-Werkstatt: bei bekanntem Gast gehören
@@ -2397,7 +2429,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                         background: cbBusy || cbText.trim().length < 5 ? 'var(--tm-line, #C9D9EF)' : 'var(--tm-navy, #2C5282)',
                                         color: cbBusy || cbText.trim().length < 5 ? 'var(--tm-muted, #8E8875)' : '#fff', cursor: cbBusy ? 'default' : 'pointer',
                                       }}
-                                    >{cbBusy ? '⏳ Anruf wird gestartet…' : '📲 Jetzt zurückrufen lassen'}</button>
+                                    >{cbBusy ? '⏳ Startet Anruf…' : '📲 Jetzt zurückrufen lassen'}</button>
                                   </div>
                                 )}
                                 {cbNote && cbFor !== c.id && (
@@ -2429,7 +2461,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                         fontSize: 13, lineHeight: 1.45, color: 'var(--tm-muted)', whiteSpace: 'pre-wrap',
                       }}>
                         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, color: istTest ? 'var(--tm-accent-dark, #A8791C)' : 'var(--tm-muted, #8E8875)', marginBottom: 4 }}>
-                          {istTest ? '🧪 NUR INTERN — NICHT AN DEN GAST GESENDET' : '📋 INTERNE NOTIZ — der Gast sieht das nicht'}
+                          {istTest ? '🧪 Nur intern – nicht an den Gast gesendet' : '📋 Interne Notiz – der Gast sieht das nicht'}
                         </div>
                         {body}
                         {/* §246g: Rückrufnummer aus der Telefonnotiz direkt wählbar —
@@ -2616,7 +2648,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               </svg>
             </span>
             <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tm-text)' }}>Ich höre zu…</span>
-            <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>Sag, was du antworten willst — zum Fertigstellen antippen</span>
+            <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>Sag, was du antworten willst – zum Beenden antippen</span>
           </button>
         )}
 
@@ -2636,7 +2668,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
           {/* Paragraph 313: Werkzeuge nach Pascals Vorbild - drei grosse beschriftete Knoepfe, darunter Anhang + Textfeld + Senden */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
             {speechSupported && (
-              <button onClick={toggleDictation} className="tm-press-btn" title="Sprich, was du antworten willst — die KI schreibt die Nachricht mit Chat-Verlauf und Buchungsdaten" style={TOOL_PILL}>🎤 Diktieren</button>
+              <button onClick={toggleDictation} className="tm-press-btn" title="Sprich, was du antworten willst – die KI schreibt die Nachricht mit Chat-Verlauf und Buchungsdaten" style={TOOL_PILL}>🎤 Diktieren</button>
             )}
             {team && active && (
               <div ref={tplWrapRef} style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
@@ -2659,14 +2691,14 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                     >{t.name}</button>
                   ))}
                   <div style={{ padding: '6px 13px 10px', fontSize: 11, color: 'var(--tm-muted)', borderTop: '0.5px solid var(--tm-line)' }}>
-                    Platzhalter werden mit den Buchungsdaten gefüllt; der Text landet als Entwurf — senden entscheidest du.
+                    Die App füllt die Platzhalter mit den Buchungsdaten; der Text landet als Entwurf – ob er rausgeht, entscheidest du.
                   </div>
                 </div>
               )}
               </div>
             )}
             {active && isHost(active) && (
-              <button onClick={() => { haptic(); if (draft.trim()) refineDraft(VERBESSERN_ANWEISUNG); else suggestReply() }} disabled={aiBusy || refining} className="tm-press-btn" title="Eigenen Entwurf verbessern — ohne Entwurf schreibt die KI einen Antwortvorschlag aus Chat-Verlauf und Buchung" style={{ ...TOOL_PILL, opacity: aiBusy || refining ? 0.6 : 1 }}>{aiBusy || refining ? '⏳ KI arbeitet…' : draft.trim() ? '✨ KI verbessern' : '✨ KI schreibt'}</button>
+              <button onClick={() => { haptic(); if (draft.trim()) refineDraft(VERBESSERN_ANWEISUNG); else suggestReply(true) }} disabled={aiBusy || refining} className="tm-press-btn" title="Eigenen Entwurf verbessern – ohne Entwurf schreibt die KI einen Antwortvorschlag aus Chat-Verlauf und Buchung" style={{ ...TOOL_PILL, opacity: aiBusy || refining ? 0.6 : 1 }}>{aiBusy || refining ? '⏳ KI arbeitet…' : draft.trim() ? '✨ KI verbessern' : '✨ KI schreibt'}</button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
@@ -2679,7 +2711,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   overflow: 'hidden', transformOrigin: 'bottom left',
                 }}>
                   <div style={{ padding: '9px 13px 6px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: 'var(--tm-muted)' }}>
-                    📎 ANHÄNGEN — GÄSTEMAPPE & RECHNUNG
+                    📎 ANHÄNGEN – GÄSTEMAPPE & RECHNUNG
                   </div>
                   <button
                     onClick={() => {
@@ -2715,7 +2747,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                 setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + url)
                                 setMappeMenu(false)
                                 taRef.current?.focus()
-                              } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
+                              } catch (e) { setInvoiceErr(e instanceof TypeError || !(e instanceof Error) ? 'Keine Verbindung. Bitte prüf dein Internet.' : e.message) }
                               finally { setInvoiceBusy(false) }
                             }}
                             style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-text)' }}
@@ -2728,7 +2760,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                 const url = await ensureInvoiceUrl(active.bookingId!)
                                 setMappeMenu(false)
                                 await reallySend(url)
-                              } catch (e) { setInvoiceErr(e instanceof Error ? e.message : 'Fehler.') }
+                              } catch (e) { setInvoiceErr(e instanceof TypeError || !(e instanceof Error) ? 'Keine Verbindung. Bitte prüf dein Internet.' : e.message) }
                               finally { setInvoiceBusy(false) }
                             }}
                             style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--tm-tab-on-fg, #755E17)' }}
@@ -2767,8 +2799,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                 <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5 }}>
                   {invForm.extracting
-                    ? '✨ Claude durchsucht den Chat nach Rechnungsdaten…'
-                    : 'Daten des Gasts aus dem Chat übernehmen — vor der Anreise werden sie gespeichert und automatisch verwendet, danach wird die alte Rechnung storniert und neu ausgestellt.'}
+                    ? '✨ Die KI durchsucht den Chat nach Rechnungsdaten…'
+                    : 'Daten des Gasts aus dem Chat übernehmen – vor der Anreise speichert die App sie für die Rechnung, danach storniert sie die alte Rechnung und stellt eine neue aus.'}
                 </p>
                 {(['name', 'supplement', 'street', 'zip', 'city', 'country'] as const).map((k) => (
                   <input key={k}
@@ -2870,7 +2902,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       background: '#B45309', color: '#fff', display: 'flex', alignItems: 'center', gap: 10,
       fontSize: 13.5, fontWeight: 600, boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
     }}>
-      <span style={{ flex: 1 }}>Sitzung abgelaufen — bitte neu anmelden.</span>
+      <span style={{ flex: 1 }}>Deine Sitzung ist abgelaufen. Bitte melde dich neu an.</span>
       <button
         onClick={() => { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search) }}
         style={{ border: 'none', borderRadius: 999, padding: '8px 16px', background: 'var(--tm-card)', color: 'var(--tm-yellow)', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('[reinigung-routing] cron:', err)
     await meldeAusfall(AUSFALL_KEY, AUSFALL_TITEL,
-      `Der Lauf ist abgebrochen: ${String(err instanceof Error ? err.message : err).slice(0, 140)} — Late-Check-out-Fragen und Reinigungsmängel gehen gerade nicht an die Reinigung.`)
+      `Late-Check-out-Fragen und Reinigungsmängel gehen gerade nicht an die Reinigung, der Lauf ist abgebrochen. Fehler: ${String(err instanceof Error ? err.message : err).slice(0, 140)}`)
     return NextResponse.json({ error: String(err instanceof Error ? err.message : err).slice(0, 300) }, { status: 500 })
   }
 }

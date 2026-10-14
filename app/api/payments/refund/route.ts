@@ -5,6 +5,9 @@ import { stripe, refundAmount, resolvePolicy, policyDescription } from '@/lib/st
 import { cancelReservation, sendMessageToGuest } from '@/lib/smoobu'
 import { sendBookingCancelledEmail } from '@/lib/email'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Stripe-Erstattung + Smoobu-Storno + Mail
+export const maxDuration = 60
+
 /**
  * POST /api/payments/refund
  * Body: { bookingId }
@@ -41,6 +44,26 @@ export async function POST(req: NextRequest) {
   const isGuest = booking.guest_id === user.id
   const isHost = listing?.host_id === user.id
   if (!isGuest && !isHost) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
+
+  // Unbezahlte Sofortbuchung (status pending_payment, Stripe-Checkout läuft): Abbruch statt Storno — kein Refund,
+  // keine Storno-Mail, kein refunded_at; offene Stripe-Session schließen, Zeitraum freigeben (14.10.2026)
+  if (booking.status === 'pending_payment') {
+    if (booking.stripe_checkout_session_id) {
+      await stripe.checkout.sessions.expire(String(booking.stripe_checkout_session_id)).catch(() => { /* schon zu */ })
+    }
+    await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId).neq('payment_status', 'paid')
+    try {
+      const { data: conv } = await supabaseAdmin.from('conversations').select('id').eq('booking_id', bookingId).maybeSingle()
+      if (conv) {
+        await supabaseAdmin.from('messages').insert({
+          conversation_id: conv.id, sender_id: listing?.host_id ?? booking.guest_id,
+          content: '🚫 Buchung abgebrochen — es wurde nichts berechnet. Du kannst jederzeit neu buchen.',
+        })
+        await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+      }
+    } catch (err) { console.error('[Refund] Abbruch-Chatnotiz fehlgeschlagen:', err) }
+    return NextResponse.json({ ok: true, refunded: 0, abgebrochen: true })
+  }
 
   // Resolve effective policy (template + custom overrides)
   const policy = resolvePolicy({

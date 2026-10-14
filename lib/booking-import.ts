@@ -141,8 +141,8 @@ export async function importMissingReservations(
             .catch((e) => console.error('[booking-import] overbooking report:', e))
         } else {
           await sendPushToTeam(
-            `🚨 ÜBERBUCHUNG · Apartment ${aptId}`,
-            `${neu.guestName || neu.id} (${neu.arrival}–${neu.departure}) ↔ ${alt.guestName || alt.id} (${alt.arrival}–${alt.departure}) — sofort klären (Smoobu/Portal)!`,
+            `⚠️ Überbuchung · Apartment ${aptId}`,
+            `${neu.guestName || neu.id} (${neu.arrival}–${neu.departure}) ↔ ${alt.guestName || alt.id} (${alt.arrival}–${alt.departure}). Bitte sofort in Smoobu bzw. im Portal klären.`,
             '/team?tab=kalender', { category: 'system' },
           ).catch((e) => console.error('[booking-import] overbooking push:', e))
         }
@@ -184,8 +184,8 @@ export async function importMissingReservations(
   if (!missingSane) {
     console.error(`[booking-import] 🚨 Storno-Abgleich AUSGESETZT: ${missingCandidates} Buchungen fehlen plötzlich im Smoobu-Fenster — vermutlich API-Fehler.`)
     await sendPushToTeam(
-      '⚠️ Buchungs-Abgleich ausgesetzt',
-      `${missingCandidates} Buchungen fehlen plötzlich in der Smoobu-Antwort — Massen-Storno verhindert, bitte Smoobu prüfen.`,
+      '⚠️ Storno-Abgleich gestoppt · Smoobu',
+      `${missingCandidates} Buchungen fehlen plötzlich bei Smoobu. Massen-Storno verhindert, bitte Smoobu prüfen.`,
       '/team', { category: 'system' },
     ).catch(() => {})
   }

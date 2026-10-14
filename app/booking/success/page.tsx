@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { stripe } from '@/lib/stripe'
 import { createReservation, sendMessageToGuest } from '@/lib/smoobu'
 import { claimSmoobuPush, releaseSmoobuPush } from '@/lib/smoobu-claim'
+import { sendBookingEmail, sendHostBookingAlert } from '@/lib/email'
+import { sendNewBookingPush } from '@/lib/push'
 import Link from 'next/link'
 
 export default async function BookingSuccessPage({ searchParams }: { searchParams: Promise<{ session_id?: string }> }) {
@@ -13,6 +15,10 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
   let listing: { title: string; location: string; smoobu_id: string | null; host_id: string; cancellation_policy: string | null } | null = null
   let conversationId: string | null = null
   let smoobuError: string | null = null
+  // 'storniert': Zahlung kam für eine schon verfallene/stornierte Buchung (Webhook erstattet automatisch);
+  // 'offen': DB-Bestätigung hier fehlgeschlagen (Webhook übernimmt, ggf. mit Erstattung)
+  // 'storniert_alt': Buchung storniert, Zahlung war längst verbucht (z. B. Gast-Storno, Erfolgs-URL erneut geöffnet)
+  let hinweis: 'ok' | 'storniert' | 'storniert_alt' | 'offen' = 'ok'
 
   if (sessionId) {
     try {
@@ -43,13 +49,23 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
           listing = l
 
           // ─── Ensure DB is up to date (webhook might not have fired) ──
-          const needsDbUpdate =
-            data.payment_status !== 'paid' ||
-            (bookingType === 'instant' && data.status !== 'confirmed')
-
-          if (needsDbUpdate) {
+          if (data.status === 'cancelled') {
+            if (data.payment_status !== 'paid') {
+              // Buchung war beim Zahlungseingang schon verfallen/storniert (Aufräumer, Abbruch) — NICHT wiederbeleben.
+              // Der Stripe-Webhook (checkout.session.completed → erstatteNachZahlung) erstattet automatisch und
+              // informiert Team + Gast.
+              console.warn('[SuccessPage] Zahlung für stornierte/verfallene Buchung — Webhook erstattet:', bookingId)
+              hinweis = 'storniert'
+            } else {
+              // Zahlung längst verbucht, Buchung später storniert (Gast-Storno/Ablehnung) — kein Erstattungsversprechen hier
+              hinweis = 'storniert_alt'
+            }
+          } else if (data.payment_status !== 'paid') {
+            // Claim per bedingtem Update: Wer payment_status zuerst auf 'paid' setzt (Erfolgsseite ODER Webhook),
+            // verschickt Bestätigungsmail, Host-Alarm und Team-Push. Vorher gewann hier oft die Erfolgsseite das
+            // Rennen, der Webhook brach mit „schon bezahlt" ab — und niemand bekam je eine Mail (Review 14.10.2026).
             console.log('[SuccessPage] Updating DB: payment_status=paid', bookingType === 'instant' ? ', status=confirmed' : '')
-            await supabaseAdmin
+            const { data: claimed, error: updErr } = await supabaseAdmin
               .from('bookings')
               .update({
                 payment_status: 'paid',
@@ -60,10 +76,30 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
                 ...(bookingType === 'instant' ? { status: 'confirmed' } : {}),
               })
               .eq('id', bookingId)
+              .neq('payment_status', 'paid')
+              .select('id')
+            if (updErr) {
+              // z. B. 23P01 (Zeitraum inzwischen belegt) — der Webhook behandelt das (Erstattung), hier nichts pushen
+              console.error('[SuccessPage] DB-Update fehlgeschlagen, Webhook übernimmt:', updErr.code, updErr.message)
+              hinweis = 'offen'
+            } else if (claimed?.length) {
+              // Diese Seite hat den Übergang gemacht → sie benachrichtigt (AWAIT, §135)
+              await sendBookingEmail(bookingId).catch((e) => console.error('[SuccessPage] guest confirmation failed:', e))
+              await Promise.resolve(sendHostBookingAlert(bookingId)).catch((e) => console.error('[SuccessPage] host alert failed:', e))
+              await sendNewBookingPush(bookingId).catch((e) => console.error('[SuccessPage] booking push failed:', e))
+            }
+          } else if (bookingType === 'instant' && data.status === 'pending_payment') {
+            // bezahlt, aber der Status hängt (Webhook-Update unvollständig) — nur Status nachziehen, keine Mails
+            const { error: updErr } = await supabaseAdmin
+              .from('bookings').update({ status: 'confirmed' }).eq('id', bookingId).eq('status', 'pending_payment')
+            if (updErr) {
+              console.error('[SuccessPage] Status-Nachzug fehlgeschlagen:', updErr.code, updErr.message)
+              hinweis = 'offen'
+            }
           }
 
           // ─── Push to Smoobu for instant bookings (if webhook hasn't done it yet) ───
-          const shouldPushToSmoobu = bookingType === 'instant' && l?.smoobu_id && !data.smoobu_reservation_id
+          const shouldPushToSmoobu = bookingType === 'instant' && l?.smoobu_id && !data.smoobu_reservation_id && hinweis === 'ok'
           console.log('[SuccessPage] Smoobu push check:', {
             bookingType,
             smoobuId: l?.smoobu_id ?? null,
@@ -250,15 +286,27 @@ export default async function BookingSuccessPage({ searchParams }: { searchParam
     <main style={{ minHeight: '100vh', backgroundColor: '#F5F5F7', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: '#fff', borderRadius: '24px', padding: '48px 40px', maxWidth: '480px', width: '100%', textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
         <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-          {booking?.booking_type === 'instant' ? '🎉' : '✅'}
+          {hinweis !== 'ok' ? '⏳' : booking?.booking_type === 'instant' ? '🎉' : '✅'}
         </div>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111', margin: '0 0 8px' }}>
-          {booking?.booking_type === 'instant' ? 'Buchung bestätigt!' : 'Anfrage gesendet!'}
+          {hinweis === 'storniert'
+            ? 'Zahlung erhalten — Buchung nicht mehr möglich'
+            : hinweis === 'storniert_alt'
+            ? 'Diese Buchung ist storniert'
+            : hinweis === 'offen'
+              ? 'Zahlung erhalten — Bestätigung folgt'
+              : booking?.booking_type === 'instant' ? 'Buchung bestätigt!' : 'Anfrage gesendet!'}
         </h1>
         <p style={{ fontSize: '14px', color: '#888', margin: '0 0 24px', lineHeight: 1.6 }}>
-          {booking?.booking_type === 'instant'
-            ? 'Deine Zahlung wurde erfolgreich verarbeitet. Der Gastgeber freut sich auf deinen Aufenthalt!'
-            : 'Zahlung erfolgreich. Sobald der Gastgeber deine Anfrage bestätigt, erhältst du eine Nachricht im Chat.'}
+          {hinweis === 'storniert'
+            ? 'Die Buchung war beim Zahlungseingang leider nicht mehr gültig (Zeitfenster abgelaufen). Deine Zahlung wird automatisch erstattet — die Bestätigung dazu bekommst du im Chat.'
+            : hinweis === 'storniert_alt'
+            ? 'Details und den Stand einer eventuellen Erstattung findest du im Chat.'
+            : hinweis === 'offen'
+              ? 'Wir prüfen die Buchung gerade und melden uns in Kürze im Chat. Sollte der Zeitraum nicht mehr verfügbar sein, erstatten wir die Zahlung automatisch.'
+              : booking?.booking_type === 'instant'
+                ? 'Deine Zahlung wurde erfolgreich verarbeitet. Der Gastgeber freut sich auf deinen Aufenthalt!'
+                : 'Zahlung erfolgreich. Sobald der Gastgeber deine Anfrage bestätigt, erhältst du eine Nachricht im Chat.'}
         </p>
 
         {listing && booking && (

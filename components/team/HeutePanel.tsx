@@ -175,7 +175,7 @@ function ProzessLeiste({ p, earlyBlock, note, canInform, busy, onInform }: {
         <div key={i} style={{ margin: '6px 6px 0', fontSize: 12, lineHeight: 1.4, fontWeight: 600, color: HINT_TON[h.ton] ?? HINT_TON.grey, overflowWrap: 'anywhere' }}>{h.text}</div>
       ))}
       {earlyBlock && (
-        <div style={{ margin: '6px 6px 0', fontSize: 12, lineHeight: 1.4, fontWeight: 600, color: 'var(--tm-yellow)', overflowWrap: 'anywhere' }}>🔧 Early Check-in gesperrt — {earlyBlock}</div>
+        <div style={{ margin: '6px 6px 0', fontSize: 12, lineHeight: 1.4, fontWeight: 600, color: 'var(--tm-yellow)', overflowWrap: 'anywhere' }}>🔧 Early Check-in gesperrt – {earlyBlock}</div>
       )}
       {note && (
         <div style={{ margin: '6px 6px 0', fontSize: 12, lineHeight: 1.4, fontWeight: 600, color: 'var(--tm-red)', overflowWrap: 'anywhere' }}>{note}</div>
@@ -184,7 +184,7 @@ function ProzessLeiste({ p, earlyBlock, note, canInform, busy, onInform }: {
         <button
           className="tm-press-btn" disabled={busy} onClick={onInform}
           style={{ display: 'block', width: 'calc(100% - 4px)', minHeight: 40, margin: '8px 2px 0', padding: '8px 12px', border: 'none', borderRadius: 11, background: 'var(--tm-navy)', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}
-        >{busy ? 'Wird gesendet …' : 'Gast jetzt informieren'}</button>
+        >{busy ? 'Sendet…' : 'Gast jetzt informieren'}</button>
       )}
     </div>
   )
@@ -244,7 +244,7 @@ export default function HeutePanel({ role, visible, onCount }: {
       ])
       if (h.status === 401 || h.status === 403) {
         try { localStorage.removeItem(CODE_KEY); localStorage.removeItem(SNAP_KEY) } catch { /* egal */ }
-        setError('Sitzung abgelaufen — bitte neu anmelden.')
+        setError('Deine Sitzung ist abgelaufen. Bitte melde dich neu an.')
         setLoading(false)
         return
       }
@@ -270,7 +270,10 @@ export default function HeutePanel({ role, visible, onCount }: {
       }
       window.dispatchEvent(new Event('trimosa-synced'))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Keine Verbindung.')
+      console.error('heute', e)
+      setError(e instanceof TypeError
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : 'Die Übersicht konnte nicht geladen werden. Bitte versuch es gleich noch einmal.')
     } finally {
       inflight.current.delete(t)
       setLoading(false)
@@ -350,14 +353,14 @@ export default function HeutePanel({ role, visible, onCount }: {
   const copyCode = async () => {
     if (!code) return
     haptic()
-    try { await navigator.clipboard.writeText(code.code); tmToast('✓ Code kopiert') } catch { tmToast('Kopieren nicht möglich') }
+    try { await navigator.clipboard.writeText(code.code); tmToast('✓ Türcode kopiert') } catch { tmToast('⚠️ Kopieren hat nicht geklappt – bitte von Hand übernehmen.') }
   }
 
   /* 📣 Schritt 3 von Hand: Bestätigungsdialog → POST /api/heute/inform. Die EINZIGE Stelle, die diese
      Nachricht auf Knopfdruck sendet; der Server prüft Sperren, Master-Schalter und Doppelversand. */
   const inform = async (a: HeuteAnreise) => {
     if (informBusy) return
-    if (!isOnline()) { tmToast('Offline – nicht gesendet.'); return }
+    if (!isOnline()) { tmToast('📵 Offline – nicht gesendet. Bitte versuch es mit Verbindung noch einmal.'); return }
     haptic()
     const warn = a.prozess?.warnung ? `⚠️ ${a.prozess.warnung}\n\n` : ''
     if (!window.confirm(`${warn}„Wohnung ist bereit“ jetzt an ${a.guestName ?? 'den Gast'} senden?\n\n${a.listingTitle}: Der Gast erfährt, dass er schon vor ${a.checkInTime} Uhr einchecken kann.`)) return
@@ -367,7 +370,7 @@ export default function HeutePanel({ role, visible, onCount }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
         body: JSON.stringify({ bookingId: a.bookingId, bestaetigt: true, ...(erneut ? { erneut: true } : {}) }),
       })
-      return await r.json().catch(() => ({ ok: false, message: `Senden fehlgeschlagen (HTTP ${r.status}).` }))
+      return await r.json().catch(() => ({ ok: false, message: 'Senden hat nicht geklappt. Bitte versuch es gleich noch einmal.' }))
     }
     try {
       let res = await post(false)
@@ -375,12 +378,12 @@ export default function HeutePanel({ role, visible, onCount }: {
         && window.confirm('Ein früherer Versand hängt – die Nachricht ist vielleicht schon beim Gast angekommen (bitte im Chat prüfen).\n\nTrotzdem erneut senden?')) {
         res = await post(true)
       }
-      const msg = res.message ?? (res.ok ? 'Gast informiert.' : 'Senden fehlgeschlagen.')
+      const msg = res.message ?? (res.ok ? 'Gast informiert.' : 'Senden hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       setInformNote((n) => { const next = { ...n }; if (res.ok) delete next[a.bookingId]; else next[a.bookingId] = msg; return next })
-      tmToast(res.ok ? `✓ ${msg}` : msg)
+      tmToast(res.ok ? `✓ ${msg}` : `⚠️ ${msg}`)
     } catch {
-      setInformNote((n) => ({ ...n, [a.bookingId]: 'Verbindung unterbrochen – bitte im Chat prüfen, ob die Nachricht rausging.' }))
-      tmToast('Verbindung unterbrochen.')
+      setInformNote((n) => ({ ...n, [a.bookingId]: 'Verbindung unterbrochen – prüf im Chat, ob die Nachricht angekommen ist.' }))
+      tmToast('📵 Verbindung unterbrochen – prüf den Chat.')
     } finally {
       setInformBusy(null)
       load(tag, true, false)
@@ -433,7 +436,7 @@ export default function HeutePanel({ role, visible, onCount }: {
             die beiden Punkte nur noch ohne Leiste (andere Tage, alter Snapshot/Offline-Stand) */}
         {!p && <Dot tone={a.fertig === 'ja' ? 'green' : a.fertig === 'fehler' ? 'red' : 'grey'} title="„Wohnung ist fertig“ gemeldet">{a.fertig === 'gesperrt' ? '🚫' : '✓'}</Dot>}
         {/* Paragraph 308: 4. Haken = Gast hat eingecheckt (Tuercode benutzt) - Information, zaehlt nicht mit */}
-        {!p && <Dot tone={a.eingecheckt ? 'green' : 'grey'} title={a.eingecheckt ? `Eingecheckt ${hmBerlin(a.eingecheckt)} — Wohnung belegt` : 'Noch nicht eingecheckt'}>🏠</Dot>}
+        {!p && <Dot tone={a.eingecheckt ? 'green' : 'grey'} title={a.eingecheckt ? `Eingecheckt ${hmBerlin(a.eingecheckt)} – Wohnung belegt` : 'Noch nicht eingecheckt'}>🏠</Dot>}
       </span>
     )
     const sub = `${a.guestName ? `${a.listingTitle} · ` : ''}${view !== 'full' ? `Check-in ab ${a.checkInTime} · ` : ''}bis ${ddmm(a.checkOut)}${a.persons ? ` · ${a.persons} 👤` : ''}${(a.stays ?? 1) >= 2 ? ` · ⭐ ${a.stayNr}. Aufenthalt` : ''}`
@@ -464,7 +467,7 @@ export default function HeutePanel({ role, visible, onCount }: {
         )}
         {!p && a.earlyBlock && (
           <div style={{ margin: '0 14px 8px 60px', padding: '6px 10px', borderRadius: 11, background: 'var(--tm-surface2)', fontSize: 12, lineHeight: 1.4, color: 'var(--tm-yellow)', fontWeight: 600 }}>
-            🔧 Early Check-in gesperrt — {a.earlyBlock}
+            🔧 Early Check-in gesperrt – {a.earlyBlock}
           </div>
         )}
         {(p || a.reinigung) && !last && <div style={{ height: 1, background: 'var(--tm-line)', margin: '0 14px' }} />}
@@ -526,14 +529,14 @@ export default function HeutePanel({ role, visible, onCount }: {
           </section>
         ) : !loading && (
           <section style={{ ...CARD, padding: '12px 16px', fontSize: 13, color: 'var(--tm-muted)', lineHeight: 1.5 }}>
-            🔑 Noch kein persönlicher Türcode — wird im Admin-Bereich unter <strong>Türcodes → Personen-Codes</strong> angelegt.
+            🔑 Noch kein persönlicher Türcode – Chefs legen ihn im Admin-Bereich unter <strong>Türcodes → Personen-Codes</strong> an.
           </section>
         )}
 
         {error && (
           <div style={{ padding: '10px 14px', borderRadius: 14, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ flex: 1 }}>{error}</span>
-            <button onClick={() => { setLoading(true); load(tag, true) }} style={{ border: 'none', background: 'var(--tm-red)', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Erneut</button>
+            <button onClick={() => { setLoading(true); load(tag, true) }} style={{ border: 'none', background: 'var(--tm-red)', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Erneut laden</button>
           </div>
         )}
         {loading && !d && <SkeletonRows kind="card" count={3} />}
@@ -561,7 +564,7 @@ export default function HeutePanel({ role, visible, onCount }: {
             in Pascals Stand: Anreisen → Warten → Abreisen → Aufgaben */}
         {d && view === 'full' && (
           <Card title="💬 Warten auf Antwort" count={warten.length}>
-            {warten.length === 0 && <Empty text={inboxReady || !istHeute ? 'Keine offenen Nachrichten – alles beantwortet.' : 'Lädt …'} />}
+            {warten.length === 0 && <Empty text={inboxReady || !istHeute ? 'Keine offenen Nachrichten – alles beantwortet.' : 'Lädt…'} />}
             {warten.slice(0, 6).map((t, i, arr) => (
               <Row key={t.id} last={i === arr.length - 1 && warten.length <= 6} onClick={() => { openTab('chat'); window.dispatchEvent(new CustomEvent('trimosa-open-conv', { detail: { id: t.id } })) }}>
                 <Avatar name={t.guestName} platform={t.platform} />

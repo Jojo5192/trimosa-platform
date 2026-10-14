@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { makeTr } from '@/lib/static-translate'
 import { isUiLang, UI_LANG_META, type UiLang } from '@/lib/i18n'
 import { REGIONS } from '@/lib/regions'
@@ -50,7 +51,8 @@ export default async function MappePage({ params, searchParams }: {
     .select('*, listings(*), conversations(id, guest_id)')
     .eq('portal_token', token)
     .maybeSingle()
-  if (!booking || booking.status === 'cancelled') notFound()
+  // 'pending_payment' (Sofortbuchung, Zahlung läuft) hat zwar schon ein portal_token, ist aber noch keine Buchung
+  if (!booking || istInaktiveBuchung(booking.status)) notFound()
   const listing = (Array.isArray(booking.listings) ? booking.listings[0] : booking.listings) as Record<string, unknown> | null
   if (!listing) notFound()
 

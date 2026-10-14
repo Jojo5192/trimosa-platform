@@ -409,7 +409,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       setInvoices(d.invoices ?? [])
       if (res.id) setInvOpen(res.id)
     } catch (err) {
-      setInvError(err instanceof Error ? err.message : 'Automatische Prüfung fehlgeschlagen.')
+      console.error('cleaning-invoices/auto-check', err)
+      setInvError(err instanceof TypeError || !(err instanceof Error)
+        ? 'Die automatische Prüfung hat nicht geklappt. Bitte prüf die Verbindung und versuch es noch einmal.'
+        : err.message)
     } finally {
       setInvBusy(null)
     }
@@ -434,7 +437,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       setInvError('Nur PDF oder Foto (JPG/PNG/WebP).')
       return
     }
-    if (file.size > 15 * 1024 * 1024) { setInvError('Datei zu groß (max. 15 MB).'); return }
+    if (file.size > 15 * 1024 * 1024) { setInvError('Die Datei ist zu groß (max. 15 MB).'); return }
     setInvError(null)
     setInvBusy(ctx.month)
     try {
@@ -442,10 +445,13 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'upload-url', fileType: type, month: ctx.month }),
       }).then((r) => r.json())
-      if (!u.token) throw new Error(u.error ?? 'Upload-URL fehlgeschlagen.')
+      if (!u.token) throw new Error(u.error ?? 'Hochladen hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       const { error: upErr } = await supabase.storage.from(u.bucket)
         .uploadToSignedUrl(u.path, u.token, file, { contentType: type })
-      if (upErr) throw new Error(upErr.message)
+      if (upErr) {
+        console.error('cleaning-invoices/upload', upErr)
+        throw new Error('Hochladen hat nicht geklappt. Bitte versuch es gleich noch einmal.')
+      }
       const res = await fetch('/api/cleaning-invoices', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -461,7 +467,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
       setInvoices(d.invoices ?? [])
       if (res.id) setInvOpen(res.id)
     } catch (err) {
-      setInvError(err instanceof Error ? err.message : 'Prüfung fehlgeschlagen.')
+      console.error('cleaning-invoices/analyze', err)
+      setInvError(err instanceof TypeError || !(err instanceof Error)
+        ? 'Die Prüfung hat nicht geklappt. Bitte prüf die Verbindung und versuch es noch einmal.'
+        : err.message)
     } finally {
       setInvBusy(null)
       pendingRef.current = null
@@ -774,7 +783,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         {ab && (
                           <p style={{ margin: '4px 0 0', fontSize: 11.5, color: !ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? 'var(--tm-green)' : 'var(--tm-red)' }}>
                             📅 {ab.abgerechnetTermine}/{ab.erwartetTermine} Termine abgerechnet
-                            {!ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? ' — alle gedeckt' : ''}
+                            {!ab.fehlend.length && !ab.zusaetzlich.length && !(ab.doppelt?.length) ? ' – alle gedeckt' : ''}
                             {ab.fehlend.length ? ` · fehlt: ${ab.fehlend.map(fmtShort).join(', ')}` : ''}
                             {ab.zusaetzlich.length ? ` · zusätzlich: ${ab.zusaetzlich.map(fmtShort).join(', ')}` : ''}
                             {ab.doppelt?.length ? ` · doppelt: ${ab.doppelt.map(fmtShort).join(', ')}` : ''}
@@ -895,7 +904,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                                 : chip('#DCFCE7', '#15803D', okLabel(inv))}
                           </span>
                           <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
-                            {inv.status === 'fehler' ? 'Analyse fehlgeschlagen — antippen für Details'
+                            {inv.status === 'fehler' ? 'Prüfung hat nicht geklappt – antippen für Details'
                               : `Rechnung ${inv.amount_invoiced != null ? eur(inv.amount_invoiced) : '?'} · erwartet ${inv.amount_expected != null ? eur(inv.amount_expected) : '?'}${diff != null ? ` · ${eurSigned(diff)}` : ''}`}
                           </span>
                         </button>
@@ -915,8 +924,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                             ) : (
                               <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--tm-green)' }}>
                                 {hatTiefe(inv)
-                                  ? '✓ Keine Auffälligkeiten — Summe und Termine passen zur Planung.'
-                                  : '✓ Summe passt zur Erwartung — Termin- und Wohnungs-Abgleich liefert nur die automatische Prüfung.'}
+                                  ? '✓ Keine Auffälligkeiten – Summe und Termine passen zur Planung.'
+                                  : '✓ Summe passt zur Erwartung – Termin- und Wohnungs-Abgleich liefert nur die automatische Prüfung.'}
                               </p>
                             ))}
                             {/* Manueller Upload: gelesene Positionen kompakt */}
@@ -1005,7 +1014,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                     )
                   })}
                   {invBusy === m.key ? (
-                    <p style={{ fontSize: 12.5, color: 'var(--tm-accent-dark)', fontWeight: 700, margin: '4px 0 0' }}>🔍 Claude sucht die Belege im Mail-Import und gleicht ab…</p>
+                    <p style={{ fontSize: 12.5, color: 'var(--tm-accent-dark)', fontWeight: 700, margin: '4px 0 0' }}>🔍 Die KI sucht die Belege im Mail-Import und gleicht ab…</p>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
                       {personFilter && personFilter !== 'none' ? (
@@ -1040,7 +1049,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               </p>
             )}
             {pastData === null && (
-              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--tm-muted)' }}>⏳ Lade zurückliegende Monate…</p>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--tm-muted)' }}>⏳ Lädt zurückliegende Monate…</p>
             )}
 
             {aktuell && (
@@ -1051,17 +1060,17 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             )}
             {rueck.length > 0 && (
               <>
-                <p style={eyebrowStyle}>ZURÜCKLIEGEND — RECHNUNGS-PRÜFUNG</p>
+                <p style={eyebrowStyle}>ZURÜCKLIEGEND – RECHNUNGS-PRÜFUNG</p>
                 {rueck.map((m) => renderMonth(m, 'rueck'))}
                 <p style={{ fontSize: 10.5, color: 'var(--tm-muted2)', margin: '2px 4px 0', lineHeight: 1.5 }}>
-                  Rückblick-Erwartungen rechnen mit den heutigen Zuordnungen & Sätzen — vor einem
+                  Rückblick-Erwartungen rechnen mit den heutigen Zuordnungen & Sätzen – vor einem
                   Zuständigkeits-Wechsel (z. B. Sweet/Cozy bis Juni bei Tip-Top) weichen sie ab.
                 </p>
               </>
             )}
             {costs.future.length > 0 && (
               <>
-                <p style={eyebrowStyle}>AUSBLICK — PROGNOSE</p>
+                <p style={eyebrowStyle}>AUSBLICK – PROGNOSE</p>
                 {costs.future.map((m) => renderMonth(m, 'aus'))}
               </>
             )}
@@ -1071,7 +1080,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             )}
             {costs.missingMinutes > 0 && (
               <p style={{ fontSize: 11.5, color: 'var(--tm-yellow)', margin: '10px 4px 0', lineHeight: 1.5 }}>
-                ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung — gerechnet mit {FALLBACK_MINUTES} Min. (Admin → 🧹 Reinigung pflegen).
+                ⚠️ Bei {costs.missingMinutes} Reinigung(en) fehlt die Ø-Dauer der Wohnung – gerechnet mit {FALLBACK_MINUTES} Min. (im Admin-Bereich unter 🧹 Reinigung pflegen).
               </p>
             )}
           </div>
@@ -1174,14 +1183,14 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                         fontSize: 12.5, fontWeight: 800, margin: '7px 0 0',
                         color: 'var(--tm-green)',
                       }}>
-                        {'✅ Gereinigt gemeldet'}
+                        {'✓ Gereinigt gemeldet'}
                         {' · '}
                         {new Date(conf.at).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}
                         {conf.person ? ` · ${conf.person}` : ''}
                       </p>
                     ) : s.sameDayArrival ? (
                       <p style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--tm-red)', margin: '7px 0 0' }}>
-                        ⏰ WECHSELTAG — bis zur Anreise fertig
+                        ⏰ Wechseltag – bis zur Anreise fertig
                       </p>
                     ) : (
                       <>
@@ -1189,14 +1198,14 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
                           🟢 Reinigen möglich: {fromLabel}
                           {s.nextIn
                             ? ` – ${wdShort(s.nextIn)} ${fmtShort(s.nextIn)} (Anreise)`
-                            : ' — nichts gebucht, jederzeit'}
+                            : ' – nichts gebucht, jederzeit'}
                         </p>
                         {(s.recommended || partnerTitle) && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {s.reason === 'sonntag' && chip('#EFF6FF', '#1D4ED8', '☀️ Sonntag übersprungen')}
                             {(s.reason === 'feiertag' || s.reason === 'besonders') && chip('#EFF6FF', '#1D4ED8', '🎌 Feiertag übersprungen')}
-                            {partnerTitle && (rulesFor(s.listingId).bundleTravel ?? true) && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt — zusammen mit ${partnerTitle}`)}
-                            {s.reason === 'buendel' && !partnerTitle && chip('#F5F3FF', '#6D28D9', '🚗 eine Anfahrt — mit Termin am Standort')}
+                            {partnerTitle && (rulesFor(s.listingId).bundleTravel ?? true) && chip('#F5F3FF', '#6D28D9', `🚗 eine Anfahrt – zusammen mit ${partnerTitle}`)}
+                            {s.reason === 'buendel' && !partnerTitle && chip('#F5F3FF', '#6D28D9', '🚗 eine Anfahrt – mit Termin am Standort')}
                           </div>
                         )}
                       </>

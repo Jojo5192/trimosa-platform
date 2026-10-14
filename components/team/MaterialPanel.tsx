@@ -92,7 +92,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
       setData(j); setError(null)
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e))
+      console.error('material', e)
+      setError('Die Material-Liste konnte nicht geladen werden.')
     }
   }, [])
   useEffect(() => { load() }, [load])
@@ -107,7 +108,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
         await load()
       } catch (e) {
-        showToast('Fehler: ' + String(e instanceof Error ? e.message : e), false)
+        console.error('material', e)
+        showToast('Nicht gespeichert – versuch es noch einmal.', false)
       } finally {
         setBusy(null)
       }
@@ -144,10 +146,15 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analyse: text }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      if (!r.ok) {
+        console.error('material/analyse', r.status, j.error)
+        showToast(r.status === 429 ? 'Zu viele Anfragen – versuch es später noch einmal.' : 'Kein KI-Vorschlag – versuch es noch einmal.', false)
+        return
+      }
       setVorschlag(j.vorschlag)
     } catch (e) {
-      showToast('Fehler: ' + String(e instanceof Error ? e.message : e), false)
+      console.error('material/analyse', e)
+      showToast('📵 Keine Verbindung – versuch es noch einmal.', false)
     } finally {
       setFreiBusy(false)
     }
@@ -212,13 +219,13 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {offen.length > 0 && data.merklisteUrl && (
           <a className="mat-tap" href={data.merklisteUrl} target="_blank" rel="noreferrer" onClick={() => haptic()}
             style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px 14px', borderRadius: 12, background: 'var(--tm-accent)', color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
-            🧺 dm-Merkliste öffnen{adr ? ` — Adresse „${adr.label}" wählen!` : ''}
+            🧺 dm-Merkliste öffnen{adr ? ` – Adresse „${adr.label}“ wählen!` : ''}
           </a>
         )}
         {offen.length > 0 && data.links[s] && (
           <a className="mat-tap" href={data.links[s]!} target="_blank" rel="noreferrer" onClick={() => haptic()}
             style={{ display: 'block', textAlign: 'center', marginTop: 8, padding: '11px 14px', borderRadius: 12, background: NAVY, color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
-            🛒 Amazon-Warenkorb öffnen{adr ? ` — Adresse „${adr.label}" wählen!` : ''}
+            🛒 Amazon-Warenkorb öffnen{adr ? ` – Adresse „${adr.label}“ wählen!` : ''}
           </a>
         )}
       </div>
@@ -262,10 +269,10 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 14px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {error && (
           <div style={{ ...CARD, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13 }}>
-            ⚠️ {error} <button onClick={load} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>Erneut</button>
+            ⚠️ {error} <button onClick={load} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>Erneut laden</button>
           </div>
         )}
-        {!data && !error && <div style={{ ...CARD, color: 'var(--tm-muted)', fontSize: 13 }}>Laden…</div>}
+        {!data && !error && <div style={{ ...CARD, color: 'var(--tm-muted)', fontSize: 13 }}>Lädt…</div>}
 
         {/* Bestell-Listen (aktiver Standort oder alle) */}
         {data && (ort ? [bedarfBlock(ort)] : data.standorte.map((s) => bedarfBlock(s)))}
@@ -277,7 +284,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
               <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>🧺 Merkliste</span>
               <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{data.artikel.length} Produkte</span>
             </div>
-            {!ort && <p style={{ margin: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: 'var(--tm-yellow)' }}>👆 Oben den Standort wählen — dann Produkt antippen zum Nachbestellen.</p>}
+            {!ort && <p style={{ margin: '8px 0 0', fontSize: 12.5, fontWeight: 600, color: 'var(--tm-yellow)' }}>👆 Oben den Standort wählen – dann ein Produkt zum Nachbestellen antippen.</p>}
             <input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Suchen…"
               style={{ ...INPUT, width: '100%', boxSizing: 'border-box', marginTop: 8 }} />
             {/* Kategorie-Chips */}
@@ -295,7 +302,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             )}
-            {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Merkliste ist leer — unten pflegen (Admin).</p>}
+            {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Die Merkliste ist leer – Chefs pflegen sie unten.</p>}
             {data.artikel.length > 0 && gefiltert.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Nichts gefunden.</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginTop: 10 }}>
               {gefiltert.map((a) => {
@@ -333,7 +340,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
           <div style={CARD}>
             <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>✨ Etwas Besonderes?</span>
             <p style={{ margin: '6px 0 8px', fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
-              Kurz beschreiben, was fehlt — die KI schlägt das passende Produkt vor (auch wenn es nicht auf der Merkliste steht).
+              Beschreib kurz, was fehlt – die KI schlägt das passende Produkt vor, auch wenn es nicht auf der Merkliste steht.
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <input value={frei} onChange={(e) => setFrei(e.target.value)}
@@ -439,7 +446,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
             {editAdr && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
                 <p style={{ margin: 0, fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
-                  Adress-LABEL je Standort = so heißt der Eintrag im Amazon-/dm-Adressbuch (Paketbox!). Wird in Bestell-Ansagen genannt.
+                  Adress-Label je Standort = so heißt der Eintrag im Amazon-/dm-Adressbuch (z. B. die Paketbox). Die Bestell-Ansagen nennen es.
                 </p>
                 {data.standorte.map((s) => {
                   const adr = data.adressen[s]
@@ -452,22 +459,22 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                       patch({ adressen: { ...data.adressen, [s]: { ...(adr ?? {}), label } } }, 'adr' + s)
                         .then(() => setAdrDraft((d) => { const n = { ...d }; delete n[s]; return n }))
                     }}
-                      placeholder={`${s}: Adress-Label (z. B. „TRIMOSA ${s} Paketbox")`}
+                      placeholder={`${s}: Adress-Label (z. B. „TRIMOSA ${s} Paketbox“)`}
                       style={INPUT} />
                   )
                 })}
                 <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
-                  dm-Merklisten-Link (dm.de → Merkliste → Teilen) — erscheint als Bestell-Button.
+                  dm-Merklisten-Link (dm.de → Merkliste → Teilen) – erscheint als Bestell-Knopf.
                 </p>
                 <input defaultValue={data.merklisteUrl ?? ''} onBlur={(e) => {
                   const u = e.target.value.trim()
                   if (u !== (data.merklisteUrl ?? '')) patch({ merklisteUrl: u }, 'mlurl')
                 }} placeholder="https://www.dm.de/… (geteilte Merkliste)" style={INPUT} />
                 <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.45 }}>
-                  Optional: Intern-Gruppe verknüpfen — dann liest die KI auch formlose Chat-/Sprachnachrichten als Meldung mit. {data.gruppeId ? '✓ verknüpft' : 'Nicht verknüpft.'}
+                  Optional: Intern-Gruppe verknüpfen – dann liest die KI auch formlose Chat-/Sprachnachrichten als Meldung mit. {data.gruppeId ? '✓ verknüpft' : 'Nicht verknüpft.'}
                 </p>
                 {!gruppen && <button onClick={loadGruppen} style={{ alignSelf: 'flex-start', border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700, background: 'var(--tm-surface2)', color: 'var(--tm-text)', cursor: 'pointer' }}>Gruppe wählen…</button>}
-                {gruppen && gruppen.length === 0 && <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>Keine Intern-Gruppen gefunden — erst im Intern-Tab anlegen.</span>}
+                {gruppen && gruppen.length === 0 && <span style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>Noch keine Intern-Gruppe – leg zuerst eine unter Inbox → Intern an.</span>}
                 {gruppen && gruppen.length > 0 && (
                   <select value={data.gruppeId ?? ''} onChange={(e) => { if (e.target.value) patch({ gruppeId: e.target.value }, 'gruppe') }}
                     style={{ ...INPUT, background: 'var(--tm-card)' }}>

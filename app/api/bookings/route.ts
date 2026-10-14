@@ -7,6 +7,7 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { getUiLang } from '@/lib/i18n-server'
 import { findActiveDiscount } from '@/lib/discounts'
 import { createStripeCheckout } from '@/lib/checkout'
+import { sweepPendingPayments } from '@/lib/booking-sweep'
 import { sendGuestAccountEmail } from '@/lib/email'
 import type { User } from '@supabase/supabase-js'
 
@@ -73,6 +74,10 @@ export async function POST(request: Request) {
     .eq('id', listingId)
     .single()
   if (!listing) return NextResponse.json({ error: 'Unterkunft nicht gefunden' }, { status: 404 })
+
+  // 🧹 Verfallene Sofortbuchungen dieser Wohnung (pending_payment > 40 Min, unbezahlt) vorher wegräumen —
+  // sonst hielte ein abgebrochener Checkout den Zeitraum über den DB-Overlap-Schutz fest (lib/booking-sweep.ts)
+  await sweepPendingPayments({ listingId }).catch((e) => console.error('[Bookings] sweep:', e))
 
   // Booking settings live on the listing (per-listing, not per-host)
   if (booking_type === 'instant' && listing.allow_instant_booking === false)
@@ -171,7 +176,11 @@ export async function POST(request: Request) {
   }
   if (!user) return NextResponse.json({ error: 'Bitte zuerst anmelden' }, { status: 401 })
 
-  const initialStatus = booking_type === 'instant' ? 'confirmed' : 'pending'
+  // 💳 Sofortbuchung erst nach Zahlung 'confirmed' (14.10.2026, HANDOFF §343): bis der Stripe-Webhook
+  // checkout.session.completed meldet, steht sie auf 'pending_payment' — reserviert den Zeitraum (Overlap-
+  // Constraint), ist aber keine Buchung (keine Mail, kein Türcode, keine Mappe). Verfällt per Webhook
+  // checkout.session.expired bzw. Cron /api/bookings/sweep. Anfragen bleiben 'pending' wie bisher.
+  const initialStatus = booking_type === 'instant' ? 'pending_payment' : 'pending'
 
   const insertRow = {
     guest_lang: await getUiLang(),
@@ -217,10 +226,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Buchung konnte nicht gespeichert werden.' }, { status: 500 })
   }
 
-  // ── NOTE: Smoobu reservation is created AFTER payment on the success page ──
+  // ── NOTE: Smoobu reservation is created AFTER payment (Stripe-Webhook, Rückfall Erfolgsseite) ──
   // We do NOT push to Smoobu here because payment hasn't happened yet.
-  // The success page (app/booking/success/page.tsx) handles Smoobu creation
-  // once Stripe confirms payment.
 
   // Auto-create a linked conversation so host & guest can chat immediately
   try {
@@ -288,26 +295,29 @@ export async function POST(request: Request) {
   // Stripe-Webhook nach bestätigter Zahlung (Inhaber-Vorgabe: keine Mail
   // vor Zahlungseingang; abgebrochene Checkouts bekommen so nie eine Mail).
 
-  // §266d: Ohne Browser-Session kann der Client /api/payments/checkout nicht
-  // aufrufen (401) — die Checkout-URL entsteht deshalb hier server-seitig.
+  // 💳 Stripe-Session IMMER hier server-seitig (14.10.2026): Der eingeloggte Pfad legte sie bisher erst per
+  // zweitem Client-Aufruf (/api/payments/checkout) an — brach der ab (Tab zu, Fehler), blieb eine
+  // 'confirmed'-Buchung OHNE Session liegen, die kein expired-Aufräumer je erreichte. §266d: Ohne
+  // Browser-Session könnte der Gast-Checkout den zweiten Aufruf ohnehin nicht machen (401).
+  const co = await createStripeCheckout(String(newBooking.id), { id: user.id, email: user.email ?? null })
   if (guestCheckout) {
-    const co = await createStripeCheckout(String(newBooking.id), { id: user.id, email: user.email ?? null })
     // Konto-Mail (Passwort-Festlegen-Link) erst jetzt — Konto + Buchung
     // stehen; im Checkout-Fehlerpfad braucht der Gast sie erst recht, um
     // sich anmelden und erneut buchen zu können. Best effort, awaited (§135).
     await sendGuestAccountEmail(user.email ?? '', String(user.user_metadata?.name ?? ''), await getUiLang())
       .catch((e) => console.error('[Bookings] Konto-Mail fehlgeschlagen:', e))
-    if (!co.ok || !co.url) {
-      // Nie eine unbezahlbare confirmed/pending-Geisterbuchung liegen lassen
-      // (ohne Stripe-Session greift auch der expired-Aufräumer nicht);
-      // Konto bleibt bewusst — die Buchung referenziert es, die Mail ist raus.
-      await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', newBooking.id)
-      return NextResponse.json({
-        error: 'Die Zahlung konnte nicht gestartet werden. Dein Konto wurde angelegt — bitte melde dich an und versuche es erneut.',
-      }, { status: 502 })
-    }
-    return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type, checkoutUrl: co.url, accountCreated: true })
   }
-
-  return NextResponse.json({ ok: true, bookingId: newBooking.id, totalPrice, booking_type })
+  if (!co.ok || !co.url) {
+    // Nie eine unbezahlbare Geisterbuchung liegen lassen (ohne Stripe-Session greift auch der
+    // expired-Aufräumer nicht); Gast-Konto bleibt bewusst — die Buchung referenziert es, die Mail ist raus.
+    await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('id', newBooking.id)
+    return NextResponse.json({
+      error: guestCheckout
+        ? 'Die Zahlung konnte nicht gestartet werden. Dein Konto wurde angelegt — bitte melde dich an und versuche es erneut.'
+        : 'Die Zahlung konnte nicht gestartet werden. Bitte versuche es in einer Minute erneut.',
+    }, { status: 502 })
+  }
+  return NextResponse.json({
+    ok: true, bookingId: newBooking.id, totalPrice, booking_type, checkoutUrl: co.url, accountCreated: guestCheckout,
+  })
 }

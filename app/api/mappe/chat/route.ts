@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { istInaktiveBuchung } from '@/lib/booking-status'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { makeTr } from '@/lib/static-translate'
 import { isUiLang } from '@/lib/i18n'
@@ -29,7 +30,7 @@ async function resolveToken(token: string): Promise<Ctx['booking'] | null> {
     .select('id, guest_id, guest_name, check_out, status, conversations(id, guest_id)')
     .eq('portal_token', token)
     .maybeSingle()
-  if (!b || b.status === 'cancelled') return null
+  if (!b || istInaktiveBuchung(b.status)) return null
   const closed = new Date(b.check_out + 'T00:00:00Z').getTime() + 30 * 86400_000 < Date.now()
   if (closed) return null
   return b

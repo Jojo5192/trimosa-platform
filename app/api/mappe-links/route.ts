@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     .select('id, guest_name, check_in, check_out, portal_token, channel, status')
     .eq('listing_id', listingId)
     .gte('check_out', today)
-    .neq('status', 'cancelled')
+    .not('status', 'in', '(cancelled,pending_payment)') // storniert oder Zahlung noch offen → kein Mappe-Link
     .order('check_in', { ascending: true })
     .limit(10)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

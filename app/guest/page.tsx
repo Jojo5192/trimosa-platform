@@ -66,6 +66,7 @@ export default async function GuestPage() {
   const statusBadge = (status: string) => {
     if (status === 'confirmed')  return { label: t(lang, 'Bestätigt'),    bg: '#DCFCE7', color: '#16A34A' }
     if (status === 'pending')    return { label: t(lang, 'Anfrage'),      bg: '#FEF9EC', color: '#92400E' }
+    if (status === 'pending_payment') return { label: t(lang, 'Zahlung ausstehend'), bg: '#F5F5F7', color: '#6B7280' }
     if (status === 'cancelled')  return { label: t(lang, 'Storniert'),    bg: '#FEE2E2', color: '#DC2626' }
     if (status === 'completed')  return { label: t(lang, 'Abgeschlossen'),bg: '#F0F0F5', color: '#555' }
     return { label: status, bg: '#F5F5F7', color: '#888' }

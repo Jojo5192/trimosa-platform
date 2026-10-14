@@ -367,8 +367,8 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
         autoText = auto.text
         try {
           const { sendPushToTeam } = await import('@/lib/push')
-          await sendPushToTeam(auto.auto ? '✅ Beleg automatisch verbucht' : '🧾 Beleg → sevdesk (A&H)',
-            `${lieferant} — ${auto.text}`.slice(0, 150), '/buchhaltung', { buchhaltung: true })
+          await sendPushToTeam(auto.auto ? `💶 Beleg verbucht · ${lieferant}` : `💶 Beleg an sevdesk (A&H) · ${lieferant}`,
+            auto.text.slice(0, 150), '/buchhaltung', { buchhaltung: true })
         } catch { /* best effort */ }
       } catch (e) { console.error('[inbound-mail] Auto-Verbuchung:', String(e).slice(0, 200)) }
     }
@@ -398,8 +398,8 @@ ZUORDNUNG — die Postfächer dienen DREI Firmen: (1) TRIMOSA Apartments & Homes
     if (insErr) return { ok: false, error: `Beleg-Inbox: ${insErr.message}` }
     try {
       const { sendPushToTeam } = await import('@/lib/push')
-      await sendPushToTeam('🧾 Beleg zur Zuordnung',
-        `${lieferant}${betrag ? ` · ${betrag.toFixed(2)} €` : ''} — Gesellschaft/Kostenstelle in der App wählen`.slice(0, 140),
+      await sendPushToTeam(`💶 Beleg zuordnen · ${lieferant}`,
+        `${betrag ? `${betrag.toFixed(2)} €. ` : ''}Bitte Gesellschaft und Kostenstelle in der App wählen.`,
         '/buchhaltung', { buchhaltung: true })
     } catch { /* best effort */ }
     console.log('[inbound-mail] Beleg-Fischer → Inbox:', { lieferant, betrag, datum })
@@ -473,7 +473,7 @@ async function handleCommissionInvoice(attachments: unknown[], from: string, sub
       autoText = auto.text
       try {
         const { sendPushToTeam } = await import('@/lib/push')
-        await sendPushToTeam(auto.auto ? '✅ Provisionsrechnung automatisch verbucht' : '🧾 Provisionsrechnung eingegangen',
+        await sendPushToTeam(auto.auto ? '💶 Provisionsrechnung verbucht' : '💶 Provisionsrechnung eingegangen',
           `${subject.slice(0, 80)} — ${auto.text}`.slice(0, 150), '/buchhaltung', { buchhaltung: true })
       } catch { /* best effort */ }
     } catch (e) { console.error('[inbound-mail] Auto-Verbuchung:', String(e).slice(0, 200)) }
@@ -581,8 +581,8 @@ export function pickPortalBooking<T extends PortalCand>(
     const hit = cands.find((b) => (b.guest_email ?? '').trim().toLowerCase() === relay)
     if (hit) return { booking: hit, grund: 'relay-adresse' }
   }
-  // unbezahlte Website-Anfragen (status pending) sind nie das Ziel einer Portal-Mail
-  let pool = cands.filter((b) => b.status !== 'pending')
+  // unbezahlte Website-Anfragen (status pending) und laufende Checkouts (pending_payment) sind nie das Ziel einer Portal-Mail
+  let pool = cands.filter((b) => b.status !== 'pending' && b.status !== 'pending_payment')
   if (o.listingId) pool = pool.filter((b) => b.listing_id === o.listingId)
   const own = o.portal ? pool.filter((b) => portalKind(b.channel) === o.portal) : []
   // Buchungen eines anderen Portals scheiden aus; kanal-neutrale (Smoobu/iCal) bleiben Kandidaten

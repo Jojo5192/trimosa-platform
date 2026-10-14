@@ -21,6 +21,9 @@ export async function acceptBooking(bookingId: string) {
 
   const listing = booking?.listings as unknown as { id: string; title: string; host_id: string; smoobu_id: string | null } | null
   if (!booking || listing?.host_id !== user.id) throw new Error('Keine Berechtigung')
+  // Nur offene Anfragen (status 'pending') — eine Sofortbuchung mit laufender Zahlung ('pending_payment')
+  // bestätigt allein der Stripe-Webhook, eine stornierte Buchung lebt nicht wieder auf
+  if (booking.status !== 'pending') throw new Error('Nur offene Anfragen können angenommen werden.')
 
   // Update booking to confirmed
   const { error: confirmError } = await supabaseAdmin

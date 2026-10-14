@@ -419,8 +419,8 @@ export async function POST(request: Request) {
       if (repariert > 0) {
         const { sendPushToTeam } = await import('@/lib/push')
         await sendPushToTeam(
-          '✅ Buchungen wiederhergestellt',
-          `${repariert} fälschlich stornierte Buchungen sind wieder bestätigt — die Storno-Pushes von heute früh waren ein Abgleich-Fehler.`,
+          `✅ ${repariert} Buchungen wiederhergestellt · Smoobu`,
+          'Fälschlich storniert, jetzt wieder bestätigt. Die Storno-Mitteilungen von heute früh waren ein Abgleich-Fehler.',
           '/team', { category: 'system' },
         ).catch(() => {})
       }

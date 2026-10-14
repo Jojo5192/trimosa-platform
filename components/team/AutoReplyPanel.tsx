@@ -55,8 +55,8 @@ const ENTSCHEIDUNG: Record<string, { label: string; fg: string; bg: string }> = 
 }
 const MODUS_TEXT: Record<Mode, string> = {
   aus: 'Die KI beantwortet nichts selbstständig und protokolliert nichts. Der ✨-Vorschlag im Chat bleibt wie gewohnt.',
-  schatten: 'Die KI sendet NICHTS. Sie protokolliert nur, was sie gesendet hätte – zum Bewerten hier unten.',
-  aktiv: 'Die KI beantwortet einfache Fragen selbstständig, wenn alle Sicherungen erfüllt sind. Jede Antwort steht im Thread mit „🤖 automatisch beantwortet“ und kommt als Push.',
+  schatten: 'Die KI sendet nichts. Sie protokolliert nur, was sie gesendet hätte – zum Bewerten hier unten.',
+  aktiv: 'Die KI beantwortet einfache Fragen selbstständig, wenn alle Sicherungen erfüllt sind. Jede Antwort steht im Chat mit „🤖 automatisch beantwortet“ und kommt als Push.',
 }
 
 function zeit(iso: string): string {
@@ -86,10 +86,13 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     fetch('/api/ai/autoreply/log', { cache: 'no-store' })
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 403 ? 'Kein Zugriff.' : `Fehler ${r.status}`)
+        if (!r.ok) {
+          setError(r.status === 403 ? 'Die KI-Auto-Antworten sehen nur Chefs und Gastgeber.' : 'Die KI-Auto-Antworten konnten nicht geladen werden. Bitte versuch es gleich noch einmal.')
+          return
+        }
         setD(await r.json() as Daten)
       })
-      .catch((e) => setError(String(e instanceof Error ? e.message : e)))
+      .catch((e) => { console.error('ai/autoreply/log', e); setError('Die KI-Auto-Antworten konnten nicht geladen werden. Bitte prüf die Verbindung und versuch es noch einmal.') })
   }, [])
 
   async function speichern(patch: { mode?: Mode; schwelle?: number }) {
@@ -101,12 +104,12 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
       })
       const j = await r.json().catch(() => ({})) as { settings?: Daten['settings']; gate?: Gate; error?: string }
-      if (!r.ok || !j.settings) { haptic('error'); setMeldung(j.error ?? 'Speichern fehlgeschlagen.'); return }
+      if (!r.ok || !j.settings) { haptic('error'); setMeldung(j.error ?? 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
       haptic('success')
       const settings = j.settings
       setD((p) => (p ? { ...p, settings, gate: j.gate ?? p.gate } : p))
     } catch {
-      haptic('error'); setMeldung('Speichern fehlgeschlagen – keine Verbindung.')
+      haptic('error'); setMeldung('Keine Verbindung – nichts gespeichert. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally { setBusy(false) }
   }
 
@@ -128,7 +131,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
   const fremdesUrteil = (r: Row): boolean => !!d && !d.darfModus && !!r.bewertung && !!r.bewertet_von && r.bewertet_von !== d.ich
 
   async function bewerten(row: Row, b: 'richtig' | 'falsch') {
-    if (fremdesUrteil(row)) { haptic('error'); setMeldung('Dieses Urteil stammt von jemand anderem – ändern kann es nur ein Admin.'); return }
+    if (fremdesUrteil(row)) { haptic('error'); setMeldung('Dieses Urteil stammt von jemand anderem – ändern kann es nur ein Chef.'); return }
     const next = row.bewertung === b ? null : b
     const setRow = (x: Partial<Row>) => setD((p) => (p ? { ...p, rows: p.rows.map((r) => (r.id === row.id ? { ...r, ...x } : r)) } : p))
     haptic()
@@ -139,13 +142,14 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, bewertung: next }),
       })
       const j = await r.json().catch(() => ({})) as { gate?: Gate; error?: string }
-      if (!r.ok) throw new Error(j.error ?? 'Bewertung nicht gespeichert.')
+      if (!r.ok) throw new Error(j.error ?? 'Bewertung nicht gespeichert. Bitte versuch es gleich noch einmal.')
       const gate = j.gate
       if (gate) setD((p) => (p ? { ...p, gate } : p))
     } catch (e) {
       haptic('error')
       setRow({ bewertung: row.bewertung, bewertet_von: row.bewertet_von, bewertet_name: row.bewertet_name, bewertet_at: row.bewertet_at })
-      setMeldung(String(e instanceof Error ? e.message : e))
+      if (e instanceof TypeError) console.error('ai/autoreply/log', e)
+      setMeldung(e instanceof TypeError ? 'Keine Verbindung – Bewertung nicht gespeichert. Bitte versuch es noch einmal.' : String(e instanceof Error ? e.message : e))
     }
   }
 
@@ -165,7 +169,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
       }}>
         <button type="button" onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent-dark)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
         <div style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 KI-Auto-Antworten</div>
-        {d === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)', flexShrink: 0 }}>Laden…</span>}
+        {d === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)', flexShrink: 0 }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
@@ -185,7 +189,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
             <>
               {d.migration !== 'ok' && (
                 <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-yellow-soft)', color: 'var(--tm-text)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
-                  ⚙️ Noch nicht eingerichtet: Die Datenbank-Migration <strong>20261004_ai_autoreply.sql</strong> wurde noch nicht ausgeführt. Bis dahin ist die Funktion komplett aus.
+                  ⚠️ Noch nicht eingerichtet: Der Datenbank fehlt noch eine Erweiterung. Bis sie eingespielt ist, bleibt die Funktion aus.
                 </div>
               )}
 
@@ -208,7 +212,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                 )}
                 {d.settings.mode === 'schatten' && d.settings.zurueckgestellt && (
                   <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'var(--tm-yellow-soft)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--tm-text)' }}>
-                    ⚠️ Automatisch von „Aktiv“ auf „Schatten“ zurückgestellt ({zeit(d.settings.zurueckgestellt.am)} Uhr), weil das Tor nicht mehr erfüllt war: {d.settings.zurueckgestellt.grund} Wieder einschalten kann nur ein Admin.
+                    ⚠️ Automatisch von „Aktiv“ auf „Schatten“ zurückgestellt ({zeit(d.settings.zurueckgestellt.am)} Uhr), weil das Tor nicht mehr erfüllt war: {d.settings.zurueckgestellt.grund} Wieder einschalten kann nur ein Chef.
                   </div>
                 )}
                 {d.settings.mode !== 'aktiv' && !d.gate.ok && d.darfModus && (
@@ -217,7 +221,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 {!d.darfModus && (
-                  <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5, marginTop: 8 }}>Den Modus kann nur ein Admin ändern.</div>
+                  <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5, marginTop: 8 }}>Den Modus kann nur ein Chef ändern.</div>
                 )}
                 {d.settings.geaendertVon && d.settings.geaendertAm && (
                   <div style={{ fontSize: 11.5, color: 'var(--tm-muted2)', marginTop: 8 }}>Zuletzt geändert von {d.settings.geaendertVon}, {zeit(d.settings.geaendertAm)} Uhr</div>
@@ -265,7 +269,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                   {g && g.bewertet > 0 ? ` (${g.falsch} von ${g.bewertet} „falsch“)` : ''} · erlaubt höchstens {d.gate.maxQuote * 100} %
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5, marginTop: 6 }}>
-                  {d.gate.grund} Es zählen nur von Menschen bewertete Entscheidungen mit freigegebenem Entwurf (jüngste 100). Das Tor wird bei jedem Lauf neu geprüft; fällt es im Modus „Aktiv“ zu, stellt sich der Modus auf „Schatten“ zurück. Warten {d.grenzen.torMaxUnbewertet ?? 10} oder mehr gesendete Antworten auf ihre Bewertung, pausiert der Versand.
+                  {d.gate.grund} Es zählen nur von Menschen bewertete Entscheidungen mit freigegebenem Entwurf (jüngste 100). Die App prüft das Tor bei jedem Lauf neu; fällt es im Modus „Aktiv“ zu, stellt sich der Modus auf „Schatten“ zurück. Warten {d.grenzen.torMaxUnbewertet ?? 10} oder mehr gesendete Antworten auf ihre Bewertung, pausiert der Versand.
                 </div>
               </div>
 
@@ -274,7 +278,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
               <div style={{ ...CARD, fontSize: 12.5, color: 'var(--tm-muted)', lineHeight: 1.6 }}>
                 Nur einfache Fragen zu <strong style={{ color: 'var(--tm-text)' }}>WLAN, Parken, Check-in-/Check-out-Zeit, Anfahrt und Müll</strong> – und nur, wenn jede Aussage in den Buchungs-/Wohnungsdaten oder der Gästemappe steht. Dazu <strong style={{ color: 'var(--tm-text)' }}>Verlängerungswünsche</strong>: nur mit eindeutiger Nächte-Zahl und nur, wenn die Wohnung frei ist – Preis und Zahllink rechnet die App, der Text ist ein fester Baustein.
                 Nie bei Geld, Rechnung, Storno, Änderungen, Beschwerden, Mängeln, Notfällen, Tür/Türcode/Schlüssel oder Sonderwünschen – und nie, wenn der Gast eine Zahl, Uhrzeit, Tageszeit oder einen Wochentag nennt.
-                Der Mensch hat Vorrang: keine Auto-Antwort, wenn die Nachricht jünger als {d.grenzen.minAlterMin} Minuten oder älter als {d.grenzen.maxAlterStd} Stunden ist oder dem Team noch keine {d.grenzen.minAlterMin} Minuten in der App sichtbar war, das Team den Thread geöffnet, schon geantwortet oder in den 75 Minuten davor geschrieben hat (das gilt für jede der unbeantworteten Gast-Nachrichten, nicht nur die letzte), bei mehr als 4 Gast-Nachrichten in Folge, außerhalb {d.grenzen.stundeVon}–{d.grenzen.stundeBis} Uhr, bei stummgeschalteten Buchungen – und höchstens {d.grenzen.maxProThreadTag} Auto-Antwort je Thread und Tag.
+                Der Mensch hat Vorrang: keine Auto-Antwort, wenn die Nachricht jünger als {d.grenzen.minAlterMin} Minuten oder älter als {d.grenzen.maxAlterStd} Stunden ist oder dem Team noch keine {d.grenzen.minAlterMin} Minuten in der App sichtbar war, das Team den Chat geöffnet, schon geantwortet oder in den 75 Minuten davor geschrieben hat (das gilt für jede der unbeantworteten Gast-Nachrichten, nicht nur die letzte), bei mehr als 4 Gast-Nachrichten in Folge, außerhalb {d.grenzen.stundeVon}–{d.grenzen.stundeBis} Uhr, bei stummgeschalteten Buchungen – und höchstens {d.grenzen.maxProThreadTag} Auto-Antwort je Chat und Tag.
               </div>
 
               {/* ── Entscheidungen ── */}
@@ -288,7 +292,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
               {rows.length === 0 && (
                 <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, lineHeight: 1.5 }}>
                   {d.settings.mode === 'aus'
-                    ? 'Noch keine Einträge – im Modus „Aus“ wird nichts protokolliert.'
+                    ? 'Noch keine Einträge – im Modus „Aus“ protokolliert die KI nichts.'
                     : filter === 'sende' ? 'Noch keine Entscheidung mit freigegebenem Entwurf. Unter „Alle“ steht, was die KI abgelehnt hat.' : 'Noch keine Einträge.'}
                 </div>
               )}
@@ -308,7 +312,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                       </div>
                       <button onClick={() => { haptic(); window.location.href = '/team?conv=' + r.booking_id }}
                         style={{ border: 'none', background: 'none', color: 'var(--tm-accent-dark)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: '2px 0', flexShrink: 0 }}>
-                        Thread ›
+                        Zum Chat ›
                       </button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -345,7 +349,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                       <div style={{ fontSize: 11.5, color: 'var(--tm-muted2)', marginTop: 6 }}>
                         Bewertet von {r.bewertet_name ?? 'Team'}{r.bewertet_at ? `, ${zeit(r.bewertet_at)} Uhr` : ''}
                         {!SENDE.includes(r.entscheidung) ? ' · zählt nicht für das Tor' : ''}
-                        {fremdesUrteil(r) ? ' · ändern kann nur ein Admin' : ''}
+                        {fremdesUrteil(r) ? ' · ändern kann nur ein Chef' : ''}
                       </div>
                     )}
                   </div>

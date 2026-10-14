@@ -114,7 +114,7 @@ export default function MappeVerlaengern({ token, lang, labels, startNaechte, be
 
       {bestehende.map((v) => (
         <div key={v.von + v.bis} style={{ marginTop: 12, padding: '10px 13px', borderRadius: 10, background: '#F7F3E8', color: '#2A2620', fontSize: 13.5, lineHeight: 1.55 }}>
-          ✅ {labels.extendedUntil.replace('{datum}', fmt(v.bis))}
+          ✓ {labels.extendedUntil.replace('{datum}', fmt(v.bis))}
           <div style={{ marginTop: 4 }}>
             {v.doorCode
               ? <>{labels.newCode.replace('{datum}', fmt(v.von))} <strong style={{ fontSize: 17, letterSpacing: 2, fontVariantNumeric: 'tabular-nums' }}>{v.doorCode}</strong></>
@@ -145,7 +145,7 @@ export default function MappeVerlaengern({ token, lang, labels, startNaechte, be
           {angebot?.ok && (
             <>
               <div role="status" style={{ marginTop: 12, padding: '10px 13px', borderRadius: 10, background: '#F0FDF4', color: '#166534', fontSize: 13.5, lineHeight: 1.6 }}>
-                <strong>{labels.free}</strong> {fmt(angebot.von)} – {fmt(angebot.bis)} · {nText(angebot.naechte)}<br />
+                <strong>{labels.free}</strong> {fmt(angebot.von)}–{fmt(angebot.bis)} · {nText(angebot.naechte)}<br />
                 <strong>{labels.price}</strong> {euro(angebot.preis, lang)}
               </div>
               <button type="button" disabled={busy} onClick={bezahlen} style={{ ...knopf, opacity: busy ? 0.6 : 1 }}>{busy ? labels.busy : labels.pay}</button>

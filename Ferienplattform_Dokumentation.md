@@ -170,7 +170,7 @@ Dringendster Schritt. Ohne Styling kann die Nutzererfahrung nicht bewertet werde
 | check_in | date | Anreisedatum |
 | check_out | date | Abreisedatum |
 | total_price | integer | Gesamtpreis in Euro |
-| status | text | pending / confirmed / cancelled |
+| status | text | pending (Anfrage) / pending_payment (Sofortbuchung, Zahlung läuft, max. 40 Min) / confirmed / cancelled |
 
 ### Testdaten (bereits in DB)
 ```sql

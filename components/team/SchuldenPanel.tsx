@@ -165,7 +165,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
         setKredite(j.kredite ?? [])
         setFehler('')
       })
-      .catch((e) => setFehler(String(e instanceof Error ? e.message : e)))
+      .catch((e) => { console.error('schulden', e); setFehler('Die Kredite konnten nicht geladen werden.') })
       .finally(() => setLoading(false))
   }
   useEffect(load, [])
@@ -185,11 +185,20 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
       if (!r.ok) {
         // CAS-Konflikt / Stale-Edit → frischen Stand laden, dann Meldung zeigen
         if (r.status === 409 || r.status === 404) load()
-        throw new Error(j.error ?? `HTTP ${r.status}`)
+        console.error('schulden', r.status, j.error)
+        throw new Error(r.status === 409
+          ? 'Jemand hat die Kredite gerade geändert. Der neue Stand ist geladen – bitte noch einmal speichern.'
+          : r.status < 500 && j.error ? j.error : 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       }
       if (Array.isArray(j.kredite)) setKredite(j.kredite)
       return j
-    } catch (e) { setFehler(String(e instanceof Error ? e.message : e)); return null } finally { busyRef.current = false; setBusy(false) }
+    } catch (e) {
+      setFehler(e instanceof TypeError
+        ? 'Keine Verbindung – nichts gespeichert. Bitte versuch es noch einmal.'
+        : e instanceof SyntaxError ? 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'
+        : String(e instanceof Error ? e.message : e))
+      return null
+    } finally { busyRef.current = false; setBusy(false) }
   }
 
   /* §272c: Kredite, deren Verlauf VOR heute endet (z. B. variabel, Tabelle
@@ -328,15 +337,15 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
           )}
 
           <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', lineHeight: 1.55, margin: '4px 4px 0' }}>
-            Zins &amp; Monatsrate werden automatisch aus dem Restschuld-Verlauf erkannt
+            Die App erkennt Zins &amp; Monatsrate automatisch aus dem Restschuld-Verlauf
             (Annuitäts-Fit über die letzten 18 Monate). ✓ = mathematisch exakt,
             ~ = Schätzung. Endet ein Verlauf in der Vergangenheit, schreibt die App
-            ihn mit den erkannten Konditionen automatisch bis heute fort (↻ — im
+            ihn mit den erkannten Konditionen automatisch bis heute fort (↻ – im
             Kredit-Chart gestrichelt, in der Gesamt-Grafik steckt der Schätzanteil
-            in der Summenlinie, erkennbar am ~ vor der Zahl und dem ↻-Chip) —
+            in der Summenlinie, erkennbar am ~ vor der Zahl und dem ↻-Chip) –
             echte nachgepflegte Werte ersetzen die Schätzung.
-            Verlauf einfach aus Excel kopieren und einfügen —
-            Format „07.2024 440.000,00" je Zeile.
+            Verlauf einfach aus Excel kopieren und einfügen –
+            Format „07.2024 440.000,00“ je Zeile.
           </p>
         </div>
       </div>
@@ -399,7 +408,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
 
   const uebernehmen = async () => {
     const parsed = parseVerlaufBulk(bulk)
-    if (!parsed.zeilen.length) { setBulkInfo('Keine gültigen Zeilen erkannt — Format „07.2024 440.000,00".'); return }
+    if (!parsed.zeilen.length) { setBulkInfo('Keine gültigen Zeilen erkannt – Format „07.2024 440.000,00“.'); return }
     const j = await patch({ action: 'set-verlauf', id: k.id, zeilen: parsed.zeilen })
     if (j) {
       setBulk('')
@@ -466,9 +475,9 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
           )}
           {fs && (
             <div style={{ fontSize: 12, color: 'var(--tm-yellow)', background: 'var(--tm-yellow-soft)', borderRadius: 10, padding: '8px 11px', lineHeight: 1.5 }}>
-              Der gepflegte Verlauf endet {fmtMonatLang(fs.letzterEchter.monat)} ({eur0(fs.letzterEchter.restschuld)}) —
+              Der gepflegte Verlauf endet {fmtMonatLang(fs.letzterEchter.monat)} ({eur0(fs.letzterEchter.restschuld)}) –
               seither rechnet die App mit {pct2(fs.zinsPa)} p.a. · {eur2(fs.rate)}/M automatisch weiter.
-              Echte Kontostände unten einfügen ersetzt die Schätzung.
+              Füg unten echte Kontostände ein, dann ersetzen sie die Schätzung.
             </div>
           )}
 
@@ -491,7 +500,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
           </div>
           {k.zinssatz != null && fit && Math.abs(k.zinssatz - fit.zinsPa) > 0.15 && (
             <div style={{ fontSize: 12, color: 'var(--tm-yellow)', background: 'var(--tm-yellow-soft)', borderRadius: 10, padding: '8px 11px' }}>
-              Hinterlegter Vertragszins {pct2(k.zinssatz)} weicht vom erkannten Zins {pct2(fit.zinsPa)} ab — Verlauf oder Vertragsdaten prüfen.
+              Hinterlegter Vertragszins {pct2(k.zinssatz)} weicht vom erkannten Zins {pct2(fit.zinsPa)} ab – bitte Verlauf oder Vertragsdaten prüfen.
             </div>
           )}
           {k.notiz && <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', lineHeight: 1.5 }}>{k.notiz}</div>}
@@ -511,7 +520,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
             </div>
             {k.verlauf.length > 0 && (
               <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--tm-muted)' }}>
-                {k.verlauf.length} Monate erfasst ({fmtMonat(k.verlauf[0].monat)} – {fmtMonat(k.verlauf[k.verlauf.length - 1].monat)})
+                {k.verlauf.length} Monate erfasst ({fmtMonat(k.verlauf[0].monat)}–{fmtMonat(k.verlauf[k.verlauf.length - 1].monat)})
                 {' · letzte: '}
                 {k.verlauf.slice(-3).map((z) => (
                   <span key={z.monat} style={{ whiteSpace: 'nowrap', marginRight: 8 }}>
@@ -533,7 +542,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setEdit(true)} style={{ ...BTN, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }}>✏️ Bearbeiten</button>
               <button disabled={busy} onClick={() => {
-                if (confirm(`Kredit „${k.name}" mit ${k.verlauf.length} Monatswerten wirklich löschen?`)) void patch({ action: 'delete-kredit', id: k.id })
+                if (confirm(`Kredit „${k.name}“ mit ${k.verlauf.length} Monatswerten wirklich löschen?`)) void patch({ action: 'delete-kredit', id: k.id })
               }} style={{ ...BTN, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', opacity: busy ? 0.5 : 1 }}>🗑 Löschen</button>
             </div>
           )}
@@ -595,7 +604,7 @@ function KreditForm({ standorte, vorlage, busy, onSave, onCancel }: {
   return (
     <div style={{ ...CARD, padding: 16, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--tm-text)' }}>{vorlage ? 'Kredit bearbeiten' : 'Neuer Kredit'}</div>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name — z. B. Volksbank MFH Minden" style={INPUT} />
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name – z. B. Volksbank MFH Minden" style={INPUT} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <select value={standort} onChange={(e) => setStandort(e.target.value)} style={{ ...INPUT, width: 'auto', flex: '1 1 150px' }}>
           {standorte.map((s) => <option key={s} value={s}>{s}</option>)}

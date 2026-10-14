@@ -4,6 +4,9 @@ import { getReservationMessages } from '@/lib/smoobu'
 import { sendNewBookingPush } from '@/lib/push'
 import { reportOverbooking, resolveOverbooking } from '@/lib/overbooking'
 
+// Explizites Zeitlimit (Server-Prüfung 9.10.): Smoobu: Abgleich + Übersetzung + Push
+export const maxDuration = 120
+
 /**
  * POST /api/smoobu/webhook
  *

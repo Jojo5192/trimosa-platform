@@ -326,8 +326,8 @@ export async function checkSyncAlerts(zeilen: StatusZeile[]): Promise<{ ueberfae
 
   const teile = faellig.slice(0, 4).map((x) => `${x.z.title} (${x.portale.map((c) => c.name).join(', ')})`)
   const rest = faellig.length - teile.length
-  const body = `Seit über 6 Wochen kein erfolgreicher Abruf: ${teile.join(' · ')}${rest > 0 ? ` und ${rest} weitere` : ''}. Details im Kalender → Belegung → ⭐ Bewertungs-Abruf.`
-  await sendPushToTeam('⭐ Bewertungs-Abruf hängt', body, '/team?tab=kalender', { category: 'system' })
+  const body = `Seit über 6 Wochen nichts abgerufen: ${teile.join(' · ')}${rest > 0 ? ` und ${rest} weitere` : ''}. Details: Kalender → Belegung → ⭐ Bewertungs-Abruf.`
+  await sendPushToTeam(`⚠️ Bewertungs-Abruf hängt · ${faellig.length === 1 ? '1 Wohnung' : `${faellig.length} Wohnungen`}`, body, '/team?tab=kalender', { category: 'system' })
     .catch((e) => console.error('[reviews-sync-log] Alarm-Push:', e))
   return { ueberfaellig: betroffen.length, gemeldet: faellig.length }
 }

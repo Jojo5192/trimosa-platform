@@ -217,10 +217,13 @@ export default function OffenPanel({ visible, onCount }: {
         body: JSON.stringify({ kind: current.kind, id: current.id, field, value: true }),
       })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      showToast(field === 'phone' ? '📞 Als telefonisch geklärt markiert' : '✓ Keine Antwort erforderlich')
+      showToast(field === 'phone' ? '📞 Als telefonisch geklärt markiert' : '✓ Keine Antwort nötig')
       dismiss('right', true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Aktion fehlgeschlagen.')
+      console.error('chat/inbox', e)
+      setError(e instanceof TypeError
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : 'Markieren hat nicht geklappt. Bitte versuch es gleich noch einmal.')
     } finally { busyRef.current = false }
   }
 
@@ -234,10 +237,15 @@ export default function OffenPanel({ visible, onCount }: {
         body: JSON.stringify(body),
       })
       const d = await r.json().catch(() => null)
-      if (!r.ok) throw new Error(d?.error ?? `KI-Fehler (${r.status})`)
+      if (!r.ok) {
+        console.error('ai/chat-suggest', r.status, d?.error)
+        throw new Error(r.status < 500 && d?.error ? d.error : 'Die KI konnte gerade keinen Vorschlag schreiben. Bitte versuch es gleich noch einmal.')
+      }
       setDraft(d.suggestion ?? '')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'KI-Vorschlag fehlgeschlagen.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung – kein KI-Vorschlag möglich. Bitte versuch es gleich noch einmal.'
+        : e.message)
     } finally { setAiBusy(false) }
   }
 
@@ -258,11 +266,16 @@ export default function OffenPanel({ visible, onCount }: {
         body: JSON.stringify(body),
       })
       const d = await r.json().catch(() => null)
-      if (!r.ok) throw new Error(d?.error ?? `KI-Fehler (${r.status})`)
+      if (!r.ok) {
+        console.error('ai/chat-suggest', r.status, d?.error)
+        throw new Error(r.status < 500 && d?.error ? d.error : 'Die KI konnte die Anweisung gerade nicht umsetzen. Bitte versuch es gleich noch einmal.')
+      }
       setDraft(d.suggestion ?? '')
       setInstruction('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'KI-Anweisung fehlgeschlagen.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung – die KI ist gerade nicht erreichbar. Bitte versuch es gleich noch einmal.'
+        : e.message)
     } finally { setRefining(false) }
   }
 
@@ -292,7 +305,7 @@ export default function OffenPanel({ visible, onCount }: {
   }
 
   async function sendText(text: string) {
-    if (!current) throw new Error('Kein Thread.')
+    if (!current) throw new Error('Kein Chat ausgewählt.')
     let content = text.trim()
     let contentDe: string | undefined
     let lang: string | undefined
@@ -323,7 +336,8 @@ export default function OffenPanel({ visible, onCount }: {
     })
     if (!r.ok) {
       const d = await r.json().catch(() => null)
-      throw new Error(d?.error ?? `Senden fehlgeschlagen (${r.status})`)
+      console.error('senden', r.status, d?.error)
+      throw new Error(r.status < 500 && d?.error ? d.error : 'Senden hat nicht geklappt – der Entwurf bleibt erhalten. Bitte versuch es gleich noch einmal.')
     }
   }
 
@@ -332,10 +346,12 @@ export default function OffenPanel({ visible, onCount }: {
     setSending(true); setError(null)
     try {
       await sendText(draft)
-      showToast('✨ Antwort gesendet')
+      showToast('✓ Antwort gesendet')
       dismiss('right', true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Senden fehlgeschlagen — Entwurf bleibt erhalten.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung – der Entwurf bleibt erhalten. Bitte versuch es gleich noch einmal.'
+        : e.message)
     } finally { setSending(false) }
   }
 
@@ -345,15 +361,17 @@ export default function OffenPanel({ visible, onCount }: {
     setSending(true); setError(null)
     try {
       await sendText(`${location.origin}${current.mappeUrl}`)
-      showToast('📖 Mappe-Link gesendet')
+      showToast('✓ Gästemappe gesendet')
       dismiss('right', true)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Senden fehlgeschlagen.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : e.message)
     } finally { setSending(false) }
   }
 
   /* 🧾 Rechnung (§158): ab Anreisetag Link erstellen/senden, vorher Hinweis */
-  const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt — ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
+  const RECHNUNG_HINWEIS = 'Gern! Deine Rechnung wird am Anreisetag automatisch erstellt – ich schicke dir den Download-Link dann direkt hier. Falls die Rechnung auf einen bestimmten Namen oder eine Firmenanschrift lauten soll, gib mir die Daten einfach schon mal durch.'
   const invoiceBookingId = current ? (current.kind === 'booking' ? current.id : current.bookingId ?? null) : null
   const arrivalReached = !!current?.checkIn && current.checkIn <= new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10)
   const [invoiceBusy, setInvoiceBusy] = useState(false)
@@ -361,7 +379,10 @@ export default function OffenPanel({ visible, onCount }: {
   async function ensureInvoiceUrl(bid: string): Promise<string> {
     const r = await fetch(`/api/invoices/${bid}`, { method: 'POST' })
     const d = await r.json().catch(() => null)
-    if (!r.ok || !d?.url) throw new Error(d?.error ?? 'Rechnung nicht verfügbar.')
+    if (!r.ok || !d?.url) {
+      console.error('invoices', r.status, d?.error)
+      throw new Error(r.status < 500 && d?.error ? d.error : 'Die Rechnung ist gerade nicht verfügbar. Bitte versuch es später noch einmal.')
+    }
     return `${location.origin}${d.url}`
   }
 
@@ -380,7 +401,9 @@ export default function OffenPanel({ visible, onCount }: {
         dismiss('right', true)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Rechnung fehlgeschlagen.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : e.message)
     } finally { setInvoiceBusy(false) }
   }
 
@@ -388,7 +411,7 @@ export default function OffenPanel({ visible, onCount }: {
     if (!current) return
     const lastGuest = [...msgs].reverse().find((m) => !m.ours)
     setTaskTitle(`Anliegen ${current.guestName}${current.listingTitle ? ` · ${current.listingTitle}` : ''}`.slice(0, 120))
-    setTaskDesc(lastGuest ? `Gast-Nachricht (${fmtD(current.lastMessageAt?.slice(0, 10) ?? null)}): „${lastGuest.text.slice(0, 400)}"` : '')
+    setTaskDesc(lastGuest ? `Gast-Nachricht (${fmtD(current.lastMessageAt?.slice(0, 10) ?? null)}): „${lastGuest.text.slice(0, 400)}“` : '')
     setTaskPrio('mittel')
     setTaskOpen(true)
   }
@@ -406,12 +429,15 @@ export default function OffenPanel({ visible, onCount }: {
       })
       if (!r.ok) {
         const d = await r.json().catch(() => null)
-        throw new Error(d?.error ?? `HTTP ${r.status}`)
+        console.error('tasks', r.status, d?.error)
+        throw new Error(r.status < 500 && d?.error ? d.error : 'Die Aufgabe konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.')
       }
       setTaskOpen(false)
-      showToast('📋 Aufgabe erstellt — Thread bleibt offen')
+      showToast('✓ Aufgabe angelegt – Chat bleibt offen')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Aufgabe fehlgeschlagen.')
+      setError(e instanceof TypeError || !(e instanceof Error)
+        ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
+        : e.message)
     } finally { setTaskBusy(false) }
   }
 
@@ -535,7 +561,7 @@ export default function OffenPanel({ visible, onCount }: {
                               </button>
                             )}
                             <button type="button" onClick={() => { location.href = `/team?conv=${current.id}` }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--tm-muted)' }}>
-                              ✏️ Empfänger erfassen — im Chat öffnen ›
+                              ✏️ Empfänger erfassen – im Chat öffnen ›
                             </button>
                           </>
                         )}
@@ -578,7 +604,7 @@ export default function OffenPanel({ visible, onCount }: {
                 <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 var(--tm-line)' }}>
                   <textarea
                     value={aiBusy ? '' : draft}
-                    placeholder={aiBusy ? '✨ Claude schreibt einen Vorschlag…' : 'Antwort (wird beim Senden automatisch übersetzt)…'}
+                    placeholder={aiBusy ? '✨ KI schreibt einen Vorschlag…' : 'Antwort (beim Senden automatisch übersetzt)…'}
                     onChange={(e) => setDraft(e.target.value)}
                     rows={4}
                     style={{
@@ -616,7 +642,7 @@ export default function OffenPanel({ visible, onCount }: {
                       value={instruction}
                       onChange={(e) => setInstruction(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') refine() }}
-                      placeholder={refining ? 'Claude schreibt…' : recording ? '🔴 Sprich jetzt…' : draft.trim() ? 'Anweisung an Claude…' : 'Was soll Claude antworten?'}
+                      placeholder={refining ? 'KI schreibt…' : recording ? '🔴 Sprich jetzt…' : draft.trim() ? 'Anweisung an die KI…' : 'Was soll die KI antworten?'}
                       style={{
                         flex: 1, minWidth: 0, borderRadius: 999, border: recording ? '1.5px solid var(--tm-red)' : '1.5px solid var(--tm-line)',
                         padding: '9px 14px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
@@ -656,7 +682,7 @@ export default function OffenPanel({ visible, onCount }: {
                     <button type="button" onClick={createTask} disabled={taskBusy || !taskTitle.trim()} style={{
                       flex: 1, border: 'none', borderRadius: 999, padding: '10px 0', cursor: 'pointer',
                       background: 'var(--tm-navy)', color: '#fff', fontSize: 13, fontWeight: 800,
-                    }}>{taskBusy ? 'Erstellt…' : '📋 Aufgabe anlegen'}</button>
+                    }}>{taskBusy ? 'Legt an…' : '📋 Aufgabe anlegen'}</button>
                     <button type="button" onClick={() => setTaskOpen(false)} style={{
                       border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 13px', cursor: 'pointer',
                       background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700,

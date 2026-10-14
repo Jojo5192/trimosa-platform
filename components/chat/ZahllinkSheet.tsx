@@ -49,7 +49,7 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
 
   async function linkErstellen() {
     const wert = Number(betrag.replace(',', '.'))
-    if (!(wert >= 1)) { setFehler('Bitte einen Betrag ab 1 € eingeben.'); return }
+    if (!(wert >= 1)) { setFehler('Bitte gib einen Betrag ab 1 € ein.'); return }
     setBusy(true); setFehler(null)
     try {
       const r = await fetch('/api/zahlung/link', {
@@ -57,14 +57,14 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
         body: JSON.stringify({ bookingId, betrag: wert, zweck, text: notiz || null }),
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d.link) { setFehler(d.error ?? 'Der Zahllink konnte nicht erstellt werden.'); return }
+      if (!r.ok || !d.link) { setFehler(r.status < 500 && d.error ? d.error : 'Der Zahllink konnte nicht erstellt werden. Bitte versuch es gleich noch einmal.'); return }
       haptic('success')
       const zusatz = notiz.trim() ? ` (${notiz.trim()})` : ''
       onInsert(`Hallo ${vorname}, hier ist dein Zahlungslink für ${zweck}${zusatz} über ${euro(d.link.betrag)}: ${d.link.url}\nDie Zahlung ist per Karte, Apple Pay oder Google Pay möglich. Danke dir!`)
-      tmToast('Zahllink erstellt — steht im Eingabefeld, bitte prüfen und senden')
+      tmToast('✓ Zahllink steht im Eingabefeld – bitte prüfen und senden')
       onClose()
     } catch {
-      setFehler('Keine Verbindung — bitte erneut versuchen.')
+      setFehler('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
       setBusy(false)
     }
@@ -75,11 +75,11 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
     try {
       const r = await fetch(`/api/zahlung/verlaengerung?bookingId=${bookingId}&naechte=${n}`, { cache: 'no-store' })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) { setFehler(d.error ?? 'Angebot konnte nicht geladen werden.'); return }
+      if (!r.ok) { setFehler(r.status < 500 && d.error ? d.error : 'Das Angebot konnte nicht geladen werden. Bitte versuch es gleich noch einmal.'); return }
       setAngebot(d.angebot ?? null)
       setAngebotLink(d.link ?? null)
     } catch {
-      setFehler('Keine Verbindung — bitte erneut versuchen.')
+      setFehler('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
       setBusy(false)
     }
@@ -89,8 +89,8 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
     if (!angebot?.ok || !angebotLink) return
     haptic('success')
     const n = angebot.naechte
-    onInsert(`Hallo ${vorname}, gute Nachricht: Du kannst deinen Aufenthalt um ${n} ${n === 1 ? 'Nacht' : 'Nächte'} bis zum ${datum(angebot.bis)} verlängern — Preis ${euro(angebot.preis)}. Hier kannst du direkt buchen und bezahlen: ${angebotLink}`)
-    tmToast('Verlängerungs-Angebot steht im Eingabefeld — bitte prüfen und senden')
+    onInsert(`Hallo ${vorname}, gute Nachricht: Du kannst deinen Aufenthalt um ${n} ${n === 1 ? 'Nacht' : 'Nächte'} bis zum ${datum(angebot.bis)} verlängern – Preis ${euro(angebot.preis)}. Hier kannst du direkt buchen und bezahlen: ${angebotLink}`)
+    tmToast('✓ Verlängerungs-Angebot steht im Eingabefeld – bitte prüfen und senden')
     onClose()
   }
 
@@ -143,7 +143,7 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
             <input id="zl-betrag" inputMode="decimal" placeholder="z. B. 35" value={betrag} onChange={(e) => setBetrag(e.target.value)} style={{ ...feld, marginBottom: 12 }} />
             <label htmlFor="zl-notiz" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', marginBottom: 7 }}>HINWEIS (OPTIONAL)</label>
             <input id="zl-notiz" placeholder="z. B. 1 Person, 2 Nächte" value={notiz} onChange={(e) => setNotiz(e.target.value)} style={{ ...feld, marginBottom: 16 }} />
-            <button type="button" disabled={busy} onClick={linkErstellen} style={hauptKnopf(!busy)}>{busy ? 'Erstelle Link…' : 'Link erstellen und einfügen'}</button>
+            <button type="button" disabled={busy} onClick={linkErstellen} style={hauptKnopf(!busy)}>{busy ? 'Erstellt Link…' : 'Link erstellen und einfügen'}</button>
             <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5, marginTop: 10 }}>
               Der Link ist einmal bezahlbar und läuft nicht ab. Sobald bezahlt ist, kommt ein Push und im Chat erscheint eine interne Notiz.
             </div>
@@ -157,7 +157,7 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
               <button type="button" aria-label="Eine Nacht mehr" disabled={naechte >= 14 || busy} onClick={() => { haptic(); setNaechte((n) => Math.min(14, n + 1)); setAngebot(null) }} style={{ ...chip(false), width: 44, height: 44, padding: 0, fontSize: 20 }}>+</button>
             </div>
             {!angebot && (
-              <button type="button" disabled={busy} onClick={() => angebotHolen(naechte)} style={hauptKnopf(!busy)}>{busy ? 'Prüfe Verfügbarkeit…' : 'Verfügbarkeit und Preis prüfen'}</button>
+              <button type="button" disabled={busy} onClick={() => angebotHolen(naechte)} style={hauptKnopf(!busy)}>{busy ? 'Prüft Verfügbarkeit…' : 'Verfügbarkeit und Preis prüfen'}</button>
             )}
             {angebot && !angebot.ok && (
               <div role="status" style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13.5, lineHeight: 1.5 }}>
@@ -167,14 +167,14 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
             {angebot?.ok && (
               <>
                 <div role="status" style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--tm-green-soft)', color: 'var(--tm-text)', fontSize: 13.5, lineHeight: 1.55, marginBottom: 12 }}>
-                  <strong>Frei:</strong> {datum(angebot.von)} – {datum(angebot.bis)} · {angebot.naechte} {angebot.naechte === 1 ? 'Nacht' : 'Nächte'}<br />
+                  <strong>Frei:</strong> {datum(angebot.von)}–{datum(angebot.bis)} · {angebot.naechte} {angebot.naechte === 1 ? 'Nacht' : 'Nächte'}<br />
                   <strong>Preis:</strong> {euro(angebot.preis)} ({euro(angebot.preisProNacht)} pro Nacht, wie auf der Website)
                 </div>
                 <button type="button" onClick={angebotUebernehmen} style={hauptKnopf(true)}>Angebot mit Link einfügen</button>
               </>
             )}
             <div style={{ fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5, marginTop: 10 }}>
-              Der Link führt in die Gästemappe: Dort werden Verfügbarkeit und Preis beim Klick neu geprüft, der Gast bezahlt per Stripe, die Zusatznächte werden automatisch als eigene Buchung (mit eigenem Türcode) in Smoobu angelegt.
+              Der Link führt in die Gästemappe: Dort prüft die App Verfügbarkeit und Preis beim Klick neu, der Gast bezahlt per Stripe, und die Zusatznächte landen automatisch als eigene Buchung (mit eigenem Türcode) in Smoobu.
             </div>
           </>
         )}

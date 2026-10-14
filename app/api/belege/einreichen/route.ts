@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
     }
 
     await sendPushToTeam(
-      '🧾 Beleg eingereicht',
-      `${vorname}${meta.lieferant ? ` · ${meta.lieferant}` : ''}${ort ? ` · ${ort}` : ''}`,
+      `💶 Beleg eingereicht · ${vorname}`,
+      `${[meta.lieferant, ort].filter(Boolean).join(' · ') || 'Ohne Angaben'}. Bitte in der Buchhaltung zuordnen.`,
       '/buchhaltung', { buchhaltung: true },
     ).catch(() => {})
 

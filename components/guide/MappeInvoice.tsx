@@ -74,11 +74,12 @@ export default function MappeInvoice({ token, labels, status, invoiceNumber, ini
         }),
       })
       const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(j.error || `Fehler ${r.status}`)
+      if (!r.ok) { setError(j.error || 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); return }
       setDone(j.aktualisiert ? labels.savedUpdated : labels.savedStored)
       setOpen(false)
     } catch (e) {
-      setError(String(e instanceof Error ? e.message : e))
+      console.error('mappe/rechnung', e)
+      setError('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
       setBusy(false)
     }

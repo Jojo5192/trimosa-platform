@@ -607,8 +607,8 @@ async function complaintDetected(b: BookingRow, listingTitle: string | null): Pr
     } catch { /* Spalte fehlt noch - dann prueft der naechste Lauf erneut */ }
     const gast = (b.guest_name ?? 'Gast').split(' ')[0]
     await sendPushToTeam(
-      '🔕 Bewertungsbitte ausgesetzt',
-      `${gast}${listingTitle ? ' · ' + listingTitle : ''}: Beschwerde im Chat erkannt — keine Danke-/Bewertungs-Nachricht. Im Thread über 🔕 änderbar.`,
+      `💬 Bewertungsbitte gestoppt · ${gast}`,
+      `${listingTitle ? listingTitle + ': ' : ''}Beschwerde im Chat erkannt, es geht keine Danke-/Bewertungs-Nachricht raus. Im Thread über 🔕 änderbar.`,
       '/team?tab=inbox', { guestChat: true },
     ).catch(() => {})
     console.log('[auto-messages] Bewertungsbitte ausgesetzt (Beschwerde erkannt):', b.id)

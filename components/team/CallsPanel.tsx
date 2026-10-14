@@ -99,7 +99,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
         }
         setError(null)
       })
-      .catch((e) => setError((e as Error).message))
+      .catch((e) => { console.error('voice/calls', e); setError('Die Telefonate konnten nicht geladen werden. Bitte versuch es gleich noch einmal.') })
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- focus nur beim Öffnen auswerten
   }, [bookingId])
@@ -119,7 +119,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
           ☎️ {title ?? 'Telefonate'}
         </div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
+        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
@@ -131,7 +131,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
           )}
           {fokusFehlt && !loading && (
             <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-accent-soft)', color: 'var(--tm-text)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
-              🎧 Zu dieser Aufgabe wurde kein passender Anruf gefunden (gleiche Rufnummer, ±3 Stunden). Unten stehen alle Anrufe.
+              🎧 Zu dieser Aufgabe passt kein Anruf (gleiche Rufnummer, ±3 Stunden). Unten siehst du alle Anrufe.
             </div>
           )}
           {!loading && !error && calls.length === 0 && (
@@ -178,7 +178,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
                       marginTop: 7, background: 'var(--tm-green-soft)', border: '1px solid var(--tm-line)',
                       borderRadius: 9, padding: '7px 10px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--tm-green)',
                     }}>
-                      <span style={{ fontWeight: 800 }}>✅ Gelöst: </span>{c.solution}
+                      <span style={{ fontWeight: 800 }}>✓ Gelöst: </span>{c.solution}
                     </div>
                   )}
                 </button>
@@ -196,7 +196,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
                       />
                     )}
                     {(!c.hasAudio || audioErr[c.id]) && (
-                      <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 12 }}>🎧 Kein Audio verfügbar.</div>
+                      <div style={{ fontSize: 12, color: 'var(--tm-muted)', marginTop: 12 }}>🎧 Keine Aufnahme vorhanden.</div>
                     )}
 
                     {/* 📝 Transkript */}

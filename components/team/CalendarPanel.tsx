@@ -114,12 +114,15 @@ export default function CalendarPanel() {
       let j: { [k: string]: any } = {}
       try { j = JSON.parse(text) } catch {
         if (attempt < 1) { setTimeout(() => load(1), 1200); return }
-        setError(`Unerwartete Antwort vom Server (HTTP ${res.status}).`)
+        console.error('team/calendar: keine gültige Antwort', res.status)
+        setError('Der Kalender konnte nicht geladen werden. Bitte versuch es gleich noch einmal.')
         setLoading(false)
         return
       }
-      if (j.error) setError(j.error)
-      else {
+      if (j.error) {
+        console.error('team/calendar', res.status, j.error)
+        setError(res.status === 403 ? 'Für den Kalender fehlt dir die Berechtigung.' : 'Der Kalender konnte nicht geladen werden. Bitte versuch es gleich noch einmal.')
+      } else {
         setStays(j.stays ?? []); setTasks(j.tasks ?? []); setQs(j.qs ?? []); setListings(j.listings ?? {})
         setCleaning(j.cleaning ?? null)
         setServicePins(j.servicePins ?? {})
@@ -135,7 +138,7 @@ export default function CalendarPanel() {
     } catch {
       // iOS-PWA: erster Request nach dem Aufwachen scheitert gern → 1× retry
       if (attempt < 1) { setTimeout(() => load(1), 1200); return }
-      setError('Netzwerkfehler beim Laden.')
+      setError('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     }
     setLoading(false)
   }, [])
@@ -249,7 +252,7 @@ export default function CalendarPanel() {
         const nights = nextIn ? daysBetween(iso, nextIn) : null
         gapText = nights != null
           ? `danach ${nights} ${nights === 1 ? 'Nacht' : 'Nächte'} frei (bis ${fmtShort(nextIn!)})`
-          : `danach frei — nichts geplant bis ${fmtShort(rangeEnd)}`
+          : `danach frei – nichts geplant bis ${fmtShort(rangeEnd)}`
         const matching = tasksForListing(tasks, s.listingId, info?.group ?? null)
         if (matching.length && (nights == null || nights >= 1)) gapTasks = matching
       }
@@ -285,7 +288,7 @@ export default function CalendarPanel() {
     abreise: { icon: '↖', color: 'var(--tm-red)', bg: 'var(--tm-red-soft)', tag: 'Abreise' },
     anreise: { icon: '↘', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'Anreise' },
     aufgabe: { icon: '✓', color: 'var(--tm-accent-dark)', bg: 'var(--tm-accent-soft)', tag: 'Aufgabe fällig' },
-    qs: { icon: '🧾', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'QS-Termin' },
+    qs: { icon: '🧾', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'Termin' },
   } as const
 
   /** Event-Karten (geteilt zwischen Agenda-Liste und Wochenblick). */
@@ -383,7 +386,7 @@ export default function CalendarPanel() {
             <CleaningPlanner stays={stays} listings={listings} cleaning={cleaning} />
           ) : (
             <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>
-              Reinigungsdaten noch nicht verfügbar — im Admin-Bereich unter „🧹 Reinigung" einrichten.
+              Noch keine Reinigungsdaten – Chefs richten sie im Admin-Bereich unter „🧹 Reinigung“ ein.
             </p>
           )}
         </div>
@@ -391,7 +394,7 @@ export default function CalendarPanel() {
         <div style={{ padding: '12px 12px 40px' }}>
           <OccupancyGrid stays={stays} listings={listings} />
           <p style={{ fontSize: 11.5, color: 'var(--tm-muted)', margin: '10px 4px 0', lineHeight: 1.5 }}>
-            Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag — Wechseltage teilen sich die Zelle).
+            Balken = bestätigte Aufenthalte (Anreise ab Mittag, Abreise bis Mittag – Wechseltage teilen sich die Zelle).
             Farben: <span style={{ color: '#E0565B', fontWeight: 700 }}>Airbnb</span> · <span style={{ color: 'var(--tm-blue)', fontWeight: 700 }}>Booking</span> · <span style={{ color: '#0EA5E9', fontWeight: 700 }}>FeWo-direkt</span> · <span style={{ color: '#7C3AED', fontWeight: 700 }}>HomeToGo</span> · <span style={{ color: 'var(--tm-accent-dark)', fontWeight: 700 }}>Direkt/Website</span>. Tipp auf einen Balken zeigt Details.
           </p>
           {/* 📈 Baustein ⑤ (Pascal 8.9.): Kennzahlen + Ausblick — nur Admins/Gastgeber, 403 → Karte bleibt aus */}
@@ -496,7 +499,7 @@ export default function CalendarPanel() {
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-accent-dark)', flexShrink: 0 }}>
                         {f.nights != null
                           ? `frei bis ${fmtShort(f.nextIn!)} · ${f.nights} ${f.nights === 1 ? 'Nacht' : 'Nächte'}`
-                          : 'frei — nichts geplant'}
+                          : 'frei – nichts geplant'}
                       </span>
                     </div>
                     {f.tasks.length > 0 && (
@@ -525,7 +528,7 @@ export default function CalendarPanel() {
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-blue)', flexShrink: 0 }}>
                         {p.slot.nights != null
                           ? `Fenster ${fmtShort(p.slot.from)}–${fmtShort(p.slot.to!)} · ${p.slot.nights} ${p.slot.nights === 1 ? 'Nacht' : 'Nächte'}`
-                          : `frei ab ${fmtShort(p.slot.from)} — nichts geplant`}
+                          : `frei ab ${fmtShort(p.slot.from)} – nichts geplant`}
                       </span>
                     </div>
                     <div style={{ marginTop: 8 }}>
