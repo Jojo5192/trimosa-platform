@@ -19,8 +19,10 @@ export type HapticKind = 'tap' | 'success' | 'error'
 const VIBRATE: Record<HapticKind, number | number[]> = { tap: 10, success: [12, 60, 12], error: 45 }
 export function haptic(kind: HapticKind = 'tap') {
   try {
-    const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }
-    if (typeof nav.vibrate === 'function' && nav.vibrate(VIBRATE[kind])) return
+    const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean; userActivation?: { hasBeenActive: boolean } }
+    // Chrome blockt vibrate() vor der ersten Nutzer-Geste und meldet das als Konsolen-Fehler — dann gar nicht erst rufen
+    const aktiv = nav.userActivation ? nav.userActivation.hasBeenActive : true
+    if (aktiv && typeof nav.vibrate === 'function' && nav.vibrate(VIBRATE[kind])) return
     if (!hapticEl || !document.body.contains(hapticEl)) {
       hapticEl = document.createElement('label')
       hapticEl.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;overflow:hidden;'
@@ -312,7 +314,10 @@ const EMPTY_ART: Record<'house' | 'check' | 'chat' | 'calendar', string[]> = {
   calendar: ['M18 16 h52 a4 4 0 0 1 4 4 v34 a4 4 0 0 1 -4 4 h-52 a4 4 0 0 1 -4 -4 v-34 a4 4 0 0 1 4 -4 z', 'M14 28 h60', 'M30 10 v10', 'M58 10 v10', 'M28 40 h6', 'M41 40 h6', 'M54 40 h6', 'M28 48 h6', 'M41 48 h6'],
 }
 export function EmptyState({ title, hint, icon = 'house' }: { title: string; hint?: string; icon?: keyof typeof EMPTY_ART }) {
-  const [spruch] = useState(() => pickSpruch(new Date(), null).text)
+  // Spruch erst NACH dem Mount wählen: pickSpruch würfelt — Server-HTML und erster Client-Render wichen sonst
+  // voneinander ab (React-Fehler #418 „Hydration failed … text", Live-Konsole 9.10.)
+  const [spruch, setSpruch] = useState('')
+  useEffect(() => { setSpruch(pickSpruch(new Date(), null).text) }, [])
   return (
     <div className="tm-empty tm-enter" style={{ textAlign: 'center', padding: '40px 24px 32px' }}>
       <svg width="88" height="64" viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
@@ -320,7 +325,7 @@ export function EmptyState({ title, hint, icon = 'house' }: { title: string; hin
       </svg>
       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text, #171a1f)', marginTop: 14 }}>{title}</div>
       {hint && <div style={{ fontSize: 13, color: 'var(--tm-muted, #646b76)', marginTop: 6, lineHeight: 1.5 }}>{hint}</div>}
-      <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>
+      {spruch && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>}
     </div>
   )
 }

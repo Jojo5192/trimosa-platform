@@ -106,9 +106,12 @@ export default function ReviewSyncCard() {
   const [ok, setOk] = useState<boolean | null>(null)
   const [data, setData] = useState<Status | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState<boolean>(() => {
-    try { return typeof localStorage !== 'undefined' && localStorage.getItem(OPEN_KEY) === '1' } catch { return false }
-  })
+  // Zustand erst NACH dem Mount aus localStorage: der Server kennt ihn nicht — ein offener Stand im ersten
+  // Client-Render erzeugte einen Hydrations-Fehler (#418, Pfeil ▾/▸), Live-Konsole 9.10.
+  const [open, setOpen] = useState<boolean>(false)
+  useEffect(() => {
+    try { if (localStorage.getItem(OPEN_KEY) === '1') setOpen(true) } catch { /* kein Speicher */ }
+  }, [])
   const [busy, setBusy] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<{ id: string; zeilen: SyncResult[]; hinweis: string | null } | null>(null)
   const [mehr, setMehr] = useState<string | null>(null)
