@@ -114,7 +114,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent, #AE8D2D)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           ☎️ {title ?? 'Telefonate'}
         </div>
@@ -165,7 +165,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
                     <span style={{ marginLeft: 'auto', color: 'var(--tm-muted2)', fontSize: 13 }}>{open ? '▾' : '▸'}</span>
                   </div>
                   {(c.guest || c.apartment) && (
-                    <div style={{ fontSize: 12, color: 'var(--gold-dark)', fontWeight: 700, marginTop: 5 }}>
+                    <div style={{ fontSize: 12, color: 'var(--tm-accent-dark, #715C1D)', fontWeight: 700, marginTop: 5 }}>
                       {[c.guest, c.apartment, c.zeitraum].filter(Boolean).join(' · ')}
                     </div>
                   )}

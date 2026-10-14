@@ -21,7 +21,10 @@ export async function earlyCheckinBlock(b: { id: string; listing_id: string | nu
     // nur Aufgaben, hinter denen wirklich jemand in der Wohnung arbeitet – also keine System-, Anruf- oder
     // Überbuchungs-Aufgaben. KI-Aufgaben (ki_nachricht/ki_bewertung) sperren WEITER: als 'vorschlag' zählen
     // sie ohnehin nicht, und ein vom Admin angenommener Mangel („Duschkopf tauschen") ist echte Arbeit.
-    const KEINE_ARBEIT = new Set(['system', 'anruf', 'ueberbuchung'])
+    // 14.10.2026: 'reinigung_frage' (Late-Check-out-/Check-in-FRAGE an die Reinigung, lib/reinigung-routing.ts) ist
+    // keine Arbeit in der Wohnung – sperrt nie, auch wenn jemand ein Datum nachträgt. Reinigungsmängel
+    // ('reinigung_mangel', fällig zur nächsten Anreise) sperren dagegen bewusst: da wird nachgereinigt.
+    const KEINE_ARBEIT = new Set(['system', 'anruf', 'ueberbuchung', 'reinigung_frage'])
     const { data: rows } = await supabaseAdmin
       .from('tasks').select('title, status, source')
       .eq('listing_id', b.listing_id).eq('due_date', b.check_in).in('status', ['offen', 'in_arbeit']).limit(12)

@@ -653,7 +653,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
             </span>
             <button onClick={() => window.open(linkSheet.url, '_blank', 'noopener')} title="Im Browser öffnen" aria-label="Im Browser öffnen" style={{ border: 'none', background: 'var(--tm-surface2)', boxShadow: 'var(--tm-edge)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>↗</button>
           </div>
-          <iframe src={linkSheet.url} title={linkSheet.title || 'Link'} style={{ flex: 1, border: 'none', width: '100%', background: '#fff' }} />
+          <iframe src={linkSheet.url} title={linkSheet.title || 'Link'} style={{ flex: 1, border: 'none', width: '100%', background: 'var(--tm-card)' }} />
         </div>
       )}
       {syncing && <div className="tm-loadbar" aria-hidden="true" />}

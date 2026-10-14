@@ -237,6 +237,11 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     .eq('status', 'confirmed')
     .or(`check_in.eq.${tag},check_in.eq.${tag1},check_out.eq.${tag},check_out.eq.${tag1}`)
   const rows = ((bks ?? []) as BookingRow[]).filter(sichtbar)
+  // 🌙 Verlängerung (lib/zahlungen.ts): Die Zusatznächte sind eine eigene Buchung — der Übergang ist aber KEINE
+  // Ab-/Anreise (Gast bleibt, keine Reinigung). Ursprungsbuchung nicht als Abreise, Zusatzbuchung nicht als Anreise.
+  const verl = await import('@/lib/zahlungen').then((m) => m.verlaengerungsIndex()).catch(() => ({ urspruenge: new Set<string>(), zusaetze: new Set<string>() }))
+  const istAnreise = (b: BookingRow, t: string) => b.check_in === t && !verl.zusaetze.has(b.id)
+  const istAbreise = (b: BookingRow, t: string) => b.check_out === t && !verl.urspruenge.has(b.id)
   // Website-Gäste tragen den Namen im PROFIL, nicht auf der Buchung (wie die Inbox)
   const nameByGuest = new Map<string, string>()
   const guestIds = [...new Set(rows.filter((b) => !b.guest_name && b.guest_id).map((b) => b.guest_id as string))]
@@ -263,12 +268,12 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
     checkOutTime: (byId.get(b.listing_id)?.check_out_time ?? '10:00').slice(0, 5),
   })
   const byTitle = (a: HeuteStay, b: HeuteStay) => a.listingTitle.localeCompare(b.listingTitle, 'de')
-  const arrivals = rows.filter((b) => b.check_in === tag)
+  const arrivals = rows.filter((b) => istAnreise(b, tag))
   // 👋 Check-out-Erkennung (lib/checkout-detect.ts): „Gast hat sich im Chat abgemeldet" je Abreise.
   // Wird hier nur GESTARTET (läuft parallel zu den Anreise-Abfragen) und unten abgeholt. Klassifiziert
   // wird ausschließlich am heutigen Tag, hart auf 4 s begrenzt; andere Tage zeigen nur den gemerkten
   // Stand. Fail-soft: ohne Ergebnis bleibt es bei „bis HH:MM".
-  const departures = rows.filter((b) => b.check_out === tag)
+  const departures = rows.filter((b) => istAbreise(b, tag))
   const coPromise: Promise<Map<string, CheckoutEntry>> = (async () => {
     if (!departures.length || tag > heute) return new Map<string, CheckoutEntry>()
     const ids = departures.map((b) => b.id)
@@ -278,8 +283,8 @@ export async function buildHeute(auth: TaskAuth, tag: string, fresh = false): Pr
   })().catch(() => new Map<string, CheckoutEntry>())
   const vorschau = {
     tag: tag1,
-    anreisen: rows.filter((b) => b.check_in === tag1).map(toStay).sort(byTitle),
-    abreisen: rows.filter((b) => b.check_out === tag1).map(toStay).sort(byTitle),
+    anreisen: rows.filter((b) => istAnreise(b, tag1)).map(toStay).sort(byTitle),
+    abreisen: rows.filter((b) => istAbreise(b, tag1)).map(toStay).sort(byTitle),
   }
 
   /* Status-Signale je Anreise */

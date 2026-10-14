@@ -143,7 +143,7 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
         background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>📈 Entwicklung</h2>
       </div>
 

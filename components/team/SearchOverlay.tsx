@@ -112,7 +112,7 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
   const body = (
     <div className="team-shell" onClick={isDesktop ? onClose : undefined} style={{
       position: 'fixed', inset: 0, zIndex: 120,
-      background: isDesktop ? 'rgba(23,26,31,0.35)' : 'var(--tm-bg)',
+      background: isDesktop ? 'var(--tm-scrim)' : 'var(--tm-bg)',
       backdropFilter: isDesktop ? 'blur(6px)' : undefined, WebkitBackdropFilter: isDesktop ? 'blur(6px)' : undefined,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       paddingTop: isDesktop ? '10vh' : 'env(safe-area-inset-top)',

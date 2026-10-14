@@ -441,7 +441,7 @@ export default function OffenPanel({ visible, onCount }: {
       {toast && (
         <div style={{
           position: 'absolute', top: 64, left: '50%', transform: 'translateX(-50%)', zIndex: 60,
-          background: '#16293A', color: '#fff', fontSize: 12.5, fontWeight: 700,
+          background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 12.5, fontWeight: 700,
           borderRadius: 999, padding: '9px 18px', boxShadow: '0 6px 20px rgba(0,0,0,0.25)', whiteSpace: 'nowrap',
         }}>{toast}</div>
       )}
@@ -487,7 +487,7 @@ export default function OffenPanel({ visible, onCount }: {
                     fontSize: 10.5, fontWeight: 800, color: '#fff', borderRadius: 999, padding: '3px 9px',
                     background: PLATFORM_COLORS[platform] ?? '#8E8E93',
                   }}>{platform}</span>
-                  {current.guestStatus === 'current' && <span style={{ fontSize: 11, color: '#1B7A34', fontWeight: 700 }}>🟢 Vor Ort</span>}
+                  {current.guestStatus === 'current' && <span style={{ fontSize: 11, color: 'var(--tm-green)', fontWeight: 700 }}>🟢 Vor Ort</span>}
                 </div>
                 {/* §157: 📖 Gästemappen-Link */}
                 {current.mappeUrl && (
@@ -584,6 +584,7 @@ export default function OffenPanel({ visible, onCount }: {
                     style={{
                       width: '100%', boxSizing: 'border-box', borderRadius: 12, border: '1.5px solid var(--tm-line)',
                       padding: '9px 12px', fontSize: 16, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
+                      background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -599,7 +600,7 @@ export default function OffenPanel({ visible, onCount }: {
                     <button type="button" onClick={() => { setComposer(false); setDraft(''); setInstruction('') }} style={{
                       border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 14px', cursor: 'pointer',
                       background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700,
-                    }}>✕</button>
+                    }} aria-label="Schließen">✕</button>
                   </div>
                   {/* §157: Werkstatt — Anweisung tippen ODER 🎤 diktieren (wie im Chat) */}
                   <div style={{ display: 'flex', gap: 7, marginTop: 8, alignItems: 'center' }}>
@@ -619,6 +620,7 @@ export default function OffenPanel({ visible, onCount }: {
                       style={{
                         flex: 1, minWidth: 0, borderRadius: 999, border: recording ? '1.5px solid var(--tm-red)' : '1.5px solid var(--tm-line)',
                         padding: '9px 14px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
+                        background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                       }}
                     />
                     <button type="button" onClick={() => refine()} disabled={refining || !instruction.trim()} title="Anweisung ausführen" style={{
@@ -636,13 +638,16 @@ export default function OffenPanel({ visible, onCount }: {
                 <div style={{ padding: '11px 15px', boxShadow: 'inset 0 0.5px 0 var(--tm-line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Aufgaben-Titel" style={{
                     borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none',
+                    background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                   }} />
                   <textarea value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} rows={3} placeholder="Beschreibung" style={{
                     borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
+                    background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                   }} />
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <select value={taskPrio} onChange={(e) => setTaskPrio(e.target.value)} style={{
                       borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 10px', fontSize: 16, fontFamily: 'inherit', minWidth: 0,
+                      background: 'var(--tm-surface2)', color: 'var(--tm-text)',
                     }}>
                       <option value="hoch">🔴 Hoch</option>
                       <option value="mittel">🟡 Mittel</option>
@@ -655,26 +660,26 @@ export default function OffenPanel({ visible, onCount }: {
                     <button type="button" onClick={() => setTaskOpen(false)} style={{
                       border: '1.5px solid var(--tm-line)', borderRadius: 999, padding: '10px 13px', cursor: 'pointer',
                       background: 'var(--tm-card)', color: 'var(--tm-muted)', fontSize: 13, fontWeight: 700,
-                    }}>✕</button>
+                    }} aria-label="Schließen">✕</button>
                   </div>
                 </div>
               )}
 
               {/* Aktions-Leiste */}
               <div style={{ display: 'flex', gap: 7, padding: '11px 13px 13px' }}>
-                <button type="button" onClick={() => mark('no_reply')} style={actionBtn('#E8F6EC', '#1B7A34')}>
+                <button type="button" onClick={() => mark('no_reply')} style={actionBtn('var(--tm-green-soft)', 'var(--tm-green)')}>
                   <span style={{ fontSize: 18 }}>✓</span>Keine Antwort nötig
                 </button>
-                <button type="button" onClick={() => mark('phone')} style={actionBtn('#EAF1FE', '#1D5FD1')}>
+                <button type="button" onClick={() => mark('phone')} style={actionBtn('var(--tm-surface2)', 'var(--tm-blue)')}>
                   <span style={{ fontSize: 18 }}>📞</span>Telefonisch geklärt
                 </button>
-                <button type="button" onClick={() => (composer ? send() : suggest())} style={actionBtn('#12222E')}>
+                <button type="button" onClick={() => (composer ? send() : suggest())} style={actionBtn('var(--tm-navy)')}>
                   <span style={{ fontSize: 18 }}>✨</span>{composer ? 'Senden' : 'KI-Antwort'}
                 </button>
-                <button type="button" onClick={openTask} style={actionBtn('#F3EFFC', '#6D28D9')}>
+                <button type="button" onClick={openTask} style={actionBtn('var(--tm-accent-soft)', 'var(--tm-accent-dark)')}>
                   <span style={{ fontSize: 18 }}>📋</span>Aufgabe
                 </button>
-                <button type="button" onClick={() => dismiss('left', false)} style={actionBtn('rgba(118,118,128,0.10)', '#666')}>
+                <button type="button" onClick={() => dismiss('left', false)} style={actionBtn('var(--tm-fill)', 'var(--tm-muted)')}>
                   <span style={{ fontSize: 18 }}>⏭</span>Später
                 </button>
               </div>

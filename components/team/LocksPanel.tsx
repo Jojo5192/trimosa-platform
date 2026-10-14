@@ -97,7 +97,7 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>🔑 Türschlösser</div>
         <div style={{ flex: 1 }} />
         {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
@@ -176,7 +176,7 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
                       ) : (
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button onClick={() => setConfirmKey(null)} style={{ border: '1px solid var(--tm-line)', borderRadius: 999, padding: '8px 12px', fontSize: 13, background: 'var(--tm-card)', color: 'var(--tm-muted)', cursor: 'pointer' }}>Abbrechen</button>
-                          <button onClick={() => open(w.listingId, lock)} style={{ border: 'none', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#16A34A', color: '#fff', cursor: 'pointer' }}>Wirklich öffnen</button>
+                          <button onClick={() => open(w.listingId, lock)} style={{ border: 'none', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 700, background: 'var(--tm-green)', color: '#fff', cursor: 'pointer' }}>Wirklich öffnen</button>
                         </div>
                       )}
                     </div>

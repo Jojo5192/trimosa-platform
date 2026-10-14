@@ -43,3 +43,6 @@ next-env.d.ts
 # internal handoff doc — contains security posture details, infra IDs and
 # personal emails; this repo is public, keep this local-only
 HANDOFF.md
+
+# Audit-Berichte mit Sicherheitsdetails (wie HANDOFF.md nur lokal)
+docs/website-audit-*.md

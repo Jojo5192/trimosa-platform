@@ -52,7 +52,7 @@ import { sendPushToTeam } from '@/lib/push'
 /* ───────────── Feste Grenzen — nur hier im Code änderbar ───────────── */
 
 /** Erlaubte Kategorien. Alles andere wird NIE automatisch beantwortet. */
-export const AUTOREPLY_KATEGORIEN = ['wlan', 'parken', 'checkin_zeit', 'checkout_zeit', 'anfahrt', 'muell'] as const
+export const AUTOREPLY_KATEGORIEN = ['wlan', 'parken', 'checkin_zeit', 'checkout_zeit', 'anfahrt', 'muell', 'verlaengerung'] as const
 export const AUTOREPLY_GRENZEN = {
   schwelleMin: 85, schwelleMax: 100, schwelleDefault: 92,
   /** Tor für 'aktiv': so viele von Menschen bewertete Sende-Entscheidungen … */
@@ -315,6 +315,85 @@ function codeVeto(text: string, nurErnst = false): string | null {
     if (m) return `${v.grund} („${m[0].trim().slice(0, 30)}“)`
   }
   return null
+}
+
+/* ───────────── 🌙 Verlängerung (Pascal 6.10.2026, Inhaber-Entscheid 14.10.: automatisch über das Tor) ─────────────
+ * Eigener, DETERMINISTISCHER Weg: Die KI erkennt nur den Wunsch und die Zahl der Zusatznächte. Verfügbarkeit, Preis
+ * und Link rechnet der Code (lib/zahlungen.ts) — die Antwort ist ein fester Textbaustein ohne frei formulierte
+ * Beträge oder Zusagen. Ist die Wohnung belegt oder ist irgendetwas unklar, antwortet ein Mensch. */
+const VERL_HINWEIS = /verläng|länger bleiben|(eine|1|zwei|2|drei|3|weitere|noch eine?) (nacht|nächte) (mehr|länger|dran|bleiben|dazu)|extra (nacht|nächte|night)|zusätzliche (nacht|nächte)|extend|stay (longer|another|an extra|\d+ more)|(another|one more|extra|\d+ more) nights?|langer blijven|verlengen|nacht(en)? (langer|extra)|prolonger|rester (plus|encore)|nuits? suppl/i
+
+const SYS_VERL = `Du prüfst die Nachricht eines Ferienwohnungs-Gastes: Möchte er seinen laufenden Aufenthalt VERLÄNGERN (später abreisen, weitere Nächte bleiben)? Du beantwortest nichts.
+Du bekommst das bisherige Abreisedatum und das heutige Datum. Rechne Wochentage („bis Sonntag") in ein Datum um.
+Regeln:
+- "verlaengerung": true NUR, wenn der Gast ausdrücklich zusätzliche Nächte möchte bzw. fragt, ob er länger bleiben kann. Ein später Check-out am selben Tag (Uhrzeit) ist KEINE Verlängerung.
+- "zusatz_naechte": Zahl der zusätzlichen Nächte, wenn eindeutig genannt oder berechenbar, sonst null.
+- "neues_abreisedatum": neues Abreisedatum YYYY-MM-DD, wenn genannt oder berechenbar, sonst null.
+- "weitere_anliegen": true, wenn die Nachricht noch etwas anderes will (andere Wohnung, mehr Personen, Rabatt, Frage zu anderem Thema).
+- "ton": "neutral", "veraergert" oder "dringend".
+- "sicherheit": 0–100 — wie sicher du bei allen Feldern bist. Im Zweifel niedrig.
+Antworte AUSSCHLIESSLICH mit JSON:
+{"verlaengerung":false,"zusatz_naechte":null,"neues_abreisedatum":null,"weitere_anliegen":false,"ton":"neutral","sicherheit":0}`
+
+const WOCHENTAG_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+
+function tageZwischen(von: string, bis: string): number {
+  return Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000)
+}
+
+/** Urteil für einen Verlängerungswunsch — null = kein Verlängerungswunsch (normaler Weg). */
+async function bewerteVerlaengerung(k: {
+  gastDe: string; gastOriginal: string; verlaufGast: string; schwelle: number
+  booking?: { id: string; check_out: string; guest_name: string | null }
+}): Promise<Urteil | null> {
+  if (!k.booking || !VERL_HINWEIS.test(`${k.gastOriginal}\n${k.gastDe}`)) return null
+  const detail: Record<string, unknown> = { weg: 'verlaengerung' }
+  const nein = (grund: string, extra: Partial<Urteil> = {}): Urteil =>
+    ({ sendbar: false, kategorie: 'verlaengerung', konfidenz: null, entwurf: null, grund: grund.slice(0, 300), detail, ...extra })
+  // Ernste Themen (Beschwerde, Mangel, Notfall, Storno, Recht) sperren weiterhin — auch aus dem jüngsten Verlauf
+  const ernst = codeVeto(vetoText(`${k.gastOriginal}\n${k.gastDe}`), true) ?? (k.verlaufGast ? codeVeto(vetoText(k.verlaufGast), true) : null)
+  if (ernst) return nein(`Stichwort-Sperre: ${ernst}`)
+  // Zugang, Haustier/Zusatzausstattung, Personen: braucht einen Menschen
+  for (const v of VETO) {
+    if (!/^(Zugang|Haustier|Personen)/.test(v.grund)) continue
+    const m = vetoText(`${k.gastOriginal}\n${k.gastDe}`).match(v.re)
+    if (m) return nein(`Stichwort-Sperre: ${v.grund} („${m[0].trim().slice(0, 30)}“)`)
+  }
+  if (k.gastDe.length > 500) return nein('Nachricht zu lang für einen einfachen Verlängerungswunsch')
+
+  const heute = new Date().toISOString().slice(0, 10)
+  const o = parseObj(await askClaude(SYS_VERL,
+    `HEUTE: ${heute} (${WOCHENTAG_DE[new Date(`${heute}T12:00:00Z`).getUTCDay()]})\nBISHERIGE ABREISE: ${k.booking.check_out} (${WOCHENTAG_DE[new Date(`${k.booking.check_out}T12:00:00Z`).getUTCDay()]})\n\nNACHRICHT:\n${k.gastDe}`,
+    300, FAST_MODEL))
+  detail.verl = o
+  const sicher = pct(o?.sicherheit)
+  if (!o || sicher === null) return nein('Verlängerungs-Prüfung nicht lesbar')
+  if (o.verlaengerung !== true) return null // doch kein Verlängerungswunsch → normaler Weg entscheidet
+  if (o.weitere_anliegen !== false) return nein('Verlängerung plus weiteres Anliegen — Mensch soll antworten')
+  if (o.ton !== 'neutral') return nein(`Ton „${String(o.ton ?? '?').slice(0, 20)}“ – Mensch soll antworten`)
+  let n = typeof o.zusatz_naechte === 'number' && Number.isInteger(o.zusatz_naechte) ? o.zusatz_naechte : null
+  const neuBis = typeof o.neues_abreisedatum === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.neues_abreisedatum) ? o.neues_abreisedatum : null
+  const ausDatum = neuBis ? tageZwischen(k.booking.check_out, neuBis) : null
+  if (n === null && ausDatum !== null) n = ausDatum
+  if (n !== null && ausDatum !== null && n !== ausDatum) return nein('Nächte-Zahl und Datum widersprechen sich — Mensch soll antworten')
+  if (n === null) return nein('Zahl der Zusatznächte unklar — Mensch soll nachfragen')
+  if (n < 1 || n > 14) return nein(`Ungewöhnliche Verlängerung (${n} Nächte) — Mensch soll antworten`)
+  if (!(sicher >= k.schwelle)) return nein(`Konfidenz ${sicher} unter der Schwelle ${k.schwelle}`, { konfidenz: sicher })
+
+  const { verlaengerungAngebot, ladeBuchung, mappeUrl } = await import('@/lib/zahlungen')
+  const a = await verlaengerungAngebot(k.booking.id, n)
+  detail.angebot = a
+  if (!a.ok) return nein(`Verlängerung nicht möglich: ${a.grund ?? 'unbekannt'} — Mensch soll antworten`, { konfidenz: sicher })
+  const b = await ladeBuchung(k.booking.id)
+  const basis = b ? mappeUrl(b) : null
+  if (!basis) return nein('Keine Gästemappe zur Buchung — kein Zahllink möglich', { konfidenz: sicher })
+  const link = `${basis}?verlaengern=${a.naechte}#verlaengern`
+  const vorname = String(k.booking.guest_name ?? '').trim().split(/\s+/)[0]
+  const tag = WOCHENTAG_DE[new Date(`${a.bis}T12:00:00Z`).getUTCDay()]
+  // Fester Baustein: ganze Euro, Wochentag statt Datum (Übersetzungen ändern sonst Zahlenformate → Wächter sperrt),
+  // keine Frage, keine Zusage über das Angebot hinaus
+  const entwurf = `${vorname ? `Hallo ${vorname}, ` : 'Hallo, '}die Wohnung ist für ${a.naechte} ${a.naechte === 1 ? 'weitere Nacht' : 'weitere Nächte'} frei, du könntest also bis ${tag} bleiben. Die Verlängerung kostet ${Math.round(a.preis)} € und lässt sich hier direkt buchen und bezahlen: ${link}\nNach der Zahlung findest du den Türcode für die zusätzlichen Nächte in deiner Gästemappe.`
+  return { sendbar: true, kategorie: 'verlaengerung', konfidenz: sicher, entwurf, grund: 'Verlängerung verfügbar — fester Baustein mit Live-Preis', detail }
 }
 
 /* ───────────── Prompts — Konstanten im Code, NICHT über das Prompt-Studio änderbar ───────────── */
@@ -635,7 +714,8 @@ function uebersetzungsFehler(de: string, sent: string, lang: string, literals: s
   if (lang !== 'de') {
     const z = sent.match(UEBERSETZUNG_ZUSAGE)
     if (z) return `Übersetzung enthält eine Zusage/Ergänzung („${z[0]}“)`
-    if (/\?/.test(sent)) return 'Übersetzung enthält eine Rückfrage'
+    // Fragezeichen in Links (z. B. ?verlaengern=2) sind keine Rückfrage — Links sind oben schon auf Gleichheit geprüft
+    if (/\?/.test(sent.replace(/https?:\/\/\S+/g, ''))) return 'Übersetzung enthält eine Rückfrage'
   }
   return null
 }
@@ -673,10 +753,17 @@ function parseEntwurf(raw: string): Entwurf | null {
   }
 }
 
-async function bewerte(k: { gastDe: string; gastOriginal: string; verlauf: string; verlaufGast: string; facts: Facts; schwelle: number }): Promise<Urteil> {
+async function bewerte(k: {
+  gastDe: string; gastOriginal: string; verlauf: string; verlaufGast: string; facts: Facts; schwelle: number
+  booking?: { id: string; check_out: string; guest_name: string | null }
+}): Promise<Urteil> {
   const detail: Record<string, unknown> = {}
   const nein = (grund: string, extra: Partial<Urteil> = {}): Urteil =>
     ({ sendbar: false, kategorie: null, konfidenz: null, entwurf: null, grund: grund.slice(0, 300), detail, ...extra })
+
+  // 🌙 Verlängerungswunsch: eigener Weg mit festem Baustein (null = keiner → normaler Weg)
+  const verl = await bewerteVerlaengerung(k)
+  if (verl) return verl
 
   // Stufe 0 — Stichwort-Sperre auf Original UND deutscher Fassung, je auch in Umschrift (kein KI-Aufruf)
   const veto = codeVeto(vetoText(`${k.gastOriginal}\n${k.gastDe}`))
@@ -761,7 +848,7 @@ interface Kandidat {
   vorrang: string | null
 }
 
-const istNotiz = (m: { content: string | null }): boolean => String(m.content ?? '').trimStart().startsWith('☎️')
+const istNotiz = (m: { content: string | null }): boolean => /^(☎️|💶)/u.test(String(m.content ?? '').trimStart())
 /** Nur „Spalte gibt es (noch) nicht" gilt als fehlende Migration — jeder andere Fehler ist ein Fehler
  *  (fail-closed: ein vorübergehender DB-Fehler darf keine Sicherung still abschalten). */
 const spalteFehlt = (e: { code?: string | null } | null | undefined): boolean => e?.code === '42703' || e?.code === 'PGRST204'
@@ -1152,7 +1239,7 @@ export async function runAutoReply(): Promise<AutoReplyReport> {
         continue
       }
       const facts = buildFacts(c.booking, c.listing, pool, today)
-      const u = await bewerte({ gastDe, gastOriginal, verlauf: c.verlauf, verlaufGast: c.verlaufGast, facts, schwelle: settings.schwelle })
+      const u = await bewerte({ gastDe, gastOriginal, verlauf: c.verlauf, verlaufGast: c.verlaufGast, facts, schwelle: settings.schwelle, booking: { id: c.booking.id, check_out: c.booking.check_out, guest_name: c.booking.guest_name } })
 
       if (!u.sendbar || !u.entwurf) { await finish('abgelehnt', u.grund, u); report.abgelehnt++; continue }
       if (c.vorrang) { await finish('vorrang', `Mensch hat Vorrang: ${c.vorrang}`, u); report.vorrang++; continue }

@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     .filter((m) => (m.content ?? '').trim())
     // Interne Telefon-Einträge (§183/§189: Notizen UND aufgenommene
     // Telefonnachrichten) sind nur fürs Team — dem Gast nicht zeigen
-    .filter((m) => !String(m.content ?? '').startsWith('☎️'))
+    .filter((m) => !/^(☎️|💶)/u.test(String(m.content ?? '')))
     .map((m) => ({
       id: m.id, created_at: m.created_at, mine: m.mine,
       content: m.content_de || m.content, // deutsche Basis

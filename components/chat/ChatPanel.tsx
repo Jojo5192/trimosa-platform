@@ -9,6 +9,7 @@ import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, 
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import { isOffenThread, publishInboxThreads, INBOX_RELOAD_EVENT, type InboxThreadLite } from '@/lib/inbox-store'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
+import ZahllinkSheet from '@/components/chat/ZahllinkSheet'
 
 /** ☎️ §227d: Anruf-Eintrag für die Inline-Anzeige im Verlauf */
 interface InlineCall {
@@ -378,14 +379,15 @@ const ConvCard = memo(function ConvCard({ c, name, avatar, isSel, swipeOpen, can
     >
       {canSwipe && (
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, display: 'flex' }}>
-          <button onClick={() => api.mark(c, 'phone')} style={{
+          {/* Swipe-Aktion markiert nur (ruft nicht an) — Name wie die Knöpfe im Thread-Kopf */}
+          <button onClick={() => api.mark(c, 'phone')} aria-label={c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Als telefonisch geklärt markieren'} style={{
             width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
             background: c.phoneResolved ? '#8E8E93' : '#3478F6',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
           }}>
             📞<span style={{ fontSize: 9, fontWeight: 700 }}>{c.phoneResolved ? 'Zurück' : 'Telefonat'}</span>
           </button>
-          <button onClick={() => api.mark(c, 'no_reply')} style={{
+          <button onClick={() => api.mark(c, 'no_reply')} aria-label={c.noReplyNeeded ? 'Wieder als unbeantwortet zählen' : 'Als erledigt markieren'} style={{
             width: SWIPE_W / 2, border: 'none', cursor: 'pointer', color: '#fff',
             background: c.noReplyNeeded ? '#8E8E93' : '#34C759',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 17, padding: 0,
@@ -873,6 +875,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   }
   const [refining, setRefining] = useState(false)
   const [showGuestInfo, setShowGuestInfo] = useState(false)
+  // 💶 Zahllink-/Verlängerungs-Blatt (Pascal 5./6.10.) — öffnet aus der Gast-Info
+  const [zahlOpen, setZahlOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
 
   const bottomRef     = useRef<HTMLDivElement>(null)
@@ -2056,7 +2060,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               )}
               <span style={{ fontSize: 11, color: 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 {active.listing_title}
-                {dateRange && <span style={{ color: 'var(--gold-dark)', fontWeight: 600 }}> · {isMobile ? fmtRangeShort(active.check_in, active.check_out) : dateRange}</span>}
+                {dateRange && <span style={{ color: 'var(--tm-accent-dark, #715C1D)', fontWeight: 600 }}> · {isMobile ? fmtRangeShort(active.check_in, active.check_out) : dateRange}</span>}
               </span>
               {team && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -2161,13 +2165,35 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                   <button
                     onClick={() => { navigator.clipboard?.writeText(String(active.doorCode)); haptic() }}
                     title="Code kopieren"
+                    aria-label="Türcode kopieren"
                     style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--tm-muted)', padding: 0 }}
                   >⧉</button>
                 </div>
               )}
+              {/* 💶 Pascal 5.10.: Zahllink für Extras bzw. Verlängerung direkt hier bei den Gast-Infos */}
+              {(active.kind === 'booking' || active.bookingId) && active.guestStatus !== 'cancelled' && (
+                <button
+                  type="button"
+                  className="tm-press-btn"
+                  onClick={() => { haptic(); setZahlOpen(true) }}
+                  style={{
+                    alignSelf: 'flex-start', marginTop: 4, border: 'none', cursor: 'pointer', borderRadius: 999,
+                    padding: '7px 13px', fontSize: 12.5, fontWeight: 700,
+                    background: 'var(--tm-card, #fff)', color: 'var(--tm-text, #171a1f)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line, #e3e6ea)',
+                  }}
+                >💶 Zahllink · Verlängerung</button>
+              )}
             </div>
           )
         })()}
+        {team && zahlOpen && active && (active.kind === 'booking' ? active.id : active.bookingId) && (
+          <ZahllinkSheet
+            bookingId={String(active.kind === 'booking' ? active.id : active.bookingId)}
+            vorname={(partner(active) || 'Gast').trim().split(/\s+/)[0] || 'Gast'}
+            onInsert={(text) => { setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + text); setTimeout(() => taRef.current?.focus(), 50) }}
+            onClose={() => setZahlOpen(false)}
+          />
+        )}
         {sendError && (
           <div style={{
             padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5, flexShrink: 0,
@@ -2175,7 +2201,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <span style={{ flex: 1 }}>⚠️ {sendError}</span>
-            <button onClick={() => setSendError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>✕</button>
+            <button onClick={() => setSendError(null)} aria-label="Schließen" style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         )}
         {bookingHintFor === active?.id && (
@@ -2262,8 +2288,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                   <div key={ti} style={{
                                     alignSelf: tr.who === 'bot' ? 'flex-end' : 'flex-start',
                                     maxWidth: '88%',
-                                    background: tr.who === 'bot' ? '#3E6FA8' : 'var(--tm-card)',
-                                    color: tr.who === 'bot' ? '#fff' : 'var(--tm-text)',
+                                    // Text auf Blau = Kartenfarbe (im Dunkeln wird --tm-blue hell)
+                                    background: tr.who === 'bot' ? 'var(--tm-blue, #3E6FA8)' : 'var(--tm-card)',
+                                    color: tr.who === 'bot' ? 'var(--tm-card, #fff)' : 'var(--tm-text)',
                                     borderRadius: 12, padding: '6px 10px', fontSize: 12.5, lineHeight: 1.45,
                                   }}>{tr.text}</div>
                                 ))}
@@ -2299,6 +2326,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                       width: '100%', borderRadius: 10, border: '1px solid var(--tm-line)',
                                       padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
                                       resize: 'vertical', boxSizing: 'border-box',
+                                      // Kartenfarbe statt surface2: die Anruf-Karte selbst ist surface2
+                                      background: 'var(--tm-card, #fff)', color: 'var(--tm-text, #171A1F)',
                                     }}
                                   />
                                   <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
@@ -2307,8 +2336,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                       disabled={solBusy}
                                       style={{
                                         flex: 1, border: 'none', borderRadius: 10, padding: '9px 12px',
-                                        fontSize: 13, fontWeight: 700, background: solBusy ? '#BBF7D0' : '#16A34A',
-                                        color: '#fff', cursor: solBusy ? 'default' : 'pointer',
+                                        fontSize: 13, fontWeight: 700, background: solBusy ? 'var(--tm-green-soft, #BBF7D0)' : 'var(--tm-green, #16A34A)',
+                                        color: solBusy ? 'var(--tm-green, #16A34A)' : '#fff', cursor: solBusy ? 'default' : 'pointer',
                                       }}
                                     >{solBusy ? '⏳ Speichern…' : '✅ Lösung speichern'}</button>
                                     <button
@@ -2321,7 +2350,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                 <button
                                   onClick={() => { setSolFor(c.id); setSolText('') }}
                                   style={{
-                                    width: '100%', border: '1px dashed #9FD6B4', background: 'var(--tm-green-soft)',
+                                    width: '100%', border: '1px dashed var(--tm-green, #9FD6B4)', background: 'var(--tm-green-soft)',
                                     color: 'var(--tm-green)', borderRadius: 10, padding: '9px 12px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                                   }}
@@ -2335,7 +2364,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   <a href={`tel:${c.caller.replace(/[^\d+]/g, '')}`} style={{
                                     flex: '1 1 130px', textAlign: 'center', textDecoration: 'none',
-                                    background: '#2C5282', color: '#fff', borderRadius: 10,
+                                    background: 'var(--tm-navy, #2C5282)', color: '#fff', borderRadius: 10,
                                     padding: '9px 12px', fontSize: 13, fontWeight: 700,
                                   }}>📞 {c.caller}</a>
                                   <button onClick={() => { setCbFor(cbFor === c.id ? null : c.id); setCbNote(null) }} style={{
@@ -2355,6 +2384,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                         width: '100%', borderRadius: 10, border: '1px solid var(--tm-line)',
                                         padding: '8px 10px', fontSize: 16, fontFamily: 'inherit',
                                         resize: 'vertical', boxSizing: 'border-box',
+                                        // Kartenfarbe statt surface2: die Anruf-Karte selbst ist surface2
+                                        background: 'var(--tm-card, #fff)', color: 'var(--tm-text, #171A1F)',
                                       }}
                                     />
                                     <button
@@ -2363,8 +2394,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                       style={{
                                         marginTop: 6, width: '100%', border: 'none', borderRadius: 10,
                                         padding: '9px 12px', fontSize: 13, fontWeight: 700,
-                                        background: cbBusy || cbText.trim().length < 5 ? '#C9D9EF' : '#2C5282',
-                                        color: '#fff', cursor: cbBusy ? 'default' : 'pointer',
+                                        background: cbBusy || cbText.trim().length < 5 ? 'var(--tm-line, #C9D9EF)' : 'var(--tm-navy, #2C5282)',
+                                        color: cbBusy || cbText.trim().length < 5 ? 'var(--tm-muted, #8E8875)' : '#fff', cursor: cbBusy ? 'default' : 'pointer',
                                       }}
                                     >{cbBusy ? '⏳ Anruf wird gestartet…' : '📲 Jetzt zurückrufen lassen'}</button>
                                   </div>
@@ -2385,7 +2416,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                 // nicht zustellbare Nachrichten) — trägt das ☎️-Präfix, ist
                 // beim Gast ausgefiltert und darf im Team-Chat NICHT wie eine
                 // gesendete Nachricht aussehen.
-                if (team && String(msg.content ?? '').startsWith('☎️')) {
+                if (team && /^(☎️|💶)/u.test(String(msg.content ?? ''))) {
+                  // 💶 Zahlungs-Notizen (lib/zahlungen.ts) behalten ihr Symbol, ☎️ entfällt wie bisher
                   const body = String(msg.content).replace(/^☎️\s*/, '')
                   const istTest = /^TEST-Anruf|^NICHT ZUSTELLBAR/i.test(body)
                   return (
@@ -2393,10 +2425,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                       <div style={{
                         maxWidth: '86%', padding: '9px 13px', borderRadius: 12,
                         background: istTest ? 'var(--tm-yellow-soft)' : 'var(--tm-surface2)',
-                        border: `1px solid ${istTest ? '#E8CE96' : '#E2DED4'}`,
+                        border: `1px solid ${istTest ? 'var(--tm-line, #E8CE96)' : 'var(--tm-line, #E2DED4)'}`,
                         fontSize: 13, lineHeight: 1.45, color: 'var(--tm-muted)', whiteSpace: 'pre-wrap',
                       }}>
-                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, color: istTest ? '#A8791C' : '#8E8875', marginBottom: 4 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, color: istTest ? 'var(--tm-accent-dark, #A8791C)' : 'var(--tm-muted, #8E8875)', marginBottom: 4 }}>
                           {istTest ? '🧪 NUR INTERN — NICHT AN DEN GAST GESENDET' : '📋 INTERNE NOTIZ — der Gast sieht das nicht'}
                         </div>
                         {body}
@@ -2409,7 +2441,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                           return (
                             <a href={`tel:${num.replace(/[^\d+]/g, '')}`} style={{
                               display: 'inline-block', marginTop: 8, textDecoration: 'none',
-                              background: '#2C5282', color: '#fff', borderRadius: 9,
+                              background: 'var(--tm-navy, #2C5282)', color: '#fff', borderRadius: 9,
                               padding: '7px 12px', fontSize: 12.5, fontWeight: 700,
                             }}>📞 {num} anrufen</a>
                           )
@@ -2493,7 +2525,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                       {isLast && (
                         <span style={{ fontSize: 10.5, color: 'var(--tm-muted)', paddingLeft: isMe ? 0 : 3, paddingRight: isMe ? 3 : 0 }}>
                           {fmtMsgT(msg.created_at, uiLang)}
-                          {isMe && msg.read_at && <span style={{ color: 'var(--gold)', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
+                          {isMe && msg.read_at && <span style={{ color: 'var(--tm-accent, #AE8D2D)', marginLeft: 4, fontWeight: 700 }}>✓✓</span>}
                         </span>
                       )}
                     </div>
@@ -2803,11 +2835,14 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                 <button
                   onClick={() => { setDraft(''); setInstruction('') }}
                   title="Entwurf verwerfen"
+                  aria-label="Entwurf verwerfen"
                   style={{
-                    position: 'absolute', right: 8, bottom: 12, width: 22, height: 22,
-                    borderRadius: '50%', border: 'none', background: 'rgba(118,118,128,0.28)',
+                    // Tippfläche 32×32, sichtbarer Kreis bleibt 22×22 (Padding + backgroundClip) —
+                    // Mitte an derselben Stelle, liegt im 40-px-Innenabstand des Textfelds
+                    position: 'absolute', right: 3, bottom: 7, width: 32, height: 32, boxSizing: 'border-box',
+                    borderRadius: '50%', border: 'none', background: 'rgba(118,118,128,0.28)', backgroundClip: 'content-box',
                     color: '#fff', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5,
                   }}
                 >✕</button>
               </>

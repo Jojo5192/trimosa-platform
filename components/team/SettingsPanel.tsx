@@ -28,17 +28,21 @@ import { VORSCHAU_HINWEIS, VORSCHAU_NAME, VORSCHAU_ROLLEN, type VorschauRolle } 
 
 const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
 
-function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: () => void }) {
+// label = Zeilentitel: zugänglicher Name für VoiceOver (der Schalter selbst hat keinen Text)
+function Switch({ on, disabled, onChange, label }: { on: boolean; disabled?: boolean; onChange: () => void; label: string }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
       onClick={onChange}
       disabled={disabled}
-      aria-pressed={on}
       style={{
         width: 51, height: 31, borderRadius: 16, border: 'none', padding: 2, flexShrink: 0,
         // iOS-27-Runde: Spur „aus" als neutrales Grau (Token, bei „Kontrast erhöhen" kräftiger) —
         // var(--tm-surface2) war auf der Karte kaum zu sehen
-        background: on ? '#34C759' : 'var(--tm-switch-off)',
+        background: on ? 'var(--tm-green)' : 'var(--tm-switch-off)',
         opacity: disabled ? 0.45 : 1, cursor: disabled ? 'default' : 'pointer',
         // transform/filter 'none': der Schalter nimmt am globalen Druck-Feedback nicht teil
         // (sprang sonst ohne Übergang auf 97 %)
@@ -506,56 +510,56 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
           >
             {pushState === 'unknown'
               ? <span style={{ fontSize: 13, color: 'var(--tm-muted2)' }}>…</span>
-              : <Switch on={pushState === 'on'} disabled={pushState === 'unsupported' || busy} onChange={toggleDevice} />}
+              : <Switch label="Push auf diesem Gerät" on={pushState === 'on'} disabled={pushState === 'unsupported' || busy} onChange={toggleDevice} />}
           </Row>
           {role === 'team' && (
             <Row title="Neue Buchungen" subtitle="Buchungen & Anfragen aus allen Kanälen">
-              <Switch on={prefs?.bookings ?? true} disabled={!prefs} onChange={() => togglePref('bookings')} />
+              <Switch label="Neue Buchungen" on={prefs?.bookings ?? true} disabled={!prefs} onChange={() => togglePref('bookings')} />
             </Row>
           )}
           {role === 'team' && (
             <Row title="Gäste-Chats" subtitle="Neue Nachrichten von Gästen">
-              <Switch on={prefs?.guestChats ?? true} disabled={!prefs} onChange={() => togglePref('guestChats')} />
+              <Switch label="Gäste-Chats" on={prefs?.guestChats ?? true} disabled={!prefs} onChange={() => togglePref('guestChats')} />
             </Row>
           )}
           <Row title="Interne Gruppen" subtitle="Nachrichten aus Team-Gruppen" last={false}>
-            <Switch on={prefs?.teamChats ?? true} disabled={!prefs} onChange={() => togglePref('teamChats')} />
+            <Switch label="Interne Gruppen" on={prefs?.teamChats ?? true} disabled={!prefs} onChange={() => togglePref('teamChats')} />
           </Row>
           <Row title="✅ Aufgaben & QS" subtitle="Zuweisungen, Kommentare, Vorschläge, QS-Termine">
-            <Switch on={prefs?.tasks ?? true} disabled={!prefs} onChange={() => togglePref('tasks')} />
+            <Switch label="Aufgaben & QS" on={prefs?.tasks ?? true} disabled={!prefs} onChange={() => togglePref('tasks')} />
           </Row>
           <Row title="🧹 Reinigung" subtitle="Fertigmeldungen aus den Wohnungen">
-            <Switch on={prefs?.reinigung ?? true} disabled={!prefs} onChange={() => togglePref('reinigung')} />
+            <Switch label="Reinigung" on={prefs?.reinigung ?? true} disabled={!prefs} onChange={() => togglePref('reinigung')} />
           </Row>
           {role === 'team' && (
           <Row title="🛒 Material" subtitle="Bestellung fällig — Bedarf je Standort erreicht">
-            <Switch on={prefs?.material ?? true} disabled={!prefs} onChange={() => togglePref('material')} />
+            <Switch label="Material" on={prefs?.material ?? true} disabled={!prefs} onChange={() => togglePref('material')} />
           </Row>
           )}
           {role === 'team' && (
             <Row title="☎️ Anrufe" subtitle="Meldungen der Telefon-Assistentin (Bereitschaft)">
-              <Switch on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />
+              <Switch label="Anrufe" on={prefs?.calls ?? true} disabled={!prefs} onChange={() => togglePref('calls')} />
             </Row>
           )}
           <Row title="📺 TV-Boxen & TV-Server" subtitle="Ausfälle und Entwarnungen der TV-Systeme (Sweet Spot & Co.)">
-            <Switch on={prefs?.tv ?? true} disabled={!prefs} onChange={() => togglePref('tv')} />
+            <Switch label="TV-Boxen & TV-Server" on={prefs?.tv ?? true} disabled={!prefs} onChange={() => togglePref('tv')} />
           </Row>
           <Row title="🔧 System & Betrieb" subtitle="Türschlösser, Überbuchungen, Buchungs-Abgleich" last={!belegeOk && !wb}>
-            <Switch on={prefs?.system ?? true} disabled={!prefs} onChange={() => togglePref('system')} />
+            <Switch label="System & Betrieb" on={prefs?.system ?? true} disabled={!prefs} onChange={() => togglePref('system')} />
           </Row>
           {belegeOk && (
             <Row title="💶 Buchhaltung" subtitle="Neue Belege aus dem Mail-Scan (nur Admins)" last={!wb}>
-              <Switch on={prefs?.buchhaltung ?? true} disabled={!prefs} onChange={() => togglePref('buchhaltung')} />
+              <Switch label="Buchhaltung" on={prefs?.buchhaltung ?? true} disabled={!prefs} onChange={() => togglePref('buchhaltung')} />
             </Row>
           )}
           {wb && (
             <Row title="⚡ Ladevorgang gestartet" subtitle="Push, sobald ein Gast zu laden beginnt">
-              <Switch on={wb.pushStart} onChange={() => toggleWallboxPush('pushStart')} />
+              <Switch label="Ladevorgang gestartet" on={wb.pushStart} onChange={() => toggleWallboxPush('pushStart')} />
             </Row>
           )}
           {wb && (
             <Row title="⚡ Ladevorgang beendet" subtitle="Push mit kWh, Umsatz & Gewinn-Schätzung" last>
-              <Switch on={wb.pushEnd} onChange={() => toggleWallboxPush('pushEnd')} />
+              <Switch label="Ladevorgang beendet" on={wb.pushEnd} onChange={() => toggleWallboxPush('pushEnd')} />
             </Row>
           )}
         </div>
@@ -566,7 +570,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
         {pushState === 'unsupported' && (
           <div style={{
             margin: '14px 0 0', padding: '11px 14px', borderRadius: 12,
-            background: '#FEF9EC', border: '1px solid #F1E4BD', fontSize: 12.5, lineHeight: 1.55, color: 'var(--tm-accent-dark)',
+            background: 'var(--tm-accent-soft)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', fontSize: 12.5, lineHeight: 1.55, color: 'var(--tm-accent-dark)',
           }}>
             💡 Auf dem iPhone: <strong>trimosa.de/team</strong> in Safari öffnen → Teilen → „Zum Home-Bildschirm" — in der installierten App lässt sich Push hier aktivieren.
           </div>
@@ -579,7 +583,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
             <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
               {oncallPeople.map((p, i) => (
                 <Row key={p.id} title={p.name} subtitle={p.role} last={i === oncallPeople.length - 1}>
-                  <Switch on={oncallSel.includes(p.id)} onChange={() => toggleOncall(p.id)} />
+                  <Switch label={`Bereitschaft: ${p.name}`} on={oncallSel.includes(p.id)} onChange={() => toggleOncall(p.id)} />
                 </Row>
               ))}
             </div>

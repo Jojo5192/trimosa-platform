@@ -14,6 +14,7 @@ import MappeChat from '@/components/guide/MappeChat'
 import MappeInvoice, { type MappeInvoiceLabels, type MappeInvoiceRecipient } from '@/components/guide/MappeInvoice'
 import { SEV_ENGINE_STICHTAG, previewSevRecipient } from '@/lib/sevdesk-engine'
 import MappeNav, { type MappeNavItem } from '@/components/guide/MappeNav'
+import MappeVerlaengern, { type MappeVerlaengernLabels, type MappeVerlaengerung } from '@/components/guide/MappeVerlaengern'
 
 /**
  * 📖 Öffentliche Gästemappe — persönlicher, unguessbarer Link je Buchung
@@ -33,10 +34,10 @@ function fmtDate(iso: string | null): string {
 
 export default async function MappePage({ params, searchParams }: {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ lang?: string }>
+  searchParams: Promise<{ lang?: string; verlaengern?: string; verlaengert?: string }>
 }) {
   const { token } = await params
-  const { lang: langParam } = await searchParams
+  const { lang: langParam, verlaengern: verlParam, verlaengert: verlBezahlt } = await searchParams
   if (!/^[0-9a-f-]{36}$/i.test(token)) notFound()
 
   const h = await headers()
@@ -192,6 +193,30 @@ export default async function MappePage({ params, searchParams }: {
     }
   }
 
+  // 🌙 Verlängerung (Pascal 6.10., lib/zahlungen.ts): Angebot nur bis zur Abreise und nur für Wohnungen mit
+  // Smoobu-Anbindung; bestehende Verlängerungen samt eigenem Türcode der Zusatzbuchung immer zeigen
+  const verlMoeglich = !abgereist && booking.status === 'confirmed' && !!listing.smoobu_id
+  const verlBestehend: MappeVerlaengerung[] = []
+  try {
+    const { verlaengerungenVon } = await import('@/lib/zahlungen')
+    for (const v of await verlaengerungenVon(String(booking.id))) {
+      let code: string | null = null
+      if (v.extId) {
+        const { data: ext } = await supabaseAdmin.from('bookings').select('door_code, status').eq('id', v.extId).maybeSingle()
+        if (ext && ext.status !== 'cancelled') {
+          code = (ext.door_code as string | null) ?? null
+          if (!code && locksArr.length) { try { code = await ensureDoorCode(v.extId) } catch (e) { console.error('[mappe] verl-code:', e) } }
+          // TTLock-Keypads verlangen die Raute als Abschluss (nur Anzeige, wie beim Haupt-Code)
+          if (code && locksArr.some((l) => l.provider === 'ttlock')) code = `${code} #`
+          verlBestehend.push({ von: v.von, bis: v.bis, doorCode: code })
+        }
+      }
+    }
+  } catch (e) { console.error('[mappe] verlaengerungen:', e) }
+  const verlStartRoh = Number(verlParam)
+  const verlStart = Number.isFinite(verlStartRoh) && verlStartRoh >= 1 ? Math.min(14, Math.round(verlStartRoh)) : null
+  const verlZeigen = verlMoeglich || verlBestehend.length > 0 || verlBezahlt === '1'
+
   // Hat die Mappe (noch) keinen door-Block, wird er bei aktiver Türcode-
   // Automatik SYNTHETISCH eingefügt — sonst hätte der Code keinen Platz zum
   // Erscheinen (auch bei komplett leerer Mappe bekommt der Gast so den Code)
@@ -240,6 +265,26 @@ export default async function MappePage({ params, searchParams }: {
     contactTitle: 'Kontakt',
     navLabel: 'Kontakt & Chat',
   }
+  // 🌙 Verlängerung (Pascal 6.10.) — {n}/{datum} sind Platzhalter, die die Übersetzung stehen lässt
+  const VERL_DE: MappeVerlaengernLabels = {
+    navLabel: 'Verlängern',
+    title: 'Aufenthalt verlängern',
+    hint: 'Du möchtest länger bleiben? Wähle die Zahl der Nächte — wir prüfen sofort, ob die Wohnung frei ist, und du kannst direkt bezahlen.',
+    nights1: '{n} Nacht',
+    nightsN: '{n} Nächte',
+    check: 'Verfügbarkeit und Preis prüfen',
+    free: 'Frei:',
+    price: 'Preis:',
+    pay: 'Jetzt verlängern und bezahlen',
+    busy: 'Einen Moment…',
+    taken: 'Leider ist die Wohnung in diesem Zeitraum schon belegt. Schreib uns gern im Chat — vielleicht finden wir eine andere Lösung.',
+    error: 'Das hat gerade nicht geklappt — bitte versuche es noch einmal oder schreib uns im Chat.',
+    paidTitle: 'Danke — deine Zahlung ist eingegangen!',
+    paidHint: 'Wir tragen die Verlängerung gerade ein. Dein Türcode für die zusätzlichen Nächte erscheint gleich hier.',
+    extendedUntil: 'Verlängert bis {datum}',
+    newCode: 'Dein Türcode ab {datum}:',
+    newCodeLater: 'Dein Türcode für die zusätzlichen Nächte erscheint hier rechtzeitig.',
+  }
   const INV_DE: MappeInvoiceLabels = {
     navLabel: 'Rechnung',
     titleReady: 'Deine Rechnung',
@@ -265,10 +310,11 @@ export default async function MappePage({ params, searchParams }: {
   let ui = UI_DE
   let chatLabels = CHAT_DE
   let invLabels = INV_DE
+  let verlLabels = VERL_DE
   if (lang !== 'de') {
     const tr = await makeTr(lang, [
       ...collectGuideTexts(blocksAll), ...rules,
-      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE), ...Object.values(INV_DE),
+      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE), ...Object.values(INV_DE), ...Object.values(VERL_DE),
       ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
     blocks = translateBlocks(blocksAll, tr)
@@ -281,6 +327,7 @@ export default async function MappePage({ params, searchParams }: {
     ui = Object.fromEntries(Object.entries(UI_DE).map(([k, v]) => [k, tr(v)])) as typeof UI_DE
     chatLabels = Object.fromEntries(Object.entries(CHAT_DE).map(([k, v]) => [k, tr(v)])) as typeof CHAT_DE
     invLabels = Object.fromEntries(Object.entries(INV_DE).map(([k, v]) => [k, tr(v)])) as unknown as MappeInvoiceLabels
+    verlLabels = Object.fromEntries(Object.entries(VERL_DE).map(([k, v]) => [k, tr(v)])) as unknown as MappeVerlaengernLabels
   }
 
   // §136: Bausteine nach Aufenthalts-Phase + Mindest-Nächten filtern —
@@ -320,6 +367,7 @@ export default async function MappePage({ params, searchParams }: {
       default: break // text/warning/times/image ohne eigenen Chip
     }
   }
+  if (verlZeigen) navItems.push({ id: 'verlaengern', label: verlLabels.navLabel, icon: '🌙' })
   if (invoiceStatus) navItems.push({ id: 'mb-rechnung', label: invLabels.navLabel, icon: '🧾' })
   const hasChatBlock = blocks.some((b) => b.type === 'chat')
   if (!hasChatBlock) navItems.push({ id: 'mb-chat', label: chatLabels.navLabel, icon: '💬' })
@@ -368,6 +416,20 @@ export default async function MappePage({ params, searchParams }: {
         {hasRealContent
           ? <GuideBlocks blocks={blocksBefore} ctx={ctx} labels={labels} />
           : <p style={{ fontSize: 14, color: '#8A8065', lineHeight: 1.7 }}>{ui.fallback}</p>}
+        {/* 🌙 Aufenthalt verlängern (Pascal 6.10.) — Zahlung per Stripe, Zusatznächte als eigene Buchung */}
+        {verlZeigen && (
+          <div id="verlaengern" style={{ scrollMarginTop: 70, margin: '14px 0' }}>
+            <MappeVerlaengern
+              token={token}
+              lang={lang}
+              labels={verlLabels}
+              startNaechte={verlStart}
+              bezahlt={verlBezahlt === '1'}
+              bestehende={verlBestehend}
+              moeglich={verlMoeglich}
+            />
+          </div>
+        )}
         {/* 🧾 §266c: Rechnung — Download + Empfänger-Anpassung durch den Gast */}
         {invoiceStatus && (
           <div id="mb-rechnung" style={{ scrollMarginTop: 70, margin: '14px 0' }}>

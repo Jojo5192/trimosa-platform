@@ -28,6 +28,23 @@ export async function POST(req: NextRequest) {
   if (event.type === 'checkout.session.completed') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const session = event.data.object as any
+
+    // 💶 Zahllinks aus dem Gäste-Chat und Verlängerungen aus der Gästemappe (lib/zahlungen.ts) — VOR der
+    // Website-Buchungslogik: Zahllink-Sessions tragen kein bookingId-Metadatum (sonst 400 → Stripe wiederholt
+    // endlos), Verlängerungen dürfen die Ursprungsbuchung nicht als „bezahlt" überschreiben.
+    if (session.metadata?.kind === 'verlaengerung' || session.payment_link) {
+      try {
+        const { verbucheVerlaengerung, verbucheZahllink } = await import('@/lib/zahlungen')
+        const r = session.metadata?.kind === 'verlaengerung' ? await verbucheVerlaengerung(session) : await verbucheZahllink(session)
+        console.log('[Webhook] Zusatzzahlung:', session.metadata?.kind ?? 'zahllink', r, session.id)
+        // 'fehler' = nicht verbuchbar (Team ist per Push informiert) — trotzdem 200, eine Wiederholung hilft nicht
+        return NextResponse.json({ ok: true, zusatzzahlung: r })
+      } catch (err) {
+        console.error('[Webhook] Zusatzzahlung fehlgeschlagen:', session.id, err)
+        return NextResponse.json({ error: 'Zusatzzahlung nicht verbucht' }, { status: 500 })
+      }
+    }
+
     const bookingId = session.metadata?.bookingId
     const bookingType = session.metadata?.bookingType ?? 'request'
 
@@ -248,6 +265,9 @@ export async function POST(req: NextRequest) {
   if (event.type === 'checkout.session.expired') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const session = event.data.object as any
+    // ⚠️ Abgebrochene Verlängerung: metadata.bookingId ist die URSPRUNGSbuchung — die darf NIE storniert werden
+    // (Portal-Buchungen sind bei uns „unbezahlt" und fielen sonst unter die Verfalls-Regel unten)
+    if (session.metadata?.kind === 'verlaengerung' || session.payment_link) return NextResponse.json({ ok: true })
     const bookingId = session.metadata?.bookingId
     if (!bookingId) return NextResponse.json({ ok: true })
 

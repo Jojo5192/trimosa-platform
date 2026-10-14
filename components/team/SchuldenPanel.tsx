@@ -255,7 +255,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
         background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: NAVY, cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: NAVY, cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>🏦 Schuldenstand</h2>
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '4px 10px' }}>nur Chefs</span>
       </div>
@@ -442,7 +442,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
         {erster && aktuell && getilgt > 0 && (
           <div style={{ marginTop: 9 }}>
             <div style={{ height: 5, borderRadius: 3, background: 'var(--tm-surface2)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${Math.min(100, getilgtPct)}%`, background: '#16A34A', borderRadius: 3 }} />
+              <div style={{ height: '100%', width: `${Math.min(100, getilgtPct)}%`, background: 'var(--tm-green)', borderRadius: 3 }} />
             </div>
             <div style={{ fontSize: 11, color: 'var(--tm-muted)', marginTop: 4 }}>
               getilgt seit {fmtMonatLang(erster.monat)}: <b style={{ color: 'var(--tm-green)' }}>{eur0(getilgt)}</b> ({getilgtPct.toFixed(1).replace('.', ',')} %)
@@ -485,7 +485,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
                 sub={kond.vertrag ? 'aus Vertragsdaten' : fit?.exakt ? 'exakt erkannt' : 'geschätzt'} />
             )}
             {zeigZins && kond && aktuell && <Kpi label="Zinskosten p.a." value={'≈ ' + eur0(aktuell.restschuld * kond.zinsPa / 100)} sub="beim aktuellen Stand" />}
-            {tilgung12 != null && <Kpi label="Ø Tilgung / Monat" value={(fs ? '~ ' : '') + eur0(tilgung12)} sub={fs ? 'letzte 12 M. · teils fortgeschrieben' : 'letzte 12 Monate'} color="#16A34A" />}
+            {tilgung12 != null && <Kpi label="Ø Tilgung / Monat" value={(fs ? '~ ' : '') + eur0(tilgung12)} sub={fs ? 'letzte 12 M. · teils fortgeschrieben' : 'letzte 12 Monate'} color="var(--tm-green)" />}
             {projMonat && <Kpi label="Schuldenfrei ca." value={fmtMonatLang(projMonat)} sub={`bei gleichen Konditionen (~${Math.round((proj ?? 0) / 12)} J.)`} />}
             {k.zinsbindungBis && <Kpi label="Zinsbindung bis" value={fmtMonatLang(k.zinsbindungBis)} color="#B45309" />}
           </div>
@@ -516,7 +516,7 @@ function KreditKarte({ k, open, onToggle, patch, busy }: {
                 {k.verlauf.slice(-3).map((z) => (
                   <span key={z.monat} style={{ whiteSpace: 'nowrap', marginRight: 8 }}>
                     {fmtMonat(z.monat)} {eur2(z.restschuld)}
-                    <button disabled={busy} onClick={() => { if (confirm(`${fmtMonat(z.monat)} löschen?`)) void patch({ action: 'delete-monat', id: k.id, monat: z.monat }) }}
+                    <button disabled={busy} aria-label={`${fmtMonat(z.monat)} löschen`} onClick={() => { if (confirm(`${fmtMonat(z.monat)} löschen?`)) void patch({ action: 'delete-monat', id: k.id, monat: z.monat }) }}
                       style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontSize: 12, padding: '0 2px', opacity: busy ? 0.4 : 1 }}>✕</button>
                   </span>
                 ))}

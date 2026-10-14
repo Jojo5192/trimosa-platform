@@ -63,7 +63,7 @@ function TaskChips({ tasks, max = 3 }: { tasks: CalTask[]; max?: number }) {
       {shown.map((t) => (
         <button key={t.id} type="button" onClick={(e) => { e.stopPropagation(); openTask(t.id) }} style={{
           display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600,
-          padding: '3px 9px', borderRadius: 999, background: 'var(--tm-card)', color: '#4A4438',
+          padding: '3px 9px', borderRadius: 999, background: 'var(--tm-card)', color: 'var(--tm-muted)',
           boxShadow: 'inset 0 0 0 0.5px var(--tm-line)', border: 'none', cursor: 'pointer',
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: PRIO_DOT[t.prio] ?? '#9CA3AF', flexShrink: 0 }} />
@@ -282,10 +282,10 @@ export default function CalendarPanel() {
   }
 
   const EVENT_META = {
-    abreise: { icon: '↖', color: 'var(--tm-red)', bg: '#FFF7ED', tag: 'Abreise' },
+    abreise: { icon: '↖', color: 'var(--tm-red)', bg: 'var(--tm-red-soft)', tag: 'Abreise' },
     anreise: { icon: '↘', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'Anreise' },
-    aufgabe: { icon: '✓', color: 'var(--tm-accent-dark)', bg: '#FAF5E4', tag: 'Aufgabe fällig' },
-    qs: { icon: '🧾', color: '#0F766E', bg: '#EFFAF7', tag: 'QS-Termin' },
+    aufgabe: { icon: '✓', color: 'var(--tm-accent-dark)', bg: 'var(--tm-accent-soft)', tag: 'Aufgabe fällig' },
+    qs: { icon: '🧾', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)', tag: 'QS-Termin' },
   } as const
 
   /** Event-Karten (geteilt zwischen Agenda-Liste und Wochenblick). */
@@ -448,7 +448,7 @@ export default function CalendarPanel() {
                 </div>
                 <p style={{
                   fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                  color: selDay === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
+                  color: selDay === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
                   textTransform: 'uppercase', letterSpacing: '0.03em',
                 }}>{dayLabel(selDay, today)}</p>
                 {selEvents.length === 0 ? (
@@ -543,7 +543,7 @@ export default function CalendarPanel() {
             <div key={iso} style={{ marginBottom: 16 }}>
               <p style={{
                 fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                color: iso === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
+                color: iso === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
                 textTransform: 'uppercase', letterSpacing: '0.03em',
               }}>{dayLabel(iso, today)}</p>
               {renderEventCards(events)}

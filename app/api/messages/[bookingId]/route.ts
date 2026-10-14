@@ -189,7 +189,7 @@ export async function GET(
   // Interne Telefon-Einträge (§183/§189: Notizen UND aufgenommene
   // Telefonnachrichten) sind nur fürs Team — Gäste sehen sie nicht
   if (!isHost) {
-    out = out.filter((m) => !String(m.content ?? '').startsWith('☎️'))
+    out = out.filter((m) => !/^(☎️|💶)/u.test(String(m.content ?? '')))
     // 🤖 KI-Auto-Antworten (Phase 2): die Kennzeichnung ai_auto ist nur fürs Team
     out = out.map((m) => {
       const c = { ...m } as Record<string, unknown>

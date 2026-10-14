@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendPushToUser } from '@/lib/push'
 import { getTaskAuth, canSeeTask } from '@/lib/tasks'
+import { istReinigungsSource } from '@/lib/reinigung-routing-logik'
 
 /**
  * Kommentare zu einer Aufgabe (Team + Zugewiesene/Ersteller):
  *  GET  → Liste mit Autoren-Vornamen
  *  POST → { content } anlegen; pusht den Zugewiesenen (falls nicht selbst)
+ *         🧹 Reinigungs-Aufgaben (reinigung_frage/_mangel): kommentiert die Reinigung, bekommen zusätzlich
+ *         Admins/Gastgeber einen Push (Antwort-Rückweg, lib/reinigung-routing.ts)
  */
 export const dynamic = 'force-dynamic'
 const NO_STORE = { headers: { 'Cache-Control': 'no-store, must-revalidate' } }
@@ -72,6 +75,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // await Pflicht (§135): fire-and-forget stirbt nach dem Response-Return
     await sendPushToUser(assignee, `💬 Kommentar zu: ${access.task.title}`, content, '/team?tab=aufgaben', undefined, 'tasks')
       .catch((e) => console.error('[tasks] comment push:', e))
+  }
+
+  // 🧹 Reinigungs-Weiterleitung: Antwortet die Reinigung auf eine weitergeleitete Gast-Frage (bzw. meldet sich zu
+  // einem Mangel), erfahren es Admins/Gastgeber — die Antwort an den Gast schreibt weiterhin das Team im Gäste-Chat.
+  // Nur diese Sources; für alle anderen Aufgaben bleibt es beim Push an den Zugewiesenen oben.
+  if (istReinigungsSource(access.task.source) && (access.auth.role !== 'admin' || assignee === access.auth.userId)) {
+    const { meldeReinigungsAntwort } = await import('@/lib/reinigung-routing')
+    await meldeReinigungsAntwort(access.task, content, access.auth.userId)
+      .catch((e) => console.error('[tasks] reinigung answer push:', e))
   }
 
   return NextResponse.json({ ok: true, id: comment.id }, NO_STORE)

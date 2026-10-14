@@ -17,3 +17,15 @@ export async function darfKonversation(
     .from('profiles').select('is_admin, is_host, is_staff').eq('id', userId).maybeSingle()
   return !!(me?.is_admin || me?.is_host || me?.is_staff)
 }
+
+/** Angemeldeter Nutzer mit Team-Rolle (Admin/Gastgeber/Mitarbeiter) — für Zahllinks/Verlängerungs-Angebote aus dem Chat. */
+export async function teamNutzer(): Promise<{ id: string; vorname: string } | null> {
+  const { createSupabaseServerClient } = await import('@/lib/supabase-server')
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: me } = await supabaseAdmin
+    .from('profiles').select('is_admin, is_host, is_staff, display_name').eq('id', user.id).maybeSingle()
+  if (!(me?.is_admin || me?.is_host || me?.is_staff)) return null
+  return { id: user.id, vorname: String(me?.display_name ?? '').trim().split(/\s+/)[0] || 'Team' }
+}

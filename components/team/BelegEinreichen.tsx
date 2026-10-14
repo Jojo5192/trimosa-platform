@@ -99,7 +99,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>🧾 Beleg einreichen</div>
         <div style={{ flex: 1 }} />
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 700, borderRadius: 999, padding: '6px 13px', cursor: 'pointer' }}>✕</button>
+        <button onClick={onClose} aria-label="Schließen" style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 700, borderRadius: 999, padding: '6px 13px', cursor: 'pointer' }}>✕</button>
       </header>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 16px calc(30px + env(safe-area-inset-bottom))' }}>

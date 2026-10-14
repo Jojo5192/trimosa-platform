@@ -106,7 +106,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⚡ Wallbox</div>
         <div style={{ flex: 1 }} />
         {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
@@ -128,7 +128,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
             {tile('Ladungen', String(done.length))}
             {tile('Energie', `${kwhF(sumKwh)} kWh`)}
             {tile('Umsatz', eur(sumRev))}
-            {tile('Gewinn ~', eur(sumProfit), sumProfit >= 0 ? '#16A34A' : '#DC2626')}
+            {tile('Gewinn ~', eur(sumProfit), sumProfit >= 0 ? 'var(--tm-green)' : 'var(--tm-red)')}
           </div>
           <div style={{ fontSize: 11, color: 'var(--tm-muted)', margin: '-6px 4px 16px' }}>
             Summen über die {charges.length} geladenen Vorgänge · Gewinn = Umsatz − Stromkosten (aus click2charge)

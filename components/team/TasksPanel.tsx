@@ -70,18 +70,19 @@ type ListingOpt = { id: string; title: string }
 const HAIR = '0.5px solid var(--tm-line)'
 // §243ag Apple-Redesign: iOS-Systemfarben als dezente Tints statt knalliger
 // Web-Chips; die Priorität wird zusätzlich als Reminders-Punkt vor dem Titel
-// gezeigt (PRIO_DOT)
-const PRIO_DOT: Record<string, string> = { hoch: '#FF3B30', mittel: '#FF9F0A', niedrig: '#C7C7CC' }
+// gezeigt (PRIO_DOT). Orange Flächen tragen --tm-accent-dark als Text:
+// --tm-yellow ist auf hellem Grund zu schwach (2,9:1)
+const PRIO_DOT: Record<string, string> = { hoch: 'var(--tm-red)', mittel: 'var(--tm-yellow)', niedrig: 'var(--tm-muted2)' }
 const PRIO_META: Record<string, { label: string; color: string; bg: string }> = {
-  hoch: { label: 'Hoch', color: 'var(--tm-red)', bg: 'rgba(255,59,48,0.12)' },
-  mittel: { label: 'Mittel', color: 'var(--tm-red)', bg: 'rgba(255,159,10,0.15)' },
+  hoch: { label: 'Hoch', color: 'var(--tm-red)', bg: 'var(--tm-red-soft)' },
+  mittel: { label: 'Mittel', color: 'var(--tm-accent-dark)', bg: 'var(--tm-yellow-soft)' },
   niedrig: { label: 'Niedrig', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
 }
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   vorschlag: { label: 'Vorschlag', color: 'var(--tm-purple)', bg: 'rgba(109,40,217,0.10)' },
-  offen: { label: 'Offen', color: '#5B5E66', bg: 'var(--tm-surface2)' },
-  in_arbeit: { label: 'In Arbeit', color: 'var(--tm-red)', bg: 'rgba(255,159,10,0.15)' },
-  erledigt: { label: 'Erledigt', color: '#248A3D', bg: 'rgba(52,199,89,0.15)' },
+  offen: { label: 'Offen', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
+  in_arbeit: { label: 'In Arbeit', color: 'var(--tm-accent-dark)', bg: 'var(--tm-yellow-soft)' },
+  erledigt: { label: 'Erledigt', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)' },
   verworfen: { label: 'Verworfen', color: 'var(--tm-muted)', bg: 'var(--tm-surface2)' },
 }
 const CHIP: CSSProperties = {
@@ -387,10 +388,10 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
         <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{error}</span>
           <button onClick={() => { setLoading(true); setError(null); load() }} style={{
-            border: 'none', background: '#B91C1C', color: '#fff', borderRadius: 999,
+            border: 'none', background: 'var(--tm-red)', color: '#fff', borderRadius: 999,
             padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
           }}>Erneut laden</button>
-          <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+          <button onClick={() => setError(null)} aria-label="Schließen" style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
 
@@ -440,7 +441,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
               {suggestions.map((t) => (
                 <div key={t.id} style={{
                   background: 'var(--tm-surface2)', borderRadius: 16, padding: '13px 15px',
-                  boxShadow: 'inset 0 0 0 1px #DDD0F5',
+                  boxShadow: 'inset 0 0 0 1px var(--tm-line)',
                 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-text)', margin: 0 }}>{t.title}</p>
                   {t.description && (
@@ -454,14 +455,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                     <span style={{
                       fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
                       background: t.source === 'qs' ? 'var(--tm-green-soft)' : 'var(--tm-surface2)',
-                      color: t.source === 'qs' ? '#0F766E' : '#6D28D9',
+                      color: t.source === 'qs' ? 'var(--tm-green)' : 'var(--tm-purple)',
                     }}>
                       {t.source === 'qs' ? '🧾 aus QS-Protokoll' : t.source === 'ki_bewertung' ? 'aus Bewertung' : 'aus Nachricht'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                     <button onClick={() => setEditing({ ...t, status: 'offen' })} style={{
-                      flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: '#16A34A',
+                      flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green)',
                       color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}>✓ Annehmen</button>
                     <button onClick={() => discardSuggestion(t)} style={{
@@ -508,7 +509,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 {/* §243ag: Prio als Reminders-Punkt (rot/orange/grau) */}
                 <span title={`Priorität: ${prio.label}`} style={{
                   width: 10, height: 10, borderRadius: '50%', flexShrink: 0, marginTop: 5,
-                  background: done ? '#C7C7CC' : (PRIO_DOT[t.prio] ?? PRIO_DOT.mittel),
+                  background: done ? 'var(--tm-muted2)' : (PRIO_DOT[t.prio] ?? PRIO_DOT.mittel),
                 }} />
                 <span style={{ fontSize: 15, fontWeight: 650, color: 'var(--tm-text)', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
                   {t.title}
@@ -541,7 +542,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 {t.due_date && (
                   <span style={{
                     ...CHIP, fontWeight: 700,
-                    ...(overdue ? { background: '#FF3B30', color: '#fff' } : {}),
+                    ...(overdue ? { background: 'var(--tm-red)', color: '#fff' } : {}),
                   }}>
                     {overdue ? `⚠︎ seit ${fmtDate(t.due_date)}` : `bis ${fmtDate(t.due_date)}`}
                   </span>
@@ -599,12 +600,12 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                   {t.status === 'offen' && (
                     <button onClick={() => providerStatus(t, 'in_arbeit')} style={{
-                      flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'rgba(255,159,10,0.15)',
-                      color: 'var(--tm-red)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                      flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'var(--tm-yellow-soft)',
+                      color: 'var(--tm-accent-dark)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                     }}>▶ In Arbeit</button>
                   )}
                   <button onClick={() => setCompleting(t)} style={{
-                    flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: '#34C759',
+                    flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green)',
                     color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                   }}>✓ Erledigt</button>
                 </div>
@@ -627,7 +628,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       {(manage || createOwn) && filter !== 'vorschlaege' && (
         <button className="tm-press-btn" onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'absolute', right: 18, bottom: 'calc(var(--tm-nav-pad) + 6px)', width: 54, height: 54, borderRadius: '50%',
-          border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
+          border: 'none', background: 'var(--tm-accent)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 0 0 0.5px rgba(0,0,0,0.18), 0 6px 16px rgba(23,26,31,0.2)',
         }}>+</button>
@@ -700,7 +701,7 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
             color: 'var(--tm-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>Abbrechen</button>
           <button onClick={() => onDone(note)} style={{
-            flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: '#16A34A',
+            flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: 'var(--tm-green)',
             color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}>✓ Erledigt melden</button>
         </div>
@@ -763,10 +764,10 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') send() }}
           placeholder="Kommentar schreiben…"
-          style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid var(--tm-line)', fontSize: 13, background: 'var(--tm-card)' }} />
-        <button onClick={send} disabled={sending || !text.trim()} style={{
+          style={{ flex: 1, minWidth: 0, padding: '9px 12px', borderRadius: 999, border: '1px solid var(--tm-line)', fontSize: 13, background: 'var(--tm-card)', color: 'var(--tm-text)' }} />
+        <button onClick={send} disabled={sending || !text.trim()} aria-label="Senden" style={{
           width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: text.trim() ? 'var(--tm-navy)' : '#D1D5DB',
+          background: text.trim() ? 'var(--tm-navy)' : 'var(--tm-muted2)',
           color: '#fff', fontSize: 15, fontWeight: 700, cursor: text.trim() ? 'pointer' : 'default',
         }}>↑</button>
       </div>
@@ -1013,15 +1014,15 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={p.url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
                     </button>
-                    <button type="button" onClick={async () => {
+                    <button type="button" aria-label="Foto löschen" onClick={async () => {
                       const res = await fetch(`/api/tasks/${task.id}/photos`, {
                         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url: p.url }),
                       })
                       if (res.ok) setPhotos((ps) => ps.filter((x) => x.url !== p.url))
                     }} style={{
-                      position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
-                      border: 'none', background: '#B91C1C', color: '#fff', fontSize: 11, fontWeight: 700,
+                      position: 'absolute', top: -8, right: -8, width: 28, height: 28, borderRadius: '50%',
+                      border: 'none', background: 'var(--tm-red)', color: '#fff', fontSize: 12, fontWeight: 700,
                       cursor: 'pointer', lineHeight: 1,
                     }}>✕</button>
                   </div>
@@ -1311,8 +1312,9 @@ function CallCard({ task, onDone, onError }: {
         {phone && (
           <button onClick={openCall} style={{
             ...goldBtn,
-            background: callOpen ? '#1D4ED8' : 'var(--tm-surface2)',
-            color: callOpen ? '#fff' : '#1D4ED8',
+            // Text auf Blau = Kartenfarbe: hell weiß, im Dunkeln dunkel (--tm-blue wird dort hell)
+            background: callOpen ? 'var(--tm-blue)' : 'var(--tm-surface2)',
+            color: callOpen ? 'var(--tm-card)' : 'var(--tm-blue)',
           }}>🤖 KI ruft zurück</button>
         )}
         <button onClick={openDone} style={{ ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-muted)' }}>✓ Erledigt</button>
@@ -1328,7 +1330,7 @@ function CallCard({ task, onDone, onError }: {
                 <div key={i} style={{
                   borderRadius: 11, padding: '9px 11px', cursor: 'pointer',
                   background: selected === i ? 'rgba(174,141,45,0.1)' : 'var(--tm-surface2)',
-                  boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--tm-accent)' : 'inset 0 0 0 1px #ECECEC',
+                  boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--tm-accent)' : 'inset 0 0 0 1px var(--tm-line)',
                 }} onClick={() => setSelected(selected === i ? null : i)}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <span style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
@@ -1374,7 +1376,7 @@ function CallCard({ task, onDone, onError }: {
                 placeholder="Eigene Lösung / Anweisung…"
                 style={{ flex: 1, minWidth: 0, border: '1px solid var(--tm-line)', borderRadius: 10, padding: '8px 11px', fontSize: 16, color: 'var(--tm-text)', background: 'var(--tm-card)' }}
               />
-              <button onClick={() => instruction.trim() && fetchOptions(instruction.trim())} disabled={loadingAi} style={{
+              <button onClick={() => instruction.trim() && fetchOptions(instruction.trim())} disabled={loadingAi} aria-label="Anweisung ausführen" style={{
                 width: 34, height: 34, borderRadius: 999, border: 'none', flexShrink: 0,
                 background: 'var(--tm-navy)', color: '#fff', cursor: 'pointer', fontSize: 15,
               }}>✨</button>
@@ -1417,10 +1419,10 @@ function CallCard({ task, onDone, onError }: {
           <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
             {!callResult && (
               <button onClick={startBotCall} disabled={callBusy || !callText.trim()} style={{
-                ...goldBtn, background: '#1D4ED8', color: '#fff', opacity: callBusy || !callText.trim() ? 0.5 : 1,
+                ...goldBtn, background: 'var(--tm-blue)', color: 'var(--tm-card)', opacity: callBusy || !callText.trim() ? 0.5 : 1,
               }}>{callBusy ? '⏳ Startet…' : '📞 Anruf starten'}</button>
             )}
-            <button onClick={() => setCallOpen(false)} style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
+            <button onClick={() => setCallOpen(false)} aria-label="Schließen" style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
           </div>
         </div>
       )}
@@ -1455,12 +1457,12 @@ function CallCard({ task, onDone, onError }: {
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
             <button onClick={() => saveDone(true)} disabled={doneBusy || !doneText.trim()} style={{
-              ...goldBtn, background: '#166534', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
+              ...goldBtn, background: 'var(--tm-green)', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
             }}>💾 Speichern & Erledigt</button>
             <button onClick={() => { if (confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) saveDone(false) }} disabled={doneBusy} style={{
               ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-muted)',
             }}>Ohne Lösung</button>
-            <button onClick={() => setDoneOpen(false)} style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
+            <button onClick={() => setDoneOpen(false)} aria-label="Schließen" style={{ ...goldBtn, background: 'none', color: 'var(--tm-muted)' }}>✕</button>
           </div>
         </div>
       )}

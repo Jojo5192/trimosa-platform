@@ -39,6 +39,7 @@ interface Daten {
 
 const KAT: Record<string, string> = {
   wlan: 'WLAN', parken: 'Parken', checkin_zeit: 'Check-in-Zeit', checkout_zeit: 'Check-out-Zeit',
+  verlaengerung: 'Verlängerung',
   anfahrt: 'Anfahrt', muell: 'Müll', sperre: 'Stichwort-Sperre',
 }
 /** Entscheidungen mit inhaltlich freigegebenem Entwurf — nur sie zählen für das Tor */
@@ -271,7 +272,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
               {/* ── Sicherungen ── */}
               <div style={LABEL}>Feste Sicherungen</div>
               <div style={{ ...CARD, fontSize: 12.5, color: 'var(--tm-muted)', lineHeight: 1.6 }}>
-                Nur einfache Fragen zu <strong style={{ color: 'var(--tm-text)' }}>WLAN, Parken, Check-in-/Check-out-Zeit, Anfahrt und Müll</strong> – und nur, wenn jede Aussage in den Buchungs-/Wohnungsdaten oder der Gästemappe steht.
+                Nur einfache Fragen zu <strong style={{ color: 'var(--tm-text)' }}>WLAN, Parken, Check-in-/Check-out-Zeit, Anfahrt und Müll</strong> – und nur, wenn jede Aussage in den Buchungs-/Wohnungsdaten oder der Gästemappe steht. Dazu <strong style={{ color: 'var(--tm-text)' }}>Verlängerungswünsche</strong>: nur mit eindeutiger Nächte-Zahl und nur, wenn die Wohnung frei ist – Preis und Zahllink rechnet die App, der Text ist ein fester Baustein.
                 Nie bei Geld, Rechnung, Storno, Änderungen, Beschwerden, Mängeln, Notfällen, Tür/Türcode/Schlüssel oder Sonderwünschen – und nie, wenn der Gast eine Zahl, Uhrzeit, Tageszeit oder einen Wochentag nennt.
                 Der Mensch hat Vorrang: keine Auto-Antwort, wenn die Nachricht jünger als {d.grenzen.minAlterMin} Minuten oder älter als {d.grenzen.maxAlterStd} Stunden ist oder dem Team noch keine {d.grenzen.minAlterMin} Minuten in der App sichtbar war, das Team den Thread geöffnet, schon geantwortet oder in den 75 Minuten davor geschrieben hat (das gilt für jede der unbeantworteten Gast-Nachrichten, nicht nur die letzte), bei mehr als 4 Gast-Nachrichten in Folge, außerhalb {d.grenzen.stundeVon}–{d.grenzen.stundeBis} Uhr, bei stummgeschalteten Buchungen – und höchstens {d.grenzen.maxProThreadTag} Auto-Antwort je Thread und Tag.
               </div>

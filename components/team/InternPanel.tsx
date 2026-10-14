@@ -656,7 +656,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                   type="checkbox"
                   checked={selected.has(d.id)}
                   onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n })}
-                  style={{ width: 17, height: 17, accentColor: '#12222E' }}
+                  style={{ width: 17, height: 17, accentColor: 'var(--tm-navy)' }}
                 />
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', flex: 1 }}>{d.name}</span>
                 <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{d.role}</span>
@@ -795,7 +795,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: HAIR, flexShrink: 0, background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
         {isMobile && (
-          <button onClick={() => setMobileView('list')} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', flexShrink: 0, fontSize: 15 }}>‹</button>
+          <button onClick={() => setMobileView('list')} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', flexShrink: 0, fontSize: 15 }}>‹</button>
         )}
         {/* Tap auf Emoji/Name → Gruppen-Info (umbenennen, Mitglieder, Medien) */}
         <button onClick={() => setShowInfo(true)} style={{
@@ -933,7 +933,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                               cursor: q ? 'pointer' : 'default', fontFamily: 'inherit',
                               margin: m.attachmentUrl && !m.content ? '2px 2px 4px' : '0 0 6px',
                               padding: '5px 9px', borderRadius: 10,
-                              background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.055)',
+                              background: mine ? 'rgba(255,255,255,0.18)' : 'var(--tm-fill)',
                               borderLeft: `3px solid ${mine ? 'rgba(255,255,255,0.65)' : 'var(--tm-accent)'}`,
                             }}>
                             <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: mine ? 'rgba(255,255,255,0.9)' : 'var(--tm-accent-dark)' }}>
@@ -941,7 +941,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                             </span>
                             <span style={{
                               display: 'block', fontSize: 12, lineHeight: 1.35,
-                              color: mine ? 'rgba(255,255,255,0.85)' : '#55524A',
+                              color: mine ? 'rgba(255,255,255,0.85)' : 'var(--tm-muted)',
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 230,
                             }}>{q ? msgLabel(q).slice(0, 120) : 'Ursprüngliche Nachricht'}</span>
                           </button>
@@ -987,7 +987,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                     </div>
                     </div>
                     {lastOfRun && (
-                      <div style={{ fontSize: 10, color: '#B5B0A6', margin: mine ? '3px 4px 0 0' : '3px 0 0 4px', textAlign: mine ? 'right' : 'left' }}>
+                      <div style={{ fontSize: 10, color: 'var(--tm-muted2)', margin: mine ? '3px 4px 0 0' : '3px 0 0 4px', textAlign: mine ? 'right' : 'left' }}>
                         {new Date(m.createdAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     )}
@@ -1070,7 +1070,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: 'var(--tm-navy)', flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ display: 'block', fontSize: 11, fontWeight: 800, color: 'var(--tm-accent-dark)' }}>Antwort an {replyTo.senderName}</span>
-            <span style={{ display: 'block', fontSize: 12.5, color: '#55524A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ display: 'block', fontSize: 12.5, color: 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {msgLabel(replyTo).slice(0, 120)}
             </span>
           </span>
@@ -1128,10 +1128,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         {!draft.trim() && (
           <button onClick={startRec} disabled={uploading} title="Sprachnachricht aufnehmen" style={{
             width: 34, height: 34, borderRadius: '50%', border: 'none', flexShrink: 0, padding: 0,
-            background: 'var(--tm-surface2)', cursor: 'pointer',
+            background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A8578" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
             </svg>
           </button>
@@ -1265,7 +1265,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>Gruppen-Info</div>
       </div>
 
@@ -1275,14 +1275,14 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
           {editName ? (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
               <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4}
-                style={{ width: 56, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 18, background: 'var(--tm-card)' }} />
+                style={{ width: 56, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 18, background: 'var(--tm-card)', color: 'var(--tm-text)' }} />
               <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
-                style={{ flex: '1 1 160px', maxWidth: 260, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 15, fontWeight: 700, background: 'var(--tm-card)', outline: 'none' }} />
+                style={{ flex: '1 1 160px', maxWidth: 260, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 15, fontWeight: 700, background: 'var(--tm-card)', color: 'var(--tm-text)', outline: 'none' }} />
               <button onClick={saveName} disabled={saving || !name.trim()} style={{
                 padding: '10px 16px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,
                 background: 'var(--tm-navy)', color: '#fff', cursor: 'pointer',
               }}>{saving ? '…' : 'OK'}</button>
-              <button onClick={() => { setEditName(false); setName(chat.name); setEmoji(chat.emoji) }} style={{ border: 'none', background: 'none', color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>✕</button>
+              <button onClick={() => { setEditName(false); setName(chat.name); setEmoji(chat.emoji) }} aria-label="Umbenennen abbrechen" style={{ border: 'none', background: 'none', color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>✕</button>
             </div>
           ) : (
             <>
@@ -1307,7 +1307,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
                 <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={selected.has(d.id)}
                     onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n })}
-                    style={{ width: 17, height: 17, accentColor: '#12222E' }} />
+                    style={{ width: 17, height: 17, accentColor: 'var(--tm-navy)' }} />
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', flex: 1 }}>{d.name}</span>
                   <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{d.role}</span>
                 </label>
@@ -1327,7 +1327,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
           ) : (
             <>
               {chat.members.map((m, i) => (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 13px', boxShadow: i < chat.members.length - 1 ? `inset 0 -0.5px 0 rgba(60,60,67,0.12)` : 'none' }}>
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 13px', boxShadow: i < chat.members.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none' }}>
                   <Av name={m.name} src={m.avatar} size={30} />
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--tm-text)' }}>{m.name}{m.id === userId ? ' (du)' : ''}</span>
                 </div>

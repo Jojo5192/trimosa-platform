@@ -228,7 +228,7 @@ export default function OccupancyGrid({ stays, listings }: {
           {selected.guestName && (
             <a href={`/team?conv=${selected.id}`} style={{
               fontSize: 12, fontWeight: 700, color: '#fff', textDecoration: 'none', flexShrink: 0,
-              background: 'var(--gold, #AE8D2D)', borderRadius: 999, padding: '7px 14px',
+              background: 'var(--tm-accent)', borderRadius: 999, padding: '7px 14px',
             }}>💬 Zum Chat</a>
           )}
         </div>

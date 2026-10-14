@@ -703,7 +703,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
               {/* Kopf */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {kind !== 'aktuell' && (
-                  <button onClick={() => toggle(`m|${m.key}`)} style={{ border: 'none', background: 'none', color: 'var(--tm-muted2)', fontSize: 12, cursor: 'pointer', padding: 0 }}>▾</button>
+                  <button onClick={() => toggle(`m|${m.key}`)} aria-label="Ein-/Ausklappen" style={{ border: 'none', background: 'none', color: 'var(--tm-muted2)', fontSize: 12, cursor: 'pointer', padding: 0 }}>▾</button>
                 )}
                 <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: -0.3, flex: 1 }}>{m.label}</span>
                 <span style={{ fontSize: 12, color: 'var(--tm-muted)' }}>{m.slots.length} Reinigungen · {personLabel}</span>
@@ -1036,7 +1036,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           <div>
             {invError && (
               <p style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 12.5 }}>
-                {invError} <button onClick={() => setInvError(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+                {invError} <button onClick={() => setInvError(null)} aria-label="Schließen" style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 800, cursor: 'pointer' }}>✕</button>
               </p>
             )}
             {pastData === null && (
@@ -1139,7 +1139,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           <div key={iso} style={{ marginBottom: 16 }}>
             <p style={{
               fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-              color: iso === today ? 'var(--gold, #AE8D2D)' : 'var(--tm-muted)',
+              color: iso === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
               textTransform: 'uppercase', letterSpacing: '0.03em',
             }}>{dayLabel(iso, today)}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

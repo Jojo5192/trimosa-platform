@@ -172,7 +172,7 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
                     <button onClick={() => move(c)} disabled={moving} style={{ padding: '7px 12px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 700, background: 'var(--tm-text)', color: 'var(--tm-bg)', cursor: 'pointer' }}>
                       {moving ? '…' : 'OK'}
                     </button>
-                    <button onClick={() => setMoveFor(null)} style={{ border: 'none', background: 'none', color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>✕</button>
+                    <button onClick={() => setMoveFor(null)} aria-label="Schließen" style={{ border: 'none', background: 'none', color: 'var(--tm-muted)', fontWeight: 700, cursor: 'pointer' }}>✕</button>
                   </span>
                 ) : (
                   <button onClick={() => { setMoveFor(c.id); setMoveDate(c.dueDate) }} style={{
@@ -318,7 +318,7 @@ function QsProtocol({ check, template, onClose }: {
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={saveAndClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={saveAndClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
           <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>{check.listingTitle} · {fmtDate(check.dueDate)}</div>
@@ -380,7 +380,7 @@ function QsProtocol({ check, template, onClose }: {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt="" style={{ width: 74, height: 74, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
               </a>
-              <button onClick={() => removePhoto(p.url)} style={{
+              <button onClick={() => removePhoto(p.url)} aria-label="Foto löschen" style={{
                 position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%',
                 border: 'none', background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 10, cursor: 'pointer', lineHeight: 1,
               }}>✕</button>
@@ -483,7 +483,7 @@ export function QsView({ check, template, onClose }: {
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
           <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>
@@ -623,7 +623,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: apartments.length ? 10 : 0 }}>
-          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+          <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
           <div style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>🧾 Qualitätssicherung</div>
         </div>
         {apartments.length > 0 && (

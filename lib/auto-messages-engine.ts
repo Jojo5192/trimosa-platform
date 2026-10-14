@@ -248,6 +248,11 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
     }
   } catch { /* Spalte fehlt noch */ }
 
+  // 🌙 Verlängerungen (lib/zahlungen.ts): Die Zusatznächte sind eine EIGENE Buchung. Die Ursprungsbuchung darf keine
+  // Check-out-/Danke-Nachricht mehr zum alten Abreisetag schicken (der Gast bleibt ja), die Zusatzbuchung keine
+  // Buchungs-/Anreise-Nachrichten (der Gast ist schon da) — nur ihre Check-out- und Danke-Nachricht.
+  const verl = await import('@/lib/zahlungen').then((m) => m.verlaengerungsIndex()).catch(() => ({ urspruenge: new Set<string>(), zusaetze: new Set<string>() }))
+
   const { data: lRows } = await supabaseAdmin
     .from('listings').select('id, title, address, location, check_in_time, check_out_time, google_place_id')
   const listings = new Map((lRows ?? []).map(l => [l.id as string, l as ListingRow]))
@@ -364,6 +369,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       if (logSet.has(`${t.id}|${b.id}`)) continue
       // Paragraph 305 (Pascal): Stummschalter - 'alle' laesst nur die Check-out-Anleitung durch,
       // 'bewertung' unterdrueckt die Danke-/Bewertungs-Nachricht
+      const istAbreiseNachricht = t.trigger_type === 'vor_abreise' || t.trigger_type === 'nach_abreise'
+      if (verl.urspruenge.has(b.id) && istAbreiseNachricht) continue
+      if (verl.zusaetze.has(b.id) && !istAbreiseNachricht) continue
       const mute = muteMap.get(b.id)
       if (mute === 'alle' && t.trigger_type !== 'vor_abreise') continue
       if (mute === 'bewertung' && t.trigger_type === 'nach_abreise') continue

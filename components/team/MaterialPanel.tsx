@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom'
 import { haptic } from '@/components/team/ux'
 
 const NAVY = 'var(--tm-navy)'
-const GRUEN = '#16A34A'
+const GRUEN = 'var(--tm-green)'
 const KATEGORIEN = ['🧽 Putzen', '🧺 Wäsche', '🍽 Küche', '🧻 Papier & Müll', '🧤 Handschuhe', '🧴 Pflege']
 
 interface Artikel { id: string; name: string; kategorie?: string; url?: string; bild?: string; asin?: string; menge?: number }
@@ -196,7 +196,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
               </div>
               <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'bestellt' }, b.id); showToast(`📦 ${b.name} als bestellt markiert`) }} disabled={busy === b.id}
                 style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: NAVY, color: '#fff', cursor: 'pointer' }}>Bestellt</button>
-              <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'entfernt' }, b.id) }} disabled={busy === b.id}
+              <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'entfernt' }, b.id) }} disabled={busy === b.id} aria-label="Von der Liste entfernen"
                 style={{ border: 'none', borderRadius: 999, padding: '6px 9px', fontSize: 11.5, background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
             </div>
           )
@@ -211,7 +211,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         ))}
         {offen.length > 0 && data.merklisteUrl && (
           <a className="mat-tap" href={data.merklisteUrl} target="_blank" rel="noreferrer" onClick={() => haptic()}
-            style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px 14px', borderRadius: 12, background: 'var(--gold, #AE8D2D)', color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
+            style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px 14px', borderRadius: 12, background: 'var(--tm-accent)', color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
             🧺 dm-Merkliste öffnen{adr ? ` — Adresse „${adr.label}" wählen!` : ''}
           </a>
         )}
@@ -340,7 +340,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                 onKeyDown={(e) => { if (e.key === 'Enter') analysieren() }}
                 placeholder={'z. B. „so ein Entkalker für den Wasserkocher“'}
                 style={{ ...INPUT, flex: 1, minWidth: 0 }} />
-              <button className="mat-tap" onClick={analysieren} disabled={freiBusy || frei.trim().length < 3}
+              <button className="mat-tap" onClick={analysieren} disabled={freiBusy || frei.trim().length < 3} aria-label="Artikel per KI erkennen"
                 style={{ border: 'none', borderRadius: 10, padding: '0 14px', background: NAVY, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: freiBusy ? 0.6 : 1 }}>
                 {freiBusy ? '…' : '✨'}
               </button>
@@ -354,7 +354,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <button className="mat-tap" onClick={() => { melden(vorschlag.name, 'v1'); setVorschlag(null); setFrei('') }} disabled={!ort}
                     style={{ flex: 1, border: 'none', borderRadius: 999, padding: '9px 0', fontSize: 12.5, fontWeight: 800, background: NAVY, color: '#fff', cursor: 'pointer', opacity: ort ? 1 : 0.45 }}>＋ Nachbestellen</button>
-                  <button className="mat-tap" onClick={() => setVorschlag(null)}
+                  <button className="mat-tap" onClick={() => setVorschlag(null)} aria-label="Vorschlag verwerfen"
                     style={{ border: 'none', borderRadius: 999, padding: '9px 12px', fontSize: 12, background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
                 </div>
                 {!ort && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--tm-yellow)' }}>Oben zuerst den Standort wählen.</div>}
@@ -389,7 +389,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                       <option value="">— Kategorie</option>
                       {KATEGORIEN.map((k) => <option key={k} value={k}>{k}</option>)}
                     </select>
-                    <button onClick={() => patch({ artikel: data.artikel.filter((x) => x.id !== a.id) }, 'del' + a.id)}
+                    <button onClick={() => patch({ artikel: data.artikel.filter((x) => x.id !== a.id) }, 'del' + a.id)} aria-label="Artikel löschen"
                       style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontSize: 12, cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
@@ -421,7 +421,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                       patch({ artikel: [...data.artikel, eintrag] }, 'add')
                       setNeuArtikel({ name: '', kategorie: '', url: '', asin: '', menge: '1' })
                       showToast(`✓ ${name} zur Merkliste hinzugefügt`)
-                    }} style={{ border: 'none', borderRadius: 10, padding: '0 14px', background: NAVY, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>＋</button>
+                    }} aria-label="Artikel hinzufügen" style={{ border: 'none', borderRadius: 10, padding: '0 14px', background: NAVY, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>＋</button>
                   </div>
                 </div>
               </div>
@@ -486,7 +486,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         <div style={{
           position: 'fixed', left: '50%', bottom: 'calc(max(20px, env(safe-area-inset-bottom)) + 12px)',
           transform: 'translateX(-50%)', zIndex: 95, pointerEvents: 'none',
-          background: toast.ok ? NAVY : '#B91C1C', color: '#fff',
+          background: toast.ok ? NAVY : 'var(--tm-red)', color: '#fff',
           borderRadius: 999, padding: '10px 18px', fontSize: 13, fontWeight: 700,
           boxShadow: '0 6px 24px rgba(0,0,0,0.25)', maxWidth: 'calc(100vw - 40px)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

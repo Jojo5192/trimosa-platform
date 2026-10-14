@@ -94,15 +94,23 @@ export async function GET(req: NextRequest) {
     : { data: [] as { id: string; display_name: string | null }[] }
   const respName = new Map((respProfiles ?? []).map((p) => [p.id, (p.display_name ?? '').trim().split(/\s+/)[0] || '—']))
 
+  // 🌙 Verlängerungen (lib/zahlungen.ts) zu EINEM Aufenthalt zusammenführen: sonst plant der Reinigungsplan am
+  // alten Abreisetag eine Reinigung in die belegte Wohnung und der Kalender zeigt zwei Balken
+  const verlKarte = await import('@/lib/zahlungen').then((m) => m.verlaengerungsKarte()).catch(() => null)
+  const bisNeu = (id: string, co: string): string => {
+    const e = verlKarte?.bis.get(id)
+    return e && e > co ? e : co
+  }
   // Unbezahlte Direkt-Buchungen ausblenden (Geister vor Webhook-Aufräumung)
   const stays = (bookings ?? [])
+    .filter((b) => !verlKarte?.zusaetze.has(b.id))
     .filter((b) => b.source !== 'trimosa' || b.payment_status === 'paid')
     .filter((b) => !visibleIds || visibleIds.has(b.listing_id))
     .map((b) => ({
       id: b.id,
       listingId: b.listing_id,
       checkIn: b.check_in,
-      checkOut: b.check_out,
+      checkOut: bisNeu(b.id, b.check_out),
       channel: (b as { channel?: string | null }).channel ?? null,
       // Gastnamen nur fürs interne Team, nie für Dienstleister
       guestName: auth.role === 'provider' ? null : (b.guest_name ?? null),

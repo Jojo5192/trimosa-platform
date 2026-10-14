@@ -53,7 +53,7 @@ function TrendChip({ t }: { t: Trend | null }) {
   if (!t) return <span style={{ fontSize: 11, color: 'var(--tm-muted2)' }}>—</span>
   const stable = Math.abs(t.deltaMin) < 5
   const faster = t.deltaMin < 0
-  const color = stable ? '#8A8578' : faster ? '#16A34A' : '#C0392B'
+  const color = stable ? 'var(--tm-muted)' : faster ? 'var(--tm-green)' : 'var(--tm-red)'
   const arrow = stable ? '→' : faster ? '▼' : '▲'
   return (
     <span style={{ fontSize: 11.5, fontWeight: 700, color, whiteSpace: 'nowrap' }}
@@ -156,7 +156,7 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
   const body = (
     <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0 }}>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--gold)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
+        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⏱ Reinigungs-Dauer</div>
         <div style={{ flex: 1 }} />
         {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
