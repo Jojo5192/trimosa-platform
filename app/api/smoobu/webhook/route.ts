@@ -32,7 +32,12 @@ export async function POST(request: Request) {
     return new Response('Invalid JSON', { status: 400 })
   }
 
-  console.log('[Smoobu Webhook] Received:', JSON.stringify(payload, null, 2))
+  // Nur Eckdaten loggen — der Payload enthält Gastname, E-Mail, Telefon und Nachrichtentexte
+  {
+    const d = (payload.data ?? {}) as Record<string, unknown>
+    const apt = d.apartment as { id?: unknown } | undefined
+    console.log('[Smoobu Webhook] Received:', JSON.stringify({ action: payload.action ?? null, reservationId: d.id ?? null, apartmentId: apt?.id ?? null }))
+  }
 
   const action = (payload.action as string) ?? 'created'
 

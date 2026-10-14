@@ -89,7 +89,8 @@ function LightboxView({ bilder, index, onIndex, onClose }: {
   }, [bilder, index, go, onClose])
 
   const onPointerDown = (e: React.PointerEvent) => {
-    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    // setPointerCapture wirft „NotFoundError", wenn der Zeiger schon nicht mehr aktiv ist — dann ohne Capture weiter
+    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId) } catch { /* egal */ }
     ptr.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     moved.current = false
     setAktiv(true)

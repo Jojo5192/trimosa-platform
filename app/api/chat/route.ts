@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { darfKonversation } from '@/lib/chat-access'
 import { getReservationMessages, sendMessageToHost, isSmoobuSystemMessage, stripEmailQuote } from '@/lib/smoobu'
 import { translateIncoming, LANG_FLAGS } from '@/lib/translate'
 import { sendPushToTeam } from '@/lib/push'
@@ -148,6 +149,8 @@ export async function GET(req: NextRequest) {
       .select('host_id, guest_id, booking_id, bookings(smoobu_reservation_id)')
       .eq('id', conversationId)
       .maybeSingle()
+    if (!conv) return NextResponse.json({ error: 'Konversation nicht gefunden' }, { status: 404 })
+    if (!(await darfKonversation(conv, user.id))) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
 
     // Pull in new Smoobu messages — throttled to once per 30s per conversation
     const smoobuId = (conv?.bookings as unknown as { smoobu_reservation_id: number | null } | null)?.smoobu_reservation_id
@@ -285,9 +288,21 @@ export async function POST(req: NextRequest) {
 
   let convId = conversationId
 
+  // Bestehende Konversation: nur Gast, Gastgeber oder Team dürfen hineinschreiben (lib/chat-access.ts)
+  if (convId) {
+    const { data: vorhanden } = await supabaseAdmin
+      .from('conversations').select('host_id, guest_id').eq('id', convId).maybeSingle()
+    if (!vorhanden) return NextResponse.json({ error: 'Konversation nicht gefunden' }, { status: 404 })
+    if (!(await darfKonversation(vorhanden, user.id))) return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
+  }
+
   // Create conversation if new
   if (!convId) {
     if (!listingId || !hostId) return NextResponse.json({ error: 'listingId und hostId erforderlich' }, { status: 400 })
+    // Gastgeber aus dem Inserat, nicht aus dem Request (sonst ließe sich ein beliebiger host_id eintragen)
+    const { data: inserat } = await supabaseAdmin.from('listings').select('host_id').eq('id', listingId).maybeSingle()
+    if (!inserat?.host_id) return NextResponse.json({ error: 'Inserat nicht gefunden' }, { status: 404 })
+    if (inserat.host_id !== hostId) return NextResponse.json({ error: 'Gastgeber passt nicht zum Inserat' }, { status: 400 })
 
     const { data: existing } = await supabaseAdmin
       .from('conversations')

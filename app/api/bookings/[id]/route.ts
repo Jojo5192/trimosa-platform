@@ -24,6 +24,17 @@ export async function GET(
     return NextResponse.json({ error: 'Keine Berechtigung' }, { status: 403 })
   }
 
+  // 🔒 Sicherheitsprüfung 9.10.2026: select('*') ging 1:1 an den Gast — inklusive Türcode (vor dem
+  // Freigabe-Fenster der Gästemappe), Stummschalt-/Sperrgründen („KI: Beschwerde erkannt"), Stripe- und
+  // Portal-Kennungen. Der Gast bekommt nur noch die Felder seiner eigenen Buchungsansicht.
+  if (listing?.host_id !== user.id) {
+    const GAST_FELDER = ['id', 'listing_id', 'check_in', 'check_out', 'adults', 'children', 'total_price', 'currency',
+      'status', 'payment_status', 'paid_at', 'message', 'guest_name', 'created_at', 'listings'] as const
+    const rec = booking as Record<string, unknown>
+    const gast = Object.fromEntries(GAST_FELDER.filter((k) => k in rec).map((k) => [k, rec[k]]))
+    return NextResponse.json(gast)
+  }
+
   // Fetch guest profile for host view
   let guestInfo: Record<string, string | null> = {}
   if (booking.guest_id) {

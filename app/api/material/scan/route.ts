@@ -30,8 +30,10 @@ async function run() {
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const secret = process.env.CRON_SECRET
+  // fail-closed: ohne Env genügte sonst „Bearer undefined"
+  if (!secret || auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Nicht berechtigt' }, { status: 401 })
   }
   const r = await run()
   console.log('[material-cron]', JSON.stringify(r))

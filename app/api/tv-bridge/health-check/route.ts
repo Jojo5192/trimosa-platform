@@ -19,7 +19,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   const auth = req.headers.get('authorization') || ''
-  if (secret && auth !== `Bearer ${secret}`) {
+  // fail-closed: ohne gesetztes CRON_SECRET bleibt die Route zu (vorher offen)
+  if (!secret || auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Nicht berechtigt' }, { status: 401 })
   }
 

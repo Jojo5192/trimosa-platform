@@ -41,6 +41,9 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!booking) return NextResponse.json({ ok: true }) // idempotent
+    // Stripe stellt Ereignisse mindestens einmal zu (Retry, Doppelzustellung): schon bezahlt → nichts erneut
+    // senden (sonst gingen Bestätigungsmail, Host-Alarm und Push doppelt raus)
+    if (booking.payment_status === 'paid') return NextResponse.json({ ok: true, schonBezahlt: true })
 
     const listing = booking.listings as unknown as { id: string; title: string; smoobu_id: string | null; host_id: string; cancellation_policy: string } | null
 
@@ -48,8 +51,9 @@ export async function POST(req: NextRequest) {
     // instant → confirmed immediately; request → stays pending until host confirms
     const newStatus = bookingType === 'instant' ? 'confirmed' : 'pending'
 
-    // Update booking
-    await supabaseAdmin
+    // Update booking — scheitert es, mit 500 antworten: Stripe wiederholt dann, statt dass der Gast eine
+    // Bestätigung bekommt, während die Buchung unbezahlt bleibt
+    const { error: updErr } = await supabaseAdmin
       .from('bookings')
       .update({
         payment_status: 'paid',
@@ -58,6 +62,10 @@ export async function POST(req: NextRequest) {
         status: newStatus,
       })
       .eq('id', bookingId)
+    if (updErr) {
+      console.error('[Webhook] Buchung nicht als bezahlt gespeichert:', bookingId, updErr.message)
+      return NextResponse.json({ error: 'Buchung konnte nicht aktualisiert werden' }, { status: 500 })
+    }
 
     // Notify the host now that payment is confirmed — requests ask for
     // accept/decline, instant bookings just inform. AWAIT ist Pflicht

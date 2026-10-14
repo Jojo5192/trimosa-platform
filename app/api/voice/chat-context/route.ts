@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, normalizePhone, nameLooselyMatches } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -13,9 +13,13 @@ export const maxDuration = 30
  * geschwärzt (Türcodes!) — Codes gibt es NUR über gast_verifizieren (§181).
  */
 
-// Türcodes & Co. schwärzen; Einzeltext kappen (Smoobu-Bestätigungs-Mauern)
+// Türcodes & Co. schwärzen; Einzeltext kappen (Smoobu-Bestätigungs-Mauern). Seit 14.10. auch Passwörter/PINs
+// hinter einem Stichwort („WLAN-Passwort: Sonne123", „Code: A7"), nicht nur 5–8-stellige Ziffernfolgen.
 function redact(s: string): string {
-  return String(s ?? '').replace(/\b\d{5,8}\b/g, '•••••').replace(/\s+/g, ' ').trim().slice(0, 400)
+  return String(s ?? '')
+    .replace(/\b(passwor[dt]|kennwort|wlan[- ]?(?:key|schl[uü]ssel|code)?|wi-?fi|pin|code|t[uü]rcode|zugangscode)(\s*[:=]?\s*)(\S+)/gi, '$1$2•••••')
+    .replace(/\b\d{5,8}\b/g, '•••••')
+    .replace(/\s+/g, ' ').trim().slice(0, 400)
 }
 
 export async function POST(request: Request) {
@@ -42,6 +46,15 @@ export async function POST(request: Request) {
       arrival: body.arrival_date,
       departure: body.departure_date,
     })
+    // 🔒 Sicherheitsprüfung 9.10.2026: Ohne Treffer über die Rufnummer reichte ein passendes Anreisedatum, um
+    // Vorname, Wohnung und Chat-Verlauf eines fremden Gastes zu bekommen. Jetzt muss zusätzlich der genannte
+    // Name zur Buchung passen (unscharf wie bei der Suche — Verhörer der Spracherkennung bleiben erlaubt).
+    if (booking && !(body.guest_name && nameLooselyMatches(String(body.guest_name), booking.guestName))) {
+      return Response.json({
+        found: false,
+        hint: 'Buchung nicht eindeutig bestätigt — vollständigen Namen (wie bei der Buchung) erfragen und erneut aufrufen.',
+      })
+    }
   }
   if (!booking) {
     return Response.json({

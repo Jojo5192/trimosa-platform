@@ -222,7 +222,8 @@ export async function POST(request: Request) {
       const realCode = bookingDoorCode
       const falsche = [...spoken].filter((c) => c !== realCode)
       if (falsche.length) {
-        console.error('[call-log] 🚨 Bot nannte Code(s) ohne Deckung:', falsche.join(', '), 'echt:', realCode ?? '—', convId)
+        // Codes nie ins Log (Vercel-Logs) — die Werte stehen in Aufgabe und Bereitschafts-Push
+        console.error('[call-log] 🚨 Bot nannte Code(s) ohne Deckung:', falsche.length, 'Stück · echter Code hinterlegt:', realCode ? 'ja' : 'nein', convId)
         vorfaelle.push(`🚨 FALSCHER TÜRCODE am Telefon genannt: ${falsche.join(', ')} — ${realCode ? `richtig ist ${realCode}` : 'zur Buchung ist KEIN Code hinterlegt'}. Gast sofort kontaktieren!`)
         await pushOncall(
           '🚨 Bot nannte FALSCHEN Türcode!',
