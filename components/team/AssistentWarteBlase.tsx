@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AssistentAvatar } from '@/components/team/AssistentFigur'
+import { sanftScroll } from '@/components/team/ux'
 import {
   BOT_NAME, WARTE_LANG_MS, WARTE_MAX_MS, WARTE_THEMA_MS,
   offeneBotFrage, warteStufe, warteText, type BotChatMsg,
@@ -80,7 +81,7 @@ export default function AssistentWarteBlase({ msgs, botId }: {
     const feed = el?.parentElement
     if (!el || !feed) return
     const abstand = feed.scrollHeight - feed.scrollTop - feed.clientHeight
-    if (abstand < el.offsetHeight + 160) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (abstand < el.offsetHeight + 160) el.scrollIntoView({ block: 'nearest', behavior: sanftScroll() })
   }, [stufe])
 
   if (!frage || !stand || !sichtbar || !stufe) return null

@@ -15,7 +15,7 @@
  * Snapshot im Gerätespeicher.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalColor, initials } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalColor, initials, alsKnopf } from '@/components/team/ux'
 import type { HeuteDaten, HeuteAnreise, HeuteStay, HeuteProzess, HeuteSchritt, SchrittStatus } from '@/lib/heute'
 import { shouldPoll, isOnline } from '@/lib/offline'
 import { isOffenThread, requestInboxReload, useInboxThreads, useInboxReady, type InboxThreadLite } from '@/lib/inbox-store'
@@ -71,7 +71,8 @@ function Card({ title, count, right, children }: { title: string; count?: number
   return (
     <section className="tm-stagger" style={CARD}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px 5px' }}>
-        <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.01em' }}>{title}</span>
+        {/* ♿ Karten-Titel als Überschrift (h2 unter dem Bereichs-Namen) — VoiceOver-Rotor springt so von Karte zu Karte */}
+        <span role="heading" aria-level={2} style={{ flex: 1, fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.01em' }}>{title}</span>
         {right}
         {count !== undefined && <span className="tm-num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--tm-muted2)' }}>{count}</span>}
       </div>
@@ -105,7 +106,8 @@ function Dot({ tone, children, title }: { tone: keyof typeof DOT; children: Reac
 function Row({ onClick, children, last }: { onClick?: () => void; children: ReactNode; last?: boolean }) {
   return (
     <div
-      role={onClick ? 'button' : undefined}
+      // ♿ role=button + Tab-Stopp + Enter/Leertaste (vorher nur role — per Tastatur nicht erreichbar)
+      {...alsKnopf(onClick ? () => { haptic(); onClick() } : null)}
       className={onClick ? 'tm-press' : undefined}
       onClick={onClick ? () => { haptic(); onClick() } : undefined}
       style={{
@@ -511,19 +513,21 @@ export default function HeutePanel({ role, visible, onCount }: {
 
         {/* 🔑 Türcode — bleibt an jedem Tag oben stehen */}
         {code ? (
-          <section style={{ borderRadius: 'var(--tm-r-card)', padding: '12px 14px 13px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-accent) 0%, var(--tm-accent-dark) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
+          // ♿ Gold-Vollfläche aus --tm-gold-solid(2): Weiß ≥ 4,6:1 in hell UND dunkel (vorher accent → accent-dark:
+          // hell 3,2:1, im Dunkeln wurde der Verlauf hellgold → Weiß 1,7:1); Nebentexte mit 0.92 statt 0.8
+          <section style={{ borderRadius: 'var(--tm-r-card)', padding: '12px 14px 13px', color: '#fff', background: 'linear-gradient(135deg, var(--tm-gold-solid, #846b1e) 0%, var(--tm-gold-solid2, #6f5a19) 100%)', boxShadow: 'var(--tm-shadow-float)' }}>
             {/* Pascal 9.9. (Chefsache): kein Schlüssel-Symbol; Name größer mit Rolle dahinter,
                 „TÜRCODE" als eigene Zeile, Code etwas kleiner — ruhig und symmetrisch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                 <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName ?? 'Team'}</span>
-                {roleLabel && <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>· {roleLabel}</span>}
+                {roleLabel && <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.92, flexShrink: 0 }}>· {roleLabel}</span>}
               </span>
-              <button className="tm-press-btn" onClick={copyCode} style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,0.22)', flexShrink: 0 }}>Kopieren</button>
+              <button className="tm-press-btn" onClick={copyCode} aria-label="Türcode kopieren" style={{ border: 'none', cursor: 'pointer', borderRadius: 999, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>Kopieren</button>
             </div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', opacity: 0.8, marginTop: 12 }}>Türcode</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', opacity: 0.92, marginTop: 12 }}>Türcode</div>
             <div className="tm-num" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 24, fontWeight: 800, letterSpacing: '5px', marginTop: 2, lineHeight: 1.1 }}>{code.code}</div>
-            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 5 }}>
+            <div style={{ fontSize: 12, opacity: 0.92, marginTop: 5 }}>
               {code.listings.length >= 7 ? 'Alle Wohnungen' : code.listings.length ? code.listings.join(' · ') : 'Alle Schlösser'} · dauerhaft gültig
             </div>
           </section>
@@ -534,9 +538,9 @@ export default function HeutePanel({ role, visible, onCount }: {
         )}
 
         {error && (
-          <div style={{ padding: '10px 14px', borderRadius: 14, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div role="alert" style={{ padding: '10px 14px', borderRadius: 14, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ flex: 1 }}>{error}</span>
-            <button onClick={() => { setLoading(true); load(tag, true) }} style={{ border: 'none', background: 'var(--tm-red)', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Erneut laden</button>
+            <button onClick={() => { setLoading(true); load(tag, true) }} style={{ border: 'none', background: 'var(--tm-red-solid)', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Erneut laden</button>
           </div>
         )}
         {loading && !d && <SkeletonRows kind="card" count={3} />}

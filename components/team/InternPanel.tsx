@@ -5,7 +5,8 @@ import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, ansagen, useDialogFokus, sanftScroll } from '@/components/team/ux'
+import { heroTransition, heroAv, heroName, useSheetMotion } from '@/components/team/motion'
 import { openLightbox } from '@/components/team/Lightbox'
 import { VIDEO_LIMIT_BYTES, VIDEO_MAX_SEKUNDEN, kannVideoVerkleinern, videoDauer, verkleinereVideo, neuerVideoName } from '@/lib/video-verkleinern'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
@@ -110,6 +111,80 @@ function Av({ name, src, size = 34 }: { name: string; src: string | null; size?:
   )
 }
 
+/* ── Gruppen-Dialog „Neue Gruppe" ──
+   Eigene Komponente AUSSERHALB von InternPanel (Chefsache 14.10.2026): früher im Render definiert, wurde er bei
+   jedem Neuzeichnen der Eltern (Chat-Abgleich alle paar Sekunden) neu aufgebaut — schon Getipptes ging verloren.
+   Jetzt behält er Name, Emoji und Auswahl; Fokus-Führung (useDialogFokus) und 🎬 Schließ-Animation (useSheetMotion)
+   leben hier. API-Aufruf und Verhalten wie vorher: nach dem Anlegen schließen und die Gruppen neu laden. */
+function NeueGruppeDialog({ directory, userId, onClose, onCreated }: {
+  directory: Directory[]
+  userId: string
+  /** Blatt schließen (Eltern-State) — läuft nach der Ausblendung */
+  onClose: () => void
+  /** Gruppe angelegt → Liste neu laden */
+  onCreated: () => void
+}) {
+  const [name, setName] = useState('')
+  const [emoji, setEmoji] = useState('💬')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
+  async function create() {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    try {
+      const r = await fetch('/api/team-chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, emoji, memberIds: [...selected] }),
+      })
+      if (r.ok) { sheet.close(); onCreated() }
+      else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Die Gruppe konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.') }
+    } finally { setSaving(false) }
+  }
+  // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container unter der Tab-Leiste
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="team-shell tm-scrim tm-mo-scrim" {...sheet.hostProps} onClick={sheet.close} style={{ position: 'fixed', inset: 0, zIndex: 80, color: 'var(--tm-text)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      {/* iOS-27-Runde: Sheet = Kartenfläche (.tm-sheet), Felder/Zeilen darin auf surface2 */}
+      <div ref={dlgRef} className="tm-sheet tm-mo-sheet" onClick={(e) => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 480,
+        padding: '18px 18px calc(18px + env(safe-area-inset-bottom))', maxHeight: '85dvh', overflowY: 'auto', overscrollBehavior: 'contain',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <span role="heading" aria-level={2} style={{ fontSize: 16, fontWeight: 800, color: 'var(--tm-text)' }}>Neue Gruppe</span>
+          <button type="button" className="tm-close" onClick={sheet.close} aria-label="Schließen">✕</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} aria-label="Symbol der Gruppe" style={{ width: 54, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 17, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gruppenname (z. B. Handwerker)" aria-label="Gruppenname" autoFocus style={{ flex: 1, minWidth: 0, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 14, background: 'var(--tm-surface2)', color: 'var(--tm-text)', outline: 'none' }} />
+        </div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.06em', margin: '4px 0 8px' }}>MITGLIEDER</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
+          {directory.filter((d) => d.id !== userId).map((d) => (
+            <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={selected.has(d.id)}
+                onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n })}
+                style={{ width: 17, height: 17, accentColor: 'var(--tm-navy)' }}
+              />
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', flex: 1 }}>{d.name}</span>
+              <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{d.role}</span>
+            </label>
+          ))}
+        </div>
+        <button onClick={create} disabled={!name.trim() || saving} style={{
+          width: '100%', padding: '13px 0', borderRadius: 999, border: 'none',
+          background: name.trim() && !saving ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+          color: name.trim() && !saving ? '#fff' : 'var(--tm-muted)', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
+        }}>{saving ? 'Legt an…' : 'Gruppe anlegen'}</button>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export default function InternPanel({ userId, onUnread, onMobileThread, initialChatId }: {
   userId: string
   onUnread?: (n: number) => void
@@ -144,7 +219,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   // §157: iMessage-Swipe vom linken Rand → zurück zur Gruppen-Liste (mobil)
   const swipe = useSwipeBack(() => setMobileView('list'))
-  const [showCreate, setShowCreate] = useState(false)
+  const [showCreate, setShowCreate] = useState(false) // „Neue Gruppe" → NeueGruppeDialog (oben, eigene Komponente)
   const [showInfo, setShowInfo] = useState(false)
   const [reactFor, setReactFor] = useState<string | null>(null)
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -267,6 +342,25 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     setMsgs(list)
   }, [])
 
+  /* ♿ Neue Nachricht im OFFENEN Chat dezent ansagen („Neue Nachricht von …") — nur Zuwachs am Ende,
+     nicht beim Öffnen/Wechseln, nicht für eigene Nachrichten, nur wenn der Verlauf sichtbar ist */
+  const ansageStandRef = useRef<{ id: string | null; letzte: string | null }>({ id: null, letzte: null })
+  useEffect(() => {
+    const chatId = msgsSigRef.current.split('§')[0] || null
+    if (!chatId || !active || chatId !== active.id) return
+    const letzte = msgs[msgs.length - 1]?.id ?? null
+    const stand = ansageStandRef.current
+    if (stand.id !== chatId) { ansageStandRef.current = { id: chatId, letzte }; return }
+    if (!letzte || letzte === stand.letzte) return
+    const ab = stand.letzte ? msgs.findIndex((m) => m.id === stand.letzte) : -1
+    stand.letzte = letzte
+    const neu = (ab >= 0 ? msgs.slice(ab + 1) : msgs.slice(-1)).filter((m) => m.senderId !== userId)
+    const feed = feedRef.current
+    if (!neu.length || !feed || feed.offsetParent === null || !viewingRef.current || document.visibilityState !== 'visible') return
+    const namen = [...new Set(neu.map((m) => m.senderName))]
+    ansagen(neu.length === 1 ? `Neue Nachricht von ${neu[0].senderName}` : `${neu.length} neue Nachrichten von ${namen.join(', ')}`)
+  }, [msgs, active, userId])
+
   useEffect(() => {
     // §280 Sofortstart: Gruppen aus dem Gerätespeicher zeigen, der
     // Server-Abgleich ersetzt sie still
@@ -324,7 +418,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       pinToBottom()
       return
     }
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    bottomRef.current?.scrollIntoView({ behavior: sanftScroll() })
   }, [msgs, active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-Grow des Schreibfelds als Effect (Pascal: „passt sich nicht an") —
@@ -709,69 +803,6 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
     } finally { setUploading(false) }
   }
 
-  /* ── Gruppen-Dialog ── */
-  function CreateDialog() {
-    const [name, setName] = useState('')
-    const [emoji, setEmoji] = useState('💬')
-    const [selected, setSelected] = useState<Set<string>>(new Set())
-    const [saving, setSaving] = useState(false)
-    async function create() {
-      if (!name.trim() || saving) return
-      setSaving(true)
-      try {
-        const r = await fetch('/api/team-chat', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, emoji, memberIds: [...selected] }),
-        })
-        if (r.ok) { setShowCreate(false); loadChats() }
-        else { const d = await r.json().catch(() => ({})); alert(d.error ?? 'Die Gruppe konnte nicht angelegt werden. Bitte versuch es gleich noch einmal.') }
-      } finally { setSaving(false) }
-    }
-    // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container unter der Tab-Leiste
-    if (typeof document === 'undefined') return null
-    return createPortal(
-      <div className="team-shell tm-scrim" onClick={() => setShowCreate(false)} style={{ position: 'fixed', inset: 0, zIndex: 80, color: 'var(--tm-text)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-        {/* iOS-27-Runde: Sheet = Kartenfläche (.tm-sheet), Felder/Zeilen darin auf surface2.
-            KEINE Einblend-Animation: CreateDialog wird im Render definiert und bei jedem
-            Eltern-Render neu gemountet — die Animation liefe dann jedes Mal erneut ab. */}
-        <div className="tm-sheet" onClick={(e) => e.stopPropagation()} style={{
-          width: '100%', maxWidth: 480,
-          padding: '18px 18px calc(18px + env(safe-area-inset-bottom))', maxHeight: '85dvh', overflowY: 'auto', overscrollBehavior: 'contain',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--tm-text)' }}>Neue Gruppe</span>
-            <button type="button" className="tm-close" onClick={() => setShowCreate(false)} aria-label="Schließen">✕</button>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} style={{ width: 54, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 17, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }} />
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gruppenname (z. B. Handwerker)" autoFocus style={{ flex: 1, minWidth: 0, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 14, background: 'var(--tm-surface2)', color: 'var(--tm-text)', outline: 'none' }} />
-          </div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.06em', margin: '4px 0 8px' }}>MITGLIEDER</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
-            {directory.filter((d) => d.id !== userId).map((d) => (
-              <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, background: 'var(--tm-surface2)', border: '1px solid var(--tm-line)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={selected.has(d.id)}
-                  onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n })}
-                  style={{ width: 17, height: 17, accentColor: 'var(--tm-navy)' }}
-                />
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text)', flex: 1 }}>{d.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>{d.role}</span>
-              </label>
-            ))}
-          </div>
-          <button onClick={create} disabled={!name.trim() || saving} style={{
-            width: '100%', padding: '13px 0', borderRadius: 999, border: 'none',
-            background: name.trim() && !saving ? 'var(--tm-navy)' : 'var(--tm-surface2)',
-            color: name.trim() && !saving ? '#fff' : 'var(--tm-muted)', fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
-          }}>{saving ? 'Legt an…' : 'Gruppe anlegen'}</button>
-        </div>
-      </div>,
-      document.body,
-    )
-  }
-
   /* §277 Filter-Chips + gefilterte Gruppen (Pascal-Spec: „Alle · Reinigung · Chefs") */
   const internChips: { id: string; label: string; count?: number }[] = [
     { id: 'alle', label: 'Alle' },
@@ -821,7 +852,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       <PullHint pull={internPtr.pull} busy={internPtr.busy} />
       {loading && <SkeletonRows kind="chat" count={6} />}
       {error && !loading && (
-        <div style={{ margin: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 12.5 }}>
+        <div role="alert" style={{ margin: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 12.5 }}>
           ⚠️ {error} <button onClick={() => { setLoading(true); loadChats() }} style={{ border: 'none', background: 'none', color: 'var(--tm-red)', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Erneut laden</button>
         </div>
       )}
@@ -837,7 +868,11 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         const isSel = !isMobile && active?.id === c.id
         const unread = c.unread > 0
         return (
-        <button key={c.id} className="tm-press" onClick={() => openChat(c)} style={{
+        <button key={c.id} className="tm-press" onClick={() => {
+          // 🎬 mobil: Emoji + Name fliegen von der Karte in die Kopfleiste (motion.tsx)
+          if (isMobile) heroTransition(`i-${c.id}`, () => openChat(c))
+          else openChat(c)
+        }} style={{
           display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 12px', textAlign: 'left',
           margin: '0 12px 6px', borderRadius: 16, cursor: 'pointer', flexShrink: 0,
           border: `1px solid ${isSel ? 'var(--tm-accent, #AE8D2D)' : unread ? 'rgba(174,141,45,0.45)' : 'var(--tm-line, var(--tm-line))'}`,
@@ -846,12 +881,12 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         }}>
           {/* §277 Gruppen-Quadrat in neutraler Teamfarbe + Mitglieder-Zähler als Gruppen-Symbol */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 13, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
+            <div {...heroAv(`i-${c.id}`)} style={{ width: 40, height: 40, borderRadius: 13, background: 'var(--tm-surface2, #f4f5f7)', border: '1px solid var(--tm-line, var(--tm-line))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{c.emoji}</div>
             {/* Pascal 9.9.: Mitglieder-Zahl am Emoji entfiel — sie wurde als Ungelesen-Zähler gelesen */}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>{c.name}</span>
+              <span {...heroName(`i-${c.id}`)} style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>{c.name}</span>
               {c.lastAt && <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtTime(c.lastAt)}</span>}
               {unread && <span aria-label="ungelesen" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--tm-accent, #AE8D2D)', flexShrink: 0 }} />}
             </div>
@@ -895,16 +930,16 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', borderBottom: HAIR, flexShrink: 0, background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
         {isMobile && (
-          <button onClick={() => setMobileView('list')} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', flexShrink: 0, fontSize: 15 }}>‹</button>
+          <button onClick={() => heroTransition(`i-${active.id}`, () => setMobileView('list'))} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', flexShrink: 0, fontSize: 15 }}>‹</button>
         )}
         {/* Tap auf Emoji/Name → Gruppen-Info (umbenennen, Mitglieder, Medien) */}
         <button onClick={() => setShowInfo(true)} style={{
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11,
           border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
         }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--tm-surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{active.emoji}</div>
+          <div {...heroAv(`i-${active.id}`)} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--tm-surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>{active.emoji}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text)' }}>
+            <div {...heroName(`i-${active.id}`)} style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text)' }}>
               {active.name} <span style={{ color: 'var(--tm-muted2)', fontSize: 13, fontWeight: 400 }}>›</span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--tm-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1026,7 +1061,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                           <button
                             onClick={(ev) => {
                               ev.stopPropagation()
-                              if (q) document.getElementById(`tmsg-${q.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                              if (q) document.getElementById(`tmsg-${q.id}`)?.scrollIntoView({ behavior: sanftScroll(), block: 'center' })
                             }}
                             style={{
                               display: 'block', width: '100%', textAlign: 'left', border: 'none',
@@ -1287,7 +1322,10 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         <div onClick={() => setReactFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 5 }} />,
         document.body
       )}
-      {showCreate && <CreateDialog />}
+      {showCreate && (
+        <NeueGruppeDialog directory={directory} userId={userId}
+          onClose={() => setShowCreate(false)} onCreated={() => { loadChats() }} />
+      )}
       {showInfo && active && (
         <GroupInfo
           chat={active}
@@ -1329,6 +1367,9 @@ function GroupInfo({ chat, isAdmin, directory, userId, botId, onClose, onUpdate,
   onUpdate: (patch: Partial<TeamChat>) => void
   onDeleted: () => void
 }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [editName, setEditName] = useState(false)
   const [name, setName] = useState(chat.name)
   const [emoji, setEmoji] = useState(chat.emoji)
@@ -1396,7 +1437,7 @@ function GroupInfo({ chat, isAdmin, directory, userId, botId, onClose, onUpdate,
   )
 
   const overlay = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 85, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -1406,8 +1447,8 @@ function GroupInfo({ chat, isAdmin, directory, userId, botId, onClose, onUpdate,
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
-        <div style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>Gruppen-Info</div>
+        <button onClick={sheet.close} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <div role="heading" aria-level={2} style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>Gruppen-Info</div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '18px 16px 34px' }}>
@@ -1415,9 +1456,9 @@ function GroupInfo({ chat, isAdmin, directory, userId, botId, onClose, onUpdate,
         <div style={{ textAlign: 'center' }}>
           {editName ? (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4}
+              <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} aria-label="Symbol der Gruppe"
                 style={{ width: 56, textAlign: 'center', borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 0', fontSize: 18, background: 'var(--tm-card)', color: 'var(--tm-text)' }} />
-              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus aria-label="Gruppenname"
                 style={{ flex: '1 1 160px', maxWidth: 260, borderRadius: 12, border: '1.5px solid var(--tm-line)', padding: '10px 14px', fontSize: 15, fontWeight: 700, background: 'var(--tm-card)', color: 'var(--tm-text)', outline: 'none' }} />
               <button onClick={saveName} disabled={saving || !name.trim()} style={{
                 padding: '10px 16px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 700,

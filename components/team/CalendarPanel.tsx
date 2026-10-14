@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import OccupancyGrid from '@/components/team/OccupancyGrid'
-import { usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
+import { usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState, alsKnopf } from '@/components/team/ux'
 import CleaningPlanner, { type CleaningInfo } from '@/components/team/CleaningPlanner'
 import KennzahlenCard from '@/components/team/KennzahlenCard'
 import ReviewSyncCard from '@/components/team/ReviewSyncCard'
@@ -297,7 +297,7 @@ export default function CalendarPanel() {
       {events.map((e, i) => {
         const meta = EVENT_META[e.type]
         return (
-          <div key={i} onClick={e.taskId ? () => openTask(e.taskId!) : undefined} style={{
+          <div key={i} onClick={e.taskId ? () => openTask(e.taskId!) : undefined} {...alsKnopf(e.taskId ? () => openTask(e.taskId!) : null)} style={{
             background: 'var(--tm-card)', borderRadius: 14, padding: '10px 13px',
             boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
             cursor: e.taskId ? 'pointer' : 'default',
@@ -379,7 +379,7 @@ export default function CalendarPanel() {
       {loading ? (
         <div style={{ padding: '12px 16px' }}><SkeletonRows kind="card" count={4} /></div>
       ) : error ? (
-        <p style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13 }}>{error}</p>
+        <p role="alert" style={{ margin: '14px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13 }}>{error}</p>
       ) : view === 'reinigung' ? (
         <div style={{ padding: '12px 16px 40px' }}>
           {cleaning ? (
@@ -451,7 +451,7 @@ export default function CalendarPanel() {
                 </div>
                 <p style={{
                   fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                  color: selDay === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
+                  color: selDay === today ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
                   textTransform: 'uppercase', letterSpacing: '0.03em',
                 }}>{dayLabel(selDay, today)}</p>
                 {selEvents.length === 0 ? (
@@ -467,7 +467,7 @@ export default function CalendarPanel() {
               <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--tm-red)', margin: '0 0 8px' }}>⚠︎ Überfällig</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {overdue.map((t) => (
-                  <div key={t.id} onClick={() => openTask(t.id)} style={{
+                  <div key={t.id} onClick={() => openTask(t.id)} {...alsKnopf(() => openTask(t.id))} style={{
                     background: 'var(--tm-card)', borderRadius: 14, padding: '11px 14px', cursor: 'pointer',
                     boxShadow: 'inset 0 0 0 1.5px var(--tm-red)', display: 'flex', justifyContent: 'space-between', gap: 10,
                   }}>
@@ -547,7 +547,7 @@ export default function CalendarPanel() {
             <div key={iso} style={{ marginBottom: 16 }}>
               <p style={{
                 fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-                color: iso === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
+                color: iso === today ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
                 textTransform: 'uppercase', letterSpacing: '0.03em',
               }}>{dayLabel(iso, today)}</p>
               {renderEventCards(events)}

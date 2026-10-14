@@ -167,7 +167,12 @@ function ruheSpaeter() {
 
 /** Innerhalb einer Geste: Kontext anlegen bzw. wecken. Safari/iOS lassen resume() nur dort zu —
  *  der Ton selbst kommt oft erst nach der Server-Antwort, also außerhalb der Geste. */
+let zuletztEntsperrt = 0
 function entsperren() {
+  // beim Tippen feuert jede Taste — läuft der Kontext schon, reicht ein Auffrischen pro Sekunde
+  const jetzt = Date.now()
+  if (ctx && ctx.state === 'running' && jetzt - zuletztEntsperrt < 1000) return
+  zuletztEntsperrt = jetzt
   if (!toeneAn()) return
   const c = kontext()
   if (!c) return

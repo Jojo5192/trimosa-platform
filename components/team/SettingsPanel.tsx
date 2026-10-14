@@ -239,9 +239,8 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   // 🧭 Pascal 7: HÄUFIG + Gruppen (Typen/Helfer oben bei MehrEintrag)
   const [probenFertig, setProbenFertig] = useState(false)
   useEffect(() => {
-    // Rückfall, falls eine Probe hängt — ohne Push-Unterstützung laufen die Proben gar nicht (früher Ausstieg unten)
-    const ohneProben = !('serviceWorker' in navigator) || !('PushManager' in window)
-    const t = setTimeout(() => setProbenFertig(true), ohneProben ? 0 : 4000)
+    // Rückfall, falls eine Probe hängt (die Proben laufen seit 14.10. auch ohne Push-Unterstützung, s. u.)
+    const t = setTimeout(() => setProbenFertig(true), 4000)
     return () => clearTimeout(t)
   }, [])
   // Zählerstand einmal lesen: HÄUFIG bleibt während der Sitzung stehen (Kacheln springen nicht unter dem Finger),
@@ -299,8 +298,10 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   }
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
-    navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+    // Push-Unterstützung prüfen — OHNE frühen Ausstieg: Bis 14.10. endete der Effekt hier, dann liefen in Safari
+    // außerhalb der installierten App weder Einstellungen noch Rechte-Proben (Türschlösser, Buchhaltung … fehlten)
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) setPushState('unsupported')
+    else navigator.serviceWorker.register('/sw.js').then(async (reg) => {
       const sub = await reg.pushManager.getSubscription()
       setPushState(sub ? 'on' : 'off')
     }).catch(() => setPushState('unsupported'))

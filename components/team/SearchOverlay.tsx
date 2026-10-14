@@ -10,7 +10,8 @@
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic, IconSearch } from '@/components/team/ux'
+import { haptic, IconSearch, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 type Hit = { id: string; group: 'chat' | 'intern' | 'task'; title: string; sub: string; badge?: string }
 
@@ -27,12 +28,15 @@ function saveRecent(term: string) {
   } catch { /* quota */ }
 }
 
-export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
+export default function SearchOverlay({ role, isDesktop, onClose: schliessenSofort, onOpen }: {
   role: 'team' | 'provider'
   isDesktop: boolean
   onClose: () => void
   onOpen: (hit: Hit) => void
 }) {
+  // 🎬 Motion: alle Schließ-Wege (Abbrechen, Esc, Hintergrund, Treffer gewählt) blenden kurz aus —
+  // onClose ist hier die verzögerte Variante, die eigentliche Prop läuft nach der Ausblendung
+  const { close: onClose, hostProps } = useSheetMotion(schliessenSofort)
   const [q, setQ] = useState('')
   const [recent] = useState<string[]>(() => (typeof window === 'undefined' ? [] : loadRecent()))
   const [threads, setThreads] = useState<Record<string, unknown>[]>([])
@@ -42,6 +46,8 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
   // Quellen, die nicht geladen werden konnten — sonst sähe ein Fehler aus wie „Keine Treffer"
   const [fehlend, setFehlend] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  // ♿ Fokus-Falle + Rückkehr zur Lupe; Esc schließt schon der eigene Hörer unten (daher null)
+  const dlgRef = useDialogFokus(null)
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 60)
@@ -117,14 +123,14 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
   }
 
   const body = (
-    <div className="team-shell" onClick={isDesktop ? onClose : undefined} style={{
+    <div className="team-shell tm-mo-fade" {...hostProps} onClick={isDesktop ? onClose : undefined} style={{
       position: 'fixed', inset: 0, zIndex: 120,
       background: isDesktop ? 'var(--tm-scrim)' : 'var(--tm-bg)',
       backdropFilter: isDesktop ? 'blur(6px)' : undefined, WebkitBackdropFilter: isDesktop ? 'blur(6px)' : undefined,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       paddingTop: isDesktop ? '10vh' : 'env(safe-area-inset-top)',
     }}>
-      <div className={isDesktop ? 'tm-pop-in' : 'tm-enter'} onClick={(e) => e.stopPropagation()} style={{
+      <div ref={dlgRef} aria-label="Suche" className={isDesktop ? 'tm-pop-in' : 'tm-enter'} onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: isDesktop ? 640 : undefined, height: isDesktop ? undefined : '100%',
         maxHeight: isDesktop ? '70vh' : undefined,
         display: 'flex', flexDirection: 'column',
@@ -141,6 +147,7 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) pick(hits[0]) }}
               placeholder="Gäste, Gruppen, Aufgaben …"
+              aria-label="Suchen in Gästen, Gruppen und Aufgaben"
               style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 16, padding: '11px 0', color: 'var(--tm-text)' }}
             />
             {q && (
@@ -150,6 +157,8 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
           <button className="tm-press-btn" onClick={onClose} style={{ border: 'none', background: 'none', color: 'var(--tm-accent-dark)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: '6px 2px', flexShrink: 0 }}>Abbrechen</button>
         </div>
 
+        {/* ♿ Trefferzahl beim Tippen dezent ansagen (keine Treffer sagt der Hinweis unten selbst) */}
+        <span className="tm-sr-only" aria-live="polite">{q.trim().length >= 2 && !loading && hits.length > 0 ? `${hits.length} Treffer` : ''}</span>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px', paddingBottom: 'var(--tm-nav-pad)' }}>
           {q.trim().length < 2 ? (
             recent.length > 0 ? (
@@ -165,12 +174,12 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
                 </div>
               </>
             ) : (
-              <div style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px', lineHeight: 1.6 }}>
+              <div role="status" style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px', lineHeight: 1.6 }}>
                 {loading ? 'Lädt…' : 'Suche in Chats, Gruppen und Aufgaben.'}
               </div>
             )
           ) : hits.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px' }}>
+            <div role="status" style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px' }}>
               {loading ? 'Lädt…' : `Keine Treffer für „${q.trim()}“ – probier einen kürzeren Begriff, z. B. nur den Nachnamen.`}
               {!loading && fehlend.length > 0 && <span style={{ display: 'block', marginTop: 6, color: 'var(--tm-red)' }}>⚠️ Gerade nicht durchsuchbar: {fehlend.join(', ')}. Öffne die Suche gleich noch einmal.</span>}
             </div>
@@ -190,7 +199,7 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
                         {h.sub && <span style={{ display: 'block', fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.sub}</span>}
                       </span>
                       {h.badge && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '3px 8px', flexShrink: 0 }}>{h.badge}</span>}
-                      <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
+                      <span aria-hidden="true" style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
                     </button>
                   ))}
                 </div>

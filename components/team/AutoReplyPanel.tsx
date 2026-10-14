@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic, Segmented } from '@/components/team/ux'
+import { haptic, Segmented, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * 🤖 KI-Auto-Antworten (Phase 2, Pascal 26.9.) — Mehr → KI-Auto-Antworten.
@@ -77,6 +78,9 @@ function Zitat({ titel, text, farbe }: { titel: string; text: string; farbe?: st
 }
 
 export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [d, setD] = useState<Daten | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [meldung, setMeldung] = useState<string | null>(null)
@@ -159,7 +163,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
   const offen = (d?.rows ?? []).filter((r) => SENDE.includes(r.entscheidung) && !r.bewertung).length
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-bg)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -167,15 +171,15 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button type="button" onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent-dark)', cursor: 'pointer', padding: '0 4px' }}>‹</button>
-        <div style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🤖 KI-Auto-Antworten</div>
-        {d === null && !error && <span style={{ fontSize: 12, color: 'var(--tm-muted2)', flexShrink: 0 }}>Lädt…</span>}
+        <button type="button" onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent-dark)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <div role="heading" aria-level={2} style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span aria-hidden="true">🤖 </span>KI-Auto-Antworten</div>
+        {d === null && !error && <span role="status" style={{ fontSize: 12, color: 'var(--tm-muted2)', flexShrink: 0 }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 14px calc(40px + env(safe-area-inset-bottom))' }}>
           {error && (
-            <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            <div role="alert" style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {error}
             </div>
           )}
@@ -335,12 +339,12 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11, flexWrap: 'wrap', opacity: fremdesUrteil(r) ? 0.55 : 1 }}>
                         <button onClick={() => void bewerten(r, 'richtig')} aria-pressed={r.bewertung === 'richtig'} style={{
                           flex: '1 1 110px', minWidth: 0, padding: '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
-                          background: r.bewertung === 'richtig' ? 'var(--tm-green)' : 'var(--tm-green-soft)',
+                          background: r.bewertung === 'richtig' ? 'var(--tm-green-solid)' : 'var(--tm-green-soft)',
                           color: r.bewertung === 'richtig' ? '#fff' : 'var(--tm-green)',
                         }}>✓ richtig</button>
                         <button onClick={() => void bewerten(r, 'falsch')} aria-pressed={r.bewertung === 'falsch'} style={{
                           flex: '1 1 110px', minWidth: 0, padding: '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
-                          background: r.bewertung === 'falsch' ? 'var(--tm-red)' : 'var(--tm-red-soft)',
+                          background: r.bewertung === 'falsch' ? 'var(--tm-red-solid)' : 'var(--tm-red-soft)',
                           color: r.bewertung === 'falsch' ? '#fff' : 'var(--tm-red)',
                         }}>✕ falsch</button>
                       </div>

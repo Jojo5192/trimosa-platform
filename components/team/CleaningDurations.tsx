@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic } from '@/components/team/ux'
+import { haptic, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * ⏱ §255: Reinigungs-Dauer-Auswertung (nur Chefs). Von „Tür auf"
@@ -89,6 +90,9 @@ function fmtDate(d: string): string {
 }
 
 export default function CleaningDurations({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -162,12 +166,12 @@ export default function CleaningDurations({ onClose }: { onClose: () => void }) 
   const kpiValue = { fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', marginTop: 2, fontVariantNumeric: 'tabular-nums' as const }
 
   const body = (
-    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0 }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⏱ Reinigungs-Dauer</div>
+        <button onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <div role="heading" aria-level={2} style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}><span aria-hidden="true">⏱ </span>Reinigungs-Dauer</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
+        {loading && <span role="status" style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       {/* §266b: Wohnungs-Filter — horizontale Chip-Leiste im iOS-Stil */}

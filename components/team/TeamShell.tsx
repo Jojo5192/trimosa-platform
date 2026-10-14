@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ChatPanel from '@/components/chat/ChatPanel'
-import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh, isStandalonePwa } from '@/components/team/ux'
+import { haptic, tmToast, TabStrokeIcon, IconSearch, IconRefresh, isStandalonePwa, BedienhilfenHost, useDialogFokus } from '@/components/team/ux'
 import { useOnline, useOutboxCount, noteInteraction, flushOutbox, ensureOwner } from '@/lib/offline'
 import { useInboxOpenCount } from '@/lib/inbox-store'
 import { applyTheme, useIsDark } from '@/lib/theme'
@@ -31,6 +31,7 @@ import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
 import LightboxHost from '@/components/team/Lightbox'
+import { ToastStack } from '@/components/team/motion'
 import { VORSCHAU_NAME, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 import SearchOverlay from '@/components/team/SearchOverlay'
 import HeutePanel from '@/components/team/HeutePanel'
@@ -105,6 +106,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
   const [updating, setUpdating] = useState(false)
   // Paragraph 310: In-App-Link-Sheet (Standalone-PWA hat keine Browser-Leiste -> kein Zurueck)
   const [linkSheet, setLinkSheet] = useState<{ url: string; title: string } | null>(null)
+  const linkDlgRef = useDialogFokus(() => setLinkSheet(null), !!linkSheet)
   useEffect(() => {
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent<{ url: string; title?: string }>).detail
@@ -247,20 +249,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     syncTimer.current = setTimeout(() => setSyncing(false), 3000)
   }, [])
 
-  /* ── Toast-Host (tmToast aus ux.tsx) ── */
-  const [toast, setToast] = useState<string | null>(null)
-  useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | null = null
-    const onToast = (e: Event) => {
-      const text = (e as CustomEvent<{ text: string }>).detail?.text
-      if (!text) return
-      setToast(text)
-      if (t) clearTimeout(t)
-      t = setTimeout(() => setToast(null), 2000)
-    }
-    window.addEventListener('trimosa-toast', onToast)
-    return () => { window.removeEventListener('trimosa-toast', onToast); if (t) clearTimeout(t) }
-  }, [])
+  /* ── Toast-Host (tmToast aus ux.tsx): 🎬 ToastStack aus motion.tsx (unten im Content-Bereich) ── */
 
   /* ── Suche (Lupe · ⌘K) ── */
   const [searchOpen, setSearchOpen] = useState(false)
@@ -399,7 +388,8 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     <div role="status" style={{
       flexShrink: 0, padding: '7px 16px', fontSize: 12.5, fontWeight: 600, textAlign: 'center', lineHeight: 1.35,
       background: online ? 'var(--tm-green-soft, rgba(26,157,87,0.13))' : 'var(--tm-yellow-soft, rgba(240,180,41,0.16))',
-      color: online ? 'var(--tm-green, #1a9d57)' : '#7a5a00',
+      // ♿ Token statt festem Braun — #7a5a00 fiel im Dunkeln auf 2,4:1
+      color: online ? 'var(--tm-green, #1a9d57)' : 'var(--tm-yellow, #7a5a00)',
       borderBottom: '1px solid var(--tm-line, #e3e6ea)',
     }}>
       {online
@@ -550,19 +540,20 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {tab === 'offen' ? (
-          <button className="tm-press-btn" onClick={() => goTab('einstellungen')} style={{
+          <button className="tm-press-btn" onClick={() => goTab('einstellungen')} aria-label="Zurück zu Mehr" style={{
             border: 'none', background: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--tm-tab-on-fg)', fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2,
-          }}><span style={{ fontSize: 22, lineHeight: 1, marginTop: -2 }}>‹</span> Mehr</button>
+          }}><span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, marginTop: -2 }}>‹</span> Mehr</button>
         ) : (
           <>
             {!isDesktop && <Wordmark />}
-            <div key={tab} className="tm-enter tm-title" style={{
+            {/* ♿ h1 = Bereichs-Name (Panels darunter beginnen bei h2) */}
+            <h1 key={tab} className="tm-enter tm-title" style={{
               fontSize: isDesktop ? 22 : collapsed ? 19 : 30, fontWeight: 800,
               letterSpacing: isDesktop || collapsed ? '-0.02em' : '-0.03em', color: 'var(--tm-text)',
               lineHeight: 1.15, marginTop: isDesktop ? 0 : 3,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>{TITLES[tab]}</div>
+            }}>{TITLES[tab]}</h1>
           </>
         )}
       </div>
@@ -572,7 +563,8 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
       <span
         className={online && syncing ? 'tm-live' : undefined}
         title={online ? `${syncing ? 'Gleicht ab' : 'Aktuell'}${lastSync ? ` · ${fmtSync(lastSync)}` : ''}` : 'Offline'}
-        aria-label={online ? 'Verbunden' : 'Offline'}
+        role="img"
+        aria-label={online ? (syncing ? 'Verbunden – gleicht ab' : 'Verbunden') : 'Offline'}
         style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginRight: 2, background: online ? 'var(--tm-green)' : 'var(--tm-muted2)', transition: 'background .3s var(--tm-ease)' }}
       />
       <button className="tm-iconbtn tm-press-btn" onClick={() => { haptic(); setSearchOpen(true) }} aria-label="Suchen" title="Suchen (⌘K)">
@@ -589,7 +581,9 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     const active = tab === t.id
     const badge = badgeFor(t.id)
     return (
-      <button key={t.id} className="tm-press-tab" onClick={() => goTab(t.id)} aria-current={active ? 'page' : undefined} style={{
+      <button key={t.id} className="tm-press-tab" onClick={() => goTab(t.id)} aria-current={active ? 'page' : undefined}
+        // ♿ Zahl mitlesen: „Inbox, 3 offen" statt „3 Inbox"
+        aria-label={badge > 0 ? `${t.label}, ${badge} offen` : undefined} style={{
         border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
         // iOS-27-Runde: aktiver Tab klar abgesetzt — hell dunkleres Gold auf kräftigerer
         // Goldfläche (4,9:1), dunkel hellere Fläche als die Leiste mit Gold-Text (6,9:1)
@@ -604,9 +598,9 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
         <span style={{ position: 'relative', display: 'inline-flex' }}>
           <TabStrokeIcon name={t.id} size={sidebar ? 22 : 27} active={active} />
           {badge > 0 && (
-            <span style={{
+            <span aria-hidden="true" style={{
               position: 'absolute', top: -5, right: -10, minWidth: 17, height: 17, borderRadius: 9,
-              background: 'var(--tm-red)', color: '#fff', fontSize: 9.5, fontWeight: 700,
+              background: 'var(--tm-red-solid)', color: '#fff', fontSize: 9.5, fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
               boxShadow: '0 0 0 2px var(--tm-card)',
             }}>{badge > 99 ? '99+' : badge}</span>
@@ -625,7 +619,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     }}>
       {/* iOS-27-Runde: Kapsel (Radius = halbe Höhe); Glas, Weichzeichner und Kante kommen aus
           .tm-glass (globals.css), damit die Bedienungshilfen-Media-Queries sie überschreiben können */}
-      <nav className="tm-glass" style={{
+      <nav className="tm-glass" aria-label="Hauptnavigation" style={{
         pointerEvents: 'auto', height: 76, borderRadius: 38,
         display: 'flex', alignItems: 'center', gap: 2, padding: '0 7px',
       }}>
@@ -636,7 +630,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
 
   /* ── Seitenleiste (Rechner) ── */
   const sidebar = (
-    <aside style={{
+    <aside role="navigation" aria-label="Hauptnavigation" style={{
       width: 224, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4,
       padding: '20px 12px', background: 'var(--tm-card)', borderRight: '1px solid var(--tm-line)',
     }}>
@@ -664,10 +658,12 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     }}>
       {updating && <div className="tm-update-stripe" aria-hidden="true" />}
       <LightboxHost />
+      {/* ♿ Live-Regionen für Ansagen (Toasts, neue Nachrichten) + Tastatur-Modus fürs Fokus-Ringlein */}
+      <BedienhilfenHost />
       {linkSheet && (
-        <div role="dialog" aria-label="Link" style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', background: 'var(--tm-bg, #F3F4F6)' }}>
+        <div ref={linkDlgRef} role="dialog" aria-modal="true" aria-label={linkSheet.title || 'Link'} style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', background: 'var(--tm-bg, #F3F4F6)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(env(safe-area-inset-top) + 8px) 10px 8px', background: 'var(--tm-glass)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '0.5px solid var(--tm-line)' }}>
-            <button onClick={() => { haptic(); setLinkSheet(null) }} style={{ border: 'none', background: 'var(--tm-surface2)', boxShadow: 'var(--tm-edge)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹ Zurück</button>
+            <button aria-label="Zurück" onClick={() => { haptic(); setLinkSheet(null) }} style={{ border: 'none', background: 'var(--tm-surface2)', boxShadow: 'var(--tm-edge)', color: 'var(--tm-text)', borderRadius: 999, padding: '8px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹ Zurück</button>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--tm-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'center' }}>
               {linkSheet.title || linkSheet.url.replace(/^https?:\/\//, '')}
             </span>
@@ -738,17 +734,8 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
           {/* Schwebende Tab-Leiste — im offenen Thread (mobil) ausgeblendet */}
           {!isDesktop && !navHidden && floatingNav}
 
-          {toast && (
-            <div className="tm-toast" role="status" style={{
-              position: 'absolute', left: '50%', zIndex: 60,
-              bottom: navHidden || isDesktop ? 'calc(20px + env(safe-area-inset-bottom))' : 'calc(var(--tm-nav-pad) + 6px)',
-              background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 13, fontWeight: 600,
-              borderRadius: 18, padding: '10px 16px', boxShadow: 'var(--tm-shadow-float)',
-              // bis zu 2 Zeilen statt abgeschnitten („Vorlage … eingefügt — bitte prüfen und senden")
-              width: 'max-content', maxWidth: 'calc(100% - 32px)', textAlign: 'center', lineHeight: 1.35,
-              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            }}>{toast}</div>
-          )}
+          {/* 🎬 Toasts: weich herein/heraus, gestapelt ohne Springen (motion.tsx) */}
+          <ToastStack bottom={navHidden || isDesktop ? 'calc(20px + env(safe-area-inset-bottom))' : 'calc(var(--tm-nav-pad) + 6px)'} />
         </div>
       </div>
 

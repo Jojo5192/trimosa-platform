@@ -5,7 +5,8 @@ import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink, ansagen, useDialogFokus, sanftScroll } from '@/components/team/ux'
+import { heroTransition, heroAv, heroName, useFlipList, useSheetMotion } from '@/components/team/motion'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import { isOffenThread, publishInboxThreads, INBOX_RELOAD_EVENT, type InboxThreadLite } from '@/lib/inbox-store'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
@@ -298,17 +299,19 @@ function fmtRangeShort(checkIn: string | null, checkOut: string | null) {
 }
 
 /* ── Avatar ── */
-function Av({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
+function Av({ name, src, size = 36, hero }: { name: string; src?: string | null; size?: number; hero?: string }) {
+  // 🎬 hero = Schlüssel für den Hero-Übergang Karte → Kopfleiste (motion.tsx heroTransition)
+  const heroAttr = hero ? heroAv(hero) : undefined
   if (src) {
     return (
-      <img src={src} alt={name} style={{
+      <img src={src} alt={name} {...heroAttr} style={{
         width: size, height: size, borderRadius: '50%', flexShrink: 0,
         objectFit: 'cover', border: '2px solid var(--tm-line)',
       }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
     )
   }
   return (
-    <div style={{
+    <div {...heroAttr} style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
       background: 'var(--tm-navy)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -373,6 +376,58 @@ interface RowApi {
   swipeEnd(id: string): void
 }
 
+/** 🎬 Schlüssel einer Listen-Karte für useFlipList (Karten tragen data-conv) */
+const convFlipKey = (el: HTMLElement) => el.getAttribute('data-conv')
+
+/** §282.7 Peek-Menü (langer Druck / Rechtsklick auf eine Karte): Hintergrund verschwimmt, die Karte hebt sich ab,
+ *  darunter die Aktionen. Eigene Komponente (Chefsache 14.10.2026, vorher eine Render-Funktion im ChatPanel), damit
+ *  sie Fokus-Führung (useDialogFokus) und 🎬 Schließ-Animation (useSheetMotion) selbst halten kann. Die Aktionen
+ *  kommen fertig aus dem ChatPanel und laufen sofort; das Menü blendet aus (Tipp auf den Hintergrund, Esc oder Aktion). */
+function PeekMenu({ c, name, aktionen, onClose }: {
+  c: Conversation
+  name: string
+  aktionen: [string, string, () => void][]
+  onClose: () => void
+}) {
+  const sheet = useSheetMotion(onClose)
+  // ♿ Peek-Menü als Dialog: Fokus hinein, Tab bleibt drin, Esc schließt, danach zurück zur Karte
+  const dlgRef = useDialogFokus(sheet.close)
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="team-shell tm-scrim tm-mo-scrim" {...sheet.hostProps} onClick={sheet.close} style={{
+      position: 'fixed', inset: 0, zIndex: 1200, padding: 20,
+      backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div ref={dlgRef} aria-label={`Aktionen für ${name}`} className="tm-mo-pop" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420 }}>
+        {/* iOS-27-Runde: Karte + Aktionsliste als .tm-sheet (Kante + Glanzlicht), rundum gerundet */}
+        <div className="tm-sheet" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 'var(--tm-r-xl, 22px)' }}>
+          <span style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: portalColor(c.platform), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15 }}>{initials(name)}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>{name}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 2 }}>{c.listing_title ?? '—'}{c.check_in && c.check_out ? ` · ${fmtRangeShort(c.check_in, c.check_out)}` : ''}</div>
+            {c.lastPreview && <div style={{ fontSize: 13, color: 'var(--tm-text)', marginTop: 6, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.lastPreview}</div>}
+            <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap' }}><ThreadBadges c={c} /></div>
+          </div>
+        </div>
+        <div className="tm-sheet" style={{ marginTop: 10, overflow: 'hidden', borderRadius: 'var(--tm-r-xl, 22px)' }}>
+          {aktionen.map(([icon, label, fn], i) => (
+            // wie vorher: erst schließen, dann die Aktion — nur blendet das Menü jetzt aus statt zu verschwinden
+            <button key={label} className="tm-press-btn" onClick={() => { haptic(); sheet.close(); fn() }} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', border: 'none',
+              borderTop: i ? '1px solid var(--tm-line)' : 'none', background: 'transparent', color: 'var(--tm-text)',
+              fontSize: 15, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+            }}>
+              <span aria-hidden="true" style={{ width: 24, textAlign: 'center', flexShrink: 0 }}>{icon}</span>{label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 /** §277 Chat-KARTE der Thread-Liste — memoisiert: Tippen im Composer, Pull-to-Refresh und
  *  unveränderte Listen-Abgleiche rendern die Karten nicht mehr neu. tick (Minuten-Takt)
  *  hält die relativen Zeitangaben frisch. */
@@ -422,8 +477,8 @@ const ConvCard = memo(function ConvCard({ c, name, avatar, isSel, swipeOpen, can
       transform: swipeOpen ? `translateX(-${SWIPE_W}px)` : 'translateX(0)',
       transition: 'transform .22s ease, background .12s',
     }}>
-      {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) */}
-      <div style={{
+      {/* Avatar-Quadrat in Portalfarbe (Foto, wenn vorhanden) — 🎬 fliegt beim Öffnen in die Kopfleiste */}
+      <div {...heroAv(`g-${c.id}`)} style={{
         width: 40, height: 40, borderRadius: 13, flexShrink: 0, overflow: 'hidden',
         background: portalColor(c.platform), color: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -436,7 +491,7 @@ const ConvCard = memo(function ConvCard({ c, name, avatar, isSel, swipeOpen, can
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+          <span {...heroName(`g-${c.id}`)} style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: unread ? 800 : 700, color: 'var(--tm-text, #171a1f)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
             {name}
           </span>
           <span className="tm-num" style={{ fontSize: 11.5, fontWeight: unread ? 700 : 500, color: unread ? 'var(--tm-accent-dark, #8A7020)' : 'var(--tm-muted2, #959ca7)', flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -600,7 +655,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   // (die Suche lebt seit §277 in der Such-Ebene der Shell — Lupe/⌘K)
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null)
   // §282.7 Langer Druck auf eine Karte → Peek-Menü · §282.8 Blase fliegt beim Senden
-  const [peek, setPeek] = useState<Conversation | null>(null)
+  const [peek, setPeek] = useState<Conversation | null>(null) // → PeekMenu (eigene Komponente, oben)
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const peekJustOpened = useRef(false)
   const [flyText, setFlyText] = useState<string | null>(null)
@@ -845,6 +900,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     open: false, name: '', supplement: '', street: '', zip: '', city: '', country: 'Deutschland',
     busy: false, extracting: false, result: null as string | null, url: null as string | null,
   })
+  const invDlgRef = useDialogFokus(() => setInvForm(f => ({ ...f, open: false })), invForm.open)
 
   /** §159: Dialog-Vorbefüllung — KI zieht Rechnungsdaten aus dem Chat-Verlauf
    *  (nur explizit als Rechnungsempfänger gemeinte Angaben); Team bestätigt. */
@@ -977,6 +1033,24 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
   const isHost   = (c: Conversation) => c.host_id === userId
   const partner  = (c: Conversation) => isHost(c) ? (c.guest_name || 'Gast') : (c.host_name || 'Gastgeber')
   const partnerAvatar = (c: Conversation) => isHost(c) ? c.guest_avatar_url : c.host_avatar_url
+
+  /* ♿ Neue Nachricht im OFFENEN Thread dezent ansagen („Neue Nachricht von …") — nur Zuwachs am Ende,
+     nicht beim Öffnen/Wechseln, nicht für eigene/Team-/KI-Nachrichten, nur wenn der Verlauf sichtbar ist */
+  const ansageStandRef = useRef<{ id: string | null; letzte: string | null }>({ id: null, letzte: null })
+  useEffect(() => {
+    const convId = msgsLoadedId
+    if (!convId || !active || convId !== active.id) return
+    const letzte = msgs[msgs.length - 1]?.id ?? null
+    const stand = ansageStandRef.current
+    if (stand.id !== convId) { ansageStandRef.current = { id: convId, letzte }; return }
+    if (!letzte || letzte === stand.letzte) return
+    const ab = stand.letzte ? msgs.findIndex((m) => m.id === stand.letzte) : -1
+    stand.letzte = letzte
+    const neu = (ab >= 0 ? msgs.slice(ab + 1) : msgs.slice(-1)).filter((m) => m.sender_id !== userId)
+    const feed = feedRef.current
+    if (!neu.length || !feed || feed.offsetParent === null || document.visibilityState !== 'visible') return
+    ansagen(neu.length === 1 ? `Neue Nachricht von ${partner(active)}` : `${neu.length} neue Nachrichten von ${partner(active)}`)
+  }, [msgs, msgsLoadedId, active]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── mobile detection ── */
   useEffect(() => {
@@ -1330,7 +1404,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // §288: erst unten anpinnen, dann einblenden
       requestAnimationFrame(() => { if (feedRef.current) feedRef.current.style.opacity = '1' })
     } else {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      bottomRef.current?.scrollIntoView({ behavior: sanftScroll() })
     }
   }, [msgs, active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -1713,7 +1787,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       tap: (c, swipeOpen) => {
         if (peekJustOpened.current) { peekJustOpened.current = false; return }
         if (swipeOpen) { setOpenSwipeId(null); return }
-        selectConv(c)
+        // 🎬 Team-App mobil: Avatar + Name fliegen von der Karte in die Kopfleiste (sonst wie bisher)
+        if (team && isMobile) heroTransition(`g-${c.id}`, () => selectConv(c))
+        else selectConv(c)
       },
       peek: (c) => { haptic(); setPeek(c) },
       mark: (c, field) => { haptic(); markConv(c, field); setOpenSwipeId(null) },
@@ -1728,6 +1804,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     swipeMove: (e, id) => rowApiRef.current?.swipeMove(e, id),
     swipeEnd: (id) => rowApiRef.current?.swipeEnd(id),
   }), [])
+
+  // 🎬 Inbox-Liste rückt weich nach (Chat erledigt/gefiltert weg, neu einsortiert) statt zu springen
+  useFlipList(listScrollRef, convFlipKey)
 
   if (!open) return null
 
@@ -1804,50 +1883,20 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     setOpenSwipeId(willOpen ? id : (openSwipeId === id ? null : openSwipeId))
   }
 
-  /* §282.7 Peek-Menü (langer Druck / Rechtsklick auf eine Karte): Hintergrund
-     verschwimmt, die Karte hebt sich ab, darunter die Aktionen */
-  const peekSheet = (c: Conversation) => (
-    <div className="team-shell tm-scrim tm-peek" onClick={() => setPeek(null)} style={{
-      position: 'fixed', inset: 0, zIndex: 1200, padding: 20,
-      backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div className="tm-pop-in" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420 }}>
-        {/* iOS-27-Runde: Karte + Aktionsliste als .tm-sheet (Kante + Glanzlicht), rundum gerundet */}
-        <div className="tm-sheet" style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 'var(--tm-r-xl, 22px)' }}>
-          <span style={{ width: 44, height: 44, borderRadius: 14, flexShrink: 0, background: portalColor(c.platform), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15 }}>{initials(partner(c))}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>{partner(c)}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--tm-muted)', marginTop: 2 }}>{c.listing_title ?? '—'}{c.check_in && c.check_out ? ` · ${fmtRangeShort(c.check_in, c.check_out)}` : ''}</div>
-            {c.lastPreview && <div style={{ fontSize: 13, color: 'var(--tm-text)', marginTop: 6, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.lastPreview}</div>}
-            <div style={{ marginTop: 8, display: 'flex', gap: 5, flexWrap: 'wrap' }}><ThreadBadges c={c} /></div>
-          </div>
-        </div>
-        <div className="tm-sheet" style={{ marginTop: 10, overflow: 'hidden', borderRadius: 'var(--tm-r-xl, 22px)' }}>
-          {([
-            ['💬', 'Antworten', () => { setPeek(null); selectConv(c) }],
-            ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt – keine Antwort nötig', () => { setPeek(null); markConv(c, 'no_reply') }],
-            ['📞', c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt', () => { setPeek(null); markConv(c, 'phone') }],
-            ...((c.kind ?? 'direct') === 'booking' ? [
-              ['🔕', c.msgMute === 'alle' ? 'Auto-Nachrichten wieder einschalten' : 'Auto-Nachrichten stumm (nur noch Check-out)', () => { setPeek(null); muteConv(c, c.msgMute === 'alle' ? '' : 'alle') }],
-              ['⭐', c.msgMute === 'bewertung' ? 'Bewertungsbitte wieder erlauben' : 'Keine Bewertungsbitte für diesen Gast', () => { setPeek(null); muteConv(c, c.msgMute === 'bewertung' ? '' : 'bewertung') }],
-              ['🔧', c.earlyBlocked ? 'Early Check-in wieder erlauben' : 'Early Check-in sperren (Arbeiten geplant)', () => { setPeek(null); toggleEarlyBlock(c) }],
-            ] as [string, string, () => void][] : []),
-            ['🧾', 'Buchung & Gast', () => { setPeek(null); selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
-            ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { setPeek(null); openLink(c.mappeUrl!, 'Gästemappe') }]] : []),
-          ] as [string, string, () => void][]).map(([icon, label, fn], i) => (
-            <button key={label} className="tm-press-btn" onClick={() => { haptic(); fn() }} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', border: 'none',
-              borderTop: i ? '1px solid var(--tm-line)' : 'none', background: 'transparent', color: 'var(--tm-text)',
-              fontSize: 15, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-            }}>
-              <span style={{ width: 24, textAlign: 'center', flexShrink: 0 }}>{icon}</span>{label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
+  /* §282.7 Aktionen des Peek-Menüs (Darstellung: PeekMenu, oben als eigene Komponente). Jede Aktion läuft
+     sofort; das Menü schließt sich selbst (mit Ausblendung) — vorher stand hier jeweils setPeek(null) davor. */
+  const peekAktionen = (c: Conversation): [string, string, () => void][] => [
+    ['💬', 'Antworten', () => { selectConv(c) }],
+    ['✓', c.noReplyNeeded ? 'Erledigt zurücknehmen' : 'Erledigt – keine Antwort nötig', () => { markConv(c, 'no_reply') }],
+    ['📞', c.phoneResolved ? 'Telefon-Markierung entfernen' : 'Telefonisch geklärt', () => { markConv(c, 'phone') }],
+    ...((c.kind ?? 'direct') === 'booking' ? [
+      ['🔕', c.msgMute === 'alle' ? 'Auto-Nachrichten wieder einschalten' : 'Auto-Nachrichten stumm (nur noch Check-out)', () => { muteConv(c, c.msgMute === 'alle' ? '' : 'alle') }],
+      ['⭐', c.msgMute === 'bewertung' ? 'Bewertungsbitte wieder erlauben' : 'Keine Bewertungsbitte für diesen Gast', () => { muteConv(c, c.msgMute === 'bewertung' ? '' : 'bewertung') }],
+      ['🔧', c.earlyBlocked ? 'Early Check-in wieder erlauben' : 'Early Check-in sperren (Arbeiten geplant)', () => { toggleEarlyBlock(c) }],
+    ] as [string, string, () => void][] : []),
+    ['🧾', 'Buchung & Gast', () => { selectConv(c); setTimeout(() => setShowGuestInfo(true), 60) }],
+    ...(c.mappeUrl ? [['📖', 'Gästemappe öffnen', () => { openLink(c.mappeUrl!, 'Gästemappe') }]] as [string, string, () => void][] : []),
+  ]
 
   /* ═══════════════════════════════════════════════════════════
      CONVERSATION LIST (shared between mobile list view + desktop sidebar)
@@ -1903,7 +1952,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             </div>
           </div>
         )}
-        {peek && typeof document !== 'undefined' && createPortal(peekSheet(peek), document.body)}
+        {peek && <PeekMenu c={peek} name={partner(peek)} aktionen={peekAktionen(peek)} onClose={() => setPeek(null)} />}
         <PullHint pull={listPtr.pull} busy={listPtr.busy} />
         {/* Erklärt die Thread-Markierungen — nur im Unbeantwortet-Filter, damit
             das Team weiß, dass ✓/📞 die Antwortzeit im Wochenbericht sauber hält */}
@@ -2016,7 +2065,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {showBack && (
             <button
-              onClick={backToList}
+              // 🎬 Zurück per Knopf: Avatar + Name fliegen zurück in die Karte (Wisch-Zurück bleibt ohne)
+              onClick={team ? () => heroTransition(`g-${active.id}`, backToList) : backToList}
               aria-label="Zurück zur Liste"
               style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--tm-muted)', flexShrink: 0 }}
             >
@@ -2025,7 +2075,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               </svg>
             </button>
             )}
-            <Av name={partner(active)} src={partnerAvatar(active)} size={36} />
+            <Av name={partner(active)} src={partnerAvatar(active)} size={36} hero={`g-${active.id}`} />
             {/* Tipp auf Name/Zeile klappt die Gast-Karte auf (Pascal-Feedback §97) */}
             <div
               onClick={team ? () => setShowGuestInfo(v => !v) : undefined}
@@ -2034,7 +2084,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
               {/* §247: kein nowrap/ellipsis mehr — der ganze Name bleibt lesbar
                   (bei sehr langen Namen bricht er auf zwei Zeilen um). Die
                   Zusatz-Infos wandern in die Mini-Zeile darunter. */}
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text)', lineHeight: 1.25, wordBreak: 'break-word' }}>
+              <div {...heroName(`g-${active.id}`)} style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text)', lineHeight: 1.25, wordBreak: 'break-word' }}>
                 {partner(active)}
                 {team && <span style={{ fontSize: 10, color: 'var(--tm-muted2)', marginLeft: 6 }}>{showGuestInfo ? '▲' : '▼'}</span>}
               </div>
@@ -2391,7 +2441,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                                       disabled={solBusy}
                                       style={{
                                         flex: 1, border: 'none', borderRadius: 10, padding: '9px 12px',
-                                        fontSize: 13, fontWeight: 700, background: solBusy ? 'var(--tm-green-soft, #BBF7D0)' : 'var(--tm-green, #16A34A)',
+                                        fontSize: 13, fontWeight: 700, background: solBusy ? 'var(--tm-green-soft, #BBF7D0)' : 'var(--tm-green-solid, var(--tm-green, #16A34A))',
                                         color: solBusy ? 'var(--tm-green, #16A34A)' : '#fff', cursor: solBusy ? 'default' : 'pointer',
                                       }}
                                     >{solBusy ? '⏳ Speichert…' : '✅ Lösung speichern'}</button>
@@ -2818,8 +2868,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
           {invForm.open && typeof document !== 'undefined' && createPortal(
             <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
               onClick={() => setInvForm(f => ({ ...f, open: false }))}>
-              <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: 'var(--tm-card)', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', marginBottom: 4 }}>🧾 Rechnungsempfänger</div>
+              <div ref={invDlgRef} onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, background: 'var(--tm-card)', borderRadius: 18, padding: '18px 18px 16px', boxShadow: '0 18px 60px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto' }}>
+                <div role="heading" aria-level={2} style={{ fontSize: 15, fontWeight: 800, color: 'var(--tm-text)', marginBottom: 4 }}><span aria-hidden="true">🧾 </span>Rechnungsempfänger</div>
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--tm-muted)', lineHeight: 1.5 }}>
                   {invForm.extracting
                     ? '✨ Die KI durchsucht den Chat nach Rechnungsdaten…'
@@ -2830,11 +2880,12 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                     value={invForm[k]}
                     onChange={(e) => setInvForm(f => ({ ...f, [k]: e.target.value }))}
                     placeholder={{ name: 'Name / Firma *', supplement: 'Zusatz (z. B. z. Hd. …)', street: 'Straße + Nr.', zip: 'PLZ', city: 'Ort', country: 'Land' }[k]}
+                    aria-label={{ name: 'Name oder Firma (Pflichtfeld)', supplement: 'Zusatz', street: 'Straße und Hausnummer', zip: 'PLZ', city: 'Ort', country: 'Land' }[k]}
                     style={{ width: '100%', boxSizing: 'border-box', borderRadius: 10, border: '1.5px solid var(--tm-line)', padding: '9px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', marginBottom: 8 }}
                   />
                 ))}
                 {invForm.result && (
-                  <p style={{ margin: '2px 0 8px', fontSize: 12.5, color: invForm.result.startsWith('⚠️') ? 'var(--tm-red)' : '#1B7A34', lineHeight: 1.5, fontWeight: 600 }}>{invForm.result}</p>
+                  <p role="status" style={{ margin: '2px 0 8px', fontSize: 12.5, color: invForm.result.startsWith('⚠️') ? 'var(--tm-red)' : 'var(--tm-green, #1B7A34)', lineHeight: 1.5, fontWeight: 600 }}>{invForm.result}</p>
                 )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                   {invForm.url ? (

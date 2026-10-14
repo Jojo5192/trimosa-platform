@@ -720,15 +720,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-line: #e3e6ea;
   --tm-text: #171a1f;
   --tm-muted: #646b76;
-  --tm-muted2: #959ca7;
+  /* ♿ Gestaltung 4 (WCAG AA): Nebentext/Akzent-Text/Status-Farben gleicher Farbton, nur dunkler —
+     vorher muted2 2,8:1 · accent-dark auf accent-soft 3,8:1 · grün 3,5 · gelb 2,9 · rot 4,4:1;
+     jetzt alle ≥ 4,5:1 auf Karte, Seite und ihrer eigenen -soft-Fläche (Weiß darauf ebenfalls) */
+  --tm-muted2: #686e77;
   --tm-accent: #AE8D2D;
-  --tm-accent-dark: #8A7020;
+  --tm-accent-dark: #7a631c;
   --tm-accent-soft: rgba(174, 141, 45, 0.13);
-  --tm-green: #1a9d57;
+  --tm-green: #137541;
   --tm-green-soft: rgba(26, 157, 87, 0.13);
-  --tm-yellow: #d98506;
+  --tm-yellow: #945b04;
   --tm-yellow-soft: rgba(217, 133, 6, 0.13);
-  --tm-red: #dc3d3d;
+  --tm-red: #b73333;
   --tm-red-soft: rgba(220, 61, 61, 0.13);
   --tm-glass: rgba(243, 244, 246, 0.74);
   --tm-glass-soft: rgba(243, 244, 246, 0.45);
@@ -783,7 +786,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   --tm-line: #262b32;
   --tm-text: #eef0f3;
   --tm-muted: #9aa3ad;
-  --tm-muted2: #6b7480;
+  /* ♿ Gestaltung 4: muted2 vorher 3,2–3,6:1 → jetzt ≥ 4,5:1 auf Karte/surface2; Status-Farben fürs
+     Dunkle aufgehellt (Text ≥ 4,6:1 auch auf der -soft-Fläche). Weiße Schrift auf Vollflächen:
+     --tm-green-solid/--tm-red-solid/--tm-gold-solid (Abschnitt „Barrierefreiheit" unten). */
+  --tm-muted2: #858e98;
+  --tm-green: #2fa866;
+  --tm-yellow: #d98506;
+  --tm-red: #e46767;
   --tm-accent: #C9A44A;
   --tm-accent-dark: #E3C878;
   --tm-accent-soft: rgba(201, 164, 74, 0.18);
@@ -890,7 +899,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Druck-Feedback — jede Karte/jeder Knopf reagiert wie ein echter Knopf */
 .tm-press, .tm-press-btn, .tm-press-tab {
-  transition: transform 0.14s var(--tm-ease), filter 0.14s var(--tm-ease), opacity 0.14s var(--tm-ease);
+  transition: transform var(--tm-dur-s) var(--tm-ease), filter var(--tm-dur-s) var(--tm-ease), opacity var(--tm-dur-s) var(--tm-ease);
   -webkit-tap-highlight-color: transparent;
 }
 .tm-press:active { transform: scale(0.99); filter: brightness(0.97); }
@@ -905,7 +914,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
    spätere „.team-shell .klasse"-Regel sie überschreiben kann. */
 .team-shell button { -webkit-tap-highlight-color: transparent; }
 .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)) {
-  transition: transform 0.14s var(--tm-ease), filter 0.14s var(--tm-ease);
+  transition: transform var(--tm-dur-s) var(--tm-ease), filter var(--tm-dur-s) var(--tm-ease);
 }
 .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active {
   transform: scale(0.97); filter: brightness(0.94);
@@ -934,15 +943,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
    Klassen ist der Normalzustand, es braucht also kein Vorwärts-Halten.
    (.tm-toast bleibt 'both': dessen Endwert translate(-50%, 0) zentriert.) */
 @keyframes tmEnter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.tm-enter { animation: tmEnter 0.36s var(--tm-ease) backwards; }
+.tm-enter { animation: tmEnter var(--tm-dur-l) var(--tm-ease) backwards; }
 @keyframes tmSlideIn { from { opacity: 0.5; transform: translateX(28px); } to { opacity: 1; transform: none; } }
-.tm-slide-in { animation: tmSlideIn 0.3s var(--tm-ease) backwards; }
+.tm-slide-in { animation: tmSlideIn var(--tm-dur-l) var(--tm-ease) backwards; }
 @keyframes tmSheetIn { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
-.tm-sheet-in { animation: tmSheetIn 0.36s var(--tm-ease) backwards; }
+/* (Blätter mit Schließ-Animation nutzen .tm-mo-sheet aus dem Abschnitt „🎬 Motion") */
+.tm-sheet-in { animation: tmSheetIn var(--tm-dur-l) var(--tm-ease) backwards; }
 @keyframes tmPopIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
-.tm-pop-in { animation: tmPopIn 0.22s var(--tm-ease) backwards; transform-origin: top right; }
+/* Menüs/Abzeichen springen mit der Feder auf (leichtes Überschwingen) */
+.tm-pop-in { animation: tmPopIn var(--tm-dur-m) var(--tm-spring) backwards; transform-origin: top right; }
 @keyframes tmMsgIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
-.tm-msg-in { animation: tmMsgIn 0.22s var(--tm-ease) both; }
+.tm-msg-in { animation: tmMsgIn var(--tm-dur-m) var(--tm-spring) both; }
 .tm-spin-once { animation: teamPtrSpin 0.7s var(--tm-ease) 1; }
 
 /* Ladestreifen ganz oben: Verlauf transparent → Akzent → transparent,
@@ -952,22 +963,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   overflow: hidden; z-index: 95; pointer-events: none;
 }
 .tm-loadbar::before {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 38%; left: -38%;
+  content: ''; position: absolute; top: 0; bottom: 0; width: 38%; left: 0;
   background: linear-gradient(90deg, transparent, var(--tm-accent), transparent);
+  /* Motion: per transform statt left (läuft auf dem Compositor) — gleiche Strecke −38 % … 100 % */
+  transform: translateX(-100%);
   animation: tmLoadbar 1.1s linear infinite;
 }
-@keyframes tmLoadbar { to { left: 100%; } }
+@keyframes tmLoadbar { from { transform: translateX(-100%); } to { transform: translateX(263.2%); } }
 
-/* Toast: dunkle Pille unten mittig über der Tab-Leiste */
+/* Toast: dunkle Pille unten mittig über der Tab-Leiste (Host seit „🎬 Motion": ToastStack, .tm-toast-*) */
 @keyframes tmToast { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
 /* Grundstil zentriert — bei „Bewegung reduzieren" (animation: none) stand der Toast sonst ab der Mitte nach rechts */
-.tm-toast { transform: translateX(-50%); animation: tmToast 0.22s var(--tm-ease) both; }
+.tm-toast { transform: translateX(-50%); animation: tmToast var(--tm-dur-m) var(--tm-ease) both; }
 
-/* Skeleton in Token-Farben */
+/* Skeleton in Token-Farben — Motion: ruhige Fläche + dezenter Lichtstreif, der per transform
+   (Compositor, kein Neuzeichnen je Bild) darüber gleitet; Pause zwischen den Durchläufen */
 .team-shell .team-skel {
-  background: linear-gradient(90deg, var(--tm-surface2) 25%, var(--tm-card) 50%, var(--tm-surface2) 75%);
-  background-size: 200% 100%;
+  background: var(--tm-skel, rgba(120, 120, 128, 0.13));
+  position: relative; overflow: hidden;
+  animation: none;
 }
+.team-shell .team-skel::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--tm-skel-glanz, rgba(255, 255, 255, 0.6)), transparent);
+  transform: translateX(-100%);
+  animation: tmSkelGlanz 1.6s var(--tm-ease) infinite;
+}
+@keyframes tmSkelGlanz { 0% { transform: translateX(-100%); } 65%, 100% { transform: translateX(100%); } }
 
 @media (prefers-reduced-motion: reduce) {
   .tm-press, .tm-press-btn, .tm-press-tab { transition: none; }
@@ -975,7 +997,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)) { transition: none; }
   .team-shell button:where(:not(:disabled):not(.tm-press):not(.tm-press-btn):not(.tm-press-tab):not(.mat-tap)):active { transform: none; }
   .tm-enter, .tm-slide-in, .tm-sheet-in, .tm-pop-in, .tm-msg-in, .tm-spin-once, .tm-toast { animation: none; }
-  .tm-loadbar::before { animation: none; left: 0; width: 100%; opacity: 0.5; }
+  .tm-loadbar::before { animation: none; left: 0; width: 100%; opacity: 0.5; transform: none; }
 }
 
 /* ═══════════ 🎬 Start-Vorhang (§281, Pascal 8.9.) ═══════════
@@ -1102,7 +1124,7 @@ html.tm-dark { color-scheme: dark; }
 /* 4 Gestaffeltes Erscheinen: direkte Kinder kommen nacheinander (40 ms) aus der Unschärfe */
 /* Pascal 9.9. (nicht ruckelig): ohne Blur - Opacity/Transform laufen auf dem Compositor */
 @keyframes tmStagger { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.tm-stagger > * { animation: tmStagger 0.38s var(--tm-ease) backwards; }
+.tm-stagger > * { animation: tmStagger var(--tm-dur-l) var(--tm-ease) backwards; }
 .tm-stagger > *:nth-child(2) { animation-delay: 40ms; }
 .tm-stagger > *:nth-child(3) { animation-delay: 80ms; }
 .tm-stagger > *:nth-child(4) { animation-delay: 120ms; }
@@ -1114,14 +1136,19 @@ html.tm-dark { color-scheme: dark; }
 .tm-stagger > *:nth-child(10) { animation-delay: 360ms; }
 .tm-stagger > *:nth-child(11) { animation-delay: 400ms; }
 .tm-stagger > *:nth-child(12) { animation-delay: 440ms; }
-/* 3 Balken wachsen mit den Zahlen */
+/* 3 Balken wachsen mit den Zahlen — bewusst 0,6 s: synchron mit dem Hochzählen (KennzahlenCard useCountUp 600 ms) */
 @keyframes tmGrow { from { transform: scaleX(0); } }
 .tm-grow { transform-origin: left center; animation: tmGrow 0.6s var(--tm-ease) backwards; }
-/* 11 Live-Punkt in der Kopfleiste (grün pulsierend = verbunden) */
-@keyframes tmLive { 0%, 100% { box-shadow: 0 0 0 0 rgba(26,157,87,0.4); } 60% { box-shadow: 0 0 0 5px rgba(26,157,87,0); } }
-.tm-live { animation: tmLive 2.4s ease-in-out infinite; }
+/* 11 Live-Punkt in der Kopfleiste (grün pulsierend = verbunden) — Motion: der Ring ist ein ::after,
+   der per transform/opacity wächst und verblasst (vorher box-shadow → Neuzeichnen je Bild) */
+@keyframes tmLive { 0% { opacity: 0.4; transform: scale(1); } 60%, 100% { opacity: 0; transform: scale(2.25); } }
+.tm-live { position: relative; }
+.tm-live::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; background: inherit; pointer-events: none;
+  animation: tmLive 2.4s ease-in-out infinite;
+}
 /* 1 Großer Titel, der beim Scrollen zusammenfährt */
-.tm-title { transition: font-size 0.28s var(--tm-ease), letter-spacing 0.28s var(--tm-ease); }
+.tm-title { transition: font-size var(--tm-dur-m) var(--tm-ease), letter-spacing var(--tm-dur-m) var(--tm-ease); }
 /* 5 Pull-to-Refresh: Logo-Ring dreht sich beim Laden */
 @keyframes tmRingSpin { to { transform: rotate(360deg); } }
 .tm-ring-spin { animation: tmRingSpin 0.9s linear infinite; transform-origin: center; }
@@ -1137,23 +1164,32 @@ html.tm-dark { color-scheme: dark; }
 .tm-dark .tm-fade-bottom { background: linear-gradient(to bottom, rgba(15,17,20,0), rgba(15,17,20,0.5)); }
 @media (prefers-reduced-motion: reduce) {
   .tm-stagger > *, .tm-grow, .tm-live, .tm-ring-spin { animation: none; }
+  .tm-live::after { animation: none; opacity: 0; }
   .tm-title { transition: none; }
 }
 
 /* ═══════════ §282 Design-Liste — zweite Welle ═══════════ */
 /* 8 Erfolgs-Momente: Blase fliegt aus dem Eingabefeld, Karte wischt grün */
 @keyframes tmFly { 0% { opacity: 0.95; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-64px) scale(0.9); } }
-.tm-fly { animation: tmFly 0.5s var(--tm-ease) forwards; }
-@keyframes tmDoneFlash { 0% { background-color: var(--tm-card, #fff); } 20% { background-color: rgba(26,157,87,0.22); } 100% { background-color: var(--tm-card, #fff); } }
-.tm-done-flash { animation: tmDoneFlash 1s var(--tm-ease) both; }
+.tm-fly { animation: tmFly var(--tm-dur-l) var(--tm-ease) forwards; }
+/* Motion: das Grün ist eine eigene Ebene unter dem Karteninhalt, die per opacity aufblitzt und
+   verblasst (vorher background-color → Neuzeichnen je Bild). Bewusst 1 s: Erfolgsmoment. */
+@keyframes tmDoneFlash { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+.tm-done-flash { position: relative; isolation: isolate; }
+.tm-done-flash::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  background: rgba(26, 157, 87, 0.22);
+  animation: tmDoneFlash 1s var(--tm-ease) both;
+}
 /* 7 Peek-Menü: Hintergrund verschwimmt, Karte hebt sich ab */
 @keyframes tmDim { from { opacity: 0; } to { opacity: 1; } }
-.tm-peek { animation: tmDim 0.2s var(--tm-ease) both; }
+.tm-peek { animation: tmDim var(--tm-dur-m) var(--tm-ease) both; }
 /* 10 Leere Zustände: Linien-Illustration in Markenfarbe */
 .tm-empty svg { color: var(--tm-accent); }
 @media (prefers-reduced-motion: reduce) {
   .tm-fly { display: none; }
   .tm-done-flash, .tm-peek { animation: none; }
+  .tm-done-flash::before { animation: none; opacity: 0; }
 }
 /* Pascal 7.10. Gestaltung 3: Erfolgsmoment im leeren Zustand („Alles erledigt") — erst nach Server-Bestätigung
    gesetzt (EmptyState feiern). Kreis zeichnet sich, dann der Haken, dann der Titel; fertig nach ~1,05 s. */
@@ -1188,6 +1224,120 @@ html, body { overscroll-behavior-y: none; }
    Nachrichten-Verlauf anwenden — das Ans-Ende-Pinnen braucht die exakte Scrollhöhe.
    Bei Auffälligkeiten (Springen beim Hochscrollen) nur diese eine Regel entfernen. */
 .tm-conv-row { content-visibility: auto; contain-intrinsic-block-size: auto 100px; }
+
+/* ═══════════ 🎬 Motion (Pascal, Chefsache 6.10.2026: „premium motion Design") ═══════════
+   EIN Bewegungssystem für die ganze Team-App: ruhig, kurz, hochwertig (Apple-Anmutung), nie verspielt.
+   · Nur transform/opacity (Compositor), keine Layout-Animationen; nichts länger als 400 ms außer
+     bewusst (Start-Vorhang, Balken + Hochzählen 0,6 s, Erfolgs-Haken, grünes Aufblitzen).
+   · Dauern: --tm-dur-s 160 ms (Druck-Feedback) · --tm-dur-m 240 ms (Menüs, Abdunklung, Schließen) ·
+     --tm-dur-l 380 ms (Blätter, Bildschirmwechsel, Listen). Kurven: --tm-ease (Standard, weich
+     auslaufend, im Token-Block oben) · --tm-spring (Feder, ~2 % Überschwingen).
+   · Bausteine dazu in components/team/motion.tsx: useSheetMotion (Blätter schließen mit Animation),
+     heroTransition (Karte → Chat), useFlipList (Listen rücken nach), ToastStack (Toasts).
+   · „Bewegung reduzieren": globaler Schutz am Ende dieses Abschnitts. Hell + dunkel über Tokens. */
+.team-shell {
+  --tm-dur-s: 160ms;
+  --tm-dur-m: 240ms;
+  --tm-dur-l: 380ms;
+  --tm-spring: cubic-bezier(0.3, 1.25, 0.5, 1);
+  /* Skeleton: neutrale Fläche + Lichtstreif (dunkel deutlich zarter) */
+  --tm-skel: rgba(120, 120, 128, 0.13);
+  --tm-skel-glanz: rgba(255, 255, 255, 0.6);
+}
+.tm-dark .team-shell, .team-shell.tm-dark {
+  --tm-skel: rgba(120, 120, 128, 0.2);
+  --tm-skel-glanz: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Blätter & Overlays (useSheetMotion setzt data-tm-leaving an die Portal-Wurzel) ──
+   .tm-mo-scrim  Abdunklung: blendet weich ein/aus
+   .tm-mo-sheet  Blatt unten: federt von unten herein (Handy/Tablet) bzw. skaliert sanft (Rechner)
+   .tm-mo-screen Vollbild-Bereich (Telefonate, Türschlösser …): wie das Blatt, über die ganze Fläche
+   .tm-mo-fade   ganze Ebene nur Deckkraft (Lightbox) · .tm-mo-pop  Dialog in der Mitte: skaliert */
+@keyframes tmMoFadeIn { from { opacity: 0; } }
+@keyframes tmMoFadeOut { to { opacity: 0; } }
+@keyframes tmMoUp { from { transform: translate3d(0, 100%, 0); } }
+@keyframes tmMoDown { to { transform: translate3d(0, 100%, 0); } }
+@keyframes tmMoPopIn { from { opacity: 0; transform: scale(0.96); } }
+@keyframes tmMoPopOut { to { opacity: 0; transform: scale(0.97); } }
+.tm-mo-scrim, .tm-mo-fade { animation: tmMoFadeIn var(--tm-dur-m) var(--tm-ease) backwards; }
+.tm-mo-sheet, .tm-mo-screen { animation: tmMoUp var(--tm-dur-l) var(--tm-spring) backwards; }
+.tm-mo-pop { animation: tmMoPopIn var(--tm-dur-m) var(--tm-spring) backwards; }
+/* Lücken-Füller fürs Überschwingen: hebt sich die Unterkante kurz über den Rand, blitzt sonst ein
+   Streifen Hintergrund auf. Blatt: Kartenfläche reicht 24 px unter den Bildschirmrand (Rand +
+   negativer Abstand → sichtbares Layout unverändert). Vollbild: ein ::after in der eigenen Farbe. */
+@media (max-width: 999px) {
+  .tm-mo-sheet { border-bottom: 24px solid var(--tm-card, #fff); margin-bottom: -24px; }
+}
+.tm-mo-screen::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 32px;
+  background: inherit; pointer-events: none;
+}
+/* Schließen: kurz hinaus, solange keine Tipps mehr annehmen */
+[data-tm-leaving] { pointer-events: none; }
+[data-tm-leaving].tm-mo-scrim, [data-tm-leaving] .tm-mo-scrim,
+[data-tm-leaving].tm-mo-fade, [data-tm-leaving] .tm-mo-fade {
+  animation: tmMoFadeOut var(--tm-dur-m) ease-in forwards;
+}
+[data-tm-leaving].tm-mo-sheet, [data-tm-leaving] .tm-mo-sheet,
+[data-tm-leaving].tm-mo-screen, [data-tm-leaving] .tm-mo-screen {
+  animation: tmMoDown var(--tm-dur-m) var(--tm-ease) forwards;
+}
+[data-tm-leaving].tm-mo-pop, [data-tm-leaving] .tm-mo-pop { animation: tmMoPopOut var(--tm-dur-s) var(--tm-ease) forwards; }
+@media (min-width: 1000px) {
+  /* Rechner: sanft skaliert statt von unten (Blatt wächst aus der Unterkante) */
+  .tm-mo-sheet, .tm-mo-screen { animation: tmMoPopIn var(--tm-dur-m) var(--tm-spring) backwards; }
+  .tm-mo-sheet { transform-origin: 50% 100%; }
+  .tm-mo-screen::after { display: none; }
+  [data-tm-leaving].tm-mo-sheet, [data-tm-leaving] .tm-mo-sheet,
+  [data-tm-leaving].tm-mo-screen, [data-tm-leaving] .tm-mo-screen {
+    animation: tmMoPopOut var(--tm-dur-s) var(--tm-ease) forwards;
+  }
+}
+
+/* ── Toasts (ToastStack): Pille federt von unten herein, ältere rücken per transform nach oben ── */
+.tm-toast-wrap {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px;
+  display: flex; justify-content: center;
+  transition: transform var(--tm-dur-l) var(--tm-spring);
+}
+@keyframes tmToastIn { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.94); } }
+@keyframes tmToastOut { to { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.96); } }
+.tm-toast-pill { transform-origin: 50% 100%; animation: tmToastIn var(--tm-dur-l) var(--tm-spring) backwards; }
+.tm-toast-pill.is-leaving { animation: tmToastOut var(--tm-dur-m) var(--tm-ease) forwards; }
+
+/* ── Hero-Übergang Karte ↔ Chat (heroTransition, View-Transitions-API): Avatar + Name fliegen in die
+   Kopfleiste, der Rest blendet über. Die Namen hängen nur während des Übergangs an den Elementen;
+   die Pseudo-Elemente hängen an <html> (keine .team-shell-Tokens) → Werte hier ausgeschrieben. */
+:root.tm-hero-vt::view-transition-group(*) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root.tm-hero-vt::view-transition-old(root),
+:root.tm-hero-vt::view-transition-new(root) { animation-duration: 240ms; }
+/* Namen nicht verzerren: Schriftbild in natürlicher Größe, oben links verankert (eigene Regel —
+   Browser ohne view-transition-class verwerfen nur sie) */
+::view-transition-old(.tm-hero-name),
+::view-transition-new(.tm-hero-name) { inline-size: auto; block-size: auto; }
+
+/* ── „Bewegung reduzieren": Animationen/Übergänge der Team-App praktisch sofort fertig (1 ms statt
+   none, damit animationend/transitionend weiter feuern); Dauer-Schleifen stehen still. Die JS-Bausteine
+   (motion.tsx, Wisch-Gesten, Hochzählen) prüfen die Einstellung selbst. Der Start-Vorhang liegt
+   außerhalb von .team-shell und behält sein weiches Ausblenden. */
+@media (prefers-reduced-motion: reduce) {
+  .team-shell, .team-shell *, .team-shell *::before, .team-shell *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  .team-shell .team-skel::after { animation: none !important; opacity: 0; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation-duration: 1ms !important; animation-delay: 0s !important;
+  }
+}
 
 /* ═══════════ iOS-27-Runde: Bedienungshilfen (Pascal 17.9.) ═══════════
    MUSS am Dateiende stehen — hinter den Token-Blöcken und hinter .tm-glass/.tm-menu/
@@ -1240,4 +1390,61 @@ html, body { overscroll-behavior-y: none; }
     --tm-menu-glass: #24282f;
   }
   .tm-glass, .tm-menu, .tm-fade-bottom { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* ═══════════ ♿ Barrierefreiheit (Pascal 7.10., Gestaltung 4) ═══════════
+   Fokus-Ring, unsichtbare Vorlese-Texte, Vollflächen-Farben für weiße Schrift.
+   Dazu in components/team/ux.tsx: useDialogFokus (Fokus in Blättern) und BedienhilfenHost
+   (Live-Regionen + Tastatur-Modus data-tm-tastatur an <html>). Kontrast-Werte der Text-Tokens
+   stehen direkt in den Token-Blöcken oben (WCAG AA, gemessen 14.10.2026). */
+
+/* Nur für Vorlese-Programme (Live-Regionen, „Lädt…" in Skeletons) — sichtbar bleibt nichts */
+.tm-sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* Vollflächen mit WEISSER Schrift (Knöpfe, Zähl-Badges, Türcode-Karte): in hell UND dunkel ≥ 4,5:1.
+   --tm-green/--tm-red sind im Dunkeln für Text aufgehellt und tragen dort kein Weiß mehr. */
+.team-shell {
+  --tm-green-solid: #137541;  /* Weiß 5,8:1 (= helles --tm-green) */
+  --tm-red-solid: #b73333;    /* Weiß 5,9:1 (= helles --tm-red) */
+  --tm-gold-solid: #846b1e;   /* Weiß 5,1:1 */
+  --tm-gold-solid2: #6f5a19;  /* Weiß 6,7:1 (Verlaufs-Ende) */
+}
+
+/* Sichtbarer Fokus: EIN Ring für alles Bedienbare, nur bei Tastatur-Bedienung (:focus-visible —
+   Maus und Touch zeigen keinen). Hell dunkles Gold (≥ 4,3:1 auf Seite/Karte), dunkel helles Gold
+   (≥ 10:1). !important, weil viele Knöpfe und Felder inline outline:none tragen. */
+.team-shell :focus-visible {
+  outline: 2.5px solid var(--tm-accent-dark, #7a631c) !important;
+  outline-offset: 2px !important;
+}
+/* Volle Zeilen (Listen, Menüs) und Segmente: Ring nach innen, sonst schneidet ihn die Karte ab */
+.team-shell button[style*="text-align: left"]:focus-visible,
+.team-shell button[style*="text-align:left"]:focus-visible,
+.team-shell [role="tab"]:focus-visible,
+.team-shell [role="menuitem"]:focus-visible,
+.team-shell div[role="button"]:focus-visible {
+  outline-offset: -3px !important;
+}
+/* Textfelder: Browser werten JEDES Antippen als :focus-visible — dort reicht der Cursor;
+   den Ring gibt es nur im Tastatur-Modus (Tab/Pfeile, gesetzt vom BedienhilfenHost) */
+.team-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]):focus-visible {
+  outline: none !important;
+}
+html[data-tm-tastatur] .team-shell :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="file"]), textarea, select, [contenteditable="true"]):focus-visible {
+  outline: 2.5px solid var(--tm-accent-dark, #7a631c) !important;
+  outline-offset: 1px !important;
+}
+/* Unsichtbares Datei-Feld in einer Kachel (<label> mit input.tm-sr-only): der Ring sitzt an der Kachel */
+.team-shell label:has(> input.tm-sr-only:focus-visible) {
+  outline: 2.5px solid var(--tm-accent-dark, #7a631c);
+  outline-offset: 2px;
+}
+/* Programmatisch angesprungene Ziele (Dialog-Überschrift, Blatt selbst) sind nicht bedienbar — kein Ring */
+.team-shell [tabindex="-1"]:focus-visible { outline: none !important; }
+/* Windows-Kontrastdesign: Systemfarbe statt Gold */
+@media (forced-colors: active) {
+  .team-shell :focus-visible { outline-color: Highlight !important; }
 }

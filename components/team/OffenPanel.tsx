@@ -482,7 +482,7 @@ export default function OffenPanel({ visible, onCount }: {
 
       {/* Karten-Bühne */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', padding: '16px 14px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {!loaded && <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, marginTop: 60 }}>Lädt…</p>}
+        {!loaded && <p role="status" style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, marginTop: 60 }}>Lädt…</p>}
 
         {loaded && !current && (
           <div style={{ textAlign: 'center', marginTop: 70 }}>
@@ -604,7 +604,7 @@ export default function OffenPanel({ visible, onCount }: {
               </div>
 
               {error && (
-                <p style={{ margin: 0, padding: '8px 15px', fontSize: 12, color: 'var(--tm-red)', background: 'var(--tm-red-soft)' }}>⚠️ {error}</p>
+                <p role="alert" style={{ margin: 0, padding: '8px 15px', fontSize: 12, color: 'var(--tm-red)', background: 'var(--tm-red-soft)' }}>⚠️ {error}</p>
               )}
 
               {/* ✨-Composer */}

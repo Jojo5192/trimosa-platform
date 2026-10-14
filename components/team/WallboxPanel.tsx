@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * ⚡ Wallbox (§185): Vollbild-Bereich im Mehr-Tab (NUR Admins) —
@@ -55,6 +57,9 @@ function fmtDuration(start: string | null, end: string | null): string | null {
 }
 
 export default function WallboxPanel({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [charges, setCharges] = useState<Charge[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [page, setPage] = useState(0)
@@ -98,7 +103,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
   )
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -107,16 +112,16 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>⚡ Wallbox</div>
+        <button onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <div role="heading" aria-level={2} style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}><span aria-hidden="true">⚡ </span>Wallbox</div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
+        {loading && <span role="status" style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Laden…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 620, margin: '0 auto', padding: '14px 14px 40px' }}>
           {error && (
-            <div style={{
+            <div role="alert" style={{
               padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)',
               fontSize: 13, lineHeight: 1.5, marginBottom: 14,
             }}>

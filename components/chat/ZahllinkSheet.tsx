@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic, tmToast } from '@/components/team/ux'
+import { haptic, tmToast, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * 💶 Zahllink aus dem Gäste-Chat (Pascal, Chefsache 5./6.10.2026): Jedes Team-Mitglied erzeugt in der Gast-Info
@@ -27,6 +28,9 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
   onInsert: (text: string) => void
   onClose: () => void
 }) {
+  // 🎬 Blatt federt herein und gleitet beim Schließen hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [tab, setTab] = useState<'extra' | 'verlaengerung'>('extra')
   const [zweck, setZweck] = useState<string>('Zusatzgast')
   const [betrag, setBetrag] = useState('')
@@ -62,7 +66,7 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
       const zusatz = notiz.trim() ? ` (${notiz.trim()})` : ''
       onInsert(`Hallo ${vorname}, hier ist dein Zahlungslink für ${zweck}${zusatz} über ${euro(d.link.betrag)}: ${d.link.url}\nDie Zahlung ist per Karte, Apple Pay oder Google Pay möglich. Danke dir!`)
       tmToast('✓ Zahllink steht im Eingabefeld – bitte prüfen und senden')
-      onClose()
+      sheet.close()
     } catch {
       setFehler('Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.')
     } finally {
@@ -91,7 +95,7 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
     const n = angebot.naechte
     onInsert(`Hallo ${vorname}, gute Nachricht: Du kannst deinen Aufenthalt um ${n} ${n === 1 ? 'Nacht' : 'Nächte'} bis zum ${datum(angebot.bis)} verlängern – Preis ${euro(angebot.preis)}. Hier kannst du direkt buchen und bezahlen: ${angebotLink}`)
     tmToast('✓ Verlängerungs-Angebot steht im Eingabefeld – bitte prüfen und senden')
-    onClose()
+    sheet.close()
   }
 
   const chip = (on: boolean) => ({
@@ -110,15 +114,15 @@ export default function ZahllinkSheet({ bookingId, vorname, onInsert, onClose }:
   } as const)
 
   const body = (
-    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 85, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-      <div className="tm-scrim" onClick={onClose} style={{ position: 'absolute', inset: 0 }} />
-      <div className="tm-sheet tm-sheet-in" role="dialog" aria-label="Zahllink erstellen" style={{
+    <div className="team-shell" {...sheet.hostProps} style={{ position: 'fixed', inset: 0, zIndex: 85, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div className="tm-scrim tm-mo-scrim" onClick={sheet.close} style={{ position: 'absolute', inset: 0 }} />
+      <div ref={dlgRef} className="tm-sheet tm-mo-sheet" role="dialog" aria-modal="true" aria-label="Zahllink erstellen" style={{
         position: 'relative', maxHeight: '88dvh', overflowY: 'auto', padding: '18px 18px calc(18px + env(safe-area-inset-bottom))',
         background: 'var(--tm-card)', borderRadius: 'var(--tm-r-sheet, 26px) var(--tm-r-sheet, 26px) 0 0',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <div style={{ flex: 1, fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}>💶 Zahllink für {vorname}</div>
-          <button type="button" className="tm-close" aria-label="Schließen" onClick={onClose}>✕</button>
+          <div role="heading" aria-level={2} style={{ flex: 1, fontSize: 17, fontWeight: 800, color: 'var(--tm-text)' }}><span aria-hidden="true">💶 </span>Zahllink für {vorname}</div>
+          <button type="button" className="tm-close" aria-label="Schließen" onClick={sheet.close}>✕</button>
         </div>
 
         <div role="tablist" aria-label="Art" style={{ display: 'flex', padding: 3, borderRadius: 999, background: 'var(--tm-seg-track)', marginBottom: 16 }}>

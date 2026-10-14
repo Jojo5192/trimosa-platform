@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * 📈 Score-ENTWICKLUNG (§171): Vollbild-Bereich im Mehr-Tab — Bewertungs-
@@ -65,6 +67,9 @@ function deltaChip(curr: number | null, prev: number | null, label: string) {
 }
 
 export default function ScoreTrends({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [points, setPoints] = useState<Point[]>([])
   const [listings, setListings] = useState<{ id: string; title: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -133,7 +138,7 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
   }, [series])
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -143,8 +148,8 @@ export default function ScoreTrends({ onClose }: { onClose: () => void }) {
         background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>📈 Entwicklung</h2>
+        <button onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}><span aria-hidden="true">📈 </span>Entwicklung</h2>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 14px 40px' }}>

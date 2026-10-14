@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic, rueckmeldung } from '@/components/team/ux'
+import { haptic, rueckmeldung, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 import DocScanner from '@/components/DocScanner'
 
 /**
@@ -21,6 +22,9 @@ const INK = 'var(--tm-text)'
 const SUB = 'var(--tm-muted)'
 
 export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Schließen hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [orte, setOrte] = useState<string[]>(['Allgemein'])
   const [ort, setOrt] = useState('Allgemein')
   const [notiz, setNotiz] = useState('')
@@ -104,21 +108,21 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
 
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell" style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column' }}>
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)', display: 'flex', flexDirection: 'column' }}>
       <header style={{ background: NAVY, color: '#fff', padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>🧾 Beleg einreichen</div>
+        <div role="heading" aria-level={2} style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}><span aria-hidden="true">🧾 </span>Beleg einreichen</div>
         <div style={{ flex: 1 }} />
-        <button onClick={onClose} aria-label="Schließen" style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 700, borderRadius: 999, padding: '6px 13px', cursor: 'pointer' }}>✕</button>
+        <button onClick={sheet.close} aria-label="Schließen" style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 700, borderRadius: 999, padding: '6px 13px', cursor: 'pointer' }}>✕</button>
       </header>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 16px calc(30px + env(safe-area-inset-bottom))' }}>
         <div style={{ maxWidth: 560, margin: '0 auto', display: 'grid', gap: 14 }}>
           {fertig ? (
-            <div style={{ background: 'var(--tm-card)', borderRadius: 14, padding: '38px 22px', textAlign: 'center', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
-              <div style={{ fontSize: 44 }}>✅</div>
+            <div role="status" style={{ background: 'var(--tm-card)', borderRadius: 14, padding: '38px 22px', textAlign: 'center', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
+              <div aria-hidden="true" style={{ fontSize: 44 }}>✅</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: INK, marginTop: 10 }}>Danke – Beleg eingereicht!</div>
               <div style={{ fontSize: 14, color: SUB, marginTop: 6, lineHeight: 1.5 }}>Die Buchhaltung übernimmt ab hier. Du musst nichts weiter tun.</div>
-              <button onClick={reset} style={{ marginTop: 18, background: GOLD, color: '#fff', border: 'none', borderRadius: 12, padding: '12px 18px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={reset} style={{ marginTop: 18, background: 'var(--tm-gold-solid)', color: '#fff', border: 'none', borderRadius: 12, padding: '12px 18px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
                 Weiteren Beleg einreichen
               </button>
             </div>
@@ -130,7 +134,7 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                 border: files.length ? `1.5px solid ${GOLD}` : '1.5px dashed var(--tm-line)',
                 WebkitTapHighlightColor: 'transparent', display: 'block',
               }}>
-                <div style={{ fontSize: 34 }}>📸</div>
+                <div aria-hidden="true" style={{ fontSize: 34 }}>📸</div>
                 <div style={{ fontSize: 15.5, fontWeight: 700, color: INK, marginTop: 6 }}>
                   {files.length
                     ? `${files.length} ${files.length === 1 ? 'Datei' : 'Dateien'} ausgewählt`
@@ -139,8 +143,10 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
                 <div style={{ fontSize: 12.5, color: SUB, marginTop: 3, lineHeight: 1.45 }}>
                   Rechnung, Kassenbon, Quittung – mehrere Fotos ergeben einen Beleg
                 </div>
+                {/* ♿ unsichtbar statt display:none — so bleibt die Dateiwahl per Tastatur erreichbar
+                    (Fokus-Ring zeigt die Kachel, siehe globals.css „Barrierefreiheit") */}
                 <input type="file" accept="image/*,application/pdf" multiple disabled={busy}
-                  style={{ display: 'none' }}
+                  className="tm-sr-only"
                   onChange={(e) => {
                     const fs = Array.from(e.target.files ?? []); e.target.value = ''
                     if (!fs.length) return
@@ -176,11 +182,11 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
               </div>
 
               {err && (
-                <div style={{ background: '#FFEBE9', color: 'var(--tm-red)', borderRadius: 12, padding: '11px 14px', fontSize: 14 }}>{err}</div>
+                <div role="alert" style={{ background: 'var(--tm-red-soft)', color: 'var(--tm-red)', borderRadius: 12, padding: '11px 14px', fontSize: 14 }}>{err}</div>
               )}
 
               <button onClick={senden} disabled={busy || !files.length} style={{
-                background: GOLD, color: '#fff', border: 'none', borderRadius: 13,
+                background: 'var(--tm-gold-solid)', color: '#fff', border: 'none', borderRadius: 13,
                 padding: '14px 18px', fontSize: 16.5, fontWeight: 700,
                 cursor: busy || !files.length ? 'default' : 'pointer',
                 opacity: busy || !files.length ? 0.55 : 1,

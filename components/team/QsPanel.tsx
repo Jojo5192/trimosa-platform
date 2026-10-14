@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { QsSection, QsReport, QsItemValue } from '@/lib/qs'
+import { useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 type QsCheck = {
   id: string; listingId: string; listingTitle: string
@@ -217,6 +219,10 @@ export default function QsBlock({ personFilter = '' }: { personFilter?: string }
 function QsProtocol({ check, template, onClose }: {
   check: QsCheck; template: QsSection[]; onClose: () => void
 }) {
+  // 🎬 Vollbild federt herein; nach dem Speichern gleitet es hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  // ♿ Esc = wie „Zurück": speichern und schließen
+  const dlgRef = useDialogFokus(() => { void saveAndClose() })
   const [items, setItems] = useState<Record<string, QsItemValue>>(() => ({ ...(check.report?.items ?? {}) }))
   const [note, setNote] = useState(check.report?.note ?? '')
   const [photos, setPhotos] = useState<{ url: string }[]>(check.photos)
@@ -250,7 +256,7 @@ function QsProtocol({ check, template, onClose }: {
     setSaving(true)
     await save(false)
     setSaving(false)
-    onClose()
+    sheet.close()
   }
 
   async function finish() {
@@ -263,7 +269,7 @@ function QsProtocol({ check, template, onClose }: {
     setCompleting(true)
     const ok = await save(true)
     setCompleting(false)
-    if (ok) onClose()
+    if (ok) sheet.close()
   }
 
   async function addPhoto(file: File) {
@@ -306,7 +312,7 @@ function QsProtocol({ check, template, onClose }: {
   const overlay = (
     // className team-shell: Portal liegt im body AUSSERHALB der Shell — so
     // gelten Zoom-Sperre + 16px-Input-Regel (iOS-Auto-Zoom) auch hier
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
@@ -320,7 +326,7 @@ function QsProtocol({ check, template, onClose }: {
       }}>
         <button onClick={saveAndClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
+          <div role="heading" aria-level={2} style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
           <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>{check.listingTitle} · {fmtDate(check.dueDate)}</div>
         </div>
         <span style={{ fontSize: 12, fontWeight: 800, color: answered === total ? 'var(--tm-green)' : TEAL, flexShrink: 0 }}>
@@ -440,6 +446,9 @@ function maengelLabel(m: number): string {
 export function QsView({ check, template, onClose }: {
   check: QsCheck; template: QsSection[]; onClose: () => void
 }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [pdfUrl, setPdfUrl] = useState<string | null>(check.pdfUrl)
   const [pdfBusy, setPdfBusy] = useState(false)
   const items = check.report?.items ?? {}
@@ -461,7 +470,7 @@ export function QsView({ check, template, onClose }: {
   const statusChip = (v: QsItemValue | undefined) => {
     const map = {
       ok: { label: '✓ OK', color: 'var(--tm-green)', bg: 'var(--tm-green-soft)' },
-      mangel: { label: '⚠ Mangel', color: 'var(--tm-red)', bg: '#FEF2F2' },
+      mangel: { label: '⚠ Mangel', color: 'var(--tm-red)', bg: 'var(--tm-red-soft)' },
       na: { label: 'n. geprüft', color: 'var(--tm-muted)', bg: 'rgba(120,120,128,0.1)' },
     } as const
     const m = v?.s ? map[v.s] : { label: '—', color: 'var(--tm-muted2)', bg: 'transparent' }
@@ -473,7 +482,7 @@ export function QsView({ check, template, onClose }: {
   }
 
   const overlay = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 95, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -483,9 +492,9 @@ export function QsView({ check, template, onClose }: {
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+        <button onClick={sheet.close} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
+          <div role="heading" aria-level={2} style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--tm-text)' }}>QS-Protokoll</div>
           <div style={{ fontSize: 11.5, color: 'var(--tm-muted)' }}>
             {check.listingTitle} · {check.completedAt ? fmtDate(check.completedAt.slice(0, 10)) : fmtDate(check.dueDate)}
             {check.completedByName ? ` · geprüft von ${check.completedByName}` : ''}
@@ -583,6 +592,9 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
   const [sel, setSel] = useState('')
   const [view, setView] = useState<QsCheck | null>(null)
   const [loading, setLoading] = useState(true)
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
 
   useEffect(() => {
     fetch('/api/qs', { cache: 'no-store' })
@@ -613,7 +625,7 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
   let lastYear = ''
 
   const overlay = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -623,13 +635,13 @@ export function QsArchive({ onClose }: { onClose: () => void }) {
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: apartments.length ? 10 : 0 }}>
-          <button onClick={onClose} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
-          <div style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}>🧾 Qualitätssicherung</div>
+          <button onClick={sheet.close} aria-label="Zurück" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'var(--tm-surface2)', cursor: 'pointer', color: 'var(--tm-muted)', fontSize: 15, flexShrink: 0 }}>‹</button>
+          <div role="heading" aria-level={2} style={{ fontSize: 16.5, fontWeight: 800, color: 'var(--tm-text)' }}><span aria-hidden="true">🧾 </span>Qualitätssicherung</div>
         </div>
         {apartments.length > 0 && (
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {apartments.map((a) => (
-              <button key={a.id} onClick={() => setSel(a.id)} style={{
+              <button key={a.id} onClick={() => setSel(a.id)} aria-pressed={sel === a.id} style={{
                 padding: '6px 13px', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 700, flexShrink: 0,
                 background: sel === a.id ? TEAL : 'rgba(120,120,128,0.12)',
                 color: sel === a.id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',

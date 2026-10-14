@@ -1160,7 +1160,7 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           <div key={iso} style={{ marginBottom: 16 }}>
             <p style={{
               fontSize: 12.5, fontWeight: 800, margin: '0 0 7px',
-              color: iso === today ? 'var(--tm-accent)' : 'var(--tm-muted)',
+              color: iso === today ? 'var(--tm-accent-dark)' : 'var(--tm-muted)',
               textTransform: 'uppercase', letterSpacing: '0.03em',
             }}>{dayLabel(iso, today)}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

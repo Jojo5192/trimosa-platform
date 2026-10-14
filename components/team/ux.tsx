@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { pickSpruch } from '@/lib/start-curtain'
 import { HAPTIK, haptikArt, spieleTon, type RueckmeldungArt } from '@/lib/klang'
 
@@ -201,7 +202,9 @@ export function Segmented({ options, value, onChange, accent }: {
 /** 💀 Skeleton-Zeilen für Erst-Ladezustände (Shimmer via .team-skel). */
 export function SkeletonRows({ kind, count = 6 }: { kind: 'chat' | 'card'; count?: number }) {
   return (
-    <div style={{ padding: kind === 'card' ? '2px 0' : 0 }}>
+    // ♿ role=status + unsichtbarer Text: VoiceOver sagt „Lädt…" statt leerer Flächen
+    <div role="status" style={{ padding: kind === 'card' ? '2px 0' : 0 }}>
+      <span className="tm-sr-only">Lädt…</span>
       {Array.from({ length: count }).map((_, i) => (
         kind === 'chat' ? (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px' }}>
@@ -268,9 +271,255 @@ export function IconRefresh({ size = 18 }: { size?: number }) {
 }
 
 /** 🍞 Toast: dunkle Pille unten mittig über der Tab-Leiste, 2 s.
- *  Aufruf von überall — die TeamShell rendert den Host. */
-export function tmToast(text: string) {
-  try { window.dispatchEvent(new CustomEvent('trimosa-toast', { detail: { text } })) } catch { /* SSR */ }
+ *  Aufruf von überall — die TeamShell rendert den Host. Vorlese-Programme bekommen den Text über die
+ *  dauerhafte Live-Region (BedienhilfenHost) angesagt: Fehler sofort (assertive), alles andere höflich.
+ *  fehler weglassen = am Text erkennen (⚠️/📵 vorn oder „nicht geklappt"/„konnte nicht" …). */
+export function tmToast(text: string, opts?: { fehler?: boolean }) {
+  try { window.dispatchEvent(new CustomEvent('trimosa-toast', { detail: { text, fehler: opts?.fehler } })) } catch { /* SSR */ }
+}
+
+/* ═══════════════ ♿ Barrierefreiheit (Pascal 7.10., Gestaltung 4) ═══════════════
+   Ansagen über Live-Regionen, Fokus-Führung in Dialogen/Blättern, Tastatur-Modus fürs Fokus-Ringlein.
+   CSS dazu: Abschnitt „Barrierefreiheit" am Ende von app/globals.css (.tm-sr-only, Fokus-Ring). */
+
+/** 🔊 Ansage für VoiceOver/TalkBack über die dauerhafte Live-Region der Shell, ohne sichtbaren Toast.
+ *  dringend = unterbricht (Fehler), sonst wartet sie auf eine Sprechpause. Sparsam einsetzen. */
+export function ansagen(text: string, dringend = false) {
+  try { window.dispatchEvent(new CustomEvent('trimosa-ansage', { detail: { text, dringend } })) } catch { /* SSR */ }
+}
+
+/** Toast-Text sieht nach Fehler aus → dringend ansagen */
+function istFehlerText(text: string): boolean {
+  return /^\s*(⚠|📵|❌|✗)/u.test(text) || /nicht geklappt|konnte nicht|nicht gespeichert|nicht gesendet|fehlgeschlagen|\bfehler\b/i.test(text)
+}
+/** Deko-Symbole vorn (✓ ⚠️ 📵 🎉) nicht mitvorlesen — die Art steckt schon in der Ansage-Dringlichkeit */
+function sprechText(text: string): string {
+  return text.replace(/^[\s\p{Extended_Pictographic}✓✔✗️‍·–-]+/u, '').trim()
+}
+
+/** Offene Dialoge, oberster zuletzt — nur der oberste fängt Tab/Esc ab, und die Live-Regionen wandern
+ *  in ihn hinein (bei aria-modal blenden Vorlese-Programme alles außerhalb aus, auch Live-Regionen). */
+type DialogEintrag = { id: symbol; ref: RefObject<HTMLElement | null>; el: HTMLElement }
+const dialogStapel: DialogEintrag[] = []
+const stapelHoerer = new Set<() => void>()
+function stapelGeaendert() { stapelHoerer.forEach((f) => f()) }
+function stapelAbo(f: () => void) { stapelHoerer.add(f); return () => { stapelHoerer.delete(f) } }
+/** aktuelles Element des obersten Blatts (ref.current: auch nach einem Neu-Mounten des Blatts richtig) */
+function obersterDialog(): HTMLElement | null {
+  const d = dialogStapel[dialogStapel.length - 1]
+  return d ? (d.ref.current ?? d.el) : null
+}
+/** role/aria-modal/aria-labelledby ergänzen, ohne Vorhandenes zu überschreiben → liefert die Überschrift */
+function dialogSemantik(el: HTMLElement): HTMLElement | null {
+  if (!el.getAttribute('role')) el.setAttribute('role', 'dialog')
+  if (!el.hasAttribute('aria-modal')) el.setAttribute('aria-modal', 'true')
+  const titel = el.querySelector<HTMLElement>('h1, h2, h3, [role="heading"]')
+  if (titel && !el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')) {
+    if (!titel.id) titel.id = `tm-dlg-${Math.random().toString(36).slice(2, 9)}`
+    el.setAttribute('aria-labelledby', titel.id)
+  }
+  return titel
+}
+
+/** Zuletzt angetippter Knopf: iOS-Safari fokussiert Knöpfe beim Antippen NICHT (activeElement bleibt body) —
+ *  ohne diese Notiz wüsste ein Dialog nicht, wohin der Fokus beim Schließen zurück soll. */
+let letzterKlick: { el: HTMLElement; at: number } | null = null
+let klickHoererDran = false
+function klickNotieren() {
+  if (klickHoererDran || typeof document === 'undefined') return
+  klickHoererDran = true
+  document.addEventListener('click', (e) => {
+    const el = (e.target as Element | null)?.closest?.('button, a[href], [role="button"], [role="tab"], [role="menuitem"], [tabindex]')
+    if (el instanceof HTMLElement) letzterKlick = { el, at: Date.now() }
+  }, true)
+}
+
+const FOKUSSIERBAR = 'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe, audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])'
+function fokussierbare(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOKUSSIERBAR))
+    .filter((n) => !n.closest('[inert]') && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== 'hidden')
+}
+const istTextfeld = (n: Element | null) => !!n && (n.matches('textarea, select, [contenteditable]:not([contenteditable="false"])')
+  || (n.matches('input') && !/^(button|submit|reset|checkbox|radio|range|color|file|image)$/i.test((n as HTMLInputElement).type)))
+
+/** ♿ Fokus-Führung für Dialoge und Blätter — Ref ans Blatt hängen (das Element mit der Kartenfläche):
+ *   · ergänzt role="dialog", aria-modal und aria-labelledby (erste Überschrift im Blatt), wenn sie fehlen
+ *   · setzt den Fokus beim Öffnen ins Blatt: [data-dialog-start] → sonst die Überschrift → sonst das Blatt;
+ *     hat schon ein Feld darin den Fokus (autoFocus), bleibt er dort
+ *   · Fokus-Falle: Tab/Umschalt+Tab bleiben im obersten Blatt · Esc ruft onClose (null = Esc regelt die
+ *     Komponente selbst) · beim Schließen zurück zum Auslöser (Textfelder nur bei Tastatur-Bedienung,
+ *     sonst springt am iPhone die Tastatur auf).
+ *  aktiv=false für Komponenten, die dauerhaft gemountet sind und das Blatt nur bedingt zeigen.
+ *  Logik der Komponente bleibt unberührt — der Hook hängt nur Ereignis-Hörer an. */
+export function useDialogFokus<T extends HTMLElement = HTMLDivElement>(onClose?: (() => void) | null, aktiv = true): RefObject<T | null> {
+  const ref = useRef<T | null>(null)
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose })
+  // Blatt wurde neu gemountet (Komponente im Render definiert): Semantik nachziehen, Live-Regionen umziehen
+  const letztesEl = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!aktiv || !ref.current || ref.current === letztesEl.current) return
+    const neuGemountet = letztesEl.current !== null
+    letztesEl.current = ref.current
+    if (neuGemountet) { dialogSemantik(ref.current); stapelGeaendert() }
+  })
+  useEffect(() => {
+    if (!aktiv) return
+    const el = ref.current
+    if (!el) return
+    letztesEl.current = el
+    klickNotieren()
+    const id = Symbol('dialog')
+    dialogStapel.push({ id, ref, el })
+    stapelGeaendert()
+    const blatt = (): HTMLElement => ref.current ?? el
+
+    // Auslöser merken: frisch angetippter Knopf (iOS) vor dem fokussierten Element
+    const aktivVorher = document.activeElement instanceof HTMLElement && document.activeElement !== document.body && !el.contains(document.activeElement)
+      ? document.activeElement : null
+    const geklickt = letzterKlick && Date.now() - letzterKlick.at < 1500 && !el.contains(letzterKlick.el) ? letzterKlick.el : null
+    const ausloeser = geklickt ?? aktivVorher
+
+    const titel = dialogSemantik(el)
+
+    // Fokus ins Blatt
+    if (!el.contains(document.activeElement)) {
+      const ziel = el.querySelector<HTMLElement>('[data-dialog-start]') ?? titel ?? el
+      if (!ziel.matches(FOKUSSIERBAR) && !ziel.hasAttribute('tabindex')) ziel.setAttribute('tabindex', '-1')
+      try { ziel.focus({ preventScroll: true }) } catch { /* egal */ }
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (dialogStapel[dialogStapel.length - 1]?.id !== id) return
+      const el = blatt()
+      // Fokus steht in einer fremden Ebene über dem Blatt (Dokumenten-Scanner, Popover …) — die regelt selbst
+      const quelle = e.target instanceof Node ? e.target : null
+      if (quelle && quelle !== document.body && quelle !== document.documentElement && !el.contains(quelle)) return
+      if (e.key === 'Escape') {
+        if (!closeRef.current || e.isComposing || e.defaultPrevented) return
+        e.preventDefault()
+        closeRef.current()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const liste = fokussierbare(el)
+      const jetzt = document.activeElement as HTMLElement | null
+      if (!liste.length) { e.preventDefault(); return }
+      const erstes = liste[0]
+      const letztes = liste[liste.length - 1]
+      const idx = jetzt ? liste.indexOf(jetzt) : -1
+      // Fokus ins Leere gefallen (body) → zurück ins Blatt
+      if (!jetzt || !el.contains(jetzt)) { e.preventDefault(); (e.shiftKey ? letztes : erstes).focus(); return }
+      if (idx === -1) {
+        // Fokus steht auf der Überschrift/dem Blatt selbst: nächstes bzw. voriges Element im Blatt
+        const nach = liste.filter((n) => jetzt.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING)
+        const vor = liste.filter((n) => jetzt.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING)
+        e.preventDefault()
+        ;(e.shiftKey ? (vor[vor.length - 1] ?? letztes) : (nach[0] ?? erstes)).focus()
+        return
+      }
+      if (e.shiftKey && idx === 0) { e.preventDefault(); letztes.focus() }
+      else if (!e.shiftKey && idx === liste.length - 1) { e.preventDefault(); erstes.focus() }
+    }
+    document.addEventListener('keydown', onKey)
+
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      const i = dialogStapel.findIndex((d) => d.id === id)
+      if (i >= 0) dialogStapel.splice(i, 1)
+      stapelGeaendert()
+      letztesEl.current = null
+      // Fokus zurück — nur wenn er noch im (geschlossenen) Blatt steht oder ins Leere gefallen ist
+      const jetzt = document.activeElement
+      // blatt(): beim Aufräumen evtl. schon null → el; neu gemountetes Blatt zählt mit
+      const verwaist = !jetzt || jetzt === document.body || el.contains(jetzt) || blatt().contains(jetzt)
+      if (!ausloeser || !verwaist || !ausloeser.isConnected) return
+      if (istTextfeld(ausloeser) && !document.documentElement.hasAttribute('data-tm-tastatur')) return
+      try { ausloeser.focus({ preventScroll: true }) } catch { /* egal */ }
+    }
+  }, [aktiv])
+  return ref
+}
+
+/** ♿ Scroll-Verhalten für scrollIntoView/scrollTo: 'smooth', bei „Bewegung reduzieren" sofort ('auto').
+ *  (Ein ausdrückliches behavior:'smooth' in JS schlägt die CSS-Regel scroll-behavior:auto.) */
+export function sanftScroll(): ScrollBehavior {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'smooth'
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
+/** ♿ Klickbare Fläche ohne <button> (Karte, Zeile, Kopf) für Tastatur und VoiceOver bedienbar machen:
+ *  role=button, Tab-Stopp, Enter/Leertaste lösen aus — nur auf der Fläche selbst, nicht aus Kind-Knöpfen.
+ *  Nicht auf Karten MIT Knöpfen darin setzen (Kinder eines role=button liest VoiceOver nicht einzeln) —
+ *  dort einen Teil (z. B. den Titel) zum Knopf machen. Ohne onClick: keine Angaben. */
+export function alsKnopf(onClick?: (() => void) | null) {
+  if (!onClick) return {}
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    onKeyDown: (e: ReactKeyboardEvent) => {
+      if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+      e.preventDefault()
+      onClick()
+    },
+  }
+}
+
+/** ♿ Host für Ansagen + Tastatur-Modus — EINMAL in der TeamShell rendern.
+ *  · zwei dauerhafte, unsichtbare Live-Regionen (höflich/dringend): Toasts (tmToast) und ansagen()
+ *    landen hier. Erst leeren, dann setzen — sonst sagt VoiceOver denselben Text kein zweites Mal an;
+ *    nach 6 s wieder leer, damit beim Wischen durch die Seite kein alter Text auftaucht.
+ *  · Tastatur-Modus (data-tm-tastatur an <html>): Tab/Pfeile setzen ihn, Zeiger/Touch nimmt ihn weg —
+ *    Textfelder zeigen den Fokus-Ring nur dann (beim Antippen genügt der Cursor). */
+export function BedienhilfenHost() {
+  const [hoeflich, setHoeflich] = useState('')
+  const [dringend, setDringend] = useState('')
+  const ziel = useSyncExternalStore(stapelAbo, obersterDialog, () => null)
+  useEffect(() => {
+    const timer: Record<'h' | 'd', ReturnType<typeof setTimeout>[]> = { h: [], d: [] }
+    const sag = (roh: string, eilig: boolean) => {
+      const text = sprechText(roh)
+      if (!text) return
+      const k = eilig ? 'd' : 'h'
+      const set = eilig ? setDringend : setHoeflich
+      timer[k].forEach(clearTimeout)
+      set('')
+      timer[k] = [setTimeout(() => set(text), 120), setTimeout(() => set(''), 6000)]
+    }
+    const onToast = (e: Event) => {
+      const d = (e as CustomEvent<{ text?: string; fehler?: boolean }>).detail
+      if (d?.text) sag(d.text, d.fehler ?? istFehlerText(d.text))
+    }
+    const onAnsage = (e: Event) => {
+      const d = (e as CustomEvent<{ text?: string; dringend?: boolean }>).detail
+      if (d?.text) sag(d.text, !!d.dringend)
+    }
+    const root = document.documentElement
+    const onKey = (e: KeyboardEvent) => {
+      // nur Navigations-Tasten: Leertaste/Buchstaben kommen auch von der iPhone-Bildschirmtastatur
+      if (e.key === 'Tab' || e.key.startsWith('Arrow')) root.setAttribute('data-tm-tastatur', '')
+    }
+    const onZeiger = () => root.removeAttribute('data-tm-tastatur')
+    window.addEventListener('trimosa-toast', onToast)
+    window.addEventListener('trimosa-ansage', onAnsage)
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('pointerdown', onZeiger, true)
+    return () => {
+      window.removeEventListener('trimosa-toast', onToast)
+      window.removeEventListener('trimosa-ansage', onAnsage)
+      document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('pointerdown', onZeiger, true)
+      timer.h.forEach(clearTimeout); timer.d.forEach(clearTimeout)
+      root.removeAttribute('data-tm-tastatur')
+    }
+  }, [])
+  const regionen = (
+    <>
+      <div className="tm-sr-only" role="status" aria-live="polite" aria-atomic="true">{hoeflich}</div>
+      <div className="tm-sr-only" role="alert" aria-live="assertive" aria-atomic="true">{dringend}</div>
+    </>
+  )
+  return ziel ? createPortal(regionen, ziel) : regionen
 }
 
 /** Paragraph 310 (Dominik 10.9. 08:09): Laeuft die App als installierte PWA, oeffnen Links (Gaestemappe, Rechnung …)
@@ -361,7 +610,7 @@ export function EmptyState({ title, hint, icon = 'house', action, feiern = false
   const [spruch] = useState(() => pickSpruch(new Date(), null).text)
   const art = feiern ? 'check' : icon
   return (
-    <div className={`tm-empty tm-enter${feiern ? ' tm-feiern' : ''}`} role={feiern ? 'status' : undefined}
+    <div className={`tm-empty tm-enter${feiern ? ' tm-feiern' : ''}`} role="status"
       style={{ textAlign: 'center', padding: compact ? '18px 12px 14px' : '40px 24px 32px' }}>
       <svg width={compact ? 66 : 88} height={compact ? 48 : 64} viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
         {EMPTY_ART[art].map((d, i) => <path key={i} d={d} pathLength={feiern ? 1 : undefined} />)}

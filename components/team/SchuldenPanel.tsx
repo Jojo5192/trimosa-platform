@@ -7,7 +7,8 @@ import {
   fortschreibungBisHeute, parseVerlaufBulk, fmtMonat, indexMonat, monatIndex,
   istAnzahl, eur0, eur2, pct2,
 } from '@/lib/schulden-mathe'
-import { haptic } from '@/components/team/ux'
+import { haptic, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * 🏦 §272 SCHULDENSTAND — Vollbild-Bereich im Mehr-Tab, NUR CHEFS (is_admin;
@@ -150,6 +151,9 @@ function deltaChip(delta: number | null, label: string) {
 /* ── Haupt-Panel ── */
 
 export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [kredite, setKredite] = useState<Kredit[]>([])
   const [loading, setLoading] = useState(true)
   const [fehler, setFehler] = useState('')
@@ -255,7 +259,7 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
   }, [kredite])
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -264,8 +268,9 @@ export default function SchuldenPanel({ onClose }: { onClose: () => void }) {
         background: 'var(--tm-glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: NAVY, cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}>🏦 Schuldenstand</h2>
+        {/* ♿ Pfeil in Akzent-Gold statt Navy — Navy verschwand im Dunkeln (1,9:1) */}
+        <button onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent-dark)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--tm-text)', margin: 0, flex: 1 }}><span aria-hidden="true">🏦 </span>Schuldenstand</h2>
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tm-muted)', background: 'var(--tm-surface2)', borderRadius: 999, padding: '4px 10px' }}>nur Chefs</span>
       </div>
 

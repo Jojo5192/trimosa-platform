@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import QsBlock from '@/components/team/QsPanel'
-import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState, ansagen, useDialogFokus, alsKnopf, sanftScroll } from '@/components/team/ux'
 import { openLightbox } from '@/components/team/Lightbox'
 // 👆 Pascal 6 (Chefsache 7.10.2026): Wisch-Gesten — eigene Import-Zeilen, damit parallele Änderungen an den Zeilen oben nicht kollidieren
 import { flushSync } from 'react-dom'
@@ -20,6 +20,8 @@ import {
   morgenDatum, morgenText, plusTage, wischAchse, wischEingerastet, wischEntscheidung, wischRichtung,
   wischStartErlaubt, wischTempo, wischVersatz, type WischErlaubt, type WischRichtung,
 } from '@/lib/aufgaben-wischen'
+// 🎬 Motion (Chefsache 6.10.2026): Blätter schließen mit Animation, Liste rückt nach — eigene Zeile (s. o.)
+import { useSheetMotion, useFlipList } from '@/components/team/motion'
 
 export interface Task {
   id: string
@@ -171,7 +173,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
     }
     setHighlightId(focusTaskId)
     const scrollTimer = setTimeout(() => {
-      document.getElementById(`task-card-${focusTaskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      document.getElementById(`task-card-${focusTaskId}`)?.scrollIntoView({ behavior: sanftScroll(), block: 'center' })
     }, 120)
     const clearTimer = setTimeout(() => { setHighlightId(null); onFocusConsumed?.() }, 3000)
     return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer) }
@@ -224,6 +226,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
   // ⬇️ §209 Pull-to-Refresh: am Listenanfang ziehen lädt die Aufgaben neu
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const ptr = usePullToRefresh(scrollRef, load)
+  // 🎬 erledigt/gewischt/verschoben: die übrigen Karten rücken weich nach statt zu springen
+  const listeRef = useRef<HTMLDivElement | null>(null)
+  useFlipList(listeRef, taskFlipKey)
 
   // §276: Aktualisieren-Knopf der Kopfleiste (Shell) → neu laden
   useEffect(() => {
@@ -399,6 +404,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
     if (rueckTimer.current) clearTimeout(rueckTimer.current)
     const id = Date.now()
     setRueck({ id, text, undo })
+    // ♿ über die dauerhafte Live-Region der Shell — die Leiste selbst entsteht erst jetzt und würde nicht sicher angesagt
+    ansagen(text)
     rueckTimer.current = setTimeout(() => setRueck((cur) => (cur?.id === id ? null : cur)), 5000)
     return id
   }
@@ -447,7 +454,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       .then(({ ok, task }) => ok && (!task || task.status === 'erledigt'))
     // Wiederkehrend: der Server legt sofort die nächste Runde an — Rückgängig ginge nicht sauber
     const id = zeigeRueck(
-      t.recur_days ? '✓ Erledigt – die nächste Runde kommt automatisch' : '✓ Erledigt',
+      t.recur_days ? '✓ Erledigt – nächste Runde folgt' : '✓ Erledigt',
       t.recur_days ? null : async () => {
         if (!(await gespeichert)) return // ist schon zurückgeholt
         void providerStatus(t, vorher) // wie „↩︎ Wieder öffnen"
@@ -474,7 +481,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
     const gespeichert = patchAufgabe(t.id, { due_date: neu })
       .then(({ ok, task }) => ok && (!task || task.due_date === neu))
     const id = zeigeRueck(
-      neu === plusTage(todayIso(), 1) ? '📅 Auf morgen verschoben' : `📅 Verschoben auf ${fmtDate(neu)}`,
+      // kurz halten: neben „Rückgängig" und dem ＋ bleiben bei 375 px nur ~150 px
+      neu === plusTage(todayIso(), 1) ? '📅 Jetzt bis morgen' : `📅 Jetzt bis ${fmtDate(neu)}`,
       async () => {
         if (!(await gespeichert)) return
         setzeDatum(vorher)
@@ -562,10 +570,10 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       </div>
 
       {error && (
-        <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div role="alert" style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>{error}</span>
           <button onClick={() => { setLoading(true); setError(null); load() }} style={{
-            border: 'none', background: 'var(--tm-red)', color: '#fff', borderRadius: 999,
+            border: 'none', background: 'var(--tm-red-solid)', color: '#fff', borderRadius: 999,
             padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
           }}>Erneut laden</button>
           <button onClick={() => setError(null)} aria-label="Schließen" style={{ border: 'none', background: 'none', color: 'var(--tm-red)', cursor: 'pointer', fontWeight: 700 }}>✕</button>
@@ -639,7 +647,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
                     <button onClick={() => setEditing({ ...t, status: 'offen' })} style={{
-                      flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green)',
+                      flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green-solid)',
                       color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}>✓ Annehmen</button>
                     <button onClick={() => discardSuggestion(t)} style={{
@@ -656,7 +664,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
 
       {/* Liste (nicht im Vorschläge-Reiter) */}
       {filter !== 'vorschlaege' && (
-      <div className="tm-stagger" style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div ref={listeRef} className="tm-stagger" style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* 👆 Pascal 6: einmaliger Tipp zur Wisch-Geste (nur wenn hier wirklich gewischt werden kann) */}
         {hydrated && !tippWeg && !loading && visible.some((t) => darfErledigen(t) || darfVerschieben(t)) && (
           <div style={{
@@ -698,15 +706,18 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 transition: 'box-shadow .3s',
               }}>
               {flashId === t.id && (
-                <span className="tm-pop-in" aria-hidden="true" style={{ position: 'absolute', top: 10, right: 12, width: 26, height: 26, borderRadius: '50%', background: 'var(--tm-green, #1a9d57)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 8px rgba(26,157,87,0.4)' }}>✓</span>
+                <span className="tm-pop-in" aria-hidden="true" style={{ position: 'absolute', top: 10, right: 12, width: 26, height: 26, borderRadius: '50%', background: 'var(--tm-green-solid, #137541)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, boxShadow: '0 2px 8px rgba(26,157,87,0.4)' }}>✓</span>
               )}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
                 {/* §243ag: Prio als Reminders-Punkt (rot/orange/grau) */}
-                <span title={`Priorität: ${prio.label}`} style={{
+                <span title={`Priorität: ${prio.label}`} role="img" aria-label={`Priorität: ${prio.label}`} style={{
                   width: 10, height: 10, borderRadius: '50%', flexShrink: 0, marginTop: 5,
                   background: done ? 'var(--tm-muted2)' : (PRIO_DOT[t.prio] ?? PRIO_DOT.mittel),
                 }} />
-                <span style={{ fontSize: 15, fontWeight: 650, color: 'var(--tm-text)', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
+                {/* ♿ Titel = Knopf „Aufgabe bearbeiten" für Tastatur/VoiceOver (die Karte selbst trägt Kind-Knöpfe);
+                    der Klick läuft wie bisher über die Karte */}
+                <span {...alsKnopf((manage && t.editable !== false) || (!manage && t.editable === true) ? () => setEditing(t) : null)}
+                  style={{ fontSize: 15, fontWeight: 650, color: 'var(--tm-text)', flex: 1, letterSpacing: '-0.2px', textDecoration: done ? 'line-through' : 'none' }}>
                   {t.title}
                 </span>
                 {t.status !== 'offen' && (
@@ -737,7 +748,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 {t.due_date && (
                   <span style={{
                     ...CHIP, fontWeight: 700,
-                    ...(overdue ? { background: 'var(--tm-red)', color: '#fff' } : {}),
+                    ...(overdue ? { background: 'var(--tm-red-solid)', color: '#fff' } : {}),
                   }}>
                     {overdue ? `⚠︎ seit ${fmtDate(t.due_date)}` : `bis ${fmtDate(t.due_date)}`}
                   </span>
@@ -770,7 +781,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
 
               {/* Aktionszeile: Kommentare + Foto (alle Rollen) */}
               <div style={{ display: 'flex', gap: 8, marginTop: 10, marginLeft: 19 }} onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)} style={{
+                <button onClick={() => setOpenComments(openComments === t.id ? null : t.id)}
+                  aria-label={`Kommentare (${commentCounts[t.id] ?? 0})`} aria-expanded={openComments === t.id} style={{
                   padding: '6px 13px', borderRadius: 999, border: 'none',
                   background: openComments === t.id ? 'rgba(174,141,45,0.16)' : 'var(--tm-surface2)',
                   color: openComments === t.id ? 'var(--tm-accent-dark)' : 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -780,7 +792,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                   color: 'var(--tm-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 }}>
                   {uploadingFor === t.id ? '⏳ Lädt…' : '📷 Foto'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }}
+                  {/* ♿ unsichtbar statt display:none — per Tastatur erreichbar, Ring an der Pille (globals.css) */}
+                  <input type="file" accept="image/*" className="tm-sr-only" aria-label="Foto zur Aufgabe hinzufügen"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(t, f); e.target.value = '' }} />
                 </label>
               </div>
@@ -800,7 +813,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                     }}>▶ In Arbeit</button>
                   )}
                   <button onClick={() => setCompleting(t)} style={{
-                    flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green)',
+                    flex: 1, padding: '10px 0', borderRadius: 12, border: 'none', background: 'var(--tm-green-solid)',
                     color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
                   }}>✓ Erledigt</button>
                 </div>
@@ -824,7 +837,8 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       {(manage || createOwn) && filter !== 'vorschlaege' && (
         <button className="tm-press-btn" onClick={() => setEditing('new')} aria-label="Neue Aufgabe" style={{
           position: 'absolute', right: 18, bottom: 'calc(var(--tm-nav-pad) + 6px)', width: 54, height: 54, borderRadius: '50%',
-          border: 'none', background: 'var(--tm-accent)', color: '#fff',
+          // ♿ Markengold in beiden Modi: das hellere Dunkel-Gold trüge das weiße ＋ nur mit 2,4:1 (jetzt 3,2:1, großes Symbol)
+          border: 'none', background: 'var(--gold, #AE8D2D)', color: '#fff',
           fontSize: 28, fontWeight: 400, lineHeight: 1, cursor: 'pointer', zIndex: 6,
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 0 0 0.5px rgba(0,0,0,0.18), 0 6px 16px rgba(23,26,31,0.2)',
         }}>+</button>
@@ -833,14 +847,17 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       {/* 👆 Rückgängig-Leiste nach einer Wisch-Geste (Pascal 6) — neben dem ＋; erscheint gerade ein
           Shell-Toast an derselben Stelle, rückt sie darüber */}
       {rueck && (
-        <div key={rueck.id} role="status" aria-live="polite" className="tm-enter" style={{
+        <div key={rueck.id} className="tm-enter" style={{
           position: 'absolute', left: 16, right: (manage || createOwn) && filter !== 'vorschlaege' ? 84 : 16,
           bottom: toastHoch ? 'calc(var(--tm-nav-pad) + 64px)' : 'calc(var(--tm-nav-pad) + 11px)',
           zIndex: 7, minHeight: 44, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8,
           padding: '6px 6px 6px 16px', borderRadius: 18, background: 'var(--tm-text)', color: 'var(--tm-bg)',
           boxShadow: 'var(--tm-shadow-float)', fontSize: 13.5, fontWeight: 600,
         }}>
-          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rueck.text}</span>
+          <span style={{
+            flex: 1, minWidth: 0, lineHeight: 1.3, overflow: 'hidden',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          }}>{rueck.text}</span>
           {rueck.undo && (
             <button type="button" className="tm-press-btn" onClick={() => {
               const undo = rueck.undo
@@ -1052,7 +1069,7 @@ function SwipeRow({ erlaubt, morgenLabel, onWisch, children }: {
           position: 'absolute', inset: 0, borderRadius: 'var(--tm-r-card)', display: 'flex', alignItems: 'center',
           justifyContent: gruen ? 'flex-end' : 'flex-start', padding: '0 20px',
           background: anzeige.eingerastet
-            ? (gruen ? 'var(--tm-green)' : 'var(--tm-blue)')
+            ? (gruen ? 'var(--tm-green-solid)' : 'var(--tm-blue)')
             : (gruen ? 'var(--tm-green-soft)' : 'color-mix(in srgb, var(--tm-blue) 14%, transparent)'),
           // Text auf Blau = Kartenfarbe (hell weiß, im Dunkeln dunkel — --tm-blue wird dort hell)
           color: anzeige.eingerastet ? (gruen ? '#fff' : 'var(--tm-card)') : (gruen ? 'var(--tm-green)' : 'var(--tm-blue)'),
@@ -1073,24 +1090,30 @@ function SwipeRow({ erlaubt, morgenLabel, onWisch, children }: {
   )
 }
 
+/** 🎬 Schlüssel einer Aufgaben-Zeile für useFlipList (die Karte in der Wisch-Zeile trägt id="task-card-…") */
+const taskFlipKey = (el: HTMLElement) => el.querySelector('[id^="task-card-"]')?.id ?? null
+
 /* ── Erledigen-Dialog: kurzer Bericht, was gemacht wurde (→ Kommentar) ── */
 function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: (note: string) => void }) {
   const [note, setNote] = useState('')
+  // 🎬 Schließen (✕, Hintergrund, Abbrechen, Esc) mit kurzer Ausblendung — onClose läuft danach
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   // §314: Portal an den body (§83) — sonst klemmt der Dialog im Reiter-Container unter der Tab-Leiste
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell tm-scrim tm-peek" onClick={onClose} style={{
+    <div className="team-shell tm-scrim tm-mo-scrim" {...sheet.hostProps} onClick={sheet.close} style={{
       position: 'fixed', inset: 0, zIndex: 85, color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
       {/* iOS-27-Runde: Sheet = Kartenfläche (.tm-sheet), Felder darin auf surface2 */}
-      <div className="tm-sheet tm-sheet-in" onClick={(e) => e.stopPropagation()} style={{
+      <div ref={dlgRef} className="tm-sheet tm-mo-sheet" onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560,
         padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))',
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '0 0 4px' }}>
-          <h2 style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, margin: '5px 0 0', color: 'var(--tm-text)', overflowWrap: 'anywhere' }}>✓ „{task.title}“ erledigen</h2>
-          <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
+          <h2 style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, margin: '5px 0 0', color: 'var(--tm-text)', overflowWrap: 'anywhere' }}><span aria-hidden="true">✓ </span>„{task.title}“ erledigen</h2>
+          <button type="button" className="tm-close" onClick={sheet.close} aria-label="Schließen">✕</button>
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--tm-muted)', margin: '0 0 10px' }}>Halt kurz fest, was du gemacht hast (optional):</p>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
@@ -1101,12 +1124,12 @@ function CompleteDialog({ task, onClose, onDone }: { task: Task; onClose: () => 
             overscrollBehavior: 'contain',
           }} />
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button onClick={onClose} style={{
+          <button onClick={sheet.close} style={{
             flex: 1, padding: '12px 0', borderRadius: 999, border: HAIR, background: 'var(--tm-surface2)',
             color: 'var(--tm-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
           }}>Abbrechen</button>
           <button onClick={() => onDone(note)} style={{
-            flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: 'var(--tm-green)',
+            flex: 2, padding: '12px 0', borderRadius: 999, border: 'none', background: 'var(--tm-green-solid)',
             color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}>✓ Erledigt melden</button>
         </div>
@@ -1185,6 +1208,24 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
 }
 
 /* ── Bottom-Sheet: Aufgabe anlegen/bearbeiten (Team) ── */
+/** Segment-Wahl im Aufgaben-Blatt. ♿ Bewusst außerhalb von TaskSheet: innerhalb neu angelegt, wurden die
+ *  Knöpfe bei jedem Tippen neu gebaut — der Tastatur-Fokus fiel dabei ins Leere. aria-pressed sagt die Wahl an,
+ *  label benennt die Gruppe (die sichtbare Beschriftung darüber ist kein <label> für Knöpfe). */
+function BlattSegmente({ options, value, onChange, label }: { options: [string, string][]; value: string; onChange: (v: string) => void; label?: string }) {
+  return (
+    <div role="group" aria-label={label} style={{ display: 'flex', gap: 2, background: 'var(--tm-seg-track)', borderRadius: 999, padding: 3, boxShadow: 'inset 0 0 0 0.5px var(--tm-line)' }}>
+      {options.map(([v, text]) => (
+        <button key={v} type="button" className="tm-press-btn" aria-pressed={value === v} onClick={() => onChange(v)} style={{
+          flex: 1, minWidth: 0, padding: '7px 0', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 600,
+          // inaktive Segmente gedämpft — sonst ist die Auswahl nur über die Fläche erkennbar
+          background: value === v ? 'var(--tm-seg-on)' : 'transparent', color: value === v ? 'var(--tm-text)' : 'var(--tm-muted)',
+          boxShadow: value === v ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge)' : 'none', cursor: 'pointer',
+        }}>{text}</button>
+      ))}
+    </div>
+  )
+}
+
 function TaskSheet({ task, limited = false, people, listings, groups, onClose, onSaved }: {
   /** Paragraph 303: Nicht-Verwalter - eigene Aufgabe ohne Zuweisung/Sichtbarkeit/Wiederholung */
   limited?: boolean
@@ -1196,6 +1237,9 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
   /** §282.8: ID der gerade erledigten Aufgabe (für den Erfolgs-Moment) */
   onSaved: (doneId?: string) => void
 }) {
+  // 🎬 Schließen (✕, Hintergrund, Esc) mit kurzer Ausblendung — Speichern schließt wie bisher über onSaved
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
   const [prio, setPrio] = useState<string>(task?.prio ?? 'mittel')
@@ -1301,30 +1345,15 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
   }
   const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', margin: '0 0 5px', display: 'block' }
 
-  function Segmented({ options, value, onChange }: { options: [string, string][]; value: string; onChange: (v: string) => void }) {
-    return (
-      <div style={{ display: 'flex', gap: 2, background: 'var(--tm-seg-track)', borderRadius: 999, padding: 3, boxShadow: 'inset 0 0 0 0.5px var(--tm-line)' }}>
-        {options.map(([v, label]) => (
-          <button key={v} type="button" className="tm-press-btn" onClick={() => onChange(v)} style={{
-            flex: 1, minWidth: 0, padding: '7px 0', borderRadius: 999, border: 'none', fontSize: 12.5, fontWeight: 600,
-            // inaktive Segmente gedämpft — sonst ist die Auswahl nur über die Fläche erkennbar
-            background: value === v ? 'var(--tm-seg-on)' : 'transparent', color: value === v ? 'var(--tm-text)' : 'var(--tm-muted)',
-            boxShadow: value === v ? '0 1px 3px rgba(0,0,0,0.16), var(--tm-edge)' : 'none', cursor: 'pointer',
-          }}>{label}</button>
-        ))}
-      </div>
-    )
-  }
-
   // §314: Portal an den body (§83) — sonst klemmt das Sheet im Reiter-Container
   // unter Kopf- und Tab-Leiste (Speichern/Löschen nicht mehr antippbar)
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div className="team-shell tm-scrim tm-peek" onClick={onClose} style={{
+    <div className="team-shell tm-scrim tm-mo-scrim" {...sheet.hostProps} onClick={sheet.close} style={{
       position: 'fixed', inset: 0, zIndex: 80, color: 'var(--tm-text)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
     }}>
-      <div className="tm-sheet tm-sheet-in" onClick={(e) => e.stopPropagation()} style={{
+      <div ref={dlgRef} className="tm-sheet tm-mo-sheet" onClick={(e) => e.stopPropagation()} style={{
         width: '100%', maxWidth: 560, maxHeight: '88dvh', overflowY: 'auto',
         overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
         padding: '18px 18px',
@@ -1334,7 +1363,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: 'var(--tm-text)' }}>
             {task ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}
           </h2>
-          <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
+          <button type="button" className="tm-close" onClick={sheet.close} aria-label="Schließen">✕</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -1349,7 +1378,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           </div>
           <div>
             <label style={labelStyle}>Zuordnung</label>
-            <Segmented
+            <BlattSegmente
+              label="Zuordnung"
               options={[['listing', '🏠 Wohnung'], ['group', '📍 Standort'], ['general', '🏢 Allgemein']]}
               value={scopeType}
               onChange={(v) => setScopeType(v as 'listing' | 'group' | 'general')}
@@ -1371,7 +1401,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           </div>
           <div>
             <label style={labelStyle}>Priorität</label>
-            <Segmented
+            <BlattSegmente
+              label="Priorität"
               options={[['hoch', '🔴 Hoch'], ['mittel', '🟡 Mittel'], ['niedrig', '⚪ Niedrig']]}
               value={prio}
               onChange={setPrio}
@@ -1380,7 +1411,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           {!limited && (<>
           <div>
             <label style={labelStyle}>Sichtbar für (Zugewiesene sehen ihre Aufgabe immer)</label>
-            <Segmented
+            <BlattSegmente
+              label="Sichtbar für"
               options={[['admin', '🔒 Nur Chefs'], ['team', '👥 + Mitarbeiter'], ['alle', '🌐 Alle']]}
               value={visibility}
               onChange={setVisibility}
@@ -1439,7 +1471,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
                       if (res.ok) setPhotos((ps) => ps.filter((x) => x.url !== p.url))
                     }} style={{
                       position: 'absolute', top: -8, right: -8, width: 28, height: 28, borderRadius: '50%',
-                      border: 'none', background: 'var(--tm-red)', color: '#fff', fontSize: 12, fontWeight: 700,
+                      border: 'none', background: 'var(--tm-red-solid)', color: '#fff', fontSize: 12, fontWeight: 700,
                       cursor: 'pointer', lineHeight: 1,
                     }}>✕</button>
                   </div>
@@ -1493,7 +1525,8 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
           {task && (
             <div>
               <label style={labelStyle}>Status</label>
-              <Segmented
+              <BlattSegmente
+                label="Status"
                 options={[['offen', 'Offen'], ['in_arbeit', 'In Arbeit'], ['erledigt', 'Erledigt']]}
                 value={status}
                 onChange={setStatus}
@@ -1762,10 +1795,12 @@ function CallCard({ task, onDone, onError }: {
                   boxShadow: selected === i ? 'inset 0 0 0 1.5px var(--tm-accent)' : 'inset 0 0 0 1px var(--tm-line)',
                 }} onClick={() => setSelected(selected === i ? null : i)}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
-                      {selected === i ? '✓ ' : ''}{o.text}
+                    {/* ♿ Text = Auswahl-Knopf (die Karte trägt den Info-Knopf, darf also selbst kein role=button sein) */}
+                    <span {...alsKnopf(() => setSelected(selected === i ? null : i))} aria-pressed={selected === i}
+                      style={{ fontSize: 13, color: 'var(--tm-text)', lineHeight: 1.55, flex: 1, minWidth: 0 }}>
+                      {selected === i ? <span aria-hidden="true">✓ </span> : ''}{o.text}
                     </span>
-                    <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt die KI darauf?" style={{
+                    <button onClick={(e) => { e.stopPropagation(); setInfoOpen(infoOpen === i ? null : i) }} title="Wie kommt die KI darauf?" aria-label="Wie kommt die KI darauf?" aria-expanded={infoOpen === i} style={{
                       width: 24, height: 24, borderRadius: 999, border: 'none', flexShrink: 0, fontSize: 12, fontWeight: 800,
                       background: infoOpen === i ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                       color: infoOpen === i ? '#fff' : 'var(--tm-muted)', cursor: 'pointer',
@@ -1886,7 +1921,7 @@ function CallCard({ task, onDone, onError }: {
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
             <button onClick={() => saveDone(true)} disabled={doneBusy || !doneText.trim()} style={{
-              ...goldBtn, background: 'var(--tm-green)', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
+              ...goldBtn, background: 'var(--tm-green-solid)', color: '#fff', opacity: doneBusy || !doneText.trim() ? 0.5 : 1,
             }}>💾 Speichern & Erledigt</button>
             <button onClick={() => { if (confirm('Ohne Lösung abschließen? Dann kann die KI daraus nichts lernen.')) saveDone(false) }} disabled={doneBusy} style={{
               ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-muted)',

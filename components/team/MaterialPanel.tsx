@@ -13,7 +13,8 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic, rueckmeldung } from '@/components/team/ux'
+import { haptic, rueckmeldung, ansagen, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 const NAVY = 'var(--tm-navy)'
 const GRUEN = 'var(--tm-green)'
@@ -46,6 +47,9 @@ const INPUT: CSSProperties = {
 }
 
 export default function MaterialPanel({ onClose }: { onClose: () => void }) {
+  // 🎬 Vollbild federt herein und gleitet beim Schließen hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -56,6 +60,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
   const [freiBusy, setFreiBusy] = useState(false)
   const [vorschlag, setVorschlag] = useState<Vorschlag | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  // ♿ eigener Toast → auch für VoiceOver ansagen (Fehler sofort)
+  useEffect(() => { if (toast) ansagen(toast.msg, !toast.ok) }, [toast])
   const [editListe, setEditListe] = useState(false)
   const [editAdr, setEditAdr] = useState(false)
   const [neuArtikel, setNeuArtikel] = useState({ name: '', kategorie: '', url: '', asin: '', menge: '1' })
@@ -223,7 +229,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         ))}
         {offen.length > 0 && data.merklisteUrl && (
           <a className="mat-tap" href={data.merklisteUrl} target="_blank" rel="noreferrer" onClick={() => haptic()}
-            style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px 14px', borderRadius: 12, background: 'var(--tm-accent)', color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
+            style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px 14px', borderRadius: 12, background: 'var(--tm-gold-solid)', color: '#fff', fontSize: 13.5, fontWeight: 800, textDecoration: 'none' }}>
             🧺 dm-Merkliste öffnen{adr ? ` – Adresse „${adr.label}“ wählen!` : ''}
           </a>
         )}
@@ -247,15 +253,15 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
   })
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 90, background: 'var(--tm-bg)',
       display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {/* Kopf */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 8px', flexShrink: 0 }}>
-        <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.6px' }}>🛒 Material</span>
-        <button type="button" className="tm-close" onClick={onClose} aria-label="Schließen">✕</button>
+        <span role="heading" aria-level={2} style={{ fontSize: 28, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '-0.6px' }}><span aria-hidden="true">🛒 </span>Material</span>
+        <button type="button" className="tm-close" onClick={sheet.close} aria-label="Schließen">✕</button>
       </div>
 
       {/* Standort-Chips */}
@@ -513,7 +519,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         <div style={{
           position: 'fixed', left: '50%', bottom: 'calc(max(20px, env(safe-area-inset-bottom)) + 12px)',
           transform: 'translateX(-50%)', zIndex: 95, pointerEvents: 'none',
-          background: toast.ok ? NAVY : 'var(--tm-red)', color: '#fff',
+          background: toast.ok ? NAVY : 'var(--tm-red-solid)', color: '#fff',
           borderRadius: 999, padding: '10px 18px', fontSize: 13, fontWeight: 700,
           boxShadow: '0 6px 24px rgba(0,0,0,0.25)', maxWidth: 'calc(100vw - 40px)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

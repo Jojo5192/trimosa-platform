@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic } from '@/components/team/ux'
+import { haptic, useDialogFokus } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * 🖼 Vollbild-Ansicht für Fotos (Pascal, Chefsache 10.10.2026): Antippen eines Bildes im Chat öffnete bisher
@@ -44,10 +45,15 @@ export default function LightboxHost() {
   return <LightboxView bilder={state.bilder} index={state.index} onIndex={(i) => setState((s) => (s ? { ...s, index: i } : s))} onClose={() => setState(null)} />
 }
 
-function LightboxView({ bilder, index, onIndex, onClose }: {
+function LightboxView({ bilder, index, onIndex, onClose: schliessenSofort }: {
   bilder: LightboxBild[]; index: number; onIndex: (i: number) => void; onClose: () => void
 }) {
+  // 🎬 Motion: alle Schließ-Wege (✕, Esc, Tipp auf den Hintergrund, Wisch nach unten) blenden kurz aus —
+  // onClose ist hier die verzögerte Variante, die eigentliche Prop läuft nach der Ausblendung
+  const { close: onClose, hostProps } = useSheetMotion(schliessenSofort)
   const bild = bilder[index]
+  // ♿ Fokus ins Vollbild und beim Schließen zurück zum Bild im Chat; Esc/Pfeile regelt die Lightbox selbst (null)
+  const dlgRef = useDialogFokus(null)
   const [scale, setScale] = useState(1)
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [drag, setDrag] = useState({ x: 0, y: 0 })   // Verschiebung während eines Wischens (nicht gezoomt)
@@ -142,8 +148,9 @@ function LightboxView({ bilder, index, onIndex, onClose }: {
       return
     }
     if (zoomed) return
-    setDrag({ x: 0, y: 0 })
+    // 🎬 Wisch nach unten: das Bild bleibt beim Ausblenden dort, wohin der Finger es gezogen hat
     if (dy > SWIPE_PX && Math.abs(dy) > Math.abs(dx)) { haptic(); onClose(); return }
+    setDrag({ x: 0, y: 0 })
     if (dx < -SWIPE_PX && Math.abs(dx) > Math.abs(dy)) go(1)
     else if (dx > SWIPE_PX && Math.abs(dx) > Math.abs(dy)) go(-1)
   }
@@ -154,8 +161,11 @@ function LightboxView({ bilder, index, onIndex, onClose }: {
 
   const body = (
     <div
-      className="team-shell"
+      ref={dlgRef}
+      className="team-shell tm-mo-fade"
+      {...hostProps}
       role="dialog"
+      aria-modal="true"
       aria-label={`Bild ${index + 1} von ${bilder.length}`}
       data-hintergrund="1"
       onPointerDown={onPointerDown}
@@ -175,9 +185,11 @@ function LightboxView({ bilder, index, onIndex, onClose }: {
         background: 'linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0))', opacity: zoomed ? 0 : 1, transition: 'opacity .2s',
         pointerEvents: zoomed ? 'none' : 'auto',
       }}>
-        <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', padding: '0 6px' }}>
+        <span aria-hidden="true" style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', padding: '0 6px' }}>
           {bilder.length > 1 ? `${index + 1} / ${bilder.length}` : ''}
         </span>
+        {/* ♿ Bildwechsel (Wischen/Pfeile) ansagen */}
+        <span className="tm-sr-only" aria-live="polite">{bilder.length > 1 ? `Bild ${index + 1} von ${bilder.length}` : ''}</span>
         <span style={{ flex: 1 }} />
         <a href={bild.url} target="_blank" rel="noopener noreferrer" aria-label="Original öffnen" title="Original öffnen"
           onPointerDown={(e) => e.stopPropagation()}
@@ -199,7 +211,7 @@ function LightboxView({ bilder, index, onIndex, onClose }: {
       <img
         key={bild.url}
         src={bild.url}
-        alt={bild.caption ?? ''}
+        alt={bild.caption || 'Foto'}
         draggable={false}
         onLoad={() => setLaedt(false)}
         onError={() => { setLaedt(false); setFehler(true) }}

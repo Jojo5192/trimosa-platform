@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { EmptyState } from '@/components/team/ux'
+import { EmptyState, useDialogFokus, sanftScroll } from '@/components/team/ux'
+import { useSheetMotion } from '@/components/team/motion'
 
 /**
  * ☎️ Telefonate (§227c): Vollbild-Bereich mit allen Anrufen der
@@ -63,6 +64,9 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
   /** 🎧 Anruf gezielt aufklappen: per id (Deep-Link) oder Rufnummer + Zeitpunkt (Anruf-Aufgabe; nächster Anruf binnen 3 h) */
   focus?: { id?: string; phone?: string | null; at?: string; name?: string } | null
 }) {
+  // 🎬 Vollbild federt herein und gleitet beim Zurück hinaus (onClose läuft danach)
+  const sheet = useSheetMotion(onClose)
+  const dlgRef = useDialogFokus(sheet.close)
   const [calls, setCalls] = useState<Call[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,7 +97,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
           }
           if (treffer) {
             setOpenId(treffer.id)
-            setTimeout(() => document.getElementById(`tm-call-${treffer!.id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80)
+            setTimeout(() => document.getElementById(`tm-call-${treffer!.id}`)?.scrollIntoView({ block: 'start', behavior: sanftScroll() }), 80)
           } else {
             setFokusFehlt(true)
           }
@@ -106,7 +110,7 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
   }, [bookingId])
 
   const body = (
-    <div className="team-shell" style={{
+    <div ref={dlgRef} className="team-shell tm-mo-screen" {...sheet.hostProps} style={{
       position: 'fixed', inset: 0, zIndex: 80, background: 'var(--tm-surface2)',
       display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)',
     }}>
@@ -115,18 +119,18 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
         display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--tm-card)',
         boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', flexShrink: 0,
       }}>
-        <button onClick={onClose} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent, #AE8D2D)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          ☎️ {title ?? 'Telefonate'}
+        <button onClick={sheet.close} aria-label="Zurück" style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--tm-accent, #AE8D2D)', cursor: 'pointer', padding: '0 4px', minWidth: 40, minHeight: 40 }}>‹</button>
+        <div role="heading" aria-level={2} style={{ fontSize: 17, fontWeight: 800, color: 'var(--tm-text)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span aria-hidden="true">☎️ </span>{title ?? 'Telefonate'}
         </div>
         <div style={{ flex: 1 }} />
-        {loading && <span style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
+        {loading && <span role="status" style={{ fontSize: 12, color: 'var(--tm-muted2)' }}>Lädt…</span>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 14px 40px' }}>
           {error && (
-            <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            <div role="alert" style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-red-soft)', color: 'var(--tm-red)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
               ⚠️ {error}
             </div>
           )}
