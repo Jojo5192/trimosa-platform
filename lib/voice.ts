@@ -11,8 +11,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
     = NUR diese Personen (übersteuert bewusst stummgeschaltete Gäste-Chat-
     Präferenzen: Wer Dienst hat, bekommt den Anruf). Leere Liste = Fallback
     Admins/Gastgeber/Mitarbeiter — NIE Dienstleister (§183). */
-export async function pushOncall(title: string, body: string, url: string): Promise<void> {
-  const { sendPushToUser } = await import('@/lib/push')
+export async function pushOncall(title: string, body: string, url: string): Promise<number> {
+  const { sendPushToUser, sendPushToTeam } = await import('@/lib/push')
   const { getOncallIds } = await import('@/lib/oncall')
   let ids = await getOncallIds()
   if (!ids.length) {
@@ -22,7 +22,15 @@ export async function pushOncall(title: string, body: string, url: string): Prom
       .or('is_admin.eq.true,is_host.eq.true,is_staff.eq.true')
     ids = (data ?? []).map((p) => String(p.id))
   }
-  await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url, undefined, 'calls').catch(() => {})))
+  const geraete = await Promise.all(ids.map((id) => sendPushToUser(id, title, body, url, undefined, 'calls').catch(() => 0)))
+  let erreicht = geraete.reduce((a, b) => a + b, 0)
+  // Server-Prüfung 9.10.: Erreicht der Push niemanden (Bereitschaft ohne Gerät, Anrufe stummgeschaltet, VAPID
+  // fehlt), scheiterte auch ein NOTFALL-Anruf still. Dann ans ganze Team (ohne Dienstleister) und laut loggen.
+  if (erreicht === 0) {
+    erreicht = await sendPushToTeam(title, body, url, { guestChat: true }).catch(() => 0)
+    console.error(`[voice] Bereitschafts-Push erreichte niemanden — Team-Rückfall: ${erreicht} Geräte · ${title}`)
+  }
+  return erreicht
 }
 
 export function requireVoiceAuth(request: Request): Response | null {

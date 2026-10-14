@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import QsBlock from '@/components/team/QsPanel'
-import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
+import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 import { openLightbox } from '@/components/team/Lightbox'
 
 export interface Task {
@@ -730,12 +730,18 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
   async function send() {
     if (!text.trim() || sending) return
     setSending(true)
-    const res = await fetch(`/api/tasks/${taskId}/comments`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: text.trim() }),
-    })
-    if (res.ok) { setText(''); onPosted(); loadComments() }
-    setSending(false)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/comments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text.trim() }),
+      })
+      if (res.ok) { setText(''); onPosted(); loadComments() }
+      else tmToast('Kommentar nicht gesendet — bitte erneut versuchen')
+    } catch {
+      tmToast('Keine Verbindung — Kommentar nicht gesendet')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -816,9 +822,17 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
       is_general: scopeType === 'general',
       recur_days: recurDays ? Number(recurDays) : null,
     }
-    const res = task
-      ? await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    let res: Response
+    try {
+      res = task
+        ? await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    } catch {
+      // offline/Netzabbruch: Knopf wieder freigeben statt dauerhaft „Speichern…"
+      setErr('Keine Verbindung — die Aufgabe wurde nicht gespeichert. Bitte erneut versuchen.')
+      setSaving(false)
+      return
+    }
     if (res.ok) {
       if (!task && pendingFiles.length) {
         // Paragraph 303: Fotos der neuen Aufgabe nachladen (gleiche Route wie der Foto-Knopf an der Karte)
@@ -855,16 +869,16 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
   async function remove() {
     if (!task || !confirm('Aufgabe wirklich löschen?')) return
     setSaving(true)
-    const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      if (task && status === 'erledigt' && task.status !== 'erledigt' && doneNote.trim()) {
-        await fetch(`/api/tasks/${task.id}/comments`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: `✅ Erledigt: ${doneNote.trim()}` }),
-        }).catch(() => {})
-      }
-      onSaved()
+    let res: Response
+    try {
+      res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+    } catch {
+      setErr('Keine Verbindung — die Aufgabe wurde nicht gelöscht.')
+      setSaving(false)
+      return
     }
+    // (früher ging nach dem Löschen noch ein „✅ Erledigt"-Kommentar an die gelöschte Aufgabe — Kopierrest aus save)
+    if (res.ok) onSaved()
     else { setErr('Löschen fehlgeschlagen.'); setSaving(false) }
   }
 

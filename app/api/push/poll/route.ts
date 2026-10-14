@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { syncBookingMessages } from '@/lib/message-sync'
+import { meldeAusfall, ausfallBehoben } from '@/lib/ausfall'
 
 /**
  * Cron (every 10 min): polls Smoobu messages for RELEVANT bookings, stores
@@ -54,6 +55,10 @@ export async function GET(request: Request) {
 
   let newMessages = 0
   let pushes = 0
+  // strict: ein Smoobu-Fehler (HTTP 401 bei abgelaufenem Schlüssel, 5xx, unlesbare Antwort) WIRFT, statt still
+  // eine leere Liste zu liefern — nur so lässt sich ein Totalausfall vom „nichts Neues" unterscheiden
+  let failed = 0
+  let ersterFehler = ''
   for (const b of bookings ?? []) {
     try {
       const listing = (Array.isArray(b.listings) ? b.listings[0] : b.listings) as { title: string } | null
@@ -62,13 +67,27 @@ export async function GET(request: Request) {
         guest_name: b.guest_name,
         smoobu_reservation_id: Number(b.smoobu_reservation_id),
         listingTitle: listing?.title ?? null,
-      })
+      }, { strict: true })
       newMessages += r.newMessages
       pushes += r.pushes
     } catch (err) {
+      failed++
+      if (!ersterFehler) ersterFehler = String(err instanceof Error ? err.message : err).slice(0, 160)
       console.error('[push-poll]', b.smoobu_reservation_id, err)
     }
   }
 
-  return NextResponse.json({ checked: (bookings ?? []).length, newMessages, pushes, bookingImport })
+  const checked = (bookings ?? []).length
+  // Totalausfall: ALLE Abrufe gescheitert (bei mind. 3) oder das Buchungs-Sicherheitsnetz warf — Team-Push
+  // (gedrosselt, lib/ausfall.ts) und 500, damit der Lauf im Vercel-Cron-Protokoll rot erscheint
+  const totalausfall = (checked >= 3 && failed === checked) || (wide && bookingImport === null)
+  if (totalausfall) {
+    await meldeAusfall('smoobu-poll', 'Smoobu-Abgleich',
+      failed === checked && checked >= 3
+        ? `Keine Gast-Nachricht abrufbar (${failed} von ${checked} Buchungen): ${ersterFehler || 'ohne Fehlertext'} — Smoobu-API-Schlüssel und Smoobu-Status prüfen.`
+        : 'Der Abgleich fehlender Buchungen ist gescheitert (Vercel-Log „[push-poll] booking-import").')
+    return NextResponse.json({ checked, failed, newMessages, pushes, bookingImport, ausfall: true }, { status: 500 })
+  }
+  await ausfallBehoben('smoobu-poll', 'Smoobu-Abgleich')
+  return NextResponse.json({ checked, failed, newMessages, pushes, bookingImport })
 }

@@ -659,7 +659,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         body: JSON.stringify({ kind: 'booking', id: c.id, value: next, field: 'early_block' }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Fehler')
-      tmToast(next ? 'Early Check-in gesperrt — keine Frueh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
+      tmToast(next ? 'Early Check-in gesperrt — keine Früh-Check-in-Nachricht' : 'Early Check-in wieder erlaubt')
       reloadListSoon()
     } catch (e) {
       setConvs(cs => cs.map(x => x.id === c.id ? { ...x, earlyBlocked: !next } : x))
@@ -685,6 +685,12 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     } else if (active?.id === c.id) {
       setBookingHintFor(null)
     }
+    // nicht gespeichert → Markierung zurücknehmen und sagen, statt bis zum nächsten Abgleich falsch anzuzeigen
+    const zurueck = (text: string) => {
+      setConvs(cs => cs.map(x => x.id === c.id ? { ...x, [key]: !value } : x))
+      setActive(a => (a && a.id === c.id ? { ...a, [key]: !value } : a))
+      tmToast(text)
+    }
     try {
       const res = await fetch('/api/chat/inbox', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -693,7 +699,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       // gespeichert → Liste mit dem Serverstand abgleichen (schließt das Wettrennen mit
       // einem Abgleich, der zwischen Tipp und Speichern gestartet ist)
       if (res.ok) reloadListSoon()
-    } catch { /* Anzeige bleibt optimistisch; nächster Inbox-Load korrigiert */ }
+      else zurueck('Markierung nicht gespeichert — bitte erneut versuchen')
+    } catch {
+      zurueck('Keine Verbindung — Markierung nicht gespeichert')
+    }
   }
   async function toggleMark(field: 'no_reply' | 'phone') {
     if (!active) return
@@ -790,10 +799,10 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
       const key = (active.kind ?? 'direct') === 'booking' ? 'booking' : 'conv'
       const r = await fetch(`/api/auto-messages/render?template=${encodeURIComponent(tid)}&${key}=${encodeURIComponent(active.id)}`, { cache: 'no-store' })
       const d = await r.json()
-      if (!r.ok || !d.text) { tmToast(d.error ?? 'Vorlage konnte nicht gefuellt werden'); return }
+      if (!r.ok || !d.text) { tmToast(d.error ?? 'Vorlage konnte nicht gefüllt werden'); return }
       setDraft(d.text)
       setTplMenu(false)
-      tmToast(`Vorlage „${d.name}" eingefuegt — bitte pruefen und senden`)
+      tmToast(`Vorlage „${d.name}" eingefügt — bitte prüfen und senden`)
       setTimeout(() => taRef.current?.focus(), 50)
     } catch { tmToast('Vorlage konnte nicht geladen werden') }
     finally { setTplBusy(false) }

@@ -4,6 +4,12 @@
 
 const SMOOBU_BASE = 'https://login.smoobu.com/api'
 
+/** fetch mit Zeitlimit (25 s) — Server-Prüfung 9.10.: ein hängender Smoobu-Aufruf fraß sonst das ganze
+ *  Function-Fenster (Nachrichten-Poll mit bis zu 120 Buchungen nacheinander). Eigenes signal hat Vorrang. */
+function smoobuFetch(input: string | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, { signal: AbortSignal.timeout(25_000), ...init })
+}
+
 // Global fallback API key (used if host has no own key stored)
 const GLOBAL_API_KEY = process.env.SMOOBU_API_KEY ?? ''
 // Global fallback channel ID
@@ -26,7 +32,7 @@ export async function discoverAvailableChannels(
   apiKey: string,
 ): Promise<{ id: number; name: string }[]> {
   try {
-    const res = await fetch(`${SMOOBU_BASE}/reservations?pageSize=25&page=1`, {
+    const res = await smoobuFetch(`${SMOOBU_BASE}/reservations?pageSize=25&page=1`, {
       headers: smoobuHeaders(apiKey),
     })
     if (!res.ok) return []
@@ -54,7 +60,7 @@ export async function validateSmoobuApiKey(apiKey: string): Promise<{
   apartments: { id: number; name: string }[]
 }> {
   try {
-    const res = await fetch(`${SMOOBU_BASE}/apartments`, {
+    const res = await smoobuFetch(`${SMOOBU_BASE}/apartments`, {
       headers: smoobuHeaders(apiKey),
     })
     if (!res.ok) return { valid: false, apartments: [] }
@@ -118,7 +124,7 @@ export async function getApartmentRates(
   params.append('end_date', to)
   const url = `${SMOOBU_BASE}/rates?${params.toString()}`
 
-  const res = await fetch(url, {
+  const res = await smoobuFetch(url, {
     headers: smoobuHeaders(),
     next: { revalidate: 300 }, // 5-min cache
   })
@@ -143,7 +149,7 @@ async function getSmoobuCustomerId(apiKey?: string): Promise<number | null> {
   const g = globalThis as typeof globalThis & { __smoobuCustomerId?: number }
   if (g.__smoobuCustomerId) return g.__smoobuCustomerId
   try {
-    const res = await fetch(`${SMOOBU_BASE}/me`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
+    const res = await smoobuFetch(`${SMOOBU_BASE}/me`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
     if (!res.ok) { console.error('[Smoobu] /me failed', res.status); return null }
     const data = await res.json().catch(() => null) as { id?: number } | null
     if (typeof data?.id === 'number') { g.__smoobuCustomerId = data.id; return data.id }
@@ -174,7 +180,7 @@ export async function getQuote(
     const customerId = await getSmoobuCustomerId(apiKey)
     if (!customerId) return fallback()
     const g = Math.min(Math.max(Math.round(guests) || 1, 1), 20)
-    const res = await fetch('https://login.smoobu.com/booking/checkApartmentAvailability', {
+    const res = await smoobuFetch('https://login.smoobu.com/booking/checkApartmentAvailability', {
       method: 'POST',
       headers: smoobuHeaders(apiKey),
       body: JSON.stringify({ arrivalDate: checkIn, departureDate: checkOut, apartments: [id], customerId, guests: g }),
@@ -315,7 +321,7 @@ export async function createReservation(input: CreateReservationInput): Promise<
   const usedChannelId = input.channelId ?? GLOBAL_CHANNEL_ID
   const usedApiKey = input.apiKey || GLOBAL_API_KEY
   console.log('[Smoobu] createReservation channelId:', usedChannelId, 'apartmentId:', input.smoobuApartmentId)
-  const res = await fetch(`${SMOOBU_BASE}/reservations`, {
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations`, {
     method: 'POST',
     headers: smoobuHeaders(usedApiKey),
     body: JSON.stringify({
@@ -356,7 +362,7 @@ export async function createReservation(input: CreateReservationInput): Promise<
  * and free up the calendar block.
  */
 export async function cancelReservation(smoobuReservationId: number): Promise<boolean> {
-  const res = await fetch(`${SMOOBU_BASE}/reservations/${smoobuReservationId}`, {
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations/${smoobuReservationId}`, {
     method: 'DELETE',
     headers: smoobuHeaders(),
   })
@@ -413,7 +419,7 @@ export async function listReservations(
     pageSize: String(pageSize),
     showCancellation: 'true',
   })
-  const res = await fetch(`${SMOOBU_BASE}/reservations?${params}`, {
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations?${params}`, {
     headers: smoobuHeaders(apiKey),
     cache: 'no-store',
   })
@@ -526,7 +532,7 @@ export async function getReservationMessages(
   let page = 1
   let vollstaendig = false
   for (let guard = 0; guard < 30; guard++) {
-    const res = await fetch(
+    const res = await smoobuFetch(
       `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages?onlyRelatedToGuest=false&page=${page}`,
       { headers: smoobuHeaders(apiKey), cache: 'no-store' },
     )
@@ -621,7 +627,7 @@ export async function sendMessageToGuest(
   message: string,
   apiKey?: string,
 ): Promise<{ sent: boolean; id: number | null }> {
-  const res = await fetch(
+  const res = await smoobuFetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-guest`,
     {
       method: 'POST',
@@ -660,7 +666,7 @@ export async function sendMessageToHost(
   guestName: string,
   apiKey?: string,
 ): Promise<number | null> {
-  const res = await fetch(
+  const res = await smoobuFetch(
     `${SMOOBU_BASE}/reservations/${smoobuReservationId}/messages/send-message-to-host`,
     {
       method: 'POST',
@@ -693,7 +699,7 @@ export async function updateReservationRaw(
   reservationId: number,
   fields: Record<string, unknown>,
 ): Promise<{ status: number; body: string }> {
-  const res = await fetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
     method: 'PUT',
     headers: smoobuHeaders(),
     body: JSON.stringify(fields),
@@ -706,7 +712,7 @@ export async function updateReservation(
   fields: Record<string, unknown>,
   apiKey?: string,
 ): Promise<string | null> {
-  const res = await fetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations/${reservationId}`, {
     method: 'PUT',
     headers: smoobuHeaders(apiKey),
     body: JSON.stringify(fields),
@@ -736,7 +742,7 @@ export function eachDayBetween(startIso: string, endIso: string): string[] {
 /** §291 Diagnose: EINE Reservierung roh aus Smoobu (GET /reservations/{id}) — für die Admin-Route
  *  /api/smoobu/reservation, um Übertragungsfehler (Personenzahl, Mail) am Original zu prüfen. */
 export async function getRawReservation(id: number, apiKey?: string): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${SMOOBU_BASE}/reservations/${id}`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
+  const res = await smoobuFetch(`${SMOOBU_BASE}/reservations/${id}`, { headers: smoobuHeaders(apiKey), cache: 'no-store' })
   if (!res.ok) return null
   return (await res.json()) as Record<string, unknown>
 }

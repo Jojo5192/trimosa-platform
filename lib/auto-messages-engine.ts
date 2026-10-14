@@ -203,7 +203,9 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   // Vorlagen (lead_filter fehlt vor der Migration → Default 'alle')
   const { data: tRows, error: tErr } = await supabaseAdmin
     .from('auto_messages').select('*').eq('enabled', true).order('sort')
-  if (tErr || !tRows?.length) return report
+  // Ladefehler WERFEN (Cron → 500 + Störungs-Push): still „0 Vorlagen" hieße tagelang keine Auto-Nachricht
+  if (tErr) throw new Error(`Vorlagen nicht ladbar: ${tErr.message}`)
+  if (!tRows?.length) return report
   const templates = (tRows as AutoMessage[]).map(t => ({
     ...t, lead_filter: t.lead_filter ?? 'alle', send_email: t.send_email !== false,
   }))
@@ -219,13 +221,14 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const fruehesterCheckin = hour >= earliestHour ? 'sofort' : `${String(earliestHour).padStart(2, '0')}:00 Uhr`
 
   // Buchungs-Fenster (deckt Offsets bis 60 Tage)
-  const { data: bRows } = await supabaseAdmin
+  const { data: bRows, error: bErr } = await supabaseAdmin
     .from('bookings')
     .select('id, listing_id, status, source, payment_status, check_in, check_out, created_at, adults, children, guest_name, guest_email, guest_id, guest_lang, channel, smoobu_reservation_id, portal_token, door_code, booking_type')
     .eq('status', 'confirmed')
     .lte('check_in', addDays(today, 70))
     .gte('check_out', addDays(today, -70))
     .limit(1000)
+  if (bErr) throw new Error(`Buchungen nicht ladbar: ${bErr.message}`)
   // §290 Stammgast-Index einmal je Lauf (10-Min-Cache)
   const stayIdx = await loadStayIndex().catch(() => null)
   const bookings = (bRows ?? []) as BookingRow[]

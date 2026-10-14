@@ -557,7 +557,9 @@ export default function OffenPanel({ visible, onCount }: {
                     <div style={{
                       maxWidth: '85%', padding: '8px 12px', borderRadius: 15, fontSize: 13, lineHeight: 1.5,
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      background: m.ours ? 'var(--tm-navy)' : 'var(--tm-surface2)',
+                      // Gast-Blase auf Kartenfläche: auf dem Verlaufs-Hintergrund (--tm-surface2) war sie unsichtbar
+                      background: m.ours ? 'var(--tm-navy)' : 'var(--tm-card)',
+                      boxShadow: m.ours ? 'none' : '0 0 0 0.5px var(--tm-line)',
                       color: m.ours ? '#fff' : 'var(--tm-text)',
                     }}>
                       {m.text}

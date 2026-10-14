@@ -237,6 +237,8 @@ export interface MailScanReport {
   verarbeitet: { mailbox: string; from: string; subject: string; ergebnis: string }[]
   uebersprungen: number
   fehler: { mailbox: string; error: string }[]
+  /** Postfächer, deren Abruf als GANZES scheiterte (Graph-Token, Berechtigung) — nicht einzelne Mails */
+  postfachFehler?: string[]
 }
 
 /**
@@ -372,6 +374,7 @@ export async function runMailScan(opts: { hours?: number; force?: boolean; beleg
       // letzte VERARBEITETE Mail; der Filter ist „ge", processed dedupet.
     } catch (e) {
       report.fehler.push({ mailbox, error: String(e instanceof Error ? e.message : e).slice(0, 250) })
+      ;(report.postfachFehler ??= []).push(mailbox)
     }
   }
   if (!opts.belegeOnly) {

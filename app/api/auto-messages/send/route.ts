@@ -19,10 +19,15 @@ export async function GET(request: NextRequest) {
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Nicht berechtigt.' }, { status: 401 })
   }
+  const { meldeAusfall, ausfallBehoben } = await import('@/lib/ausfall')
   try {
-    return NextResponse.json(await runAutoMessages())
+    const report = await runAutoMessages()
+    await ausfallBehoben('auto-messages', 'Auto-Nachrichten')
+    return NextResponse.json(report)
   } catch (err) {
     console.error('[auto-messages] cron:', err)
+    await meldeAusfall('auto-messages', 'Auto-Nachrichten',
+      `Der Versand-Lauf ist abgebrochen: ${String(err instanceof Error ? err.message : err).slice(0, 140)} — es gehen keine Auto-Nachrichten raus.`)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

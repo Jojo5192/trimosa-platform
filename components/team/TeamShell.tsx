@@ -723,8 +723,10 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
               position: 'absolute', left: '50%', zIndex: 60,
               bottom: navHidden || isDesktop ? 'calc(20px + env(safe-area-inset-bottom))' : 'calc(var(--tm-nav-pad) + 6px)',
               background: 'var(--tm-text)', color: 'var(--tm-bg)', fontSize: 13, fontWeight: 600,
-              borderRadius: 999, padding: '10px 16px', boxShadow: 'var(--tm-shadow-float)',
-              whiteSpace: 'nowrap', maxWidth: 'calc(100% - 32px)', overflow: 'hidden', textOverflow: 'ellipsis',
+              borderRadius: 18, padding: '10px 16px', boxShadow: 'var(--tm-shadow-float)',
+              // bis zu 2 Zeilen statt abgeschnitten („Vorlage … eingefügt — bitte prüfen und senden")
+              width: 'max-content', maxWidth: 'calc(100% - 32px)', textAlign: 'center', lineHeight: 1.35,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
             }}>{toast}</div>
           )}
         </div>

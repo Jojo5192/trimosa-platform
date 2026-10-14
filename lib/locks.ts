@@ -25,6 +25,8 @@ async function nukiFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = nukiToken()
   if (!token) throw new Error('NUKI_API_TOKEN fehlt (Vercel-Env).')
   return fetch(`${NUKI_BASE}${path}`, {
+    // Zeitlimit 20 s (Server-Prüfung 9.10.: ein hängendes Schloss-Backend legte sonst den ganzen Cron lahm)
+    signal: AbortSignal.timeout(20_000),
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -148,6 +150,8 @@ async function tedeeFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = tedeeToken()
   if (!token) throw new Error('TEDEE_API_KEY fehlt (Vercel-Env).')
   return fetch(`https://api.tedee.com${path}`, {
+    // Zeitlimit 20 s (Server-Prüfung 9.10.: ein hängendes Schloss-Backend legte sonst den ganzen Cron lahm)
+    signal: AbortSignal.timeout(20_000),
     ...init,
     headers: {
       Authorization: `PersonalKey ${token}`,
@@ -1567,7 +1571,7 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
 export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; orphansRemoved: number; stillMissing: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
-  const { data: rows } = await supabaseAdmin
+  const { data: rows, error: rowsErr } = await supabaseAdmin
     .from('bookings')
     .select('id, door_code, check_in, check_out, listings(title, locks)')
     .eq('status', 'confirmed')
@@ -1575,6 +1579,8 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
     .lte('check_in', horizon)
     .gte('check_out', today)
     .limit(60)
+  // DB-Fehler WERFEN — der Aufrufer meldet ihn (sonst sähe „0 geprüft" wie „alles in Ordnung" aus)
+  if (rowsErr) throw new Error(`Buchungen für die Code-Prüfung nicht ladbar: ${rowsErr.message}`)
 
   const s = await getLockSettings()
   // Auth-Listen je Schloss nur einmal laden (mehrere Buchungen teilen Schlösser)
@@ -1734,7 +1740,7 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
   // LAUFENDE Aufenthalte einschließen (check_out >= heute statt check_in >=
   // heute) — Buchungen, die während einer Störung anreisten, bekamen sonst
   // NIE einen Code (§142-Fall Jose: Backfill-Buchung, Anreise vor dem Cron)
-  const { data: rows } = await supabaseAdmin
+  const { data: rows, error: rowsErr } = await supabaseAdmin
     .from('bookings')
     .select('id, guest_name, check_in, listings(title, locks)')
     .eq('status', 'confirmed')
@@ -1745,6 +1751,8 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
 
   let created = 0, skipped = 0
   const errors: string[] = []
+  // DB-Fehler war bisher „0 angelegt, keine Fehler" → jetzt ein Fehler, der den Team-Push unten auslöst
+  if (rowsErr) errors.push(`Buchungen ohne Türcode nicht ladbar (${rowsErr.message.slice(0, 120)}) — es werden gerade KEINE Codes angelegt`)
   const usedLocks = new Set<number>()
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
@@ -1771,7 +1779,10 @@ export async function ensureUpcomingDoorCodes(): Promise<{ created: number; skip
     const v = await verifyGuestCodes(7)
     if (v.healed || v.stillMissing.length) console.warn('[locks] verify:', v)
     if (v.stillMissing.length) errors.push(`Code fehlt weiter auf Schloss: ${v.stillMissing.join(' · ')}`)
-  } catch (err) { console.error('[locks] verify failed:', err) }
+  } catch (err) {
+    console.error('[locks] verify failed:', err)
+    errors.push(`Code-Prüfung gescheitert: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`)
+  }
 
   if (errors.length) {
     try {

@@ -103,12 +103,14 @@ async function sendToSubs(subs: Sub[], title: string, body: string, url: string,
 /** opts.guestChat: Push stammt aus der GÄSTE-Kommunikation — DIENSTLEISTER
  *  (is_provider, kein Gäste-Chat-Zugang) bekommen ihn NIE; Nutzer mit
  *  push_guest_chats=false (Pascal-Präferenz §97.5) werden übersprungen. */
-export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean; category?: PushCategory } = {}): Promise<void> {
-  if (!ensureConfigured()) return
-  const { data: subs } = await supabaseAdmin
+export async function sendPushToTeam(title: string, body: string, url = '/team', opts: { guestChat?: boolean; buchhaltung?: boolean; category?: PushCategory } = {}): Promise<number> {
+  // Rückgabe = Anzahl angesprochener Geräte (0 = niemand erreicht). Ausfälle werden geloggt statt still zu enden.
+  if (!ensureConfigured()) { console.error('[push] VAPID-Schlüssel fehlen (Vercel-Env) — Push nicht gesendet:', title); return 0 }
+  const { data: subs, error: subsErr } = await supabaseAdmin
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth, user_id')
-  if (!subs?.length) return
+  if (subsErr) { console.error('[push] Geräte nicht ladbar — Push nicht gesendet:', title, subsErr.message); return 0 }
+  if (!subs?.length) return 0
   let filtered = subs as (Sub & { user_id: string | null })[]
   // §254: generisches Kategorie-Gate (Präferenz je Nutzer) — für die einfachen
   // Team-Broadcasts (System, Aufgaben …). guestChat/buchhaltung behalten ihre
@@ -136,15 +138,16 @@ export async function sendPushToTeam(title: string, body: string, url = '/team',
       const { data: admins } = await supabaseAdmin.from('profiles').select('id').eq('is_admin', true)
       const adminIds = new Set((admins ?? []).map((p) => p.id))
       filtered = filtered.filter((s) => s.user_id && adminIds.has(s.user_id))
-    } catch { return /* im Zweifel KEIN Push an Nicht-Admins */ }
+    } catch { return 0 /* im Zweifel KEIN Push an Nicht-Admins */ }
     // Präferenz-Gate
     const ids = filtered.map((s) => s.user_id).filter((x): x is string => !!x)
     const ok = await prefAllows(ids, 'buchhaltung')
     filtered = filtered.filter((s) => !s.user_id || ok.has(s.user_id))
   }
-  if (!filtered.length) return
+  if (!filtered.length) return 0
   const logCat = opts.category ?? (opts.guestChat ? 'guestChats' : opts.buchhaltung ? 'buchhaltung' : undefined)
   await sendToSubs(filtered, title, body, url, undefined, logCat)
+  return filtered.length
 }
 
 /** Push to ONE user's devices (e.g. task assignment to a provider).

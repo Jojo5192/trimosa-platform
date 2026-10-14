@@ -26,6 +26,20 @@ export async function GET(request: NextRequest) {
     const state = await getGraphMailState()
     if (!state.enabled) return NextResponse.json({ skipped: 'Mail-Scan ist aus (erst Setup + action enable).' })
     const report = await runMailScan()
+    // Totalausfall (Graph-Zugang fehlt/abgelaufen — MS_CLIENT_SECRET gilt höchstens 24 Monate — oder jedes
+    // Postfach scheitert): Team-Push (gedrosselt) und 500 statt still 200. FeWo-Buchungsmails, Gast-Antworten aus
+    // dem FeWo-Messenger und Belege kämen sonst unbemerkt nicht mehr an.
+    {
+      const { meldeAusfall, ausfallBehoben } = await import('@/lib/ausfall')
+      const grund = report.fehler.find((f) => f.mailbox === '—')?.error
+      const kaputt = new Set(report.postfachFehler ?? [])
+      if (grund || (state.mailboxes.length > 0 && kaputt.size >= state.mailboxes.length)) {
+        await meldeAusfall('mail-scan', 'Mail-Scan',
+          grund ?? `Kein Postfach abrufbar (${kaputt.size} von ${state.mailboxes.length}): ${report.fehler[0]?.error ?? 'ohne Fehlertext'} — Microsoft-Graph-Zugang (MS_CLIENT_SECRET) prüfen.`)
+        return NextResponse.json({ ...report, ausfall: true }, { status: 500 })
+      }
+      await ausfallBehoben('mail-scan', 'Mail-Scan')
+    }
     // §243ad: Vorab-Analyse für Bestands-Belege ohne KI-Cache (max. 2 je
     // Lauf) — Kategorie/Steuer/Zahlungs-Match sind fertig, BEVOR der
     // Inhaber die /buchhaltung öffnet

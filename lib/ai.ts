@@ -47,6 +47,11 @@ export async function askClaude(system: string, user: string, maxTokens = 1500, 
   }
 }
 
+/** Zeitlimit für einen Claude-Aufruf: 25 ms je angefordertem Token, mindestens 60 s, höchstens 280 s */
+function claudeTimeoutMs(maxTokens: number): number {
+  return Math.min(280_000, Math.max(60_000, Math.round(maxTokens * 25)))
+}
+
 async function callClaude(system: string, user: string, maxTokens: number, model: string): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY ist nicht konfiguriert.')
@@ -54,6 +59,9 @@ async function callClaude(system: string, user: string, maxTokens: number, model
   user = stripLoneSurrogates(user)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Server-Prüfung 9.10.: ohne Zeitlimit fraß eine hängende API-Antwort das ganze Function-Fenster.
+    // Großzügig nach Antwortlänge (12000 Tokens mit dem großen Modell brauchen mehrere Minuten)
+    signal: AbortSignal.timeout(claudeTimeoutMs(maxTokens)),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -102,6 +110,9 @@ export async function askClaudeWithFile(
     : { type: 'image', source: { type: 'base64', media_type: file.mediaType, data: file.base64 } }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Server-Prüfung 9.10.: ohne Zeitlimit fraß eine hängende API-Antwort das ganze Function-Fenster.
+    // Großzügig nach Antwortlänge (12000 Tokens mit dem großen Modell brauchen mehrere Minuten)
+    signal: AbortSignal.timeout(claudeTimeoutMs(maxTokens)),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -140,6 +151,7 @@ export async function probeModel(model: string): Promise<{ ok: boolean; model: s
   if (!key) return { ok: false, model: null, fehler: 'ANTHROPIC_API_KEY fehlt' }
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
+    signal: AbortSignal.timeout(60_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({

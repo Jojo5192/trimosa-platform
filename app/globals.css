@@ -960,7 +960,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Toast: dunkle Pille unten mittig über der Tab-Leiste */
 @keyframes tmToast { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
-.tm-toast { animation: tmToast 0.22s var(--tm-ease) both; }
+/* Grundstil zentriert — bei „Bewegung reduzieren" (animation: none) stand der Toast sonst ab der Mitte nach rechts */
+.tm-toast { transform: translateX(-50%); animation: tmToast 0.22s var(--tm-ease) both; }
 
 /* Skeleton in Token-Farben */
 .team-shell .team-skel {
