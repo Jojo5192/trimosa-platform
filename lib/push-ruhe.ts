@@ -68,10 +68,10 @@ export function zurueckhalten(r: Ruhezeit, kategorie: PushCategory | null | unde
 
 /** Erklärsatz für die Einstellungen in der App */
 export function ruheErklaerung(r: Ruhezeit): string {
-  if (!r.an) return 'Aus — alle Mitteilungen kommen sofort, auch nachts.'
-  if (r.von === r.bis) return 'Von und Bis sind gleich — so gibt es keine Ruhezeit.'
+  if (!r.an) return 'Aus – alle Mitteilungen kommen sofort, auch nachts.'
+  if (r.von === r.bis) return 'Von und Bis sind gleich – so gibt es keine Ruhezeit.'
   const danach = r.bis >= 4 && r.bis <= 11 ? 'morgens' : 'danach'
-  return `Zwischen ${r.von} und ${r.bis} Uhr kommen nur Gastnachrichten, Anrufe und Störungen sofort — alles andere ${danach} gesammelt.`
+  return `Zwischen ${r.von} und ${r.bis} Uhr kommen nur Gastnachrichten, Anrufe und Störungen sofort – alles andere ${danach} gesammelt.`
 }
 
 /* ── Nacht-Warteschlange (app_settings push_nacht:<userId>, KEINE Migration) ─────────────────────── */
