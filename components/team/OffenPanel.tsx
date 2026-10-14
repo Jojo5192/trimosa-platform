@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { shouldPoll } from '@/lib/offline'
 import { isOffenThread, requestInboxReload } from '@/lib/inbox-store'
+import { rueckmeldung } from '@/components/team/ux'
 
 // Lokale Flaggen-Map (wie ChatPanel) — lib/translate ist server-only (supabaseAdmin)
 const LANG_FLAGS: Record<string, string> = {
@@ -221,6 +222,7 @@ export default function OffenPanel({ visible, onCount }: {
       dismiss('right', true)
     } catch (e) {
       console.error('chat/inbox', e)
+      rueckmeldung('fehler')
       setError(e instanceof TypeError
         ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
         : 'Markieren hat nicht geklappt. Bitte versuch es gleich noch einmal.')
@@ -346,9 +348,11 @@ export default function OffenPanel({ visible, onCount }: {
     setSending(true); setError(null)
     try {
       await sendText(draft)
+      rueckmeldung('gesendet') // Pascal 7.10.: erst nach Server-Bestätigung
       showToast('✓ Antwort gesendet')
       dismiss('right', true)
     } catch (e) {
+      rueckmeldung('fehler')
       setError(e instanceof TypeError || !(e instanceof Error)
         ? 'Keine Verbindung – der Entwurf bleibt erhalten. Bitte versuch es gleich noch einmal.'
         : e.message)
@@ -361,9 +365,11 @@ export default function OffenPanel({ visible, onCount }: {
     setSending(true); setError(null)
     try {
       await sendText(`${location.origin}${current.mappeUrl}`)
+      rueckmeldung('gesendet')
       showToast('✓ Gästemappe gesendet')
       dismiss('right', true)
     } catch (e) {
+      rueckmeldung('fehler')
       setError(e instanceof TypeError || !(e instanceof Error)
         ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
         : e.message)
@@ -397,10 +403,12 @@ export default function OffenPanel({ visible, onCount }: {
         setDraft((d) => (d.trim() ? d.replace(/\s+$/, '') + '\n\n' : '') + url)
       } else {
         await sendText(url)
+        rueckmeldung('gesendet')
         showToast('🧾 Rechnung gesendet')
         dismiss('right', true)
       }
     } catch (e) {
+      rueckmeldung('fehler')
       setError(e instanceof TypeError || !(e instanceof Error)
         ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
         : e.message)

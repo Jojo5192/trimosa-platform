@@ -1,17 +1,22 @@
 import type { Metadata } from 'next'
+import { isUiLang } from '@/lib/i18n'
+import { legalAlternates } from '@/lib/legal-meta'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
 // First visit per language AI-translates the page (then cached)
 export const maxDuration = 120
 
 export const metadata: Metadata = {
+  alternates: legalAlternates('/impressum'),
   title: 'Impressum',
   description: 'Impressum der TRIMOSA Apartments & Homes eGbR.',
 }
 
-export default function ImpressumPage() {
+export default async function ImpressumPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang) ? spLang : undefined
   return (
-    <LegalShell title="Impressum">
+    <LegalShell lang={lang} title="Impressum">
       <LegalSection heading="Angaben gemäß § 5 DDG">
         <LegalP>
           TRIMOSA Apartments &amp; Homes eGbR<br />

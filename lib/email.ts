@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { makeTr } from '@/lib/static-translate'
 import { isUiLang, MONTHS, type UiLang } from '@/lib/i18n'
+import { resolvePolicy, policyDescription } from '@/lib/stripe'
 
 /**
  * Transactional emails via Resend, branded for TRIMOSA.
@@ -103,7 +104,7 @@ function renderEmail({ preheader, heading, paragraphs, details, cta, secondaryCt
             <span style="color:rgba(245,240,232,0.3);">&nbsp;·&nbsp;</span>
             <a href="${siteUrl}/datenschutz" style="color:rgba(245,240,232,0.6);text-decoration:none;">Datenschutz</a>
           </p>
-          <p style="margin:14px 0 0;font-size:10px;color:rgba(245,240,232,0.35);">TRIMOSA Apartments &amp; Homes eGbR</p>
+          <p style="margin:14px 0 0;font-size:10px;line-height:1.6;color:rgba(245,240,232,0.45);">TRIMOSA Apartments &amp; Homes eGbR · Feldkirchener Str. 18a · 85622 Weißenfeld<br>vertreten durch Johannes Görgen, Pascal Junk und Dominik Palzer · Amtsgericht München, GsR 2785<br>+49 651 43614036 · mail@trimosa.de</p>
         </td></tr>
 
       </table>
@@ -244,14 +245,18 @@ export async function sendAutoMessageEmail(opts: {
 async function loadBooking(bookingId: string) {
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('*, listings(title, location, host_id)')
+    .select('*, listings(title, location, host_id, cancellation_policy, cancel_free_days, cancel_free_percent, cancel_partial_days, cancel_partial_percent)')
     .eq('id', bookingId)
     .single()
   if (!booking) return null
-  const listing = booking.listings as { title: string; location: string; host_id: string }
+  const listing = booking.listings as {
+    title: string; location: string; host_id: string
+    cancellation_policy?: string | null; cancel_free_days?: number | null; cancel_free_percent?: number | null
+    cancel_partial_days?: number | null; cancel_partial_percent?: number | null
+  }
   const guests = (booking.adults ?? 1) + (booking.children ?? 0)
   const details = [
-    { label: 'Unterkunft', value: listing.title },
+    { label: 'Unterkunft', value: `${listing.title} · ${listing.location}` },
     { label: 'Anreise', value: formatDateLong(booking.check_in) },
     { label: 'Abreise', value: formatDateLong(booking.check_out) },
     { label: 'Gäste', value: String(guests) },
@@ -340,21 +345,29 @@ export async function sendBookingEmail(bookingId: string) {
   const P_INSTANT = 'schön, dass du dich für <strong>{titel}</strong> entschieden hast! Deine Zahlung ist eingegangen und deine Buchung ist bestätigt. Alle Details zum Check-In erhältst du rechtzeitig vor deiner Anreise.'
   const P_REQUEST = 'vielen Dank für deine Anfrage für <strong>{titel}</strong> — deine Zahlung ist eingegangen. Wir prüfen die Anfrage und melden uns schnellstmöglich, in der Regel innerhalb von 24 Stunden. Sollten wir nicht bestätigen können, erstatten wir den Betrag automatisch und vollständig.'
   const NOTE_REQUEST = 'Solltest du Fragen haben oder uns etwas mitteilen wollen: Antworte einfach über den Chat in deinem Gast-Bereich — wir lesen mit.'
+  // § 312f Abs. 2 BGB / Art. 246a EGBGB: Vertragsbestätigung auf dauerhaftem Datenträger — Anbieter, Preis inkl.
+  // Zahlungsweg, Stornierungsbedingungen, Hinweis auf fehlendes Widerrufsrecht, AGB (Audit 14.10.2026)
+  const STORNO = policyDescription(resolvePolicy(listing))
+  const ZAHLUNG = 'Bezahlt per Karte über Stripe (Gesamtpreis inkl. aller Gebühren)'
+  const ANBIETER = 'TRIMOSA Apartments & Homes eGbR, Feldkirchener Str. 18a, 85622 Weißenfeld'
+  const NOTE_RECHT = 'Rechtlicher Hinweis: Für Beherbergungen zu einem festen Termin besteht kein gesetzliches Widerrufsrecht (§ 312g Abs. 2 Nr. 9 BGB). Es gelten die oben genannten Stornierungsbedingungen und unsere AGB.'
   const T = await makeTr(lang, lang === 'de' ? [] : [
     'Hallo', 'Deine Buchung für {titel} ist bestätigt.', 'Deine Anfrage für {titel} ist eingegangen — wir melden uns.',
     'Deine Buchung ist bestätigt', 'Deine Anfrage ist eingegangen',
-    P_INSTANT, P_REQUEST, NOTE_REQUEST,
+    P_INSTANT, P_REQUEST, NOTE_REQUEST, NOTE_RECHT, STORNO, ZAHLUNG,
     'Buchung ansehen', 'Anfrage ansehen', 'Deine Buchung', 'Deine Anfrage',
-    'Unterkunft', 'Anreise', 'Abreise', 'Gäste', 'Gesamtpreis',
+    'Unterkunft', 'Anreise', 'Abreise', 'Gäste', 'Gesamtpreis', 'Zahlung', 'Stornierung', 'Anbieter', 'AGB',
   ])
   const anrede = firstName ? `${T('Hallo')} ${firstName},` : `${T('Hallo')},`
-  const trDetails = details.map((d) => ({
+  const trDetails = [...details, { label: 'Zahlung', value: ZAHLUNG }].map((d) => ({
     ...d,
     label: T(d.label),
     value: (d.label === 'Anreise' || d.label === 'Abreise') && lang !== 'de'
       ? formatDateLong(d.label === 'Anreise' ? booking.check_in : booking.check_out, lang)
-      : d.value,
+      : d.label === 'Zahlung' ? T(d.value) : d.value,
   }))
+  // Lange Sätze (Storno, Anbieter) als linksbündige Absätze im Hinweisblock, nicht in der rechtsbündigen Wertspalte
+  const noteRecht = `<strong>${T('Stornierung')}:</strong> ${T(STORNO)}<br><strong>${T('Anbieter')}:</strong> ${ANBIETER.replace('&', '&amp;')}<br><br>${T(NOTE_RECHT)} <a href="${siteUrl}/agb" style="color:#8A7020;text-decoration:underline;">${T('AGB')}</a>`
 
   const html = renderEmail({
     preheader: (isInstant
@@ -367,7 +380,7 @@ export async function sendBookingEmail(bookingId: string) {
     ],
     details: trDetails,
     cta: { label: isInstant ? T('Buchung ansehen') : T('Anfrage ansehen'), url: `${siteUrl}/guest` },
-    note: isInstant ? undefined : T(NOTE_REQUEST),
+    note: isInstant ? noteRecht : `${T(NOTE_REQUEST)}<br><br>${noteRecht}`,
   })
 
   return sendViaResend(

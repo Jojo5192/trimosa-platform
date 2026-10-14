@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
+import { getActiveListings } from '@/lib/public-data'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import ScoreBadge from '@/components/ScoreBadge'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import { getPriceFromMap } from '@/lib/price-from'
 import { buildCardRating } from '@/lib/rating'
 
@@ -125,13 +125,13 @@ export default async function FerienwohnungPage({ params }: { params: Promise<{ 
   const cfg = ORTE[ort]
   if (!cfg) notFound()
 
-  const { data: listings } = await supabaseAdmin
-    .from('listings')
-    .select('*')
-    .eq('is_active', true)
-  const priceFromMap = await getPriceFromMap()
+  // Gecacht (lib/public-data.ts) statt Supabase-Roundtrip je Anfrage
+  const [listings, priceFromMap] = await Promise.all([
+    getActiveListings().catch((e) => { console.error('[ferienwohnung] listings:', e); return [] }),
+    getPriceFromMap(),
+  ])
 
-  const cards = (listings ?? [])
+  const cards = listings
     .filter((l) => {
       const city = String(l.city ?? l.location ?? '').toLowerCase()
       return cfg.cityMatch.some((m) => city.includes(m))

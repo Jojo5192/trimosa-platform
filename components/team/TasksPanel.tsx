@@ -11,8 +11,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import QsBlock from '@/components/team/QsPanel'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
 import { openLightbox } from '@/components/team/Lightbox'
+// 👆 Pascal 6 (Chefsache 7.10.2026): Wisch-Gesten — eigene Import-Zeilen, damit parallele Änderungen an den Zeilen oben nicht kollidieren
+import { flushSync } from 'react-dom'
+import { useHydrated } from '@/components/team/ux'
+import {
+  morgenDatum, morgenText, plusTage, wischAchse, wischEingerastet, wischEntscheidung, wischRichtung,
+  wischStartErlaubt, wischTempo, wischVersatz, type WischErlaubt, type WischRichtung,
+} from '@/lib/aufgaben-wischen'
 
 export interface Task {
   id: string
@@ -116,6 +123,9 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
   // §282.8 Erfolgs-Moment: die gerade erledigte Karte wischt grün + Haken
   const [flashId, setFlashId] = useState<string | null>(null)
   const flash = (id: string) => { setFlashId(id); setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1100) }
+  // Pascal 7.10. Gestaltung 3: Freudenmoment („Alles erledigt 🎉"), wenn die LETZTE offene eigene Aufgabe
+  // erledigt ist — gesetzt erst nach der Server-Bestätigung (erledigtBestaetigt)
+  const [feier, setFeier] = useState(false)
   const [people, setPeople] = useState<Person[]>([])
   const [listings, setListings] = useState<ListingOpt[]>([])
   const [groups, setGroups] = useState<string[]>([])
@@ -310,15 +320,178 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
     if (!res.ok) { setError('Verwerfen hat nicht geklappt. Bitte versuch es gleich noch einmal.'); load() }
   }
 
-  async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen') {
-    haptic(status === 'erledigt' ? 'success' : 'tap')
-    if (status === 'erledigt') flash(task.id)
+  /** opts.tap = false: die auslösende Geste hat schon Haptik gegeben (Erledigen-Dialog, Telefon-Karte) */
+  async function providerStatus(task: Task, status: 'in_arbeit' | 'erledigt' | 'offen', opts?: { tap?: boolean }) {
+    // Pascal 7.10.: beim Tipp nur die leichte Haptik — Erfolgs-Ton, grüner Wisch und Freude erst nach Server-OK
+    if (opts?.tap !== false) haptic()
+    if (status !== 'erledigt') setFeier(false)
+    // optimistische Anzeige bleibt: die Karte springt sofort um
     setTasks((ts) => ts.map((t) => t.id === task.id ? { ...t, status } : t))
-    const res = await fetch(`/api/tasks/${task.id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    if (!res.ok) { setError('Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); load() }
+    let ok = false
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      ok = res.ok
+    } catch { /* Netzfehler → wie Server-Fehler */ }
+    if (!ok) { rueckmeldung('fehler'); setError('Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.'); load(); return }
+    if (status === 'erledigt') erledigtBestaetigt(task)
+  }
+
+  /** Server hat „erledigt" bestätigt: Ton + Haptik, grüner Wisch — und war es die letzte offene eigene
+   *  Aufgabe, der Freudenmoment im leeren Zustand (bzw. als Toast, wenn die Liste noch anderes zeigt).
+   *  Wiederkehrende Aufgaben zählen nicht: der Server legt sofort die nächste an. */
+  function erledigtBestaetigt(task: Task) {
+    rueckmeldung('erledigt')
+    flash(task.id)
+    const eigen = (t: Task) => t.assignee_id === userId || (!t.assignee_id && t.created_by === userId)
+    const restOffen = tasks.some((t) => t.id !== task.id && (t.status === 'offen' || t.status === 'in_arbeit') && eigen(t))
+    const allesErledigt = eigen(task) && !task.recur_days && !restOffen
+    setFeier(allesErledigt)
+    if (allesErledigt && !(filter === 'aktiv' && visible.every((t) => t.id === task.id))) {
+      tmToast('🎉 Alles erledigt – für dich ist gerade nichts mehr offen.')
+    }
+  }
+
+  /** Leere Liste (Pascal 7.10.): nie kahl — freundlicher Satz + sinnvoller nächster Schritt, wo möglich als Knopf */
+  function leerZustand(): { title: string; hint?: string; icon: 'check' | 'search'; action?: { label: string; onClick: () => void }; feiern?: boolean } {
+    const anlegen = manage || createOwn ? { label: '＋ Aufgabe anlegen', onClick: () => setEditing('new') } : undefined
+    const allePersonen = { label: 'Alle Personen zeigen', onClick: () => { personTouched.current = true; setFeier(false); setPersonFilter('') } }
+    const team = { label: 'Aufgaben im Team ansehen', onClick: allePersonen.onClick }
+    const ohne = personFilter === 'none'
+    const fremd = viewAll && !!personFilter && personFilter !== userId && !ohne
+    const eigene = !viewAll || personFilter === userId
+    const name = (personName.get(personFilter) ?? '').split(/\s+/)[0] || 'diese Person'
+    if (filter === 'erledigt') {
+      if (ohne) return { icon: 'search', title: 'Nichts Erledigtes ohne Zuständigkeit.', hint: 'Vielleicht steht es bei einer Person.', action: allePersonen }
+      if (fremd) return { icon: 'search', title: `Bei ${name} ist noch nichts erledigt.`, hint: 'Vielleicht steht es bei jemand anderem.', action: allePersonen }
+      return { icon: 'check', title: 'Noch nichts erledigt.', hint: 'Was du abhakst, landet hier – mit Datum und deiner Notiz.', action: viewAll && eigene ? team : undefined }
+    }
+    if (filter === 'alle') {
+      if (ohne) return { icon: 'check', title: 'Keine Aufgaben ohne Zuständigkeit.', hint: 'Jede Aufgabe hat jemanden, der sich kümmert.', action: allePersonen }
+      if (fremd) return { icon: 'search', title: `Für ${name} gibt es noch keine Aufgaben.`, hint: 'Weise eine zu oder schau dir das ganze Team an.', action: allePersonen }
+      if (viewAll && eigene) return { icon: 'check', title: 'Noch keine Aufgaben für dich.', hint: 'Im Team gibt es vielleicht trotzdem etwas zu tun.', action: team }
+      return { icon: 'check', title: 'Noch keine Aufgaben.', hint: anlegen ? 'Leg die erste an – sie erscheint dann hier.' : 'Sobald dir jemand eine Aufgabe zuweist, erscheint sie hier.', action: anlegen }
+    }
+    // aktiv
+    if (ohne) return { icon: 'check', title: 'Jede offene Aufgabe hat jemanden.', hint: 'Nichts wartet auf eine Zuständigkeit.', action: allePersonen }
+    if (fremd) return { icon: 'check', title: `Für ${name} ist gerade nichts offen.`, hint: 'Weise eine Aufgabe zu oder schau dir das ganze Team an.', action: allePersonen }
+    if (feier) return { icon: 'check', feiern: true, title: 'Alles erledigt 🎉', hint: 'Stark – für dich ist gerade nichts mehr offen.', action: viewAll && eigene ? team : undefined }
+    if (eigene) return { icon: 'check', title: 'Nichts offen für dich – alles erledigt.', hint: 'Neue Aufgaben erscheinen hier automatisch.', action: viewAll ? team : anlegen }
+    return { icon: 'check', title: 'Keine offenen Aufgaben.', hint: 'Das ganze Team ist auf dem Laufenden.', action: anlegen }
+  }
+
+  /* ── 👆 Wisch-Gesten (Pascal 6, Chefsache 7.10.2026): Karte nach links = erledigt, nach rechts = auf morgen ──
+     Dieselben PATCH-Aufrufe wie die Knöpfe, Rechte wie beim Server (app/api/tasks/[id]/route.ts):
+     Status → Verwalter mit Bearbeitungsrecht ODER zugewiesen ODER selbst angelegt;
+     Fälligkeit → nur wer das Aufgaben-Blatt öffnen darf (sonst ignoriert der Server das Datum still). */
+  const darfErledigen = (t: Task) => t.status !== 'erledigt' && t.status !== 'verworfen'
+    && ((manage && t.editable !== false) || t.assignee_id === userId || t.created_by === userId)
+  const darfVerschieben = (t: Task) => t.status !== 'erledigt' && t.status !== 'verworfen'
+    && ((manage && t.editable !== false) || (!manage && t.editable === true))
+
+  // Rückgängig-Leiste: nur die letzte Wisch-Aktion, 5 s sichtbar
+  const [rueck, setRueck] = useState<{ id: number; text: string; undo: (() => void) | null } | null>(null)
+  const rueckTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (rueckTimer.current) clearTimeout(rueckTimer.current) }, [])
+  function zeigeRueck(text: string, undo: (() => void) | null): number {
+    if (rueckTimer.current) clearTimeout(rueckTimer.current)
+    const id = Date.now()
+    setRueck({ id, text, undo })
+    rueckTimer.current = setTimeout(() => setRueck((cur) => (cur?.id === id ? null : cur)), 5000)
+    return id
+  }
+  // Ein Shell-Toast (z. B. „🎉 Alles erledigt") erscheint an derselben Stelle → Leiste solange darüber schieben
+  const [toastHoch, setToastHoch] = useState(false)
+  useEffect(() => {
+    let tm: ReturnType<typeof setTimeout> | null = null
+    const onToast = () => { setToastHoch(true); if (tm) clearTimeout(tm); tm = setTimeout(() => setToastHoch(false), 2300) }
+    window.addEventListener('trimosa-toast', onToast)
+    return () => { window.removeEventListener('trimosa-toast', onToast); if (tm) clearTimeout(tm) }
+  }, [])
+
+  // Einmaliger Tipp über der Liste (nur Touch-Geräte), wegklickbar, je Gerät gemerkt
+  const hydrated = useHydrated()
+  const [tippWeg, setTippWeg] = useState(leseWischTippWeg)
+  function tippAus() {
+    setTippWeg(true)
+    try { localStorage.setItem(WISCH_TIPP_KEY, '1') } catch { /* privater Modus */ }
+  }
+
+  async function patchAufgabe(id: string, body: Record<string, unknown>): Promise<{ ok: boolean; task: Task | null }> {
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) return { ok: false, task: null }
+      const j = await res.json().catch(() => null) as { task?: Task } | null
+      return { ok: true, task: j?.task ?? null }
+    } catch {
+      return { ok: false, task: null }
+    }
+  }
+
+  function wischen(t: Task, r: WischRichtung) {
+    if (!tippWeg) tippAus()
+    if (r === 'erledigt') void wischErledigt(t)
+    else void wischMorgen(t)
+  }
+
+  async function wischErledigt(t: Task) {
+    haptic() // in der Geste: leichte Haptik — Ton/grüner Wisch erst nach Server-OK (wie beim Knopf)
+    const vorher: 'offen' | 'in_arbeit' = t.status === 'in_arbeit' ? 'in_arbeit' : 'offen'
+    setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: 'erledigt' } : x))
+    const gespeichert = patchAufgabe(t.id, { status: 'erledigt' })
+      .then(({ ok, task }) => ok && (!task || task.status === 'erledigt'))
+    // Wiederkehrend: der Server legt sofort die nächste Runde an — Rückgängig ginge nicht sauber
+    const id = zeigeRueck(
+      t.recur_days ? '✓ Erledigt – die nächste Runde kommt automatisch' : '✓ Erledigt',
+      t.recur_days ? null : async () => {
+        if (!(await gespeichert)) return // ist schon zurückgeholt
+        void providerStatus(t, vorher) // wie „↩︎ Wieder öffnen"
+      },
+    )
+    if (!(await gespeichert)) {
+      setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: t.status } : x))
+      setRueck((cur) => (cur?.id === id ? null : cur))
+      rueckmeldung('fehler')
+      tmToast('⚠️ Nicht gespeichert – die Aufgabe ist wieder da. Bitte versuch es noch einmal.')
+      return
+    }
+    erledigtBestaetigt(t)
+    if (t.recur_days) load() // nächste Runde gleich zeigen
+  }
+
+  async function wischMorgen(t: Task) {
+    haptic()
+    const vorher = t.due_date ?? null
+    const neu = morgenDatum(vorher, todayIso())
+    const setzeDatum = (d: string | null) => setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, due_date: d } : x))
+    setzeDatum(neu)
+    // Ohne Recht speichert der Server nur den Zeitstempel und meldet trotzdem OK → Datum im Ergebnis prüfen
+    const gespeichert = patchAufgabe(t.id, { due_date: neu })
+      .then(({ ok, task }) => ok && (!task || task.due_date === neu))
+    const id = zeigeRueck(
+      neu === plusTage(todayIso(), 1) ? '📅 Auf morgen verschoben' : `📅 Verschoben auf ${fmtDate(neu)}`,
+      async () => {
+        if (!(await gespeichert)) return
+        setzeDatum(vorher)
+        const zurueck = await patchAufgabe(t.id, { due_date: vorher })
+        if (!zurueck.ok) {
+          rueckmeldung('fehler')
+          tmToast('⚠️ Rückgängig hat nicht geklappt. Bitte versuch es noch einmal.')
+          load()
+        }
+      },
+    )
+    if (!(await gespeichert)) {
+      setzeDatum(vorher)
+      setRueck((cur) => (cur?.id === id ? null : cur))
+      rueckmeldung('fehler')
+      tmToast('⚠️ Nicht verschoben – die Aufgabe steht wieder beim alten Datum. Bitte versuch es noch einmal.')
+    }
   }
 
   function scopeChip(t: Task): string {
@@ -371,14 +544,14 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
             ...(apiRole === 'admin' ? [['vorschlaege', `🤖${suggestions.length ? ` ${suggestions.length}` : ''}`] as [string, string]] : []),
           ] as [string, string][]}
           value={filter}
-          onChange={(f) => setFilter(f as Filter)}
+          onChange={(f) => { setFeier(false); setFilter(f as Filter) }}
           accent={{ vorschlaege: 'var(--tm-purple)' }}
         />
         {/* Personen-Schnellfilter (nur wer alle Aufgaben sieht) */}
         {viewAll && people.length > 0 && filter !== 'vorschlaege' && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
             {([['', 'Alle Personen'], ['none', 'Nicht zugewiesen'], ...people.map((p) => [p.id, p.name.split(/\s+/)[0]] as [string, string])] as [string, string][]).map(([id, label]) => (
-              <button key={id || 'alle'} onClick={() => { personTouched.current = true; setPersonFilter(id) }} style={{
+              <button key={id || 'alle'} onClick={() => { personTouched.current = true; setFeier(false); setPersonFilter(id) }} style={{
                 padding: '5px 11px', borderRadius: 999, border: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0,
                 background: personFilter === id ? 'var(--tm-navy)' : 'var(--tm-surface2)',
                 color: personFilter === id ? '#fff' : 'var(--tm-muted)', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -409,7 +582,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {calls.map((t) => (
               <CallCard key={t.id} task={t}
-                onDone={() => providerStatus(t, 'erledigt')}
+                onDone={() => providerStatus(t, 'erledigt', { tap: false })}
                 onError={setError}
               />
             ))}
@@ -484,17 +657,35 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
       {/* Liste (nicht im Vorschläge-Reiter) */}
       {filter !== 'vorschlaege' && (
       <div className="tm-stagger" style={{ padding: '12px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* 👆 Pascal 6: einmaliger Tipp zur Wisch-Geste (nur wenn hier wirklich gewischt werden kann) */}
+        {hydrated && !tippWeg && !loading && visible.some((t) => darfErledigen(t) || darfVerschieben(t)) && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '7px 6px 7px 12px', borderRadius: 12,
+            background: 'var(--tm-accent-soft)', color: 'var(--tm-accent-dark)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.4,
+          }}>
+            <span aria-hidden="true">👆</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              Tipp: Nach links wischen = erledigt{visible.some((t) => darfVerschieben(t)) ? ', nach rechts = auf morgen' : ''}.
+            </span>
+            <button type="button" onClick={() => { haptic(); tippAus() }} aria-label="Tipp ausblenden" style={{
+              width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', flexShrink: 0,
+              color: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>✕</button>
+          </div>
+        )}
         {loading ? (
           <SkeletonRows kind="card" count={5} />
         ) : visible.length === 0 ? (
-          <EmptyState icon="check" title={filter === 'erledigt' ? 'Noch nichts erledigt.' : !viewAll ? 'Keine Aufgaben für dich – alles erledigt!' : 'Keine offenen Aufgaben.'} />
+          <EmptyState {...leerZustand()} />
         ) : visible.map((t) => {
           const overdue = isOverdue(t)
           const prio = PRIO_META[t.prio] ?? PRIO_META.mittel
           const st = STATUS_META[t.status] ?? STATUS_META.offen
           const done = t.status === 'erledigt'
           return (
-            <div key={t.id} id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
+            <SwipeRow key={t.id} erlaubt={{ erledigt: darfErledigen(t), morgen: darfVerschieben(t) }}
+              morgenLabel={morgenText(t.due_date, today)} onWisch={(r) => wischen(t, r)}>
+            <div id={`task-card-${t.id}`} className={flashId === t.id ? 'tm-done-flash' : undefined}
               onClick={(manage && t.editable !== false) || (!manage && t.editable === true) ? () => setEditing(t) : undefined}
               style={{
                 background: 'var(--tm-card)', borderRadius: 'var(--tm-r-card)', padding: '13px 15px', position: 'relative',
@@ -621,6 +812,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
                 }}>↩︎ Wieder öffnen</button>
               )}
             </div>
+            </SwipeRow>
           )
         })}
       </div>
@@ -638,12 +830,39 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
         }}>+</button>
       )}
 
+      {/* 👆 Rückgängig-Leiste nach einer Wisch-Geste (Pascal 6) — neben dem ＋; erscheint gerade ein
+          Shell-Toast an derselben Stelle, rückt sie darüber */}
+      {rueck && (
+        <div key={rueck.id} role="status" aria-live="polite" className="tm-enter" style={{
+          position: 'absolute', left: 16, right: (manage || createOwn) && filter !== 'vorschlaege' ? 84 : 16,
+          bottom: toastHoch ? 'calc(var(--tm-nav-pad) + 64px)' : 'calc(var(--tm-nav-pad) + 11px)',
+          zIndex: 7, minHeight: 44, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 6px 6px 16px', borderRadius: 18, background: 'var(--tm-text)', color: 'var(--tm-bg)',
+          boxShadow: 'var(--tm-shadow-float)', fontSize: 13.5, fontWeight: 600,
+        }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rueck.text}</span>
+          {rueck.undo && (
+            <button type="button" className="tm-press-btn" onClick={() => {
+              const undo = rueck.undo
+              haptic()
+              setRueck(null)
+              undo?.()
+            }} style={{
+              border: 'none', cursor: 'pointer', borderRadius: 999, padding: '8px 14px', flexShrink: 0,
+              fontSize: 13, fontWeight: 800, color: 'var(--tm-bg)',
+              background: 'color-mix(in srgb, var(--tm-bg) 18%, transparent)',
+            }}>Rückgängig</button>
+          )}
+        </div>
+      )}
+
       {completing && (
         <CompleteDialog
           task={completing}
           onClose={() => setCompleting(null)}
           onDone={async (note) => {
             const t = completing
+            haptic() // leichte Haptik noch in der Geste — der Erfolg folgt nach der Server-Bestätigung
             setCompleting(null)
             if (note.trim()) {
               await fetch(`/api/tasks/${t.id}/comments`, {
@@ -652,7 +871,7 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
               }).catch(() => {})
               setCommentCounts((c) => ({ ...c, [t.id]: (c[t.id] ?? 0) + 1 }))
             }
-            providerStatus(t, 'erledigt')
+            providerStatus(t, 'erledigt', { tap: false })
           }}
         />
       )}
@@ -665,9 +884,191 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
           listings={listings}
           groups={groups}
           onClose={() => setEditing(null)}
-          onSaved={(doneId) => { setEditing(null); if (doneId) flash(doneId); load() }}
+          onSaved={(doneId) => {
+            setEditing(null)
+            // der Server hat gespeichert (TaskSheet ruft onSaved erst nach res.ok) → Erfolgsmoment
+            const erledigt = doneId ? tasks.find((x) => x.id === doneId) : undefined
+            if (erledigt) erledigtBestaetigt(erledigt)
+            else if (doneId) { rueckmeldung('erledigt'); flash(doneId) }
+            load()
+          }}
         />
       )}
+    </div>
+  )
+}
+
+/* ═══════════ 👆 Wisch-Gesten auf Aufgaben-Karten (Pascal 6, Chefsache 7.10.2026) ═══════════
+   Die Karte folgt dem Finger; dahinter erscheint grün „Erledigt" (nach links) bzw. blau „Morgen"
+   (nach rechts). Ab der Schwelle rastet es sichtbar ein (satte Farbe, Symbol größer) + kurze Haptik;
+   loslassen davor → die Karte federt zurück. Senkrechtes Scrollen hat Vorrang (touch-action: pan-y +
+   Achsen-Entscheidung nach ~10 px), am linken Rand startet nichts (Zurück-Geste). Nur Finger/Stift —
+   mit der Maus bleiben die Knöpfe. Die Entscheidungs-Logik steht in lib/aufgaben-wischen.ts. */
+const WISCH_TIPP_KEY = 'tm-wisch-tipp-v1'
+/** Tipp schon weggeklickt — oder gar kein Touch-Gerät (dort gibt es nichts zu wischen)? */
+function leseWischTippWeg(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    if (!('ontouchstart' in window) && !(navigator.maxTouchPoints > 0)) return true
+    return localStorage.getItem(WISCH_TIPP_KEY) === '1'
+  } catch {
+    return true
+  }
+}
+
+function WischSymbol({ art }: { art: WischRichtung }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={art === 'erledigt' ? 2.6 : 2}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>
+      {art === 'erledigt'
+        ? <path d="M5 12.5l4.3 4.3L19 7" />
+        : <path d="M5 7.5A1.5 1.5 0 0 1 6.5 6h11A1.5 1.5 0 0 1 19 7.5v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 17.5v-10zM5 10.5h14M9 4v4M15 4v4M9.5 15h5M12.5 13l2 2-2 2" />}
+    </svg>
+  )
+}
+
+type WischGeste = {
+  id: number; x0: number; y0: number; achse: 'h' | null; breite: number
+  punkte: { x: number; t: number }[]; eingerastet: boolean; ruhig: boolean
+}
+
+function SwipeRow({ erlaubt, morgenLabel, onWisch, children }: {
+  erlaubt: WischErlaubt
+  /** „Morgen" bzw. „+1 Tag" (lib/aufgaben-wischen.ts morgenText) */
+  morgenLabel: string
+  onWisch: (r: WischRichtung) => void
+  children: React.ReactNode
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const kartenRef = useRef<HTMLDivElement | null>(null)
+  const geste = useRef<WischGeste | null>(null)
+  const klickSperre = useRef(0)
+  const besetzt = useRef(false) // Karte fliegt gerade hinaus → keine neue Geste
+  const federTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [anzeige, setAnzeige] = useState<{ richtung: WischRichtung; eingerastet: boolean; ruhig: boolean } | null>(null)
+  const aktiv = erlaubt.erledigt || erlaubt.morgen
+
+  // Pull-to-Refresh hört am Scroller auf touchmove — während eines waagerechten Wischs dort nichts ankommen lassen
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const halt = (e: TouchEvent) => { if (geste.current?.achse === 'h') e.stopPropagation() }
+    el.addEventListener('touchmove', halt, { passive: true })
+    return () => el.removeEventListener('touchmove', halt)
+  }, [])
+  useEffect(() => () => { if (federTimer.current) clearTimeout(federTimer.current) }, [])
+
+  function setzeVersatz(px: number, uebergang: string) {
+    const el = kartenRef.current
+    if (!el) return
+    el.style.transition = uebergang
+    el.style.transform = px ? `translate3d(${px}px,0,0)` : ''
+  }
+  function aufraeumen() {
+    setzeVersatz(0, 'none')
+    if (wrapRef.current) wrapRef.current.style.overflow = ''
+    setAnzeige(null)
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!aktiv || besetzt.current || geste.current || e.pointerType === 'mouse' || !e.isPrimary) return
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return
+    if (!wischStartErlaubt(e.clientX)) return // linker Rand: Zurück-Geste
+    const ruhig = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    geste.current = {
+      id: e.pointerId, x0: e.clientX, y0: e.clientY, achse: null, breite: e.currentTarget.offsetWidth,
+      punkte: [{ x: e.clientX, t: e.timeStamp }], eingerastet: false, ruhig,
+    }
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const g = geste.current
+    if (!g || e.pointerId !== g.id) return
+    const dx = e.clientX - g.x0
+    const dy = e.clientY - g.y0
+    if (!g.achse) {
+      const achse = wischAchse(dx, dy)
+      if (!achse) return
+      if (achse === 'v') { geste.current = null; return } // Scrollen hat Vorrang — für diese Berührung gesperrt
+      g.achse = 'h'
+      // federt die Karte noch von der letzten Geste zurück → übernehmen statt hinterher aufräumen
+      if (federTimer.current) { clearTimeout(federTimer.current); federTimer.current = null }
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ältere Browser: geht auch ohne */ }
+      e.currentTarget.style.overflow = 'hidden' // verschobene Karte nicht über den Rand ragen lassen
+    }
+    g.punkte.push({ x: e.clientX, t: e.timeStamp })
+    if (g.punkte.length > 12) g.punkte.shift()
+    setzeVersatz(wischVersatz(dx, erlaubt, g.breite), 'none')
+    const r = wischRichtung(dx)
+    const richtung = r && erlaubt[r] ? r : null
+    const eingerastet = wischEingerastet(dx, erlaubt, g.breite)
+    if (eingerastet && !g.eingerastet) haptic()
+    g.eingerastet = eingerastet
+    const ruhig = g.ruhig
+    setAnzeige((a) => {
+      if (!richtung) return a === null ? a : null
+      return a && a.richtung === richtung && a.eingerastet === eingerastet ? a : { richtung, eingerastet, ruhig }
+    })
+  }
+
+  function beende(e: React.PointerEvent<HTMLDivElement>, abbruch: boolean) {
+    const g = geste.current
+    if (!g || e.pointerId !== g.id) return
+    geste.current = null
+    if (g.achse !== 'h') return
+    klickSperre.current = Date.now()
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* schon frei */ }
+    g.punkte.push({ x: e.clientX, t: e.timeStamp })
+    const r = abbruch ? null : wischEntscheidung({ dx: e.clientX - g.x0, tempo: wischTempo(g.punkte), breite: g.breite, erlaubt })
+    if (r) {
+      setAnzeige({ richtung: r, eingerastet: true, ruhig: g.ruhig })
+      // flushSync: Liste SOFORT neu zeichnen, erst danach den Versatz lösen — sonst blitzt die Karte kurz am alten Platz auf
+      const fertig = () => { besetzt.current = false; flushSync(() => onWisch(r)); aufraeumen() }
+      if (g.ruhig) { fertig(); return }
+      besetzt.current = true
+      setzeVersatz(r === 'erledigt' ? -(g.breite + 24) : g.breite + 24, 'transform .2s cubic-bezier(.3,.7,.4,1)')
+      setTimeout(fertig, 200) // bewusst ohne Abbruch beim Aushängen: die Aktion soll nicht verloren gehen
+      return
+    }
+    // unter der Schwelle → zurückfedern (bei reduzierter Bewegung sofort)
+    if (g.ruhig) { aufraeumen(); return }
+    setzeVersatz(0, 'transform .38s cubic-bezier(.18,1.3,.4,1)')
+    federTimer.current = setTimeout(() => { federTimer.current = null; aufraeumen() }, 380)
+  }
+
+  const gruen = anzeige?.richtung === 'erledigt'
+  return (
+    <div ref={wrapRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => beende(e, false)}
+      onPointerCancel={(e) => beende(e, true)}
+      onLostPointerCapture={(e) => beende(e, true)}
+      // nach einem Wisch keinen Klick durchlassen (Karte würde sonst das Aufgaben-Blatt öffnen)
+      onClickCapture={(e) => { if (Date.now() - klickSperre.current < 450) { e.preventDefault(); e.stopPropagation() } }}
+      style={{ position: 'relative', borderRadius: 'var(--tm-r-card)', touchAction: aktiv ? 'pan-y' : undefined }}>
+      {anzeige && (
+        <div aria-hidden="true" style={{
+          position: 'absolute', inset: 0, borderRadius: 'var(--tm-r-card)', display: 'flex', alignItems: 'center',
+          justifyContent: gruen ? 'flex-end' : 'flex-start', padding: '0 20px',
+          background: anzeige.eingerastet
+            ? (gruen ? 'var(--tm-green)' : 'var(--tm-blue)')
+            : (gruen ? 'var(--tm-green-soft)' : 'color-mix(in srgb, var(--tm-blue) 14%, transparent)'),
+          // Text auf Blau = Kartenfarbe (hell weiß, im Dunkeln dunkel — --tm-blue wird dort hell)
+          color: anzeige.eingerastet ? (gruen ? '#fff' : 'var(--tm-card)') : (gruen ? 'var(--tm-green)' : 'var(--tm-blue)'),
+          transition: anzeige.ruhig ? 'none' : 'background-color .16s ease, color .16s ease',
+        }}>
+          <span style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontSize: 12.5, fontWeight: 800,
+            transform: anzeige.eingerastet ? 'scale(1.2)' : 'scale(0.9)',
+            transition: anzeige.ruhig ? 'none' : 'transform .18s cubic-bezier(.3,1.5,.5,1)',
+          }}>
+            <WischSymbol art={anzeige.richtung} />
+            {gruen ? 'Erledigt' : morgenLabel}
+          </span>
+        </div>
+      )}
+      <div ref={kartenRef} style={{ position: 'relative' }}>{children}</div>
     </div>
   )
 }
@@ -741,9 +1142,10 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text.trim() }),
       })
-      if (res.ok) { setText(''); onPosted(); loadComments() }
-      else tmToast('⚠️ Kommentar nicht gesendet. Bitte versuch es noch einmal.')
+      if (res.ok) { rueckmeldung('gesendet'); setText(''); onPosted(); loadComments() }
+      else { rueckmeldung('fehler'); tmToast('⚠️ Kommentar nicht gesendet. Bitte versuch es noch einmal.') }
     } catch {
+      rueckmeldung('fehler')
       tmToast('📵 Keine Verbindung – Kommentar nicht gesendet.')
     } finally {
       setSending(false)
@@ -756,7 +1158,7 @@ function CommentsArea({ taskId, onPosted }: { taskId: string; onPosted: () => vo
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {comments.length === 0 && (ladeFehler
             ? <p style={{ fontSize: 12, color: 'var(--tm-red)', margin: 0 }}>Kommentare konnten nicht geladen werden. <button type="button" onClick={() => { setLoading(true); void loadComments() }} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--tm-text)', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>Erneut laden</button></p>
-            : <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Noch keine Kommentare.</p>)}
+            : <p style={{ fontSize: 12, color: 'var(--tm-muted)', margin: 0 }}>Noch keine Kommentare – schreib unten den ersten, z. B. eine Rückfrage oder einen Zwischenstand.</p>)}
           {comments.map((c) => (
             <div key={c.id}>
               <p style={{ fontSize: 11, fontWeight: 700, color: c.mine ? 'var(--tm-accent-dark)' : 'var(--tm-muted)', margin: '0 0 2px' }}>
@@ -837,6 +1239,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
         : await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     } catch {
       // offline/Netzabbruch: Knopf wieder freigeben statt dauerhaft „Speichern…"
+      rueckmeldung('fehler')
       setErr('Keine Verbindung – die Aufgabe ist nicht gespeichert. Bitte versuch es noch einmal.')
       setSaving(false)
       return
@@ -869,6 +1272,7 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
     }
     else {
       const json = await res.json().catch(() => ({}))
+      rueckmeldung('fehler')
       setErr(res.status < 500 && json.error ? json.error : 'Speichern hat nicht geklappt. Bitte versuch es gleich noch einmal.')
       setSaving(false)
     }
@@ -1047,7 +1451,18 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
               schmalen Screens stapeln sich die Spalten deshalb untereinander */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-              <label style={labelStyle}>Fällig bis</label>
+              {/* 👆 Pascal 6: Knopf-Alternative zur Wisch-Geste nach rechts — setzt die Fälligkeit wie die Geste
+                  (ohne/überfällig/heute → morgen, sonst +1 Tag); gespeichert wird mit „Speichern" */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 5px' }}>
+                <label style={{ ...labelStyle, margin: 0 }}>Fällig bis</label>
+                {status !== 'erledigt' && (
+                  <button type="button" className="tm-press-btn" onClick={() => { haptic(); setDueDate(morgenDatum(dueDate || null, todayIso())) }} style={{
+                    margin: '-4px 0', padding: '4px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
+                    background: 'var(--tm-surface2)', boxShadow: 'inset 0 0 0 0.5px var(--tm-line)',
+                    color: 'var(--tm-blue)', fontSize: 12, fontWeight: 700,
+                  }}>📅 {morgenText(dueDate || null, todayIso()) === 'Morgen' ? 'Auf morgen' : '+1 Tag'}</button>
+                )}
+              </div>
               <div style={{ position: 'relative' }}>
                 {/* iOS-date-Inputs ignorieren width:100% mit nativem Appearance
                     (rendern breiter als der Container) → appearance: none */}
@@ -1274,7 +1689,8 @@ function CallCard({ task, onDone, onError }: {
   }
 
   async function saveDone(withSolution: boolean) {
-    haptic('success')
+    // nur leichte Haptik beim Tipp — Erfolgs-Ton/-Haptik kommen nach der Server-Bestätigung (providerStatus)
+    haptic()
     if (doneBusy) return
     setDoneBusy(true)
     try {

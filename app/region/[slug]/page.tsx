@@ -1,21 +1,21 @@
 import type { Metadata } from 'next'
+import type { EmpfehlungenMap } from '@/lib/empfehlungen'
+import { getRegionListings, getEmpfehlungenCached } from '@/lib/public-data'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import RegionMap, { type RegionMapListing } from '@/components/RegionMap'
 import KomootEmbed from '@/components/KomootEmbed'
 import KulinarikMap from '@/components/KulinarikMap'
 import { getKulinarikRatings } from '@/lib/kulinarik-ratings'
-import { getEmpfehlungen } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
 import SectionNav from '@/components/SectionNav'
 import ScoreBadge from '@/components/ScoreBadge'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS, findPoi } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
-import { isUiLang, type UiLang } from '@/lib/i18n'
+import { isUiLang, type UiLang, langHref } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
@@ -68,15 +68,12 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
   if (!region) notFound()
   const spLang = (await searchParams)?.lang
   const lang = isUiLang(spLang ?? '') ? (spLang as UiLang) : await getUiLang()
+  // Sprache aus dem PFAD (nicht Cookie) für URL-Angaben in JSON-LD/Breadcrumbs
+  const pathLang: UiLang | undefined = isUiLang(spLang ?? '') ? (spLang as UiLang) : undefined
+  const absUrl = (p: string) => `${siteUrl}${langHref(pathLang, p)}`.replace(/\/$/, '')
 
-  const { data: listings } = await supabaseAdmin
-    .from('listings')
-    .select('*')
-    .eq('is_active', true)
-    .ilike('location', `%${region.locationMatch}%`)
-    .order('created_at', { ascending: false })
-
-  const regionListings = listings ?? []
+  // Gecacht (lib/public-data.ts, 10 Min, Tag 'listings') statt Supabase-Roundtrip je Anfrage
+  const regionListings = await getRegionListings(region.locationMatch).catch((e) => { console.error('[region] listings:', e); return [] })
 
   const mapListings: RegionMapListing[] = regionListings
     .filter((l) => l.latitude != null && l.longitude != null)
@@ -98,7 +95,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
   // Live Google ratings + hosts' personal recommendations (both server-side)
   const [kulinarikRatings, empfehlungen] = await Promise.all([
     region.kulinarik ? getKulinarikRatings(region.kulinarik) : Promise.resolve({}),
-    getEmpfehlungen(),
+    getEmpfehlungenCached().catch((e) => { console.error('[empfehlungen]', e); return { poi: {}, kulinarik: {}, tour: {} } as EmpfehlungenMap }),
   ])
 
   // Editorial translation layer (AI, permanently cached per text)
@@ -145,8 +142,8 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Start', item: siteUrl },
-      { '@type': 'ListItem', position: 2, name: region.name, item: `${siteUrl}/region/${region.slug}` },
+      { '@type': 'ListItem', position: 1, name: 'Start', item: absUrl('/') },
+      { '@type': 'ListItem', position: 2, name: region.name, item: absUrl(`/region/${region.slug}`) },
     ],
   }
 
@@ -155,7 +152,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
     '@type': 'TouristDestination',
     name: region.name,
     description: region.metaDescription,
-    url: `${siteUrl}/region/${region.slug}`,
+    url: absUrl(`/region/${region.slug}`),
     touristType: ['Familien', 'Aktivurlauber', 'Städtereisende'],
   }
 
@@ -169,7 +166,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
 
         {/* ── Breadcrumb ── */}
         <p style={{ fontSize: '12.5px', color: '#8A8065', margin: '0 0 14px' }}>
-          <Link href="/" style={{ color: '#8A8065', textDecoration: 'none' }}>{T('Start')}</Link>
+          <Link href={langHref(lang, '/')} style={{ color: '#8A8065', textDecoration: 'none' }}>{T('Start')}</Link>
           {' · '}
           <span style={{ color: '#3A3427', fontWeight: 600 }}>{region.name}</span>
         </p>
@@ -184,7 +181,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gap: '10px', margin: '22px 0 8px', height: 'clamp(220px, 38vw, 380px)' }}>
           {heroPois.map((p, i) => (
-            <Link key={p.slug} href={`/erlebnis/${p.slug}`} style={{ position: 'relative', display: 'block', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 ? '1 / 3' : undefined }}>
+            <Link key={p.slug} href={langHref(lang, `/erlebnis/${p.slug}`)} style={{ position: 'relative', display: 'block', borderRadius: i === 0 ? '18px' : '14px', overflow: 'hidden', gridRow: i === 0 ? '1 / 3' : undefined }}>
               <Image src={p.image!.src} alt={p.name} fill sizes={i === 0 ? '(max-width: 768px) 100vw, 60vw' : '(max-width: 768px) 50vw, 30vw'} style={{ objectFit: 'cover' }} priority={i === 0} />
               <span style={{
                 position: 'absolute', left: '10px', bottom: '8px', fontSize: '11px', fontWeight: 700, color: '#fff',
@@ -225,7 +222,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
               const rating = buildCardRating(l as Record<string, unknown>)
               const img = (l.images as string[] | null)?.[0]
               return (
-                <Link key={l.id} href={`/listing/${l.slug ?? l.id}`} className="listing-card" style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
+                <Link key={l.id} href={langHref(lang, `/listing/${l.slug ?? l.id}`)} className="listing-card" style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
                   <div style={{ position: 'relative', aspectRatio: '4/3', background: '#EDEBE4', overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
                     {img && <Image src={img} alt={l.title} fill sizes="(max-width: 768px) 50vw, 25vw" style={{ objectFit: 'cover' }} />}
                   </div>
@@ -253,7 +250,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
         {/* ── Booking CTA right below the apartments (was stranded at the page end) ── */}
         {regionListings.length > 0 && (
           <div style={{ marginTop: '18px' }}>
-            <Link href={`/?q=${encodeURIComponent(region.locationMatch)}`} style={{
+            <Link href={langHref(lang, `/?q=${encodeURIComponent(region.locationMatch)}`)} style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
               padding: '13px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'var(--gold)', textDecoration: 'none',
@@ -344,7 +341,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
             {T('Weitere Regionen:')}{' '}
             {otherRegions.map((r, i) => (
               <span key={r.slug}>
-                <Link href={`/region/${r.slug}`} style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{r.name}</Link>
+                <Link href={langHref(lang, `/region/${r.slug}`)} style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{r.name}</Link>
                 {i < otherRegions.length - 1 ? ' · ' : ''}
               </span>
             ))}
@@ -362,7 +359,7 @@ export default async function RegionPage({ params, searchParams }: { params: Pro
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: 'FAQ', href: '/faq' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
+            {[{ label: t(lang, 'Über uns'), href: langHref(lang, '/ueber-uns') }, { label: t(lang, 'Impressum'), href: langHref(lang, '/impressum') }, { label: t(lang, 'Datenschutz'), href: langHref(lang, '/datenschutz') }, { label: t(lang, 'AGB'), href: langHref(lang, '/agb') }, { label: 'FAQ', href: langHref(lang, '/faq') }, { label: t(lang, 'Barrierefreiheit'), href: langHref(lang, '/barrierefreiheit') }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>

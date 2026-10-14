@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateListings } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -67,6 +68,7 @@ export async function PATCH(request: Request) {
         .update(listingUpdates)
         .eq('host_id', user.id)
       if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 })
+      revalidateListings() // Data-Cache der Inseratsseite (BookingBox liest diese Spalten, lib/public-data.ts)
     }
   }
 

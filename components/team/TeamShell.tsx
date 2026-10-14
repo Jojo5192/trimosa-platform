@@ -34,6 +34,11 @@ import LightboxHost from '@/components/team/Lightbox'
 import { VORSCHAU_NAME, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 import SearchOverlay from '@/components/team/SearchOverlay'
 import HeutePanel from '@/components/team/HeutePanel'
+import { tempoStarten, tempoAppBereit } from '@/lib/tempo-client'
+
+// ⏱ Gefühlte Geschwindigkeit (Pascal, Chefsache 7.10., Bereich 11): Messung schon beim Laden des
+// Moduls einhängen — die ersten Lade-Aufrufe der Panels laufen vor dem Mount-Effekt der Shell
+if (typeof window !== 'undefined') tempoStarten()
 
 type Tab = 'heute' | 'inbox' | 'offen' | 'aufgaben' | 'kalender' | 'einstellungen'
 /** Inbox-Segment: Gäste-Chat (ChatPanel) oder Intern-Messenger (InternPanel) */
@@ -210,6 +215,9 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ⏱ Kennzahl „App-Start": Shell hydriert = bedienbar (einmalig; Auswertung: Mehr → Wartestellen)
+  useEffect(() => { tempoAppBereit() }, [])
 
   /* ── Sync-Stand, Ladestreifen, Aktualisieren ── */
   const [lastSync, setLastSync] = useState<Date | null>(null)

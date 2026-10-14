@@ -1,5 +1,7 @@
 'use client'
 
+import Image from 'next/image'
+import { darfNextImage, avatarSrc } from '@/lib/image-proxy'
 import { useState, useEffect } from 'react'
 import { t, MONTHS_SHORT, type UiLang } from '@/lib/i18n'
 
@@ -47,6 +49,7 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
   const [guestText, setGuestText] = useState('')
   const [guestName, setGuestName] = useState('')
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error' | 'no-booking'>('idle')
+  const [avatarFehler, setAvatarFehler] = useState<Set<string>>(() => new Set())
   const LIMIT = 6
 
   // Initial load — mit Server-Daten (initial) nur nötig, wenn übersetzt
@@ -132,7 +135,11 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
 
   return (
     <div id="reviews-section" style={{ marginBottom: '32px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '16px' }}>{t(lang, 'Bewertungen')}</h2>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1D1D1F', marginBottom: '8px' }}>{t(lang, 'Bewertungen')}</h2>
+      {/* § 5b Abs. 3 UWG: ob und wie die Echtheit der Bewertungen sichergestellt wird */}
+      <p style={{ fontSize: '12px', color: '#6E6E73', lineHeight: 1.55, margin: '0 0 16px' }}>
+        {t(lang, 'Echtheit: Über trimosa.de können nur Gäste bewerten, deren abgeschlossenen Aufenthalt wir einer Buchung zuordnen (eine Bewertung je Gast und Unterkunft). Bewertungen von Airbnb, Booking.com und FeWo-direkt (Vrbo) übernehmen wir automatisch per Schnittstelle ohne inhaltliche Änderung, für andere Sprachen maschinell übersetzt; nur Dubletten und Fehlzuordnungen entfernen wir. Dort können nur Gäste nach einem Aufenthalt bewerten. Google-Rezensionen prüfen wir nicht auf einen tatsächlichen Aufenthalt.')}
+      </p>
 
       {/* ── Aggregate Score Panel ── */}
       <div style={{
@@ -278,13 +285,19 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
                   {/* Avatar */}
                   <div style={{
                     width: '36px', height: '36px', borderRadius: '50%',
-                    background: review.author_avatar ? 'transparent' : `linear-gradient(135deg, ${meta.color}, ${meta.color}99)`,
+                    background: review.author_avatar && !avatarFehler.has(review.id) ? 'transparent' : `linear-gradient(135deg, ${meta.color}, ${meta.color}99)`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden', flexShrink: 0,
                   }}>
-                    {review.author_avatar ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- external (Airbnb/Google/Booking) domains, not whitelisted for next/image
-                      <img src={review.author_avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {review.author_avatar && !avatarFehler.has(review.id) ? (
+                      darfNextImage(review.author_avatar)
+                        // 36 px statt 1200 px, und der Besucher kontaktiert nicht Airbnb/Google/Booking, sondern nur uns (14.10.2026)
+                        ? <Image src={avatarSrc(review.author_avatar)} alt="" width={36} height={36} loading="lazy"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={() => setAvatarFehler((s) => new Set(s).add(review.id))} />
+                        // eslint-disable-next-line @next/next/no-img-element -- unbekannter Host, nicht in remotePatterns
+                        : <img src={review.author_avatar} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={() => setAvatarFehler((s) => new Set(s).add(review.id))} />
                     ) : (
                       <span style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>
                         {review.author_name[0]?.toUpperCase() ?? '?'}
@@ -317,9 +330,14 @@ export function ReviewsSection({ listingId, showReviewForm = false, lang = 'de',
                 <ReviewText text={review.review_text} lang={lang} />
               )}
 
-              {/* Verified badge */}
-              {review.verified && (
-                <div style={{ marginTop: '8px', fontSize: '11px', color: '#16A34A', fontWeight: 600 }}>{t(lang, '✓ Verifizierter Aufenthalt')}</div>
+              {/* Verified badge — nur wo ein Aufenthalt wirklich geprüft ist: eigene Buchung (TRIMOSA) oder Portal,
+                  auf dem nur Gäste nach dem Aufenthalt bewerten können; Google prüft nichts (UWG Anh. Nr. 23b, 14.10.2026) */}
+              {review.verified && review.source !== 'google' && (
+                <div style={{ marginTop: '8px', fontSize: '11px', color: '#16A34A', fontWeight: 600 }}>
+                  {review.source === 'trimosa'
+                    ? t(lang, '✓ Verifizierter Aufenthalt')
+                    : `✓ ${t(lang, 'Bewertung nach Aufenthalt über')} ${review.source === 'vrbo' && lang !== 'de' ? 'Vrbo' : (SOURCE_META[review.source]?.label ?? review.source)}`}
+                </div>
               )}
             </div>
           )

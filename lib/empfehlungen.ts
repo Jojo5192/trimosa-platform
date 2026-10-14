@@ -26,7 +26,7 @@ export interface EmpfehlungenMap {
 
 export const EMPTY_EMPFEHLUNGEN: EmpfehlungenMap = { poi: {}, kulinarik: {}, tour: {} }
 
-export async function getEmpfehlungen(): Promise<EmpfehlungenMap> {
+export async function getEmpfehlungen(opts: { strict?: boolean } = {}): Promise<EmpfehlungenMap> {
   try {
     const { data, error } = await supabaseAdmin
       .from('empfehlungen')
@@ -34,6 +34,7 @@ export async function getEmpfehlungen(): Promise<EmpfehlungenMap> {
       .order('created_at', { ascending: true })
     if (error || !data) {
       if (error) console.error('[empfehlungen] load failed:', error.message)
+      if (opts.strict) throw new Error('[empfehlungen] ' + (error?.message ?? 'keine Daten'))
       return EMPTY_EMPFEHLUNGEN
     }
     const map: EmpfehlungenMap = { poi: {}, kulinarik: {}, tour: {} }
@@ -52,6 +53,7 @@ export async function getEmpfehlungen(): Promise<EmpfehlungenMap> {
     }
     return map
   } catch (err) {
+    if (opts.strict) throw err
     console.error('[empfehlungen] load error:', err)
     return EMPTY_EMPFEHLUNGEN
   }

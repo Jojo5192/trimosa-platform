@@ -57,7 +57,8 @@ export default function PhotoGrid({
               src={firstImage}
               alt={listingTitle}
               fill
-              priority
+              loading="eager"
+              fetchPriority="high"
               sizes="(max-width: 900px) 100vw, 55vw"
               style={{ objectFit: 'cover', transition: 'transform 0.3s' }}
               onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}

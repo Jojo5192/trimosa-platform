@@ -18,6 +18,7 @@
  *  - FEWO_BROWSER_STUFE / FEWO_BROWSER_ACTOR / FEWO_BROWSER_MEMORY_MB (optional, Browser-Stufe für FeWo-direkt)
  * Missing env vars simply skip that source (reported in diagnostics).
  */
+import { revalidateReviews } from '@/lib/public-data'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { askClaude } from '@/lib/ai'
@@ -555,7 +556,9 @@ async function upsertReviews(
     review_text: r.review_text,
     review_date: r.review_date,
     language: r.language ?? 'de',
-    verified: true, // imported from a platform where only real guests can review
+    // Airbnb/Booking/FeWo-direkt: nur Gäste nach einem Aufenthalt können bewerten → verifiziert; Google prüft keinen
+    // Aufenthalt → kein Siegel (UWG Anh. Nr. 23b / § 5b Abs. 3 UWG, Audit 14.10.2026; Bestand: Migration 20261014_reviews_google_unverified)
+    verified: source !== 'google',
   }))
   const { error, count } = await supabaseAdmin
     .from('reviews')
@@ -830,6 +833,7 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     // einzigen revalidatePath — deshalb hier selbst auffrischen, sonst zeigt /listing/[id] die neuen Texte nicht.
     if (results.some((r) => r.upserted > 0)) {
       try { revalidatePath('/listing/[id]', 'page') } catch { /* outside request scope */ }
+      revalidateReviews()
     }
     return results
   }
@@ -840,6 +844,8 @@ export async function syncListingReviews(listing: ListingRow, opts: SyncOptions 
     console.error('[reviews-sync] guest summary failed:', err)
     results.push({ source: 'zusammenfassung', status: 'error', fetched: 0, upserted: 0, detail: err instanceof Error ? err.message : String(err) })
   }
+  // Unabhängig vom Zusammenfassungs-Ergebnis: Upserts/Score-Spalten sind geschrieben → Data-Cache frisch
+  revalidateReviews()
 
   return results
 }
@@ -884,5 +890,6 @@ beginne direkt, z. B. "Gäste loben immer wieder …". Antworte NUR mit der Zusa
   // The listing detail page caches its parameter-less render — refresh it so
   // the new summary shows up immediately.
   try { revalidatePath('/listing/[id]', 'page') } catch { /* outside request scope */ }
+  revalidateReviews() // Data-Cache: Bewertungen + Score-Spalten (lib/public-data.ts)
   return 'ok'
 }

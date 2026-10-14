@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateListings } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -59,6 +60,7 @@ export async function PATCH(
   }
 
   const { error } = await supabaseAdmin.from('listings').update(patch).eq('id', id)
+  if (!error) revalidateListings() // Data-Cache der öffentlichen Seiten (lib/public-data.ts)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
@@ -78,5 +80,6 @@ export async function DELETE(
   // Delete associated bookings first (or set listing to inactive first)
   const { error } = await supabaseAdmin.from('listings').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  revalidateListings() // Data-Cache der öffentlichen Seiten (lib/public-data.ts)
   return NextResponse.json({ ok: true })
 }

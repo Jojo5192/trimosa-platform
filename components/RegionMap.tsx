@@ -12,7 +12,7 @@ import Image from 'next/image'
 import { POI_CATEGORIES, type Poi, type PoiCategory } from '@/lib/regions'
 import type { EmpfehlungView } from '@/lib/empfehlungen'
 import EmpfehlungBubble from '@/components/EmpfehlungBubble'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 import { addBaseTiles } from '@/lib/map-tiles'
 
 export interface RegionMapListing {
@@ -202,7 +202,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
           iconSize: [28, 36],
         })
         const popup = L.popup({ closeButton: false, className: 'trimosa-popup', maxWidth: 220 }).setContent(`
-          <a href="/listing/${l.slug ?? l.id}" style="display:block;padding:10px 12px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+          <a href="${langHref(lang, `/listing/${l.slug ?? l.id}`)}" style="display:block;padding:10px 12px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
             <span style="display:block;font-size:13px;font-weight:700;color:#111;margin-bottom:6px">${l.title}</span>
             <span style="display:inline-block;font-size:11.5px;font-weight:700;color:#1A1400;background:var(--gold);padding:5px 12px;border-radius:999px">Ansehen →</span>
           </a>`)
@@ -229,7 +229,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
           iconSize: [size, size],
         })
         const detailLink = isHighlight ? '' : `
-            <a href="/erlebnis/${poi.slug}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">${t(lang, 'Mehr erfahren →')}</a>`
+            <a href="${langHref(lang, `/erlebnis/${poi.slug}`)}" style="display:inline-block;font-size:11.5px;font-weight:700;color:${color};margin-top:7px;text-decoration:none">${t(lang, 'Mehr erfahren →')}</a>`
         // Photo header served via our own /_next/image proxy (no third-party request)
         const imgHeader = poi.image
           ? `<img src="/_next/image?url=${encodeURIComponent(poi.image.src)}&w=640&q=75" alt="" style="display:block;width:100%;height:96px;object-fit:cover"/>`
@@ -350,7 +350,7 @@ export default function RegionMap({ pois, listings, center, zoom, showFilter = t
                     const c = POI_CATEGORIES[p.category].color
                     const emp = empfehlungen[p.slug]
                     return (
-                      <Link key={p.slug} href={`/erlebnis/${p.slug}`} className="listing-card" style={{
+                      <Link key={p.slug} href={langHref(lang, `/erlebnis/${p.slug}`)} className="listing-card" style={{
                         display: 'block', textDecoration: 'none', borderRadius: '14px',
                         background: '#fff', overflow: 'hidden',
                         border: emp ? '1px solid rgba(60,60,67,0.12)' : '1px solid #EAE7E0',

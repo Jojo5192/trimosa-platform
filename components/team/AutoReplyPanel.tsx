@@ -293,7 +293,7 @@ export default function AutoReplyPanel({ onClose }: { onClose: () => void }) {
                 <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, lineHeight: 1.5 }}>
                   {d.settings.mode === 'aus'
                     ? 'Noch keine Einträge – im Modus „Aus“ protokolliert die KI nichts.'
-                    : filter === 'sende' ? 'Noch keine Entscheidung mit freigegebenem Entwurf. Unter „Alle“ steht, was die KI abgelehnt hat.' : 'Noch keine Einträge.'}
+                    : filter === 'sende' ? 'Noch keine Entscheidung mit freigegebenem Entwurf. Unter „Alle“ steht, was die KI abgelehnt hat.' : 'Noch keine Einträge – sobald Gäste schreiben, protokolliert die KI hier jede Entscheidung zum Bewerten.'}
                 </div>
               )}
               {rows.map((r) => {

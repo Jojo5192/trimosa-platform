@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { isUiLang } from '@/lib/i18n'
+import { legalAlternates } from '@/lib/legal-meta'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
 // §161-Jupas ④: Erklärung zur Barrierefreiheit (BFSG, seit 28.06.2025 für
@@ -8,13 +10,16 @@ import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 export const maxDuration = 120
 
 export const metadata: Metadata = {
+  alternates: legalAlternates('/barrierefreiheit'),
   title: 'Barrierefreiheit',
   description: 'Erklärung zur Barrierefreiheit der Website trimosa.de gemäß Barrierefreiheitsstärkungsgesetz (BFSG).',
 }
 
-export default function BarrierefreiheitPage() {
+export default async function BarrierefreiheitPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang) ? spLang : undefined
   return (
-    <LegalShell title="Erklärung zur Barrierefreiheit">
+    <LegalShell lang={lang} title="Erklärung zur Barrierefreiheit">
       <LegalSection heading="Geltungsbereich">
         <LegalP>
           Diese Erklärung zur Barrierefreiheit gilt für die Website

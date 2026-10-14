@@ -6,7 +6,7 @@
  * in the chosen language.
  */
 import { useEffect, useRef, useState } from 'react'
-import { UI_COOKIE, UI_LANGS, UI_LANG_META, isUiLang, type UiLang } from '@/lib/i18n'
+import { UI_COOKIE, UI_LANGS, UI_LANG_META, isUiLang, hasLangVariant, type UiLang } from '@/lib/i18n'
 
 /** Pfad-Variante der aktuellen Seite in Zielsprache — null, wenn die Seite
  *  (noch) keine Sprachpfade hat (Gastbereich, Team-App, Rechtsseiten …). */
@@ -14,9 +14,9 @@ function langPath(pathname: string, target: UiLang): string | null {
   let path = pathname
   const m = path.match(/^\/(en|fr|nl)(\/|$)/)
   if (m) path = path.slice(m[1].length + 1) || '/'
-  const supported = path === '/' || path === '/ueber-uns' || path === '/faq'
-    || /^\/(listing|region|erlebnis)\//.test(path)
-  if (!supported) return null
+  // Sprachpfad ohne deutsches Pendant (z. B. /nl/vakantiehuis-eifel): Startseite der Zielsprache — ein bloßer
+  // Reload würde vom LangCookieSync der Sprachseite sofort wieder auf deren Sprache gesetzt
+  if (!hasLangVariant(path)) return m ? (target === 'de' ? '/' : `/${target}`) : null
   if (target === 'de') return path
   return `/${target}${path === '/' ? '' : path}`
 }

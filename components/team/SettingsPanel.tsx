@@ -11,8 +11,9 @@
  *    ALLE Geräte des Nutzers (Server filtert beim Senden)
  */
 import { useEffect, useState } from 'react'
-import { haptic, tmToast } from '@/components/team/ux'
+import { haptic, tmToast, rueckmeldung } from '@/components/team/ux'
 import { useThemeMode, useIsDark, setThemeMode } from '@/lib/theme'
+import { useToeneAn, setToeneAn } from '@/lib/klang'
 import { QsArchive } from '@/components/team/QsPanel'
 import ScoreTrends from '@/components/team/ScoreTrends'
 import WallboxPanel from '@/components/team/WallboxPanel'
@@ -22,10 +23,13 @@ import PushLogPanel from '@/components/team/PushLogPanel'
 import LocksPanel from '@/components/team/LocksPanel'
 import MaterialPanel from '@/components/team/MaterialPanel'
 import CleaningDurations from '@/components/team/CleaningDurations'
+import TempoPanel from '@/components/team/TempoPanel'
 import SchuldenPanel from '@/components/team/SchuldenPanel'
 import AutoReplyPanel from '@/components/team/AutoReplyPanel'
+import { AssistentKostuemWahl } from '@/components/team/AssistentFigur'
 import { VORSCHAU_HINWEIS, VORSCHAU_NAME, VORSCHAU_ROLLEN, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 import { RUHE_STANDARD, ruheErklaerung, type Ruhezeit } from '@/lib/push-ruhe'
+import { bereinigeZaehler, waehleHaeufig, zaehleOeffnung, type MehrZaehler } from '@/lib/mehr-haeufig'
 
 const HAIR = 'inset 0 -0.5px 0 var(--tm-line)'
 // 🌙 Ruhezeiten: Auswahl in vollen Stunden (0–23 Uhr)
@@ -80,6 +84,72 @@ function Row({ title, subtitle, last, children }: {
   )
 }
 
+/* ── 🧭 Pascal 7 (Chefsache 7.10.2026) Informationsarchitektur im Reiter Mehr ──
+   Oben HÄUFIG (höchstens 4 Kacheln, Öffnungen je Gerät gezählt), darunter GÄSTE · BETRIEB · FIRMA,
+   dann EINSTELLUNGEN (Darstellung, Ansicht als …, Mitteilungen, Bereitschaft). Jede Funktion in
+   höchstens zwei Schritten: Reiter Mehr → Eintrag. Auswahl-Logik: lib/mehr-haeufig.ts */
+type MehrGruppe = 'gaeste' | 'betrieb' | 'firma'
+type MehrEintrag = {
+  key: string; icon: string; title: string; sub: string
+  /** null = steht nicht in einer Gruppe (Verlauf liegt im Mitteilungs-Block), nur als Häufig-Kachel */
+  gruppe: MehrGruppe | null
+  /** dieselben Sichtbarkeits-Bedingungen wie vor der Umordnung (Rolle + Rechte-Proben) */
+  zeigen: boolean
+  open: () => void
+}
+const MEHR_GRUPPEN: [MehrGruppe, string][] = [['gaeste', 'GÄSTE'], ['betrieb', 'BETRIEB'], ['firma', 'FIRMA']]
+const MEHR_ZAEHLER_KEY = 'tm-mehr-oeffnungen-v1'
+function leseMehrZaehler(): MehrZaehler {
+  if (typeof window === 'undefined') return {}
+  try { return bereinigeZaehler(JSON.parse(localStorage.getItem(MEHR_ZAEHLER_KEY) ?? '{}')) } catch { return {} }
+}
+function merkeMehrOeffnung(key: string) {
+  try { localStorage.setItem(MEHR_ZAEHLER_KEY, JSON.stringify(zaehleOeffnung(leseMehrZaehler(), key))) } catch { /* privater Modus */ }
+}
+
+/** Kleinüberschrift im bestehenden Versalien-Stil */
+function MehrTitel({ children }: { children: React.ReactNode }) {
+  return (
+    <div role="heading" aria-level={2} style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>
+      {children}
+    </div>
+  )
+}
+
+/** Listenzeile wie bisher (Symbol · Titel + Unterzeile · ›) — Trennlinie außer bei der letzten */
+function MehrZeile({ e, last, onOpen }: { e: MehrEintrag; last: boolean; onOpen: () => void }) {
+  return (
+    <button type="button" onClick={onOpen} style={{
+      width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
+      background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
+      boxShadow: last ? 'none' : HAIR,
+    }}>
+      <span style={{ fontSize: 19 }} aria-hidden="true">{e.icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>{e.title}</span>
+        {e.sub && <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>{e.sub}</span>}
+      </span>
+      <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }} aria-hidden="true">›</span>
+    </button>
+  )
+}
+
+/** Häufig-Kachel: Symbol + Titel, zwei Spalten (auch bei 375 px Breite) */
+function MehrKachel({ e, onOpen }: { e: MehrEintrag; onOpen: () => void }) {
+  return (
+    <button type="button" className="tm-card tm-press-btn" onClick={onOpen} title={e.sub || undefined} style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+      minHeight: 80, padding: '12px 14px', cursor: 'pointer', textAlign: 'start', color: 'var(--tm-text)', minWidth: 0,
+    }}>
+      <span style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">{e.icon}</span>
+      <span style={{
+        fontSize: 14, fontWeight: 650, lineHeight: 1.25, letterSpacing: '-0.1px', overflowWrap: 'anywhere',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      }}>{e.title}</span>
+    </button>
+  )
+}
+
 export default function SettingsPanel({ role, vorschau = null, darfVorschau = false }: {
   role: 'team' | 'provider'
   /** 👀 Rollen-Vorschau (lib/rollen-vorschau.ts): aktive Vorschau und ob der ECHTE Nutzer Chef ist */
@@ -112,6 +182,8 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   // 🌗 §284 Dark Mode mit Schalter (Inhaber 9.9.)
   const themeMode = useThemeMode()
   const isDark = useIsDark()
+  // 🔔 Töne je Gerät (Standard an)
+  const toene = useToeneAn()
   const [pushState, setPushState] = useState<'unknown' | 'off' | 'on' | 'unsupported'>('unknown')
   const [busy, setBusy] = useState(false)
   const [prefs, setPrefs] = useState<{ guestChats: boolean; teamChats: boolean; bookings: boolean; tasks: boolean; reinigung: boolean; calls: boolean; buchhaltung: boolean; material: boolean; system: boolean; tv: boolean } | null>(null)
@@ -151,6 +223,9 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   // ⏱ Reinigungs-Dauer (§255) — NUR Chefs (is_admin; probe 403 → aus)
   const [durOk, setDurOk] = useState(false)
   const [showDur, setShowDur] = useState(false)
+  // ⏱ Wartestellen (Pascal, Chefsache 7.10., Bereich 11) — NUR Chefs (is_admin; probe 403 → aus)
+  const [tempoOk, setTempoOk] = useState(false)
+  const [showTempo, setShowTempo] = useState(false)
   // 🏦 Schuldenstand (§272) — NUR Chefs (is_admin; probe 403 → aus)
   const [schuldenOk, setSchuldenOk] = useState(false)
   const [showSchulden, setShowSchulden] = useState(false)
@@ -160,6 +235,68 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   const [wb, setWb] = useState<{ pushStart: boolean; pushEnd: boolean } | null>(null)
   // 🧾 Beleg-Inbox (§238) — nur Admins/Gastgeber (probe 403 → Eintrag bleibt aus)
   const [belegeOk, setBelegeOk] = useState(false)
+
+  // 🧭 Pascal 7: HÄUFIG + Gruppen (Typen/Helfer oben bei MehrEintrag)
+  const [probenFertig, setProbenFertig] = useState(false)
+  useEffect(() => {
+    // Rückfall, falls eine Probe hängt — ohne Push-Unterstützung laufen die Proben gar nicht (früher Ausstieg unten)
+    const ohneProben = !('serviceWorker' in navigator) || !('PushManager' in window)
+    const t = setTimeout(() => setProbenFertig(true), ohneProben ? 0 : 4000)
+    return () => clearTimeout(t)
+  }, [])
+  // Zählerstand einmal lesen: HÄUFIG bleibt während der Sitzung stehen (Kacheln springen nicht unter dem Finger),
+  // frisch erst, wenn die App aus dem Hintergrund zurückkommt
+  const [zaehler, setZaehler] = useState<MehrZaehler>(leseMehrZaehler)
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') setZaehler(leseMehrZaehler()) }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+  // Der Verlauf-Knopf steckt im Mitteilungs-Block (bleibt unverändert) → jede Öffnung hier zählen, auch per Sammel-Mitteilung
+  useEffect(() => { if (showPushLog) merkeMehrOeffnung('verlauf') }, [showPushLog])
+
+  const team = role === 'team'
+  const eintraege: MehrEintrag[] = [
+    // GÄSTE
+    { key: 'offen', gruppe: 'gaeste', icon: '📥', title: 'Offen abarbeiten', sub: 'Unbeantwortete Gäste als Karten-Stapel – Antwort, ✓, 📞, Aufgabe', zeigen: team,
+      // §276: „Offen"-Karten-Stapel ist kein Reiter mehr — hier erreichbar
+      open: () => window.dispatchEvent(new CustomEvent('trimosa-open-tab', { detail: 'offen' })) },
+    { key: 'telefonate', gruppe: 'gaeste', icon: '☎️', title: 'Telefonate', sub: 'Alle Anrufe der Telefon-Assistentin – Transkript lesen & abhören', zeigen: team, open: () => setShowCalls(true) },
+    { key: 'autoantworten', gruppe: 'gaeste', icon: '🤖', title: 'KI-Auto-Antworten', sub: 'Modus, Tor-Fortschritt & Entscheidungen der KI bewerten', zeigen: team && autoReplyOk, open: () => setShowAutoReply(true) },
+    { key: 'entwicklung', gruppe: 'gaeste', icon: '📈', title: 'Entwicklung', sub: 'Bewertungen im Zeitverlauf – gesamt & je Portal', zeigen: team, open: () => setShowTrends(true) },
+    // BETRIEB
+    { key: 'tuerschloesser', gruppe: 'betrieb', icon: '🔑', title: 'Türschlösser', sub: 'Fernöffnen & Türcodes je Wohnung', zeigen: team && locksOk, open: () => setShowLocks(true) },
+    { key: 'qs', gruppe: 'betrieb', icon: '📋', title: 'Qualitätssicherung', sub: 'Protokolle & Historie je Wohnung', zeigen: team, open: () => setShowQs(true) },
+    { key: 'reinigungsdauer', gruppe: 'betrieb', icon: '⏱', title: 'Reinigungs-Dauer', sub: 'Wie lange Reinigungen dauern (nur Chefs)', zeigen: team && durOk, open: () => setShowDur(true) },
+    // §266f/§303: Material — Team-Rollen (Pascal 9.9.: für Dienstleister ausgeblendet)
+    { key: 'material', gruppe: 'betrieb', icon: '🛒', title: 'Material & Bestellungen', sub: 'Standort wählen, Produkt antippen – fertig. Der Warenkorb kommt automatisch.', zeigen: team, open: () => setShowMaterial(true) },
+    { key: 'wallbox', gruppe: 'betrieb', icon: '⚡', title: 'Wallbox', sub: 'Ladehistorie – kWh, Umsatz & Gewinn', zeigen: team && !!wb, open: () => setShowWallbox(true) },
+    { key: 'tv', gruppe: 'betrieb', icon: '📺', title: 'TV-Steuerung', sub: 'TVs in den Wohnungen – Inhalte, Bildschirmschoner, Boxen (ohne zweite Anmeldung)', zeigen: team && belegeOk,
+      open: () => { window.location.href = '/api/tv-bridge/sso' } },
+    // FIRMA
+    { key: 'buchhaltung', gruppe: 'firma', icon: '💶', title: 'Buchhaltung', sub: 'Eigene Vollbild-Oberfläche – Belege, Zahlungen, Verbuchen (nur Chefs)', zeigen: team && belegeOk,
+      open: () => { window.location.href = '/buchhaltung' } },
+    // §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister (Upload + Ort + Notiz; keinerlei Finanz-Einblick)
+    { key: 'beleg', gruppe: 'firma', icon: '🧾', title: 'Beleg einreichen', sub: 'Rechnung oder Kassenbon fotografieren – die Buchhaltung übernimmt', zeigen: true, open: () => setShowBeleg(true) },
+    { key: 'schulden', gruppe: 'firma', icon: '🏦', title: 'Schuldenstand', sub: 'Kredite je Standort – Restschuld, Zins & Tilgung (nur Chefs)', zeigen: team && schuldenOk, open: () => setShowSchulden(true) },
+    { key: 'wartestellen', gruppe: 'firma', icon: '⏳', title: 'Wartestellen', sub: 'Wo die App warten lässt – was als Nächstes schneller werden soll (nur Chefs)', zeigen: team && tempoOk, open: () => setShowTempo(true) },
+    // EINSTELLUNGEN → MITTEILUNGEN → Verlauf: nur als mögliche Häufig-Kachel (der Knopf selbst bleibt im Block)
+    { key: 'verlauf', gruppe: null, icon: '🔔', title: 'Mitteilungs-Verlauf', sub: 'Alle Mitteilungen der letzten 30 Tage', zeigen: true, open: () => setShowPushLog(true) },
+  ]
+  // Vorgaben ohne Zähler-Daten: Chefs/Gastgeber (Beleg-Inbox-Recht) · Mitarbeiter · Dienstleister
+  const haeufigVorgabe = !team ? ['beleg', 'verlauf']
+    : belegeOk ? ['offen', 'telefonate', 'buchhaltung', 'tuerschloesser']
+    : ['offen', 'tuerschloesser', 'material', 'beleg']
+  const haeufig = probenFertig
+    ? waehleHaeufig(eintraege.filter((e) => e.zeigen).map((e) => e.key), zaehler, haeufigVorgabe)
+      .map((k) => eintraege.find((e) => e.key === k))
+      .filter((e): e is MehrEintrag => !!e)
+    : []
+  function oeffne(e: MehrEintrag) {
+    haptic()
+    if (e.key !== 'verlauf') merkeMehrOeffnung(e.key) // Verlauf zählt über showPushLog (s. o.)
+    e.open()
+  }
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { setPushState('unsupported'); return }
@@ -175,25 +312,24 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) { setOncallPeople(d.people ?? []); setOncallSel(d.selected ?? []) } })
       .catch(() => {})
-    fetch('/api/wallbox?probe=1', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.settings) setWb({ pushStart: d.settings.pushStart, pushEnd: d.settings.pushEnd }) })
-      .catch(() => {})
-    fetch('/api/belege?probe=1', { cache: 'no-store' })
-      .then((r) => { if (r.ok) setBelegeOk(true) })
-      .catch(() => {})
-    fetch('/api/locks/control?probe=1', { cache: 'no-store' })
-      .then((r) => { if (r.ok) setLocksOk(true) })
-      .catch(() => {})
-    fetch('/api/cleaning/durations?probe=1', { cache: 'no-store' })
-      .then((r) => { if (r.ok) setDurOk(true) })
-      .catch(() => {})
-    fetch('/api/schulden?probe=1', { cache: 'no-store' })
-      .then((r) => { if (r.ok) setSchuldenOk(true) })
-      .catch(() => {})
-    fetch('/api/ai/autoreply/log?probe=1', { cache: 'no-store' })
-      .then((r) => { if (r.ok) setAutoReplyOk(true) })
-      .catch(() => {})
+    // 🧭 Pascal 7: Rechte-Proben gesammelt — HÄUFIG erscheint erst, wenn alle zurück sind (sonst springen die Kacheln)
+    Promise.allSettled([
+      fetch('/api/wallbox?probe=1', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d?.settings) setWb({ pushStart: d.settings.pushStart, pushEnd: d.settings.pushEnd }) }),
+      fetch('/api/belege?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setBelegeOk(true) }),
+      fetch('/api/locks/control?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setLocksOk(true) }),
+      fetch('/api/cleaning/durations?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setDurOk(true) }),
+      fetch('/api/tempo?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setTempoOk(true) }),
+      fetch('/api/schulden?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setSchuldenOk(true) }),
+      fetch('/api/ai/autoreply/log?probe=1', { cache: 'no-store' })
+        .then((r) => { if (r.ok) setAutoReplyOk(true) }),
+    ]).then(() => setProbenFertig(true))
   }, [])
 
   async function toggleWallboxPush(key: 'pushStart' | 'pushEnd') {
@@ -272,6 +408,37 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
       {/* §276: Titel „Mehr" steht in der Shell-Kopfleiste */}
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 16px', paddingBottom: 'var(--tm-nav-pad)' }}>
 
+        {/* 🧭 Pascal 7: HÄUFIG — höchstens 4 meistgenutzte Funktionen (je Gerät gezählt, sonst Vorgaben je Rolle) */}
+        {haeufig.length > 0 && (
+          <>
+            <MehrTitel>HÄUFIG</MehrTitel>
+            <div className="tm-enter" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginBottom: 22 }}>
+              {haeufig.map((e) => <MehrKachel key={e.key} e={e} onOpen={() => oeffne(e)} />)}
+            </div>
+          </>
+        )}
+        {/* 🧭 Pascal 7: thematische Gruppen — nur Gruppen mit mindestens einem sichtbaren Eintrag */}
+        {MEHR_GRUPPEN.map(([g, titel]) => {
+          const liste = eintraege.filter((e) => e.zeigen && e.gruppe === g)
+          if (!liste.length) return null
+          return (
+            <div key={g}>
+              <MehrTitel>{titel}</MehrTitel>
+              <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
+                {liste.map((e, i) => <MehrZeile key={e.key} e={e} last={i === liste.length - 1} onOpen={() => oeffne(e)} />)}
+              </div>
+            </div>
+          )
+        })}
+        {/* 🧭 Pascal 7: EINSTELLUNGEN — darunter die Blöcke Darstellung, Ansicht als …, Mitteilungen und Bereitschaft (unverändert) */}
+        <div role="heading" aria-level={2} style={{
+          display: 'flex', alignItems: 'center', gap: 10, margin: '10px 16px 14px',
+          fontSize: 12, fontWeight: 800, color: 'var(--tm-text)', letterSpacing: '0.05em',
+        }}>
+          EINSTELLUNGEN
+          <span aria-hidden="true" style={{ flex: 1, height: 0.5, background: 'var(--tm-line)' }} />
+        </div>
+
         {/* 🌗 §284 Darstellung: Auto (System) · Hell · Dunkel — je Gerät */}
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>DARSTELLUNG</div>
         <div className="tm-card" style={{ padding: '12px 16px', marginBottom: 22, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -294,6 +461,28 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
             ))}
           </div>
         </div>
+        {/* 🔔 Pascal 7.10. Gestaltung 1: Töne je Gerät (lib/klang.ts) — eigene Karte, rückt per negativem
+            Rand an die Dark-Mode-Karte heran (gehört noch zu DARSTELLUNG) */}
+        <div className="tm-card" style={{ padding: '12px 16px', marginTop: -12, marginBottom: 22, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 19 }} aria-hidden="true">{toene ? '🔔' : '🔕'}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Töne</span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1, lineHeight: 1.4 }}>
+              Kurze Töne bei Senden, Erledigt und Fehlern. Folgen dem Stumm-Schalter.
+            </span>
+          </span>
+          <Switch label="Töne" on={toene} onChange={() => {
+            const an = !toene
+            setToeneAn(an)
+            // Hörprobe beim Einschalten (läuft in der Geste — legt dabei auch den AudioContext an)
+            if (an) rueckmeldung('erledigt')
+            else haptic()
+          }} />
+        </div>
+
+        {/* 🤖 Pascal 7.10. Gestaltung 5: Kostüm der Assistenten-Figur je Gerät (Automatisch / fest / Aus) —
+            rückt wie die Töne-Karte an DARSTELLUNG heran */}
+        <AssistentKostuemWahl style={{ marginTop: -12 }} />
 
         {/* 👀 Rollen-Vorschau — nur für Chefs (echte Rolle), auch WÄHREND einer Vorschau sichtbar, um zurückzuschalten */}
         {darfVorschau && (
@@ -325,195 +514,8 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
           </>
         )}
 
-        {role === 'team' && (
-          <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BEREICHE</div>
-            <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
-              {/* §276: „Offen"-Karten-Stapel ist kein Reiter mehr — hier erreichbar */}
-              <button onClick={() => window.dispatchEvent(new CustomEvent('trimosa-open-tab', { detail: 'offen' }))} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-              }}>
-                <span style={{ fontSize: 19 }}>📥</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Offen abarbeiten</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Unbeantwortete Gäste als Karten-Stapel – Antwort, ✓, 📞, Aufgabe</span>
-                </span>
-                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-              </button>
-              <button onClick={() => setShowTrends(true)} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-              }}>
-                <span style={{ fontSize: 19 }}>📈</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Entwicklung</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Bewertungen im Zeitverlauf – gesamt & je Plattform</span>
-                </span>
-                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-              </button>
-              <button onClick={() => setShowCalls(true)} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-              }}>
-                <span style={{ fontSize: 19 }}>☎️</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Telefonate</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Alle Anrufe der KI-Assistentin – Transkript lesen & abhören</span>
-                </span>
-                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-              </button>
-              {locksOk && (
-                <button onClick={() => setShowLocks(true)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-                }}>
-                  <span style={{ fontSize: 19 }}>🔑</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Türschlösser</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Fernöffnen & Türcodes je Wohnung</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              {durOk && (
-                <button onClick={() => setShowDur(true)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-                }}>
-                  <span style={{ fontSize: 19 }}>⏱</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Reinigungs-Dauer</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Wie lange Reinigungen dauern (nur Chefs)</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              {schuldenOk && (
-                <button onClick={() => setShowSchulden(true)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-                }}>
-                  <span style={{ fontSize: 19 }}>🏦</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Schuldenstand</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Kredite je Standort – Restschuld, Zins &amp; Tilgung (nur Chefs)</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              {autoReplyOk && (
-                <button onClick={() => setShowAutoReply(true)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: 'inset 0 -0.5px 0 var(--tm-line)',
-                }}>
-                  <span style={{ fontSize: 19 }}>🤖</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>KI-Auto-Antworten</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Modus, Tor-Fortschritt &amp; Entscheidungen der KI bewerten</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              <button onClick={() => setShowQs(true)} style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                boxShadow: wb ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
-              }}>
-                <span style={{ fontSize: 19 }}>🧾</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Qualitätssicherung</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Protokolle & Historie je Wohnung</span>
-                </span>
-                <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-              </button>
-              {belegeOk && (
-                <button onClick={() => { window.location.href = '/buchhaltung' }} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: wb ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
-                }}>
-                  <span style={{ fontSize: 19 }}>💶</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Buchhaltung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Eigene Vollbild-Oberfläche – Belege, Zahlungen, Verbuchen (nur Chefs)</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              {wb && (
-                <button onClick={() => setShowWallbox(true)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  boxShadow: belegeOk ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none',
-                }}>
-                  <span style={{ fontSize: 19 }}>⚡</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Wallbox</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ladehistorie – kWh, Umsatz & Gewinn</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-              {belegeOk && (
-                <button onClick={() => { window.location.href = '/api/tv-bridge/sso' }} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-                  background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-                }}>
-                  <span style={{ fontSize: 19 }}>📺</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>TV-Steuerung</span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Ferienwohnungs-TVs – Inhalte, Screensaver, Boxen (ohne 2. Login)</span>
-                  </span>
-                  <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-                </button>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* §266f/§303: Material — Team-Rollen (Pascal 9.9.: für Dienstleister ausgeblendet) */}
-        {role === 'team' && (<>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MATERIAL</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
-          <button onClick={() => setShowMaterial(true)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-            background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-          }}>
-            <span style={{ fontSize: 19 }}>🛒</span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Material & Bestellungen</span>
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Standort wählen, Produkt antippen – fertig. Der Warenkorb kommt automatisch.</span>
-            </span>
-            <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-          </button>
-        </div>
-
-        </>)}
-
-        {/* §243ad: Beleg einreichen — für ALLE Rollen inkl. Dienstleister
-            (Upload + Ort + Notiz; keinerlei Finanz-Einblick) */}
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>BELEGE</div>
-        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)', marginBottom: 22 }}>
-          <button onClick={() => setShowBeleg(true)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px',
-            background: 'var(--tm-card)', border: 'none', cursor: 'pointer', textAlign: 'left',
-          }}>
-            <span style={{ fontSize: 19 }}>🧾</span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--tm-text)' }}>Beleg einreichen</span>
-              <span style={{ display: 'block', fontSize: 12, color: 'var(--tm-muted)', marginTop: 1 }}>Rechnung oder Kassenbon fotografieren – die Buchhaltung übernimmt</span>
-            </span>
-            <span style={{ color: 'var(--tm-muted2)', fontSize: 16 }}>›</span>
-          </button>
-        </div>
+        {/* 🧭 Pascal 7: die früheren Blöcke BEREICHE · MATERIAL · BELEGE stehen jetzt oben in HÄUFIG + GÄSTE/BETRIEB/FIRMA
+            (Daten: eintraege) — Rechte unverändert (role === 'team' + Proben) */}
 
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 16px 7px' }}>MITTEILUNGEN</div>
         <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 0 0 0.5px var(--tm-line)' }}>
@@ -650,6 +652,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
       {showMaterial && <MaterialPanel onClose={() => setShowMaterial(false)} />}
       {showPushLog && <PushLogPanel onClose={() => setShowPushLog(false)} />}
       {showDur && <CleaningDurations onClose={() => setShowDur(false)} />}
+      {showTempo && <TempoPanel onClose={() => setShowTempo(false)} />}
       {showSchulden && <SchuldenPanel onClose={() => setShowSchulden(false)} />}
       {showAutoReply && <AutoReplyPanel onClose={() => setShowAutoReply(false)} />}
     </div>

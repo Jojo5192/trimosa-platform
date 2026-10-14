@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateReviews } from '@/lib/public-data'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { createHash } from 'crypto'
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
     if (!error) imported++
   }
 
+  if (imported > 0) revalidateReviews() // Data-Cache der Inseratsseite (lib/public-data.ts)
   return NextResponse.json({ imported, parsed: reviews.length })
 }
 

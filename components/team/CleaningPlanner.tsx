@@ -504,6 +504,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
     <span key={key} style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: bg, color }}>{text}</span>
   )
   const toggle = (k: string) => setOpenKeys((o) => ({ ...o, [k]: !o[k] }))
+  // Pascal 7.10.: leere Listen zeigen den nächsten Schritt — bei gesetztem Personen-Filter „alle zeigen"
+  const alleZeigen = personFilter !== '' && (
+    <button type="button" onClick={() => setPersonFilter('')} style={{ display: 'block', margin: '10px auto 0', border: 'none', borderRadius: 999, padding: '7px 14px', background: 'var(--tm-accent-soft)', color: 'var(--tm-accent-dark)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Alle Wohnungen zeigen</button>
+  )
 
   const personChips = (persons.length > 0 || hasUnassigned) && (
     <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 8, marginBottom: 6 }}>
@@ -1076,7 +1080,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
             )}
 
             {!aktuell && rueck.length === 0 && costs.future.length === 0 && (
-              <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>Keine Reinigungen für {personLabel} im Datenfenster.</p>
+              <div style={{ textAlign: 'center', padding: 30 }}>
+                <p style={{ color: 'var(--tm-muted)', fontSize: 13.5, margin: 0 }}>Keine Reinigungen für {personLabel} im Datenfenster – neue Buchungen erscheinen hier automatisch.</p>
+                {alleZeigen}
+              </div>
             )}
             {costs.missingMinutes > 0 && (
               <p style={{ fontSize: 11.5, color: 'var(--tm-yellow)', margin: '10px 4px 0', lineHeight: 1.5 }}>
@@ -1089,7 +1096,10 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
 
       {/* ═══ 🗺 TOUREN ═══ */}
       {mode === 'touren' && (tours.length === 0 ? (
-        <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: 30 }}>Keine Einsätze für {personLabel} in den nächsten 4 Wochen.</p>
+        <div style={{ textAlign: 'center', padding: 30 }}>
+          <p style={{ color: 'var(--tm-muted)', fontSize: 13.5, margin: 0 }}>Keine Einsätze für {personLabel} in den nächsten 4 Wochen – neue Buchungen erscheinen hier automatisch.</p>
+          {alleZeigen}
+        </div>
       ) : tours.map(([day, groups]) => {
         const all = [...groups.values()].flat()
         const totalMin = all.reduce((a, s) => a + s.minutes, 0)
@@ -1143,6 +1153,8 @@ export default function CleaningPlanner({ stays, listings, cleaning }: {
           <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--tm-muted)' }}>
             <p style={{ fontSize: 40, margin: '0 0 8px' }}>🧹</p>
             <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: 'var(--tm-muted)' }}>Keine anstehenden Reinigungen für {personLabel} in den nächsten 4 Wochen.</p>
+            <p style={{ fontSize: 12.5, margin: '6px 0 0' }}>Sobald neue Buchungen reinkommen, plant die App die Reinigungen hier ein.</p>
+            {alleZeigen}
           </div>
         ) : days.map(({ iso, items }) => (
           <div key={iso} style={{ marginBottom: 16 }}>

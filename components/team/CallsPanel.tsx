@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { EmptyState } from '@/components/team/ux'
 
 /**
  * ☎️ Telefonate (§227c): Vollbild-Bereich mit allen Anrufen der
@@ -135,9 +136,9 @@ export default function CallsPanel({ onClose, bookingId, title, focus }: {
             </div>
           )}
           {!loading && !error && calls.length === 0 && (
-            <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '40px 0' }}>
-              {bookingId ? 'Zu dieser Buchung gibt es keine Telefonate.' : 'Noch keine Telefonate aufgezeichnet.'}
-            </div>
+            <EmptyState icon="chat"
+              title={bookingId ? 'Zu dieser Buchung gibt es keine Telefonate.' : 'Noch keine Telefonate aufgezeichnet.'}
+              hint="Ruft ein Gast an, erscheint das Gespräch hier automatisch." />
           )}
 
           {calls.map((c) => {

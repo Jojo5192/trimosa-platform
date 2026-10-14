@@ -1569,7 +1569,7 @@ export async function ensureDoorCode(bookingId: string): Promise<string | null> 
  * nie), die App merkt das sonst nicht. Fehlende Codes werden mit dem
  * ORIGINAL-Zeitfenster nachgelegt. Läuft im täglichen Cron + auf Abruf.
  */
-export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; orphansRemoved: number; stillMissing: string[] }> {
+export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number; healed: number; ok: number; rotated: number; orphansRemoved: number; stillMissing: string[]; ohneFenster: string[] }> {
   const today = new Date().toISOString().slice(0, 10)
   const horizon = new Date(Date.now() + daysAhead * 86400_000).toISOString().slice(0, 10)
   const { data: rows, error: rowsErr } = await supabaseAdmin
@@ -1601,6 +1601,25 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
 
   let checked = 0, healed = 0, ok = 0, rotated = 0
   const stillMissing: string[] = []
+  /** Codes ohne Zeitfenster, die NICHT getauscht wurden, weil der Gast sie womöglich schon hat */
+  const ohneFenster: string[] = []
+  // 🧭 Service-Blueprint 14.10.: Darf ein Code noch getauscht werden? Nicht mehr, sobald der Gast ihn haben
+  // kann — Gästemappe zeigt ihn ab 3 Tage vor Anreise, Auto-Nachrichten mit {tuercode} schon früher.
+  const in3Tagen = new Date(Date.now() + 3 * 86400_000).toISOString().slice(0, 10)
+  let codeVorlagen: Set<string> | null = null
+  const codeVersendet = async (bookingId: string): Promise<boolean> => {
+    try {
+      if (!codeVorlagen) {
+        const { data: v } = await supabaseAdmin.from('auto_messages').select('id, body')
+        codeVorlagen = new Set((v ?? []).filter((x) => String(x.body ?? '').includes('{tuercode}')).map((x) => String(x.id)))
+      }
+      if (!codeVorlagen.size) return false
+      const { data: logs } = await supabaseAdmin.from('auto_message_log').select('auto_message_id, channel').eq('booking_id', bookingId)
+      return (logs ?? []).some((l) => codeVorlagen!.has(String(l.auto_message_id)) && !String(l.channel ?? '').startsWith('fehler'))
+    } catch {
+      return true // im Zweifel NICHT tauschen — ein unbefristeter Code ist besser als ein ausgesperrter Gast
+    }
+  }
   for (const r of rows ?? []) {
     const listing = (Array.isArray(r.listings) ? r.listings[0] : r.listings) as { title?: string; locks?: LockRef[] } | null
     const locks = (listing?.locks ?? []) as LockRef[]
@@ -1623,13 +1642,21 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
       }
     }
 
+    // Kann der Gast den Code schon haben? Dann NICHT tauschen (sonst steht er mit dem alten Code vor der Tür).
+    // Der Code bleibt bis zur Abreise unbefristet gültig; der Waisen-Sweep unten löscht ihn danach.
+    const bekannt = unbounded && (r.check_in <= in3Tagen || await codeVersendet(r.id))
+    if (bekannt) {
+      ohneFenster.push(`${listing?.title ?? '?'} · Anreise ${r.check_in}`)
+      console.warn('[locks] verify: Code ohne Fenster NICHT rotiert (Gast kennt ihn evtl.)', { booking: r.id.slice(0, 8), listing: listing?.title })
+    }
+
     try {
-      if (unbounded) {
+      if (unbounded && !bekannt) {
         // 🔄 ROTATION statt Update: Nuki verarbeitet Auth-Updates unzuverlässig
         // (§142 — 2xx, aber Fenster kommt nie an). Neuer Code MIT Fenster
         // (neuer Wert = keine 409-Falle), alte Auths runter, door_code neu.
-        // Gefahrlos: die Mappe-Codes sind noch nicht an Gäste kommuniziert
-        // (Testbetrieb, Smoobu vergibt die produktiven Codes).
+        // Nur noch, solange der Gast den Code sicher NICHT hat (siehe „bekannt" oben) — die frühere
+        // Annahme „Codes noch nicht an Gäste kommuniziert" gilt seit den Auto-Nachrichten mit {tuercode} nicht mehr.
         const newCode = generateDoorCode()
         for (const [lockId, found] of foundOn) {
           await nukiFetch(`/smartlock/${lockId}/auth/${found.id}`, { method: 'DELETE' })
@@ -1727,7 +1754,7 @@ export async function verifyGuestCodes(daysAhead = 7): Promise<{ checked: number
   } catch (err) { console.error('[locks] orphan sweep:', err) }
 
   if (rotated) console.log('[locks] verify: rotierte Codes:', rotated)
-  return { checked, healed, ok, rotated, orphansRemoved, stillMissing }
+  return { checked, healed, ok, rotated, orphansRemoved, stillMissing, ohneFenster }
 }
 
 /**

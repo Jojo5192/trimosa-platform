@@ -197,7 +197,8 @@ export default function LocksPanel({ onClose }: { onClose: () => void }) {
 
           {!loading && !error && (data?.wohnungen ?? []).length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '30px 0' }}>
-              Keine Wohnungen mit hinterlegten Schlössern.
+              Noch keine Wohnung mit hinterlegtem Schloss.<br />
+              <span style={{ fontSize: 12.5 }}>Chefs ordnen die Schlösser im Admin-Bereich unter „🔑 Türcodes“ zu.</span>
             </div>
           )}
 

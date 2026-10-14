@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic } from '@/components/team/ux'
+import { haptic, rueckmeldung } from '@/components/team/ux'
 
 const NAVY = 'var(--tm-navy)'
 const GRUEN = 'var(--tm-green)'
@@ -98,7 +98,8 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
   }, [])
   useEffect(() => { load() }, [load])
 
-  function patch(body: Record<string, unknown>, busyKey: string): Promise<void> {
+  /** true = der Server hat gespeichert (Pascal 7.10.: Erfolgs-Toasts erst danach, nie vorher) */
+  function patch(body: Record<string, unknown>, busyKey: string): Promise<boolean> {
     const job = patchQueue.current.then(async () => {
       setBusy(busyKey)
       try {
@@ -107,14 +108,17 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         })
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`)
         await load()
+        return true
       } catch (e) {
         console.error('material', e)
+        rueckmeldung('fehler')
         showToast('Nicht gespeichert – versuch es noch einmal.', false)
+        return false
       } finally {
         setBusy(null)
       }
     })
-    patchQueue.current = job
+    patchQueue.current = job.then(() => {})
     return job
   }
 
@@ -129,11 +133,12 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
     if (!ort) { showToast('Bitte oben zuerst den Standort wählen.', false); return }
     if (istGemeldet(name)) { haptic(); showToast(`${name} steht schon auf der Liste (${ort}).`); return }
     haptic()
-    // OPTIMISTISCH: Kachel springt sofort auf ✓, Toast bestätigt
-    setPending((p) => new Set(p).add(`${name.toLowerCase()}|${ort}`))
-    showToast(`✓ ${name} notiert (${ort})`)
-    patch({ melden: { standort: ort, name } }, key).then(() => {
-      setPending((p) => { const n = new Set(p); n.delete(`${name.toLowerCase()}|${ort}`); return n })
+    // OPTIMISTISCH: Kachel springt sofort auf ✓ — der bestätigende Toast erst nach Server-OK
+    const standort = ort
+    setPending((p) => new Set(p).add(`${name.toLowerCase()}|${standort}`))
+    patch({ melden: { standort, name } }, key).then((ok) => {
+      setPending((p) => { const n = new Set(p); n.delete(`${name.toLowerCase()}|${standort}`); return n })
+      if (ok) showToast(`✓ ${name} notiert (${standort})`)
     })
   }
 
@@ -201,7 +206,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
                 </div>
                 <div style={{ fontSize: 10.5, color: 'var(--tm-muted)' }}>{b.von} · {new Date(b.at).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}</div>
               </div>
-              <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'bestellt' }, b.id); showToast(`📦 ${b.name} als bestellt markiert`) }} disabled={busy === b.id}
+              <button className="mat-tap" onClick={() => { haptic(); void patch({ bedarfId: b.id, status: 'bestellt' }, b.id).then((ok) => { if (ok) showToast(`📦 ${b.name} als bestellt markiert`) }) }} disabled={busy === b.id}
                 style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: NAVY, color: '#fff', cursor: 'pointer' }}>Bestellt</button>
               <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'entfernt' }, b.id) }} disabled={busy === b.id} aria-label="Von der Liste entfernen"
                 style={{ border: 'none', borderRadius: 999, padding: '6px 9px', fontSize: 11.5, background: 'var(--tm-surface2)', color: 'var(--tm-muted)', cursor: 'pointer' }}>✕</button>
@@ -212,7 +217,7 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
           <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', boxShadow: 'inset 0 -0.5px 0 var(--tm-line)', opacity: 0.75 }}>
             <span style={{ fontSize: 13 }}>📦</span>
             <div style={{ flex: 1, minWidth: 0, fontSize: 14, color: 'var(--tm-text)' }}>{b.name} <span style={{ fontSize: 11, color: 'var(--tm-muted)' }}>· bestellt</span></div>
-            <button className="mat-tap" onClick={() => { haptic(); patch({ bedarfId: b.id, status: 'aufgefuellt' }, b.id); showToast(`✓ ${b.name} aufgefüllt`) }} disabled={busy === b.id}
+            <button className="mat-tap" onClick={() => { haptic(); void patch({ bedarfId: b.id, status: 'aufgefuellt' }, b.id).then((ok) => { if (ok) showToast(`✓ ${b.name} aufgefüllt`) }) }} disabled={busy === b.id}
               style={{ border: 'none', borderRadius: 999, padding: '6px 11px', fontSize: 11.5, fontWeight: 700, background: 'var(--tm-green-soft)', color: 'var(--tm-green)', cursor: 'pointer' }}>✓ Aufgefüllt</button>
           </div>
         ))}
@@ -275,7 +280,17 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
         {!data && !error && <div style={{ ...CARD, color: 'var(--tm-muted)', fontSize: 13 }}>Lädt…</div>}
 
         {/* Bestell-Listen (aktiver Standort oder alle) */}
-        {data && (ort ? [bedarfBlock(ort)] : data.standorte.map((s) => bedarfBlock(s)))}
+        {data && (() => {
+          const bloecke = (ort ? [ort] : data.standorte).map((s) => bedarfBlock(s))
+          if (bloecke.some(Boolean)) return bloecke
+          // Pascal 7.10.: leere Bestell-Liste nicht verschweigen, sondern sagen, was als Nächstes geht
+          return (
+            <div key="bestell-leer" style={{ ...CARD, fontSize: 13, color: 'var(--tm-muted)', lineHeight: 1.5 }}>
+              <span style={{ fontWeight: 700, color: 'var(--tm-text)' }}>🛒 Nichts zu bestellen{ort ? ` für ${ort}` : ''}.</span>{' '}
+              {ort ? 'Fehlt etwas? Tipp unten in der Merkliste auf das Produkt.' : 'Fehlt etwas? Wähl oben den Standort und tipp unten auf das Produkt.'}
+            </div>
+          )
+        })()}
 
         {/* Merkliste */}
         {data && (
@@ -303,7 +318,12 @@ export default function MaterialPanel({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {data.artikel.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Die Merkliste ist leer – Chefs pflegen sie unten.</p>}
-            {data.artikel.length > 0 && gefiltert.length === 0 && <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>Nichts gefunden.</p>}
+            {data.artikel.length > 0 && gefiltert.length === 0 && (
+              <p style={{ margin: '8px 0 2px', fontSize: 12, color: 'var(--tm-muted)' }}>
+                Nichts gefunden – probier ein anderes Wort oder eine andere Kategorie.{' '}
+                <button type="button" className="mat-tap" onClick={() => { haptic(); setSuche(''); setKat('') }} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--tm-accent-dark)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Suche zurücksetzen</button>
+              </p>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginTop: 10 }}>
               {gefiltert.map((a) => {
                 const gemeldet = istGemeldet(a.name)

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateEmpfehlungen } from '@/lib/public-data'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -8,6 +9,7 @@ import { REGIONS } from '@/lib/regions'
 function revalidateGuidePages() {
   revalidatePath('/region/[slug]', 'page')
   revalidatePath('/erlebnis/[slug]', 'page')
+  revalidateEmpfehlungen() // Data-Cache (lib/public-data.ts)
 }
 
 /**

@@ -114,11 +114,15 @@ export async function GET() {
     }
   }
 
+  // 🤖 Bot-Konto für die Client-Anzeige (Figur-Avatar + Warte-Blase, Chefsache 7.10.) —
+  // für alle Rollen; global gecacht, also meist ohne DB-Abfrage
+  const botId = await getClaudeBotId(false).catch(() => null)
+
   return NextResponse.json({
     userId: auth.userId,
     canCreate: auth.role === 'admin' || auth.role === 'staff',
     isAdmin: auth.role === 'admin',
-    chats, directory,
+    chats, directory, botId,
   }, NO_STORE)
 }
 

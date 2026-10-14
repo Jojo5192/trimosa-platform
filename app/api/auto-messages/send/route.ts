@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { runAutoMessages } from '@/lib/auto-messages-engine'
+import { runAutoMessages, meldeZustellprobleme } from '@/lib/auto-messages-engine'
 
 /**
  * 📨 Auto-Nachrichten-Versand (Phase B, §148):
@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
   try {
     const report = await runAutoMessages()
     await ausfallBehoben('auto-messages', 'Auto-Nachrichten')
+    // Nicht zugestellte Nachrichten / fehlende Türcodes ans Team melden (Fehler hier bremsen den Lauf nicht)
+    await meldeZustellprobleme(report).catch((e) => console.error('[auto-messages] Zustell-Meldung:', e))
     return NextResponse.json(report)
   } catch (err) {
     console.error('[auto-messages] cron:', err)

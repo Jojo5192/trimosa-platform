@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateProfiles, revalidateEmpfehlungen } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     ...fields,
   })
 
-  if (!e1) return NextResponse.json({ ok: true })
+  if (!e1) { revalidateProfiles(); revalidateEmpfehlungen(); return NextResponse.json({ ok: true }) }
 
   // 2. Optional columns probably don't exist yet — retry without them
   console.warn('[ProfileSave] Full upsert failed:', e1.message, '– retrying without optional columns')
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     ...safeFields,
   })
 
-  if (!e2) return NextResponse.json({ ok: true })
+  if (!e2) { revalidateProfiles(); revalidateEmpfehlungen(); return NextResponse.json({ ok: true }) }
 
   console.error('[ProfileSave] Minimal upsert also failed:', e2.message)
   return NextResponse.json({ error: e2.message }, { status: 500 })

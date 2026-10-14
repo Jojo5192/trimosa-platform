@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { askClaude, askClaudeWithFile } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
-import { getClaudeBotId, postAsClaude } from '@/lib/claude-bot'
+import { getClaudeBotId, postAsClaude, CLAUDE_TONFALL } from '@/lib/claude-bot'
 import { buildBotContext } from '@/lib/team-bot-context'
 
 /**
@@ -106,7 +106,8 @@ export async function GET(req: NextRequest) {
     } catch { image = null }
 
     try {
-      const system = await getPrompt('team_bot')
+      // 🎭 Tonfall-Block HINTER dem (ggf. im Prompt-Studio überschriebenen) Prompt — dessen Regeln haben Vorrang
+      const system = `${await getPrompt('team_bot')}\n\n${CLAUDE_TONFALL}`
       const user = `${liveData}
 
 ═══ Chat-Verlauf (neueste unten):

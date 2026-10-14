@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
+import { getListingByLookup, getHostProfilePublic, getReviewsPage } from '@/lib/public-data'
+import { resolvePolicy } from '@/lib/cancel-policy'
 import { notFound, permanentRedirect } from 'next/navigation'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import BookingBox from './BookingBox'
 import PhotoGrid from './PhotoGrid'
@@ -18,11 +19,11 @@ import RegionMap from '@/components/RegionMap'
 import Link from 'next/link'
 import Image from 'next/image'
 import { buildCardRating } from '@/lib/rating'
-import { getInitialReviews } from '@/lib/reviews-data'
+import { buildInitialReviews } from '@/lib/reviews-data'
 import { getPriceFromMap } from '@/lib/price-from'
 import { REGIONS } from '@/lib/regions'
 import { TRANSLATION_LANGS, type TranslationEntry } from '@/lib/listing-translate'
-import { t, isUiLang, type UiLang } from '@/lib/i18n'
+import { t, isUiLang, type UiLang, langHref } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
 import { makeTr } from '@/lib/static-translate'
 import { getHostTeam } from '@/lib/hosts'
@@ -47,11 +48,8 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
   const { id } = await params
   const { lang: langParam } = await searchParams
   const lookup = listingLookup(id)
-  const { data: listing } = await supabaseAdmin
-    .from('listings')
-    .select('title, description, location, city, images, is_active, slug, id, translations')
-    .eq(lookup.column, lookup.value)
-    .single()
+  // Gleicher Cache-Eintrag wie die Seite selbst (lib/public-data.ts) — vorher eine zweite Query je Anfrage
+  const listing = await getListingByLookup(lookup.column, lookup.value).catch((e) => { if (!/nicht gefunden/.test(String(e))) console.error('[listing] load:', e); return null })
 
   if (!listing || listing.is_active === false) return {}
 
@@ -86,7 +84,7 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
     openGraph: {
       title,
       description,
-      url: `${siteUrl}${canonicalPath}`,
+      url: activeLang ? `${siteUrl}/${activeLang}${canonicalPath}` : `${siteUrl}${canonicalPath}`,
       images: image ? [{ url: image }] : undefined,
     },
   }
@@ -117,7 +115,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const { id } = await params
   const { checkin: searchCheckin, checkout: searchCheckout, guests: searchGuests, review: showReviewForm, lang: langParam } = await searchParams
   const lookup = listingLookup(id)
-  const { data: listing } = await supabaseAdmin.from('listings').select('*').eq(lookup.column, lookup.value).single()
+  const listing = await getListingByLookup(lookup.column, lookup.value).catch((e) => { if (!/nicht gefunden/.test(String(e))) console.error('[listing] load:', e); return null })
 
   if (!listing || listing.is_active === false) notFound()
 
@@ -128,23 +126,23 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     if (searchCheckout) qs.set('checkout', searchCheckout)
     if (searchGuests) qs.set('guests', searchGuests)
     if (showReviewForm) qs.set('review', showReviewForm)
-    permanentRedirect(`/listing/${listing.slug}${qs.toString() ? `?${qs}` : ''}`)
+    permanentRedirect(langHref(isUiLang(langParam) ? langParam : undefined, `/listing/${listing.slug}${qs.toString() ? `?${qs}` : ''}`))
   }
 
-  // Fetch host profile (for the host badge; booking settings now live on the listing)
-  const { data: hostProfile } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .eq('id', listing.host_id)
-    .maybeSingle()
+  // Vorher 5 serielle Supabase-Roundtrips (1,0–2,5 s TTFB) — jetzt gecacht und parallel (lib/public-data.ts)
+  const [hostProfile, cookieLang, hostTeam, reviewsPage, priceFromMap] = await Promise.all([
+    getHostProfilePublic(String(listing.host_id)).catch(() => null),
+    getUiLang(),
+    getHostTeam(),
+    getReviewsPage(String(listing.id), 6).catch(() => ({ reviews: [], total: 0 })),
+    getPriceFromMap(),
+  ])
 
   const images: string[] = listing.images ?? []
   const roomsRaw: { id: string; name: string; description?: string; features?: string[]; images: string[] }[] = listing.rooms ?? []
 
   // Language layer: the site-wide cookie (flag switcher) drives the language;
   // an explicit ?lang= (SEO/hreflang links) overrides it. German is canonical.
-  const cookieLang = await getUiLang()
-  const hostTeam = await getHostTeam()
   const lang: UiLang = isUiLang(langParam) ? langParam : cookieLang
   const tr = (listing.translations ?? {}) as Record<string, TranslationEntry>
   const availableLangs = TRANSLATION_LANGS.filter((l) => tr[l]?.title)
@@ -183,9 +181,9 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   // aggregateRating/review im JSON-LD (Google-Sterne-Snippets) und rendert
   // echte Review-Texte ins initiale HTML (statt „Laden…")
   const listingRating = buildCardRating(listing as Record<string, unknown>)
-  const initialReviews = await getInitialReviews(listing as Record<string, unknown>)
+  const initialReviews = buildInitialReviews(listing as Record<string, unknown>, reviewsPage)
   // §161-Jupas ②: „ab X €/Nacht" vor der Datumswahl (täglicher Preis-Cache)
-  const priceFrom = (await getPriceFromMap())[listing.id] ?? null
+  const priceFrom = priceFromMap[listing.id] ?? null
   const reviewItems = initialReviews.reviews
     .filter((r) => (r.review_text ?? '').trim().length >= 20 && r.rating > 0)
     .slice(0, 8)
@@ -213,7 +211,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     identifier: String(listing.slug ?? listing.id),
     name: listing.title,
     description: listing.description || undefined,
-    url: `${siteUrl}/listing/${listing.slug ?? listing.id}`,
+    url: `${siteUrl}${langHref(isUiLang(langParam) ? langParam : undefined, `/listing/${listing.slug ?? listing.id}`)}`,
     image: jsonLdImages.length > 0 ? jsonLdImages : undefined,
     address: {
       '@type': 'PostalAddress',
@@ -389,6 +387,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               allowRequests={listing.allow_requests ?? true}
               minRequestNights={listing.min_request_nights ?? 1}
               cancellationPolicy={listing.cancellation_policy ?? 'moderat'}
+              cancelPolicy={resolvePolicy(listing)}
               initialCheckIn={searchCheckin}
               initialCheckOut={searchCheckout}
               initialGuests={searchGuests ? parseInt(searchGuests) : undefined}
@@ -423,7 +422,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
                 {/* Region teaser — the elegant road into the region content */}
                 {region && (
-                  <Link href={`/region/${region.slug}`} className="listing-card" style={{
+                  <Link href={langHref(lang, `/region/${region.slug}`)} className="listing-card" style={{
                     display: 'flex', flexWrap: 'wrap', marginTop: '18px', borderRadius: '18px', overflow: 'hidden',
                     background: 'linear-gradient(135deg, #12222E, #1E3A4C)', textDecoration: 'none',
                   }}>
@@ -564,7 +563,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-            {[{ label: t(lang, 'Über uns'), href: '/ueber-uns' }, { label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: 'FAQ', href: '/faq' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
+            {[{ label: t(lang, 'Über uns'), href: langHref(lang, '/ueber-uns') }, { label: t(lang, 'Impressum'), href: langHref(lang, '/impressum') }, { label: t(lang, 'Datenschutz'), href: langHref(lang, '/datenschutz') }, { label: t(lang, 'AGB'), href: langHref(lang, '/agb') }, { label: 'FAQ', href: langHref(lang, '/faq') }, { label: t(lang, 'Barrierefreiheit'), href: langHref(lang, '/barrierefreiheit') }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>

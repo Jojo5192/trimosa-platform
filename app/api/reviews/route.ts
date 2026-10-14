@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateReviews } from '@/lib/public-data'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient as createServerClient } from '@/lib/supabase-server'
 import { makeTr } from '@/lib/static-translate'
@@ -117,6 +118,11 @@ export async function POST(req: NextRequest) {
   if (!isHost && !isGuestReview) {
     return NextResponse.json({ error: 'Only hosts can import external reviews' }, { status: 403 })
   }
+  // Gast-Bewertungen (source 'trimosa') nur über den geprüften Gast-Pfad — ein Gastgeber darf keine „verifizierte"
+  // Eigenbewertung anlegen (Echtheitshinweis auf der Inseratsseite, § 5b Abs. 3 UWG, 14.10.2026)
+  if (isHost && isGuestReview) {
+    return NextResponse.json({ error: 'Gast-Bewertungen entstehen nur über den Gast-Pfad.' }, { status: 403 })
+  }
 
   // For guest reviews, verify they had a completed booking
   if (isGuestReview && !isHost) {
@@ -170,6 +176,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  revalidateReviews() // Data-Cache der Inseratsseite (lib/public-data.ts)
   return NextResponse.json({ review })
 }
 
@@ -206,5 +213,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   await supabaseAdmin.from('reviews').delete().eq('id', id)
+  revalidateReviews() // Data-Cache der Inseratsseite (lib/public-data.ts)
   return NextResponse.json({ ok: true })
 }

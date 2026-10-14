@@ -139,7 +139,7 @@ export default function WallboxPanel({ onClose }: { onClose: () => void }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tm-muted)', letterSpacing: '0.05em', margin: '0 4px 7px' }}>LADEHISTORIE</div>
           {!loading && !error && charges.length === 0 && (
             <div style={{ padding: '26px 14px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5 }}>
-              Noch keine Ladevorgänge gefunden.
+              Noch keine Ladevorgänge – sobald ein Auto lädt, steht es hier.
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

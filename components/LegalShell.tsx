@@ -53,19 +53,24 @@ export default async function LegalShell({
   title,
   updated,
   children,
+  lang: langProp,
 }: {
   title: string
   updated?: string
   children: React.ReactNode
+  /** Sprache aus dem Pfad (/en/agb …); ohne Angabe gilt das Cookie */
+  lang?: UiLang
 }) {
-  const lang = await getUiLang()
+  const lang: UiLang = langProp ?? await getUiLang()
   let heading = title
+  let updatedText = updated
   let content: ReactNode = children
   if (lang !== 'de') {
-    const texts: string[] = [title]
+    const texts: string[] = [title, ...(updated ? [updated] : [])]
     collectStrings(children, texts)
     const T = await makeTr(lang, texts)
     heading = T(title)
+    if (updated) updatedText = T(updated)
     content = applyTr(children, T)
   }
 
@@ -77,7 +82,7 @@ export default async function LegalShell({
           {heading}
         </h1>
         {updated && (
-          <p style={{ fontSize: '12px', color: '#9A968E', margin: '0 0 12px' }}>{UPDATED_LABEL[lang]} {updated}</p>
+          <p style={{ fontSize: '12px', color: '#9A968E', margin: '0 0 12px' }}>{UPDATED_LABEL[lang]} {updatedText}</p>
         )}
         {lang !== 'de' && (
           <div style={{

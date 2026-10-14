@@ -62,11 +62,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const poiEntries: MetadataRoute.Sitemap = allPois().flatMap(({ poi }) => multiLang(`/erlebnis/${poi.slug}`, 0.6))
 
-  const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb', '/barrierefreiheit', '/stornierung'].map((path) => ({
-    url: `${siteUrl}${path}`,
-    changeFrequency: 'yearly',
-    priority: 0.3,
-  }))
+  // Rechtsseiten seit 14.10.2026 mit Sprachpfaden (/en|fr|nl/agb …)
+  const legalEntries: MetadataRoute.Sitemap = ['/impressum', '/datenschutz', '/agb', '/barrierefreiheit', '/stornierung']
+    .flatMap((path) => multiLang(path, 0.3))
 
   // §226: kommerzielle Standort-Landingpages (deutsch) + native NL-Seite
   const landingEntries: MetadataRoute.Sitemap = [

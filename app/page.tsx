@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getActiveListings } from '@/lib/public-data'
 import Link from 'next/link'
 import Image from 'next/image'
 import NavBar from '@/components/NavBar'
 import SearchResults, { type CardData, type ComboSuggestion } from '@/components/SearchResults'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 import { getUiLang } from '@/lib/i18n-server'
 import { isUiLang } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
@@ -211,8 +211,9 @@ export default async function Home({
     if (diff > 0) nights = diff
   }
 
-  const { data: allListings } = await supabaseAdmin.from('listings').select('*').eq('is_active', true).order('created_at', { ascending: false })
-  const filtered = allListings ?? []
+  // Gecacht (lib/public-data.ts, 10 Min, Tag 'listings') statt Supabase-Roundtrip je Anfrage
+  const allListings = await getActiveListings().catch((e) => { console.error('[home] listings:', e); return [] })
+  const filtered = allListings
 
   // A search is active with a location, a guest count, OR just dates — a
   // date-only search should open the results + map view too.
@@ -235,7 +236,7 @@ export default async function Home({
   // length instead of only the exact range.
   const flexDays = flex ? (parseInt(flex) || 3) : 0
   type Avail = { available: boolean; totalPrice: number; flexCheckin?: string; flexCheckout?: string }
-  let availabilityMap: Record<string, Avail> = {}
+  const availabilityMap: Record<string, Avail> = {}
   if (nights > 0) {
     // Each listing is priced with its own host's markup.
     const hostMarkup = await getHostMarkupMap(ranked.map(r => (r.listing as Record<string, unknown>).host_id as string))
@@ -413,7 +414,7 @@ export default async function Home({
               </h2>
               <span style={{ fontSize: '12.5px', color: '#8A8578' }}>
                 {t(lang, 'Ausflugsziele, Karten & Tipps —')}{' '}
-                <Link href="/ueber-uns" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{t(lang, 'über TRIMOSA →')}</Link>
+                <Link href={langHref(lang, '/ueber-uns')} style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{t(lang, 'über TRIMOSA →')}</Link>
               </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(46vw, 250px), 1fr))', gap: '14px' }}>
@@ -427,7 +428,7 @@ export default async function Home({
                   .find((s): s is string => !!s))
                   ?? r.pois.find((p) => p.image)?.image?.src
                 return (
-                  <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{
+                  <Link key={r.slug} href={langHref(lang, `/region/${r.slug}`)} className="listing-card" style={{
                     position: 'relative', display: 'block', textDecoration: 'none',
                     borderRadius: '16px', overflow: 'hidden', aspectRatio: '16/10',
                     background: 'linear-gradient(135deg, #12222E, #1E3A4C)',
@@ -499,11 +500,11 @@ export default async function Home({
               {cardData.map((card, index) => {
                 const g = CARD_GRADIENTS[index % CARD_GRADIENTS.length]
                 return (
-                  <Link key={card.id} href={`/listing/${card.slug ?? card.id}`} className="listing-card"
+                  <Link key={card.id} href={langHref(lang, `/listing/${card.slug ?? card.id}`)} className="listing-card"
                     style={{ display: 'block', textDecoration: 'none', borderRadius: '14px', backgroundColor: '#fff', border: '1px solid #EAE7E0' }}>
                     <div className="card-image-wrap" style={{ position: 'relative', aspectRatio: '4/3', background: `linear-gradient(160deg, ${g.from} 0%, ${g.to} 100%)`, overflow: 'hidden', borderRadius: '13px 13px 0 0' }}>
                       {card.image
-                        ? <Image src={card.image} alt={card.title} fill sizes="(max-width: 768px) 50vw, 25vw" style={{ objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }} />
+                        ? <Image src={card.image} alt={card.title} fill loading={index < 2 ? 'eager' : undefined} fetchPriority={index === 0 ? 'high' : undefined} sizes="(max-width: 768px) 50vw, 25vw" style={{ objectFit: 'cover', ...(card.unavailable ? { filter: 'grayscale(60%) opacity(0.7)' } : {}) }} />
                         : <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.22) 0%, transparent 55%)' }} />
                       }
                       {card.unavailable && (
@@ -554,7 +555,7 @@ export default async function Home({
           {regionsSection}
 
           {/* Floating map-view toggle — booking-site style, bottom center */}
-          <Link href="/?view=map" aria-label={t(lang, 'Karte anzeigen')} style={{
+          <Link href={langHref(lang, '/?view=map')} aria-label={t(lang, 'Karte anzeigen')} style={{
             position: 'fixed', bottom: '26px', left: '50%', transform: 'translateX(-50%)',
             zIndex: 50, display: 'inline-flex', alignItems: 'center', gap: '8px',
             padding: '12px 22px', borderRadius: '999px',
@@ -637,12 +638,12 @@ export default async function Home({
 
           {/* CTA */}
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <Link href="/?view=map" style={{
+            <Link href={langHref(lang, '/?view=map')} style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '12px 26px', borderRadius: '999px', color: '#1A1400',
               background: 'var(--gold)', textDecoration: 'none',
             }}>{t(lang, 'Alle Unterkünfte ansehen →')}</Link>
-            <Link href="/ueber-uns" style={{
+            <Link href={langHref(lang, '/ueber-uns')} style={{
               display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700,
               padding: '11px 24px', borderRadius: '999px', color: '#F5F0E8',
               border: '1.5px solid rgba(245,240,232,0.45)', textDecoration: 'none',
@@ -673,22 +674,23 @@ export default async function Home({
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
             {[
-              { label: t(lang, 'Über uns'), href: '/ueber-uns' },
-              { label: 'Trier', href: '/region/trier' },
-              { label: 'Bitburg', href: '/region/bitburg' },
-              { label: 'Südeifel', href: '/region/suedeifel' },
-              { label: 'Saartal', href: '/region/saar' },
-              { label: t(lang, 'Impressum'), href: '/impressum' },
-              { label: t(lang, 'Datenschutz'), href: '/datenschutz' },
-              { label: t(lang, 'AGB'), href: '/agb' },
-              { label: 'FAQ', href: '/faq' },
-              { label: t(lang, 'Stornierung'), href: '/stornierung' },
-              { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' },
+              { label: t(lang, 'Über uns'), href: langHref(lang, '/ueber-uns') },
+              { label: 'Trier', href: langHref(lang, '/region/trier') },
+              { label: 'Bitburg', href: langHref(lang, '/region/bitburg') },
+              { label: 'Südeifel', href: langHref(lang, '/region/suedeifel') },
+              { label: 'Saartal', href: langHref(lang, '/region/saar') },
+              { label: t(lang, 'Impressum'), href: langHref(lang, '/impressum') },
+              { label: t(lang, 'Datenschutz'), href: langHref(lang, '/datenschutz') },
+              { label: t(lang, 'AGB'), href: langHref(lang, '/agb') },
+              { label: 'FAQ', href: langHref(lang, '/faq') },
+              { label: t(lang, 'Stornierung'), href: langHref(lang, '/stornierung') },
+              { label: t(lang, 'Barrierefreiheit'), href: langHref(lang, '/barrierefreiheit') },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
             {/* 📺 Interner Absprung ins TV-Admin (tv.trimosa.de) — bewusst dezent.
                 Als eingeloggter Admin/Gastgeber: SSO, direkt drin. Sonst: Login. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API-Route mit Redirect, keine Seite */}
             <a href="/api/tv-bridge/sso" style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }} title="TV-Steuerung (intern)">📺 TV</a>
           </div>
         </div>

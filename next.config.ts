@@ -15,6 +15,12 @@ const nextConfig: NextConfig = {
         hostname: 'upload.wikimedia.org',
         pathname: '/wikipedia/commons/**',
       },
+      // Bewerter-Avatare (lib/reviews-sync.ts) — über den Optimierer: 36 px statt 1200 px, und der Besucher
+      // kontaktiert Airbnb/Google/Booking nicht mehr direkt (Audit 14.10.2026; Allowlist: lib/image-proxy.ts)
+      { protocol: 'https', hostname: 'a0.muscache.com' },
+      { protocol: 'https', hostname: '**.googleusercontent.com' },
+      { protocol: 'https', hostname: '**.bstatic.com' },
+      { protocol: 'https', hostname: 'graph.facebook.com' },
     ],
   },
   async redirects() {

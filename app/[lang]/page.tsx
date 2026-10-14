@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Home, { generateMetadata as rootGenerateMetadata } from '@/app/page'
 
+// Erstbesuch je Sprache übersetzt per KI (Root-Seite exportiert dasselbe; Route-Config gilt je Segment)
+export const maxDuration = 120
+
 /**
  * §173-Jupas ④ Etappe 3: Sprachpfad-STARTSEITE (/en, /fr, /nl) — dünner
  * Wrapper auf die Root-Startseite; Suchparameter (q/guests/…) laufen durch.

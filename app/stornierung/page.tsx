@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { isUiLang } from '@/lib/i18n'
+import { legalAlternates } from '@/lib/legal-meta'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
 // §161-Jupas ⑤: Storno-/Erstattungs-Richtlinien als eigene, verlinkte Seite
@@ -7,13 +9,16 @@ import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 export const maxDuration = 120
 
 export const metadata: Metadata = {
+  alternates: legalAlternates('/stornierung'),
   title: 'Stornierung & Erstattung',
   description: 'Stornierungsbedingungen und Erstattungen bei TRIMOSA Apartments & Homes — Richtlinien, Ablauf und Fristen im Überblick.',
 }
 
-export default function StornierungPage() {
+export default async function StornierungPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang) ? spLang : undefined
   return (
-    <LegalShell title="Stornierung & Erstattung">
+    <LegalShell lang={lang} title="Stornierung & Erstattung">
       <LegalSection heading="Welche Stornierungsbedingungen gelten für meine Buchung?">
         <LegalP>
           Verbindlich ist immer die Stornierungsrichtlinie, die beim

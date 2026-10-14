@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import ListingPage, { generateMetadata as rootGenerateMetadata } from '@/app/listing/[id]/page'
 
+// Erstbesuch je Sprache übersetzt per KI (Root-Seite exportiert dasselbe; Route-Config gilt je Segment)
+export const maxDuration = 120
+
 /**
  * §173-Jupas ④ (Etappe 1): echte Sprachpfade — /en|fr|nl/listing/<slug>
  * rendert die bestehende Listing-Seite in der jeweiligen Sprache (dünner

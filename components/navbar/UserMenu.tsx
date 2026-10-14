@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import type { User } from '@supabase/supabase-js'
 import MenuItem from './MenuItem'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 
 /**
  * Avatar button + dropdown menu (extracted from NavBar.tsx).
@@ -103,7 +103,7 @@ export default function UserMenu({ user, isHost, avatarUrl, initials, open, onTo
             </MenuItem>
           )}
 
-          <MenuItem href="/ueber-uns" onClick={onClose}>
+          <MenuItem href={langHref(lang, '/ueber-uns')} onClick={onClose}>
             <span style={{ marginRight: '8px' }}>✨</span>
             {t(lang, 'Über TRIMOSA')}
           </MenuItem>

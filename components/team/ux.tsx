@@ -2,44 +2,61 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { pickSpruch } from '@/lib/start-curtain'
+import { HAPTIK, haptikArt, spieleTon, type RueckmeldungArt } from '@/lib/klang'
 
 /**
  * 📱 §209 iOS-Feeling-Paket (Pascal): geteilte UX-Bausteine der Team-App —
  * Haptik, Pull-to-Refresh und Skeleton-Ladezustände.
  */
 
-/** 📳 Haptik: Android über navigator.vibrate; iOS 17.4+ über den
- *  <input type="checkbox" switch>-Trick — ein programmatischer Klick auf das
- *  Label löst das System-Tick aus (funktioniert nur innerhalb einer
- *  User-Geste, also aus onClick/onTouch-Handlern heraus — genau da rufen
- *  wir auf). Ohne Support passiert einfach nichts. */
+/** 📳 iOS-Rückfall (Safari kennt navigator.vibrate nicht): der <input type="checkbox" switch>-Trick
+ *  (iOS 17.4+/18) — ein programmatischer Klick auf das Label löst das System-Tick aus. Funktioniert nur
+ *  im Rahmen einer Nutzer-Geste; ohne Support passiert einfach nichts. Ein verstecktes, für Vorlese-
+ *  Programme unsichtbares Element, einmal angelegt und wiederverwendet. */
 let hapticEl: HTMLLabelElement | null = null
-/** §282.12 Muster: tap = leicht · success = doppelter Puls · error = langer Puls */
+function iosTick() {
+  if (!hapticEl || !hapticEl.isConnected) {
+    hapticEl = document.createElement('label')
+    hapticEl.setAttribute('aria-hidden', 'true')
+    hapticEl.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;overflow:hidden;'
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.tabIndex = -1
+    input.setAttribute('switch', '')
+    hapticEl.appendChild(input)
+    document.body.appendChild(hapticEl)
+  }
+  hapticEl.click()
+}
+
+/** 📳 Haptik (§282.12, Pascal 7.10. Gestaltung 2) — Muster aus lib/klang.ts, abgestimmt auf die Töne:
+ *  tap = leicht · gesendet = ein festerer Puls · erledigt/'success' = zwei Pulse · fehler/'error' = zwei lange Pulse.
+ *  Android über navigator.vibrate; NUR wo vibrate fehlt (iOS-Safari) der Switch-Trick (iOS kennt nur ein
+ *  Tick: Anzahl/Abstand machen den Unterschied). Vor der ersten Nutzer-Geste passiert gar nichts. */
 export type HapticKind = 'tap' | 'success' | 'error'
-const VIBRATE: Record<HapticKind, number | number[]> = { tap: 10, success: [12, 60, 12], error: 45 }
-export function haptic(kind: HapticKind = 'tap') {
+export function haptic(kind: HapticKind | RueckmeldungArt = 'tap') {
   try {
     const nav = navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean; userActivation?: { hasBeenActive: boolean } }
     // Chrome blockt vibrate() vor der ersten Nutzer-Geste und meldet das als Konsolen-Fehler — dann gar nicht erst rufen
-    const aktiv = nav.userActivation ? nav.userActivation.hasBeenActive : true
-    if (aktiv && typeof nav.vibrate === 'function' && nav.vibrate(VIBRATE[kind])) return
-    if (!hapticEl || !document.body.contains(hapticEl)) {
-      hapticEl = document.createElement('label')
-      hapticEl.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;overflow:hidden;'
-      const input = document.createElement('input')
-      input.type = 'checkbox'
-      input.setAttribute('switch', '')
-      hapticEl.appendChild(input)
-      document.body.appendChild(hapticEl)
+    if (nav.userActivation && !nav.userActivation.hasBeenActive) return
+    const muster = HAPTIK[haptikArt(kind)]
+    if (typeof nav.vibrate === 'function') {
+      nav.vibrate(typeof muster.vibrate === 'number' ? muster.vibrate : [...muster.vibrate])
+      return
     }
-    hapticEl.click()
-    // iOS kennt nur das eine System-Tick: Erfolg = zwei Ticks, Fehler = drei
-    if (kind !== 'tap') {
-      const el = hapticEl
-      setTimeout(() => el.click(), 70)
-      if (kind === 'error') setTimeout(() => el.click(), 140)
+    for (const ms of muster.ios) {
+      if (ms <= 0) iosTick()
+      else setTimeout(() => { try { iosTick() } catch { /* egal */ } }, ms)
     }
   } catch { /* Haptik ist nice-to-have */ }
+}
+
+/** 🔔 Rückmeldung = Ton + Haptik aus einem Guss (Pascal 7.10.): sparsam einsetzen — Nachricht gesendet,
+ *  Aufgabe erledigt (erst NACH der Server-Bestätigung), Fehler beim Speichern/Senden. 'tap' = nur Haptik.
+ *  Der Ton folgt dem Schalter „Töne" (Mehr → Darstellung) und dem Stumm-Schalter des Geräts. */
+export function rueckmeldung(art: RueckmeldungArt) {
+  haptic(art)
+  if (art !== 'tap') spieleTon(art)
 }
 
 /** ⬇️ Pull-to-Refresh für Touch-Scroller: Hook an den Scroller-Ref hängen,
@@ -308,11 +325,17 @@ export function initials(name?: string | null): string {
 
 /* ── §282.10 Leere Zustände mit Charakter: Linien-Illustration in Markenfarbe
    + ein Satz aus dem Sprüche-Fundus des Start-Vorhangs ── */
-const EMPTY_ART: Record<'house' | 'check' | 'chat' | 'calendar', string[]> = {
+const EMPTY_ART: Record<'house' | 'check' | 'chat' | 'calendar' | 'search' | 'bell' | 'box', string[]> = {
   house: ['M12 36 L44 12 L76 36', 'M22 30 V58 H66 V30', 'M39 58 V44 H49 V58', 'M14 14 a5 5 0 1 0 0.01 0'],
   check: ['M44 12 a20 20 0 1 0 0.01 0', 'M34 33 l7 7 l13 -14'],
   chat: ['M14 18 h36 a6 6 0 0 1 6 6 v12 a6 6 0 0 1 -6 6 h-22 l-8 7 v-7 h-6 a6 6 0 0 1 -6 -6 v-12 a6 6 0 0 1 6 -6 z', 'M60 30 h10 a5 5 0 0 1 5 5 v10 a5 5 0 0 1 -5 5 h-4 v6 l-7 -6 h-12 a5 5 0 0 1 -5 -5 v-3'],
   calendar: ['M18 16 h52 a4 4 0 0 1 4 4 v34 a4 4 0 0 1 -4 4 h-52 a4 4 0 0 1 -4 -4 v-34 a4 4 0 0 1 4 -4 z', 'M14 28 h60', 'M30 10 v10', 'M58 10 v10', 'M28 40 h6', 'M41 40 h6', 'M54 40 h6', 'M28 48 h6', 'M41 48 h6'],
+  // Lupe (Filter/Suche ohne Treffer)
+  search: ['M54 28 a14 14 0 1 1 -28 0 a14 14 0 1 1 28 0', 'M50 38 l12 12'],
+  // Glocke (Mitteilungen)
+  bell: ['M30 44 V30 a14 14 0 0 1 28 0 V44 l5 5 H25 z', 'M39 53 a5 5 0 0 0 10 0', 'M44 12 v4'],
+  // Karton (Material/Belege)
+  box: ['M20 24 L44 14 L68 24 V48 L44 58 L20 48 Z', 'M20 24 L44 34 L68 24', 'M44 34 V58', 'M32 19 L56 29'],
 }
 const keinAbo = () => () => {}
 /** true erst nach der Hydration — fürs Rendern von Werten, die der Server nicht kennt (localStorage, Zufall). */
@@ -320,19 +343,39 @@ export function useHydrated(): boolean {
   return useSyncExternalStore(keinAbo, () => true, () => false)
 }
 
-export function EmptyState({ title, hint, icon = 'house' }: { title: string; hint?: string; icon?: keyof typeof EMPTY_ART }) {
+/** Leerer Zustand (Pascal 7.10. Gestaltung 3): nie eine kahle Fläche — ein freundlicher Satz (title),
+ *  der hilfreiche nächste Schritt (hint) und wo sinnvoll ein Knopf dafür (action).
+ *  feiern = kleiner Erfolgsmoment (Haken zeichnet sich, ≤ 1,2 s; ohne Bewegung bei reduzierter Bewegung) —
+ *  NUR setzen, wenn der Server die Speicherung bestätigt hat. compact = für Listen innerhalb einer Karte. */
+export function EmptyState({ title, hint, icon = 'house', action, feiern = false, compact = false }: {
+  title: string
+  hint?: string
+  icon?: keyof typeof EMPTY_ART
+  action?: { label: string; onClick: () => void }
+  feiern?: boolean
+  compact?: boolean
+}) {
   // Spruch erst NACH der Hydration zeigen: pickSpruch würfelt — Server-HTML und erster Client-Render wichen
   // sonst voneinander ab (React-Fehler #418 „Hydration failed … text", Live-Konsole 9.10.)
   const hydrated = useHydrated()
   const [spruch] = useState(() => pickSpruch(new Date(), null).text)
+  const art = feiern ? 'check' : icon
   return (
-    <div className="tm-empty tm-enter" style={{ textAlign: 'center', padding: '40px 24px 32px' }}>
-      <svg width="88" height="64" viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
-        {EMPTY_ART[icon].map((d, i) => <path key={i} d={d} />)}
+    <div className={`tm-empty tm-enter${feiern ? ' tm-feiern' : ''}`} role={feiern ? 'status' : undefined}
+      style={{ textAlign: 'center', padding: compact ? '18px 12px 14px' : '40px 24px 32px' }}>
+      <svg width={compact ? 66 : 88} height={compact ? 48 : 64} viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
+        {EMPTY_ART[art].map((d, i) => <path key={i} d={d} pathLength={feiern ? 1 : undefined} />)}
       </svg>
-      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text, #171a1f)', marginTop: 14 }}>{title}</div>
+      <div className={feiern ? 'tm-feiern-titel' : undefined} style={{ fontSize: compact ? 14 : 15, fontWeight: 700, color: 'var(--tm-text, #171a1f)', marginTop: compact ? 10 : 14 }}>{title}</div>
       {hint && <div style={{ fontSize: 13, color: 'var(--tm-muted, #646b76)', marginTop: 6, lineHeight: 1.5 }}>{hint}</div>}
-      {hydrated && spruch && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>}
+      {action && (
+        <button type="button" className="tm-press-btn" onClick={() => { haptic(); action.onClick() }} style={{
+          marginTop: 14, padding: '9px 16px', borderRadius: 999, border: 'none', cursor: 'pointer',
+          background: 'var(--tm-accent-soft, rgba(174,141,45,0.13))', color: 'var(--tm-accent-dark, #8A7020)',
+          fontSize: 13.5, fontWeight: 700, WebkitTapHighlightColor: 'transparent',
+        }}>{action.label}</button>
+      )}
+      {!compact && !feiern && hydrated && spruch && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>}
     </div>
   )
 }

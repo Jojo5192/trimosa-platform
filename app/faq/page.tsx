@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import { getUiLang } from '@/lib/i18n-server'
-import { isUiLang, type UiLang } from '@/lib/i18n'
+import { isUiLang, type UiLang, langHref } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 
@@ -129,10 +129,10 @@ export default async function FaqPage({ searchParams }: { searchParams?: Promise
         </div>
 
         <div style={{ marginTop: 30, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <Link href="/stornierung" style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--gold)', textDecoration: 'none' }}>
+          <Link href={langHref(lang, '/stornierung')} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--gold)', textDecoration: 'none' }}>
             {t(lang, 'Stornierung & Erstattung')} →
           </Link>
-          <Link href="/" style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--gold)', textDecoration: 'none' }}>
+          <Link href={langHref(lang, '/')} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--gold)', textDecoration: 'none' }}>
             {t(lang, 'Unterkünfte entdecken')} →
           </Link>
         </div>

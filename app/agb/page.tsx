@@ -1,17 +1,22 @@
 import type { Metadata } from 'next'
+import { isUiLang, langHref } from '@/lib/i18n'
+import { legalAlternates } from '@/lib/legal-meta'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
 // First visit per language AI-translates the page (then cached)
 export const maxDuration = 120
 
 export const metadata: Metadata = {
+  alternates: legalAlternates('/agb'),
   title: 'AGB',
   description: 'Allgemeine Geschäftsbedingungen der TRIMOSA Apartments & Homes eGbR für die Vermietung von Ferienwohnungen.',
 }
 
-export default function AgbPage() {
+export default async function AgbPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang) ? spLang : undefined
   return (
-    <LegalShell title="Allgemeine Geschäftsbedingungen (AGB)" updated="Juli 2026">
+    <LegalShell lang={lang} title="Allgemeine Geschäftsbedingungen (AGB)" updated="Oktober 2026">
       <LegalSection heading="1. Geltungsbereich">
         <LegalP>
           Diese Allgemeinen Geschäftsbedingungen (AGB) gelten für sämtliche Mietverhältnisse über
@@ -42,6 +47,28 @@ export default function AgbPage() {
         <LegalP>
           Welcher Buchungsweg für eine Unterkunft möglich ist, wird beim jeweiligen Inserat
           angezeigt.
+        </LegalP>
+              <LegalP>
+          <strong>Hinweise zum elektronischen Geschäftsverkehr (Art. 246c EGBGB):</strong> Die Buchung
+          erfolgt in diesen Schritten: (1) Auswahl von Unterkunft, Zeitraum und Gästezahl in der
+          Buchungsbox; (2) Klick auf „Jetzt buchen“ bzw. „Anfrage senden“ – ohne Kundenkonto öffnet sich
+          zunächst das Formular für die Kontaktdaten, mit Kundenkonto ist ein vollständiges Profil (Name,
+          Anschrift) erforderlich; (3) Prüfung aller Angaben und des Gesamtpreises; (4) erneuter Klick auf
+          „Jetzt buchen“ bzw. „Anfrage senden“ leitet zur Zahlung beim Zahlungsdienstleister Stripe weiter;
+          (5) bei einer Sofortbuchung kommt der Vertrag mit der erfolgreichen Zahlung zustande, bei einer
+          Anfrage erst mit der Bestätigung durch den Vermieter (siehe oben). Eingabefehler können bis zur
+          Weiterleitung zu Stripe jederzeit in den Feldern der Buchungsbox korrigiert werden; auf der
+          Zahlungsseite kann der Vorgang kostenfrei abgebrochen werden.
+        </LegalP>
+        <LegalP>
+          Der Vermieter speichert den Vertragstext (Buchungsdaten, Gesamtpreis, Stornierungsbedingungen).
+          Buchungsdaten, Gesamtpreis und Stornierungsbedingungen werden dem Gast mit der
+          Buchungsbestätigung per E-Mail übersandt; die Buchung ist außerdem jederzeit im Gast-Bereich
+          unter „Meine Reisen“ abrufbar. Diese AGB sind in der jeweils gültigen Fassung unter
+          trimosa.de/agb abrufbar und in der Buchungsbestätigung verlinkt; der Gast kann sie dort
+          speichern oder ausdrucken. Vertragssprache ist Deutsch; Übersetzungen der Plattform in andere
+          Sprachen dienen der Information, im Zweifel gilt die deutsche Fassung. Der Vermieter hat sich
+          keinen besonderen Verhaltenskodizes unterworfen.
         </LegalP>
       </LegalSection>
 
@@ -118,7 +145,7 @@ export default function AgbPage() {
         <LegalP>
           Personenbezogene Daten des Gastes werden ausschließlich im Rahmen der geltenden
           Datenschutzgesetze verarbeitet. Einzelheiten enthält unsere{' '}
-          <a href="/datenschutz" style={{ color: 'var(--gold)' }}>Datenschutzerklärung</a>.
+          <a href={langHref(lang, '/datenschutz')} style={{ color: 'var(--gold)' }}>Datenschutzerklärung</a>.
         </LegalP>
       </LegalSection>
 

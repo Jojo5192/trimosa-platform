@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateReviews } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { refreshStaleTranslations } from '@/lib/listing-translate'
@@ -188,6 +189,7 @@ export async function POST(request: Request) {
       for (let i = 0; i < toDelete.length; i += 100) {
         await supabaseAdmin.from('reviews').delete().in('id', toDelete.slice(i, i + 100))
       }
+      revalidateReviews() // Data-Cache der Inseratsseiten (lib/public-data.ts)
     }
     return NextResponse.json({
       duplikatGruppen: beispiele.length,

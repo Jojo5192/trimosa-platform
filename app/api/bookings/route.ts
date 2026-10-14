@@ -5,6 +5,7 @@ import { getQuote } from '@/lib/smoobu'
 import { getMarkupMultiplier } from '@/lib/pricing'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getUiLang } from '@/lib/i18n-server'
+import { isUiLang } from '@/lib/i18n'
 import { findActiveDiscount } from '@/lib/discounts'
 import { createStripeCheckout } from '@/lib/checkout'
 import { sweepPendingPayments } from '@/lib/booking-sweep'
@@ -183,7 +184,9 @@ export async function POST(request: Request) {
   const initialStatus = booking_type === 'instant' ? 'pending_payment' : 'pending'
 
   const insertRow = {
-    guest_lang: await getUiLang(),
+    // Sprache der Seite, auf der gebucht wurde (/en/listing/… schickt lang mit) — vorher nur das Cookie, das ein
+    // Besucher von /en nie bekam → deutsche Bestätigungsmail (Audit 14.10.2026)
+    guest_lang: isUiLang(body.lang) ? body.lang : await getUiLang(),
     listing_id: listingId,
     guest_id: user.id,
     check_in: checkIn,

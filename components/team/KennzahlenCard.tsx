@@ -222,7 +222,7 @@ export default function KennzahlenCard() {
           {showDetails && (
             <div key={data!.monat} style={{ borderTop: '1px solid var(--tm-line, #e3e6ea)' }}>
               {data!.wohnungen.length === 0 ? (
-                <p style={{ margin: 0, padding: '12px 0 4px', fontSize: 12.5, color: 'var(--tm-muted, #646b76)' }}>Keine Buchungen in diesem Monat.</p>
+                <p style={{ margin: 0, padding: '12px 0 4px', fontSize: 12.5, color: 'var(--tm-muted, #646b76)' }}>Keine Buchungen in diesem Monat – mit den Pfeilen oben wechselst du den Monat.</p>
               ) : data!.wohnungen.map((w) => (
                 <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--tm-line, #e3e6ea)' }}>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--tm-text, #171a1f)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.title}</span>

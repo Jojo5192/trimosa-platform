@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { revalidateReviews } from '@/lib/public-data'
 import { listReservations } from '@/lib/smoobu'
 
 /**
@@ -122,7 +123,7 @@ export async function matchPropertyReviews(dryRun = false): Promise<MatchReport>
         if (!dryRun && toDelete.length) {
           const { error } = await supabaseAdmin
             .from('reviews').delete().in('id', toDelete.map((r) => r.id))
-          if (!error) report.geloeschteKopien += toDelete.length
+          if (!error) { report.geloeschteKopien += toDelete.length; revalidateReviews() }
         } else {
           report.geloeschteKopien += toDelete.length
         }

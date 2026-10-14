@@ -1,17 +1,22 @@
 import type { Metadata } from 'next'
+import { isUiLang } from '@/lib/i18n'
+import { legalAlternates } from '@/lib/legal-meta'
 import LegalShell, { LegalSection, LegalP } from '@/components/LegalShell'
 
 // First visit per language AI-translates the page (then cached)
 export const maxDuration = 120
 
 export const metadata: Metadata = {
+  alternates: legalAlternates('/datenschutz'),
   title: 'Datenschutzerklärung',
   description: 'Informationen zur Verarbeitung personenbezogener Daten auf der TRIMOSA-Plattform.',
 }
 
-export default function DatenschutzPage() {
+export default async function DatenschutzPage({ searchParams }: { searchParams?: Promise<{ lang?: string }> } = {}) {
+  const spLang = (await searchParams)?.lang
+  const lang = isUiLang(spLang) ? spLang : undefined
   return (
-    <LegalShell title="Datenschutzerklärung" updated="Juli 2026">
+    <LegalShell lang={lang} title="Datenschutzerklärung" updated="Juli 2026">
       <LegalSection heading="1. Verantwortliche Stelle">
         <LegalP>
           Verantwortlich für die Datenverarbeitung auf dieser Plattform ist:

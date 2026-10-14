@@ -6,7 +6,7 @@ import Image from 'next/image'
 import ListingsMap, { type MapListing } from './ListingsMap'
 import QuickFilters from './QuickFilters'
 import ScoreBadge, { type CardRating } from './ScoreBadge'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 
 /* ── Card gradient palette (mirrors page.tsx) ── */
 const CARD_GRADIENTS = [
@@ -81,7 +81,7 @@ function ListingCard({ card, index, linkParams, isHovered = false, onHover, lang
 
   return (
     <Link
-      href={`/listing/${card.slug ?? card.id}${linkParams || ''}`}
+      href={langHref(lang, `/listing/${card.slug ?? card.id}${linkParams || ''}`)}
       className="listing-card"
       onMouseEnter={() => onHover?.(card.id)}
       onMouseLeave={() => onHover?.(null)}
@@ -280,7 +280,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               {combo.cards.map((c, ci) => (
                 <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                   {ci > 0 && <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--gold-dark)' }}>+</span>}
-                  <Link href={`/listing/${c.slug ?? c.id}${linkParams}`} style={{
+                  <Link href={langHref(lang, `/listing/${c.slug ?? c.id}${linkParams}`)} style={{
                     display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none',
                     background: '#fff', border: '1px solid #EADFC2', borderRadius: '12px', padding: '6px 12px 6px 6px',
                   }}>
@@ -339,7 +339,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
         {searchGuests ? ` · ${searchGuests}+ ${t(lang, 'Gäste')}` : ''}
       </h1>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-        <Link href="/" style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
+        <Link href={langHref(lang, '/')} style={{ fontSize: '12px', padding: '6px 10px', borderRadius: '999px', border: '1.5px solid #E0DDD6', color: '#666', textDecoration: 'none', backgroundColor: '#fff', whiteSpace: 'nowrap' }}>
           ✕ {t(lang, 'Zurücksetzen')}
         </Link>
       </div>
@@ -376,7 +376,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
               <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>{t(lang, 'Keine Unterkünfte gefunden')}</p>
               <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>{t(lang, 'Versuche andere Filter oder einen anderen Ort.')}</p>
-              <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
+              <Link href={langHref(lang, '/')} style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
                 Suche zurücksetzen
               </Link>
             </div>
@@ -476,7 +476,7 @@ export default function SearchResults({ cards, centerLat, centerLon, searchQuery
               <p style={{ fontSize: '28px', marginBottom: '10px' }}>🔍</p>
               <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: '0 0 6px' }}>{t(lang, 'Keine Unterkünfte gefunden')}</p>
               <p style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>{t(lang, 'Versuche andere Filter oder einen anderen Ort.')}</p>
-              <Link href="/" style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
+              <Link href={langHref(lang, '/')} style={{ display: 'inline-block', fontSize: '13px', fontWeight: 600, padding: '10px 24px', borderRadius: '999px', backgroundColor: '#111', color: '#fff', textDecoration: 'none' }}>
                 Suche zurücksetzen
               </Link>
             </div>

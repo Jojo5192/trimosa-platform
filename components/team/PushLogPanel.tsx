@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic } from '@/components/team/ux'
+import { haptic, EmptyState } from '@/components/team/ux'
 
 /**
  * 🔔 Push-Historie (§265, Pascal): zeitlicher Verlauf der eigenen
@@ -104,9 +104,8 @@ export default function PushLogPanel({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {entries !== null && entries.length === 0 && !hinweis && (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14 }}>
-              Noch keine Mitteilungen. Hier siehst du ab jetzt jede Push-Mitteilung an dich – 30 Tage lang.
-            </div>
+            <EmptyState icon="bell" title="Noch keine Mitteilungen."
+              hint="Hier siehst du ab jetzt jede Push-Mitteilung an dich – 30 Tage lang. Welche du bekommst, stellst du unter Mehr → Mitteilungen ein." />
           )}
 
           {gruppen.map((g) => (

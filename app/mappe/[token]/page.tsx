@@ -190,6 +190,9 @@ export default async function MappePage({ params, searchParams }: {
       if (doorCode && locksArr.some((l) => l.provider === 'ttlock')) {
         doorCode = `${doorCode} #`
       }
+      // 🧭 Service-Blueprint 14.10.: Code ließ sich (noch) nicht anlegen → Block nicht still verschwinden lassen,
+      // sondern sagen, was los ist und wo es Hilfe gibt (das Team bekommt parallel einen Push vom Auto-Nachrichten-Lauf)
+      if (!doorCode) doorNoteDe = 'Dein Türcode wird gerade vorbereitet. Steht er bis zur Anreise nicht hier, schreib uns bitte im Chat – wir helfen sofort.'
     } else {
       doorNoteDe = `Dein Türcode erscheint hier ${revealDays} Tage vor Anreise.`
     }

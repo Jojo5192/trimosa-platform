@@ -186,9 +186,77 @@ export interface AutoSendReport {
   postponed: number
   truncated: number
   due: { vorlage: string; gast: string; wohnung: string; zeitraum: string; kanal: string; vorschau: string }[]
-  failed: { vorlage: string; gast: string; error: string }[]
+  /** wohnung/erstmals/tuercode: für die Zustell-Meldung ans Team (nur beim ERSTEN Fehlschlag, nicht bei Wiederholungen) */
+  failed: { vorlage: string; gast: string; error: string; wohnung?: string; erstmals?: boolean; tuercode?: boolean }[]
+  /** Nachrichten mit {tuercode}, die vertagt wurden, weil kein Code angelegt werden konnte */
+  ohneCode: { bookingId: string; vorlage: string; gast: string; wohnung: string; anreise: string }[]
   /** Paragraph 295: erneut versuchte, zuvor gescheiterte Zustellungen */
   retried: number
+}
+
+/** Kam die Mail wirklich raus? ok:false = Resend-Fehler; note = Schlüssel fehlt (dann wurde nichts gesendet) */
+function mailZugestellt(r: { ok: boolean; note?: string } | null | undefined): boolean {
+  return !!r && r.ok && !r.note
+}
+
+/**
+ * 🧭 Service-Blueprint (Pascal 7.10.2026, „Zugangsdaten werden nachweislich zugestellt"): Zustell-Probleme
+ * eines Laufs ans Team melden. (1) Nicht zugestellte Nachrichten — nur beim ERSTEN Fehlschlag (Wiederholungen
+ * melden nichts mehr). (2) Nachrichten mit Türcode, die warten, weil kein Code angelegt werden konnte — erst
+ * wenn das Problem 30 Min. besteht (kurze Schloss-Aussetzer heilen sich selbst), dann einmal je Buchung.
+ * Merkliste ohne Migration in app_settings 'auto_messages_ohne_code' ({ bookingId: { erst, gemeldet } }).
+ */
+export async function meldeZustellprobleme(report: AutoSendReport): Promise<void> {
+  if (report.dryRun) return
+  const { sendPushToTeam } = await import('@/lib/push')
+  const neu = report.failed.filter((f) => f.erstmals)
+  if (neu.length) {
+    const mitCode = neu.some((f) => f.tuercode)
+    const f = neu[0]
+    const grund = /kein Kanal|keine E-Mail/.test(f.error) ? 'keine Smoobu-Verbindung und keine E-Mail-Adresse'
+      : /e-mail/i.test(f.error) ? 'die E-Mail kam nicht an' : 'Versand gescheitert'
+    await sendPushToTeam(
+      neu.length === 1 ? `⚠️ Nachricht nicht zugestellt · ${f.gast}` : `⚠️ ${neu.length} Nachrichten nicht zugestellt`,
+      neu.length === 1
+        ? `„${f.vorlage}" (${f.wohnung ?? '—'}): ${grund}. Bitte im Chat von Hand schicken.`
+        : `${neu.slice(0, 3).map((x) => `${x.gast} (${x.vorlage})`).join(', ')}${neu.length > 3 ? ' …' : ''}. Bitte im Chat von Hand schicken.`,
+      '/team?tab=inbox',
+      { category: mitCode ? 'system' : 'bookings' },
+    ).catch((e) => console.error('[auto-messages] Zustell-Push:', e))
+  }
+
+  // Türcode fehlt: Merkliste pflegen
+  const KEY = 'auto_messages_ohne_code'
+  type Merk = Record<string, { erst: string; gemeldet: boolean }>
+  const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', KEY).maybeSingle()
+  const alt = (data?.value && typeof data.value === 'object' ? data.value : {}) as Merk
+  const jetzt = Date.now()
+  const merk: Merk = {}
+  // Einträge bleiben 3 Tage (danach ist die Anreise vorbei); erledigte fallen raus, sobald sie nicht mehr gemeldet werden
+  const offen = new Map(report.ohneCode.map((o) => [o.bookingId, o]))
+  for (const [id, m] of Object.entries(alt)) {
+    if (offen.has(id) && jetzt - Date.parse(m.erst) < 3 * 86400_000) merk[id] = m
+  }
+  const faellig: AutoSendReport['ohneCode'] = []
+  for (const [id, o] of offen) {
+    const m = merk[id] ?? { erst: new Date(jetzt).toISOString(), gemeldet: false }
+    if (!m.gemeldet && jetzt - Date.parse(m.erst) >= 30 * 60_000) { faellig.push(o); m.gemeldet = true }
+    merk[id] = m
+  }
+  if (JSON.stringify(merk) !== JSON.stringify(alt)) {
+    await supabaseAdmin.from('app_settings').upsert({ key: KEY, value: merk, updated_at: new Date().toISOString() })
+  }
+  if (faellig.length) {
+    const o = faellig[0]
+    await sendPushToTeam(
+      faellig.length === 1 ? `🔑 Türcode fehlt · ${o.wohnung}` : `🔑 Türcode fehlt · ${faellig.length} Buchungen`,
+      faellig.length === 1
+        ? `${o.gast}, Anreise ${fmtDate(o.anreise)}: „${o.vorlage}" wartet, weil kein Code angelegt werden konnte. Bitte Schloss prüfen oder Code von Hand schicken.`
+        : `${faellig.slice(0, 3).map((x) => `${x.gast} (${x.wohnung})`).join(', ')}: kein Code angelegt. Bitte Schlösser prüfen oder Codes von Hand schicken.`,
+      '/team?tab=heute',
+      { category: 'system' },
+    ).catch((e) => console.error('[auto-messages] Code-Push:', e))
+  }
 }
 
 /** Hauptlauf. dryRun = nur berechnen & Vorschau liefern, NICHTS senden/loggen. */
@@ -196,7 +264,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   const dryRun = opts.dryRun === true
   const report: AutoSendReport = {
     enabled: await getAutoSendEnabled(), dryRun,
-    templates: 0, bookingsChecked: 0, sent: 0, postponed: 0, truncated: 0, retried: 0, due: [], failed: [],
+    templates: 0, bookingsChecked: 0, sent: 0, postponed: 0, truncated: 0, retried: 0, due: [], failed: [], ohneCode: [],
   }
   if (!report.enabled && !dryRun) return report
 
@@ -418,15 +486,24 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
     const listing = b.listing_id ? listings.get(b.listing_id) : undefined
     const gast = b.guest_name || 'Gast'
     const zeitraum = `${fmtDate(b.check_in)}–${fmtDate(b.check_out)}`
+    // Service-Blueprint (Pascal 7.10.): Zustell-Probleme dem Team melden — nur beim ersten Fehlschlag
+    const wohnung = listing?.title ?? '—'
+    const erstmals = !retrySet.has(`${t.id}|${b.id}`)
+    const mitCode = t.body.includes('{tuercode}')
     try {
       // Türcode: fehlt er noch, wird er hier erzeugt (idempotent, §132) —
       // klappt das nicht, wird VERTAGT (kein Log → nächster 10-Min-Lauf).
+      // Neu 14.10.: der Lauf meldet das (report.ohneCode) — sonst lief das Zeitfenster still ab.
       let code = b.door_code
-      if (t.body.includes('{tuercode}')) {
+      if (mitCode) {
         if (dryRun) code = code ?? '••••••'
         else {
           if (!code) code = await ensureDoorCode(b.id).catch(() => null)
-          if (!code) { report.postponed++; continue }
+          if (!code) {
+            report.postponed++
+            report.ohneCode.push({ bookingId: b.id, vorlage: t.name, gast, wohnung, anreise: b.check_in })
+            continue
+          }
         }
       }
 
@@ -448,7 +525,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           : '',
         fruehester_checkin: fruehesterCheckin,
         // §290 Stammgast-Platzhalter
-        stammgast: (stayIdx?.byBooking.get(b.id)?.stays ?? 1) >= 2 ? 'Schön, dass du wieder bei uns bist!' : '',
+        // 14.10.: nr statt stays — stays zählt auch KÜNFTIGE Aufenthalte (Erstgast mit Folgebuchung war sonst „wieder da")
+        stammgast: (stayIdx?.byBooking.get(b.id)?.nr ?? 1) >= 2 ? 'Schön, dass du wieder bei uns bist!' : '',
         aufenthalt_nr: String(stayIdx?.byBooking.get(b.id)?.nr ?? 1),
       }
       let german = resolvePlaceholders(t.body.split('{mappe_button}').join(MAPPE_BTN_SENTINEL).split('{bewertung_button}').join(REVIEW_BTN_SENTINEL), ctx)
@@ -512,11 +590,16 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           .update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
         const to = t.send_email ? await guestEmailFor(ziel) : null
         if (to) {
-          await sendAutoMessageEmail({
+          const mail = await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
             mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
-          }).catch(e => console.error('[auto-messages] email:', e))
-          outcome = 'chat+email'
+          }).catch((e): { ok: boolean; note?: string } => { console.error('[auto-messages] email:', e); return { ok: false } })
+          if (mailZugestellt(mail)) outcome = 'chat+email'
+          else {
+            // Chat steht schon im Thread (keine Wiederholung → kein Doppel), aber die Mail kam nicht an → melden
+            outcome = 'chat (e-mail fehlgeschlagen)'
+            report.failed.push({ vorlage: t.name, gast, error: outcome, wohnung, erstmals, tuercode: mitCode })
+          }
         } else outcome = 'chat'
       } else if (ziel.smoobu_reservation_id && !isFewoRelayEmail(ziel.guest_email)) {
         // Paragraph 294: FeWo-Relay-Gaeste laufen unten direkt ueber die Mail-Bruecke, nicht ueber Smoobu
@@ -533,36 +616,36 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           outcome = push.id !== null ? 'smoobu' : 'smoobu (ohne id)'
         } else {
           const to = await guestEmailFor(ziel)
-          if (to) {
-            await sendAutoMessageEmail({
-              to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-              mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
-            })
+          const mail = to ? await sendAutoMessageEmail({
+            to, guestName: gast, listingTitle: listing?.title, text: tr.text,
+            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
+          }) : null
+          if (mail && mailZugestellt(mail)) {
             await supabaseAdmin.from('messages').insert({
               booking_id: ziel.id, sender_type: 'host', content: chatText,
               content_de: msgDe, lang: msgLang,
             })
             outcome = 'email (smoobu-fehler)'
           } else {
-            outcome = 'fehler: smoobu fehlgeschlagen, keine E-Mail'
-            report.failed.push({ vorlage: t.name, gast, error: outcome })
+            outcome = to ? 'fehler: smoobu und e-mail fehlgeschlagen' : 'fehler: smoobu fehlgeschlagen, keine E-Mail'
+            report.failed.push({ vorlage: t.name, gast, error: outcome, wohnung, erstmals, tuercode: mitCode })
           }
         }
       } else {
         const to = await guestEmailFor(ziel)
-        if (to) {
-          await sendAutoMessageEmail({
-            to, guestName: gast, listingTitle: listing?.title, text: tr.text,
-            mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
-          })
+        const mail = to ? await sendAutoMessageEmail({
+          to, guestName: gast, listingTitle: listing?.title, text: tr.text,
+          mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
+        }) : null
+        if (mail && mailZugestellt(mail)) {
           await supabaseAdmin.from('messages').insert({
             booking_id: ziel.id, sender_type: 'host', content: chatText,
             content_de: msgDe, lang: msgLang,
           })
           outcome = 'email'
         } else {
-          outcome = 'fehler: kein Kanal'
-          report.failed.push({ vorlage: t.name, gast, error: outcome })
+          outcome = to ? 'fehler: e-mail fehlgeschlagen' : 'fehler: kein Kanal'
+          report.failed.push({ vorlage: t.name, gast, error: outcome, wohnung, erstmals, tuercode: mitCode })
         }
       }
       await supabaseAdmin.from('auto_message_log')
@@ -574,7 +657,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      report.failed.push({ vorlage: t.name, gast, error: msg.slice(0, 200) })
+      report.failed.push({ vorlage: t.name, gast, error: msg.slice(0, 200), wohnung, erstmals, tuercode: mitCode })
       console.error('[auto-messages]', t.name, gast, msg)
       await supabaseAdmin.from('auto_message_log')
         .update({ channel: `fehler: ${msg.slice(0, 120)}` })

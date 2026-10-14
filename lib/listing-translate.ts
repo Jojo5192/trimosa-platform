@@ -6,6 +6,7 @@
  * src_hash fingerprints the German source, so the editor can show stale
  * translations and the nightly cron re-translates them automatically.
  */
+import { revalidateListings } from '@/lib/public-data'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { askClaude } from '@/lib/ai'
 import { getPrompt } from '@/lib/prompts'
@@ -107,6 +108,7 @@ export async function translateListing(
     }
   }
   const { error } = await supabaseAdmin.from('listings').update({ translations: merged }).eq('id', listingId)
+  if (!error) revalidateListings() // Data-Cache (lib/public-data.ts)
   if (error) status.save = error.message
   return status
 }

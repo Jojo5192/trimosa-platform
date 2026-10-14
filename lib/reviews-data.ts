@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getReviewsPage } from '@/lib/public-data'
 import { buildCardRating } from '@/lib/rating'
 
 /**
@@ -17,19 +17,18 @@ export interface InitialReviews {
   sources: Record<string, { avg: number; count: number }>
 }
 
-export async function getInitialReviews(listingRow: Record<string, unknown>, limit = 6): Promise<InitialReviews> {
-  const listingId = String(listingRow.id)
-  const { data, count } = await supabaseAdmin
-    .from('reviews')
-    .select('*', { count: 'exact' })
-    .eq('listing_id', listingId)
-    .order('review_date', { ascending: false })
-    .range(0, limit - 1)
+/** Zusammensetzen aus einer (gecachten) Review-Seite + den Score-Spalten der Inserats-Zeile — kein I/O. */
+export function buildInitialReviews(listingRow: Record<string, unknown>, page: { reviews: unknown[]; total: number }): InitialReviews {
   const rating = buildCardRating(listingRow)
   return {
-    reviews: (data ?? []) as InitialReviews['reviews'],
-    total: count ?? (data?.length ?? 0),
+    reviews: page.reviews as InitialReviews['reviews'],
+    total: page.total,
     overall: rating ? { avg: rating.overall, count: rating.count } : null,
     sources: Object.fromEntries((rating?.platforms ?? []).map((p) => [p.source, { avg: p.score, count: p.count }])),
   }
+}
+
+export async function getInitialReviews(listingRow: Record<string, unknown>, limit = 6): Promise<InitialReviews> {
+  const page = await getReviewsPage(String(listingRow.id), limit).catch(() => ({ reviews: [], total: 0 }))
+  return buildInitialReviews(listingRow, page)
 }

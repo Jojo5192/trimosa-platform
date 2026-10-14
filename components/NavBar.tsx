@@ -15,7 +15,7 @@ import GuestPickerPopover from '@/components/navbar/GuestPickerPopover'
 import UserMenu from '@/components/navbar/UserMenu'
 import MobileSearchSheet from '@/components/navbar/MobileSearchSheet'
 import LangSwitcher from '@/components/LangSwitcher'
-import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
+import { t, isUiLang, UI_COOKIE, type UiLang, langHref } from '@/lib/i18n'
 
 interface NavBarProps {
   initialQ?: string
@@ -182,7 +182,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
     if (checkin) params.set('checkin', checkin)
     if (checkout) params.set('checkout', checkout)
     if (flexDates && checkin && checkout) params.set('flex', '3')
-    router.push(params.toString() ? `/?${params}` : '/')
+    router.push(langHref(lang, params.toString() ? `/?${params}` : '/'))
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -265,7 +265,7 @@ export default function NavBar({ initialQ = '', initialGuests = '', initialCheck
         <div className="nav-inner" style={{ padding: '0 20px', display: 'flex', alignItems: 'center', gap: '16px', height: '100%', width: '100%' }}>
 
           {/* Logo */}
-          <Link href="/" className="nav-logo" style={{ flexShrink: 0, textDecoration: 'none' }}>
+          <Link href={langHref(lang, '/')} className="nav-logo" style={{ flexShrink: 0, textDecoration: 'none' }}>
             <Image src="/logo.png" alt="TRIMOSA" width={2924} height={354} priority className="nav-logo-img" style={{ height: logoH, width: 'auto', transition: 'height 0.3s ease' }} />
           </Link>
 

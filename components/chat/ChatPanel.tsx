@@ -5,7 +5,7 @@ import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { t, isUiLang, UI_COOKIE, type UiLang } from '@/lib/i18n'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState, portalOf, portalColor, initials, openLink } from '@/components/team/ux'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 import { isOffenThread, publishInboxThreads, INBOX_RELOAD_EVENT, type InboxThreadLite } from '@/lib/inbox-store'
 import CallsPanel, { parseTranscript } from '@/components/team/CallsPanel'
@@ -78,6 +78,19 @@ const INBOX_FILTERS: { id: InboxFilter; label: string; count?: boolean }[] = [
   { id: 'p:Website', label: 'Website' },
   { id: 'erledigt', label: 'Erledigt' },
 ]
+/** Leerer Inbox-Filter (Pascal 7.10.): freundlicher Satz + Hinweis statt „passt nicht" */
+const INBOX_LEER: Partial<Record<InboxFilter, [string, string]>> = {
+  offen: ['Alles beantwortet – kein Gast wartet.', 'Neue Gäste-Nachrichten erscheinen hier automatisch.'],
+  ungelesen: ['Alles gelesen.', 'Neue Nachrichten erscheinen hier automatisch.'],
+  vorort: ['Gerade ist niemand zu Gast.', 'Sobald jemand eincheckt, steht sein Chat hier.'],
+  dringend: ['Nichts Dringendes – gut so.', 'Hier landen offene Chats von Gästen, die da sind oder in zwei Tagen anreisen.'],
+  kommend: ['Keine kommenden Gäste mit Chat.', 'Chats anstehender Buchungen erscheinen hier.'],
+  erledigt: ['Noch nichts als erledigt markiert.', 'Mit ✓ oder 📞 im Chat-Kopf landet ein Chat hier.'],
+}
+function inboxLeer(f: InboxFilter): [string, string] {
+  if (f.startsWith('p:')) return [`Keine Chats über ${f.slice(2)}.`, 'Vielleicht steht der Chat unter einem anderen Portal.']
+  return INBOX_LEER[f] ?? ['Kein Chat passt zu diesem Filter.', 'Probier einen anderen Filter.']
+}
 /** Offen = letzte Nachricht vom Gast, weder ✓ noch 📞 markiert
  *  (EINE Definition in lib/inbox-store — gilt auch für Badge, Heute, Offen-Stapel) */
 function isOffen(c: Conversation): boolean {
@@ -1599,6 +1612,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         dropSending(tempId) // die „wartet auf Verbindung"-Blase der Warteschlange übernimmt
         tmToast('📵 Offline – die Nachricht wartet auf Verbindung')
       } else {
+        if (team) rueckmeldung('fehler')
         rollbackSend(tempId, conv, draftText, 'Keine Verbindung – der Entwurf bleibt erhalten. Bitte versuch es noch einmal.')
       }
       setBusy(false)
@@ -1609,7 +1623,9 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
     // eine bereits gesendete Nachricht erneut einreihen).
     try {
       if (r.ok) {
-        haptic('success')
+        // Pascal 7.10.: Team-Ansicht mit Ton (Klangbild), Gäste-Ansicht wie bisher nur Haptik
+        if (team) rueckmeldung('gesendet')
+        else haptic('success')
         const d = await r.json().catch(() => null)
         const row = sentRow(d?.message, conv.id, conv.kind, userId)
         const here = activeIdRef.current === conv.id
@@ -1632,7 +1648,8 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         rollbackSend(tempId, conv, draftText, null)
       } else {
         const d = await r.json().catch(() => null)
-        haptic('error')
+        if (team) rueckmeldung('fehler')
+        else haptic('error')
         console.error('senden', r.status, d?.error)
         rollbackSend(tempId, conv, draftText, r.status < 500 && d?.error ? d.error : 'Senden hat nicht geklappt – der Entwurf bleibt erhalten. Bitte versuch es noch einmal.')
       }
@@ -1677,6 +1694,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         }
       } catch {
         // Netzfehler der Übersetzung: nichts gesendet → Rollback, Text zurück in den Entwurf
+        if (team) rueckmeldung('fehler')
         rollbackSend(pre.tempId, conv, text, 'Übersetzen hat nicht geklappt – der Entwurf bleibt erhalten. Bitte sende ihn noch einmal.')
         return
       } finally { setTranslating(false) }
@@ -1909,7 +1927,11 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
           </div>
         )}
         {!loading && filtered.length === 0 && !listFehler && (
-          <EmptyState icon="chat" title={t(uiLang, 'Keine Nachrichten')} hint={team && inboxFilter !== 'alle' ? 'Kein Chat passt zu diesem Filter.' : 'Gäste können über die Inseratsseite schreiben.'} />
+          team && inboxFilter !== 'alle'
+            ? <EmptyState icon={inboxFilter === 'offen' || inboxFilter === 'ungelesen' || inboxFilter === 'dringend' ? 'check' : 'search'}
+                title={inboxLeer(inboxFilter)[0]} hint={inboxLeer(inboxFilter)[1]}
+                action={{ label: 'Alle Chats zeigen', onClick: () => setInboxFilter('alle') }} />
+            : <EmptyState icon="chat" title={t(uiLang, 'Keine Nachrichten')} hint={team ? 'Sobald ein Gast schreibt – über ein Portal oder die Inseratsseite – erscheint der Chat hier.' : 'Gäste können über die Inseratsseite schreiben.'} />
         )}
         {rows.map(c => {
           if ('divider' in c) return (
@@ -1943,7 +1965,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
         )}
         {team && inboxFilter === 'alle' && archivThreads !== null && archivThreads.length === 0 && (
           <div style={{ padding: '12px 16px 20px', fontSize: 12, color: 'var(--tm-muted)', textAlign: 'center' }}>
-            Keine älteren Chats gefunden.
+            Keine älteren Chats gefunden – alles Aktuelle steht oben.
           </div>
         )}
       </div>
@@ -2260,6 +2282,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
             <div style={{ margin: 'auto', textAlign: 'center' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
               <div style={{ fontSize: 13, color: 'var(--tm-muted)' }}>{t(uiLang, 'Noch keine Nachrichten')}</div>
+              {team && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 4 }}>Schreib unten die erste Nachricht – oder lass dir mit ✨ einen Vorschlag machen.</div>}
             </div>
           )}
           {grouped.map(({ day, items }) => (
@@ -2684,7 +2707,7 @@ function ChatPanel({ userId, variant, open = true, onClose, initialConvId, team 
                     📨 VORLAGE EINFÜGEN
                   </div>
                   {tplList === null && <div style={{ padding: '8px 13px 12px', fontSize: 13, color: 'var(--tm-muted)' }}>Lädt…</div>}
-                  {tplList && tplList.length === 0 && <div style={{ padding: '8px 13px 12px', fontSize: 13, color: 'var(--tm-muted)' }}>Keine Vorlagen angelegt.</div>}
+                  {tplList && tplList.length === 0 && <div style={{ padding: '8px 13px 12px', fontSize: 13, color: 'var(--tm-muted)' }}>Noch keine Vorlagen – Chefs legen sie im Dashboard unter „Auto-Nachrichten“ an.</div>}
                   {(tplList ?? []).map((t) => (
                     <button key={t.id} disabled={tplBusy} onClick={() => insertTemplate(t.id)}
                       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 13px', border: 'none', background: 'none', cursor: tplBusy ? 'default' : 'pointer', fontSize: 14, color: 'var(--tm-text)', borderTop: '0.5px solid var(--tm-line)', opacity: tplBusy ? 0.6 : 1 }}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 import { addBaseTiles } from '@/lib/map-tiles'
 
 export interface MapListing {
@@ -229,7 +229,7 @@ export default function ListingsMap({ listings, centerLat, centerLon, onCenterCh
           maxWidth: 244,
           offset: [0, -6],
         }).setContent(`
-          <a href="/listing/${listing.slug ?? listing.id}" style="display:block;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:inherit">
+          <a href="${langHref(lang, `/listing/${listing.slug ?? listing.id}`)}" style="display:block;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:inherit">
             ${imageHeader}
             <div style="padding:11px 13px 13px">
               ${listing.location ? `<p style="font-size:10px;font-weight:700;color:var(--gold-dark);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 3px">${listing.location}</p>` : ''}

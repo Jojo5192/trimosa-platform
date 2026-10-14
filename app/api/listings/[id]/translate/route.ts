@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateListings } from '@/lib/public-data'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -44,6 +45,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   // The public detail page renders translations server-side — bust its cache.
   revalidatePath(`/listing/${check.listing.slug ?? id}`)
+  revalidateListings() // Data-Cache (lib/public-data.ts) — revalidatePath greift bei dynamischen Seiten nicht
 
   const { data: fresh } = await supabaseAdmin
     .from('listings').select('title, description, rooms, translations').eq('id', id).single()

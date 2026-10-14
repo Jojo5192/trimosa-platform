@@ -171,7 +171,7 @@ export default function SearchOverlay({ role, isDesktop, onClose, onOpen }: {
             )
           ) : hits.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--tm-muted2)', fontSize: 13.5, padding: '48px 20px' }}>
-              {loading ? 'Lädt…' : `Keine Treffer für „${q.trim()}“.`}
+              {loading ? 'Lädt…' : `Keine Treffer für „${q.trim()}“ – probier einen kürzeren Begriff, z. B. nur den Nachnamen.`}
               {!loading && fehlend.length > 0 && <span style={{ display: 'block', marginTop: 6, color: 'var(--tm-red)' }}>⚠️ Gerade nicht durchsuchbar: {fehlend.join(', ')}. Öffne die Suche gleich noch einmal.</span>}
             </div>
           ) : (

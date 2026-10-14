@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
+import { darfNextImage } from '@/lib/image-proxy'
 import Overlay from './Overlay'
 import { t, type UiLang } from '@/lib/i18n'
 
@@ -16,9 +18,14 @@ export function FloorPlanSection({ urls, labels = [], lang = 'de' }: { urls: str
       <div className="detail-floorplan-grid" style={{ display: 'grid', gridTemplateColumns: urls.length === 1 ? '1fr' : '1fr 1fr', gap: '12px' }}>
         {urls.map((url, i) => (
           <div key={i} onClick={() => setOpenIdx(i)} style={{ cursor: 'pointer', position: 'relative' }}>
-            <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', maxHeight: '300px', background: '#fff' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- no fixed-height container, low SEO value */}
-              <img src={url} alt={labels[i] ? t(lang, labels[i]) : `${t(lang, 'Grundriss')} ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '300px' }} />
+            <div style={{ borderRadius: '14px', overflow: 'hidden', border: '1px solid #E5E5EA', background: '#fff', position: 'relative', aspectRatio: '3 / 2', maxHeight: '300px' }}>
+              {/* next/image: 3000-px-Original als ≈ 400–800 px WebP statt 1 MB JPG je Grundriss (Audit 14.10.2026) */}
+              {darfNextImage(url)
+                ? <Image src={url} alt={labels[i] ? t(lang, labels[i]) : `${t(lang, 'Grundriss')} ${i + 1}`} fill
+                    sizes={urls.length === 1 ? '(max-width: 768px) 100vw, 490px' : '(max-width: 768px) 100vw, 310px'} loading="lazy"
+                    style={{ objectFit: 'contain' }} />
+                // eslint-disable-next-line @next/next/no-img-element -- unbekannter Host
+                : <img src={url} loading="lazy" alt={labels[i] ? t(lang, labels[i]) : `${t(lang, 'Grundriss')} ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
               <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '11px', fontWeight: 600, padding: '5px 12px', borderRadius: '99px' }}>
                 🔍 {t(lang, 'Vergrößern')}
               </div>
@@ -32,8 +39,10 @@ export function FloorPlanSection({ urls, labels = [], lang = 'de' }: { urls: str
 
       {openIdx !== null && (
         <Overlay onClose={() => setOpenIdx(null)} title={labels[openIdx] ? t(lang, labels[openIdx]) : (urls.length === 1 ? t(lang, 'Grundriss') : `${t(lang, 'Grundriss')} ${openIdx + 1}`)}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- natural sizing, low SEO value */}
-          <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+          {darfNextImage(urls[openIdx])
+            ? <Image src={urls[openIdx]} alt="Grundriss" width={1600} height={1100} sizes="(max-width: 640px) 100vw, 552px" style={{ width: '100%', height: 'auto', objectFit: 'contain', borderRadius: '8px' }} />
+            // eslint-disable-next-line @next/next/no-img-element -- unbekannter Host
+            : <img src={urls[openIdx]} alt="Grundriss" style={{ width: '100%', objectFit: 'contain', borderRadius: '8px' }} />}
           {urls.length > 1 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
               {urls.map((_, i) => (

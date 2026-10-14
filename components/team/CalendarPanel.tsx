@@ -455,7 +455,7 @@ export default function CalendarPanel() {
                   textTransform: 'uppercase', letterSpacing: '0.03em',
                 }}>{dayLabel(selDay, today)}</p>
                 {selEvents.length === 0 ? (
-                  <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: '26px 0' }}>Keine Termine an diesem Tag.</p>
+                  <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13.5, padding: '26px 0' }}>Keine Termine an diesem Tag – tipp oben einen anderen Tag an.</p>
                 ) : renderEventCards(selEvents)}
               </div>
             )
@@ -541,7 +541,8 @@ export default function CalendarPanel() {
           )}
 
           {days.length === 0 ? (
-            <EmptyState icon="calendar" title="Keine Termine in den nächsten 8 Wochen." />
+            <EmptyState icon="calendar" title="Keine Termine in den nächsten 8 Wochen."
+              hint="Neue Buchungen, Reinigungen und Aufgaben mit Datum erscheinen hier automatisch." />
           ) : days.map(({ iso, events }) => (
             <div key={iso} style={{ marginBottom: 16 }}>
               <p style={{

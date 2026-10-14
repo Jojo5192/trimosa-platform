@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 
 interface HostProfile {
   id: string
@@ -28,7 +28,7 @@ export function HostBadge({ host, lang = 'de', team }: { host: HostProfile; lang
     ? `${members.slice(0, -1).map((m) => m.firstName).join(', ')} & ${members[members.length - 1].firstName}`
     : members[0]?.firstName ?? 'TRIMOSA'
   return (
-    <Link href="/ueber-uns" title="Mehr über TRIMOSA erfahren" className="listing-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 16px 8px 10px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', textDecoration: 'none', flexShrink: 0 }}>
+    <Link href={langHref(lang, '/ueber-uns')} title="Mehr über TRIMOSA erfahren" className="listing-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 16px 8px 10px', borderRadius: '99px', backgroundColor: '#fff', border: '1px solid #E5E5EA', textDecoration: 'none', flexShrink: 0 }}>
       {/* Overlapping avatar stack: uploaded avatar for the primary host,
           gold initials for the others */}
       <div style={{ display: 'flex', flexShrink: 0 }}>

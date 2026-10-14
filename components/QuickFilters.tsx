@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
-import { t, type UiLang } from '@/lib/i18n'
+import { t, type UiLang, langHref } from '@/lib/i18n'
 
 /**
  * Quick-filter pills (locations + party size). Rendered both on the empty
@@ -34,7 +34,7 @@ export default function QuickFilters({
     if (checkin) params.set('checkin', checkin)
     if (checkout) params.set('checkout', checkout)
     const qs = params.toString()
-    return qs ? `/?${qs}` : '/'
+    return langHref(lang, qs ? `/?${qs}` : '/')
   }
 
   const pill = (isActive: boolean): CSSProperties => ({

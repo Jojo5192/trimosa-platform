@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import RegionPage, { generateMetadata as rootGenerateMetadata } from '@/app/region/[slug]/page'
 
+// Erstbesuch je Sprache übersetzt per KI (Root-Seite exportiert dasselbe; Route-Config gilt je Segment)
+export const maxDuration = 120
+
 /** §173-Jupas ④ Etappe 2: /en|fr|nl/region/<slug> — dünner Wrapper (Listing-Muster). */
 const LANGS = ['en', 'fr', 'nl'] as const
 type Props = { params: Promise<{ lang: string; slug: string }> }

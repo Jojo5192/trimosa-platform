@@ -5,10 +5,13 @@ import { linkify } from '@/components/chat/linkify'
 import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
-import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
+import { haptic, rueckmeldung, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
 import { openLightbox } from '@/components/team/Lightbox'
 import { VIDEO_LIMIT_BYTES, VIDEO_MAX_SEKUNDEN, kannVideoVerkleinern, videoDauer, verkleinereVideo, neuerVideoName } from '@/lib/video-verkleinern'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
+import { AssistentAvatar } from '@/components/team/AssistentFigur'
+import AssistentWarteBlase from '@/components/team/AssistentWarteBlase'
+import { istBotNachricht } from '@/lib/assistent-logik'
 
 /** §280 Sofortstart: letzter Gruppen-Stand im Gerätespeicher */
 const INTERN_SNAP_KEY = 'trimosa-intern-v1'
@@ -121,6 +124,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
   const [directory, setDirectory] = useState<Directory[]>([])
   const [canCreate, setCanCreate] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  /** 🤖 Konto des KI-Assistenten „Claude" (Figur-Avatar + Warte-Blase) */
+  const [botId, setBotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<TeamChat | null>(null)
@@ -217,6 +222,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
       setDirectory(d.directory ?? [])
       setCanCreate(!!d.canCreate)
       setIsAdmin(!!d.isAdmin)
+      setBotId(typeof d.botId === 'string' ? d.botId : null)
       setError(null)
       // Threads statt Nachrichten zählen (konsistent mit App-Badge, Pascal 19.7.)
       onUnread?.((d.chats ?? []).filter((c: TeamChat) => (c.unread ?? 0) > 0).length)
@@ -370,7 +376,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         body: JSON.stringify(body),
       })
       if (r.ok) {
-        haptic('success')
+        rueckmeldung('gesendet') // Ton + Haptik erst nach Server-Bestätigung
         setFlyText(body.content); setTimeout(() => setFlyText(null), 600)
         setDraft('')
         setReplyTo(null)
@@ -378,7 +384,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         await loadMsgs(active.id)
         loadChats()
       } else {
-        haptic('error')
+        rueckmeldung('fehler')
         console.error('team-chat/senden', r.status)
         tmToast('⚠️ Senden hat nicht geklappt – der Entwurf bleibt erhalten.')
       }
@@ -392,6 +398,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         if (composerRef.current) composerRef.current.style.height = 'auto'
         tmToast('📵 Offline – die Nachricht wartet auf Verbindung')
       } else {
+        rueckmeldung('fehler')
         tmToast('⚠️ Senden hat nicht geklappt – der Entwurf bleibt erhalten.')
       }
     } finally { setBusy(false) }
@@ -426,13 +433,16 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         .from(d.bucket)
         .uploadToSignedUrl(d.path, d.token, blob, { contentType: fileType })
       if (upErr) { alert('Upload fehlgeschlagen: ' + upErr.message); return }
-      await fetch(`/api/team-chat/${active.id}`, {
+      const post = await fetch(`/api/team-chat/${active.id}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: (caption ?? draft).trim(), replyToId: replyTo?.id,
           attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: file.name,
         }),
       })
+      // Pascal 7.10.: Rückmeldung erst nach Server-Bestätigung; ohne sie bleibt der Entwurf stehen
+      if (!post.ok) { rueckmeldung('fehler'); tmToast('⚠️ Die Datei ist hochgeladen, aber die Nachricht kam nicht an – bitte noch einmal senden.'); return }
+      rueckmeldung('gesendet')
       setDraft('')
       setReplyTo(null)
       await loadMsgs(active.id)
@@ -497,7 +507,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         body: JSON.stringify({ content: caption, attachmentUrl: d.publicUrl, attachmentType: d.attachmentType, attachmentName: name }),
       })
       if (!post.ok) { alert('Das Video ist hochgeladen, aber die Nachricht kam nicht an. Bitte noch einmal senden.'); return false }
-      haptic('success')
+      rueckmeldung('gesendet')
       if (activeIdRef.current === chatId) await loadMsgs(chatId)
       loadChats()
       return true
@@ -819,7 +829,9 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
         <EmptyState icon="chat" title="Noch keine internen Gruppen" hint={canCreate ? 'Lege oben mit + die erste Gruppe an – z. B. „Geschäftsführung“ oder „Handwerker“.' : 'Sobald dich jemand zu einer Gruppe hinzufügt, erscheint sie hier.'} />
       )}
       {!loading && !error && chats.length > 0 && visibleChats.length === 0 && (
-        <EmptyState icon="chat" title="Nichts Ungelesenes." />
+        <EmptyState icon="chat" title={internFilter === 'ungelesen' ? 'Alles gelesen – du bist auf dem Laufenden.' : 'Diese Gruppe gibt es nicht mehr.'}
+          hint={internFilter === 'ungelesen' ? 'Neue Nachrichten im Team erscheinen hier automatisch.' : 'Vielleicht wurdest du entfernt oder sie wurde gelöscht.'}
+          action={{ label: 'Alle Gruppen zeigen', onClick: () => setInternFilter('alle') }} />
       )}
       {visibleChats.map((c) => {
         const isSel = !isMobile && active?.id === c.id
@@ -935,7 +947,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
               return (
                 <div key={m.id} id={`tmsg-${m.id}`} style={{ display: 'flex', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: reactions.length ? 12 : 0, marginBottom: lastOfRun ? 8 : 2, alignItems: 'flex-end' }}>
                   {!mine && (lastOfRun
-                    ? <Av name={m.senderName} src={m.senderAvatar} size={26} />
+                    ? (istBotNachricht(m, botId) ? <AssistentAvatar size={26} /> : <Av name={m.senderName} src={m.senderAvatar} size={26} />)
                     : <span style={{ width: 26, flexShrink: 0 }} />)}
                   <div style={{ maxWidth: '76%' }}>
                     {!mine && firstOfRun && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--tm-accent-dark)', margin: '0 0 2px 4px' }}>{m.senderName}</div>}
@@ -1098,6 +1110,8 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
             </div>
           </div>
         ))}
+        {/* 🤖 Chefsache 7.10. (Pascal §8): offene @c-Frage → Claude „tippt" bis zur echten Antwort */}
+        <AssistentWarteBlase key={active.id} msgs={msgs} botId={botId} />
         <div ref={bottomRef} />
       </div>
 
@@ -1280,6 +1294,7 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
           isAdmin={isAdmin || active.createdBy === userId}
           directory={directory}
           userId={userId}
+          botId={botId}
           onClose={() => setShowInfo(false)}
           onUpdate={(patch) => {
             setActive((a) => (a ? { ...a, ...patch } : a))
@@ -1303,11 +1318,13 @@ const MEDIA_TABS = [
   ['alle', 'Alle'], ['image', '📷 Fotos'], ['video', '🎬 Videos'], ['audio', '🎙️ Audio'], ['pdf', '📄 Dokumente'],
 ] as const
 
-function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDeleted }: {
+function GroupInfo({ chat, isAdmin, directory, userId, botId, onClose, onUpdate, onDeleted }: {
   chat: TeamChat
   isAdmin: boolean
   directory: Directory[]
   userId: string
+  /** 🤖 KI-Assistent: in der Mitgliederliste mit seiner Figur statt Initiale */
+  botId: string | null
   onClose: () => void
   onUpdate: (patch: Partial<TeamChat>) => void
   onDeleted: () => void
@@ -1452,7 +1469,9 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
             <>
               {chat.members.map((m, i) => (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 13px', boxShadow: i < chat.members.length - 1 ? 'inset 0 -0.5px 0 var(--tm-line)' : 'none' }}>
-                  <Av name={m.name} src={m.avatar} size={30} />
+                  {istBotNachricht({ senderId: m.id, senderName: m.name }, botId)
+                    ? <AssistentAvatar size={30} />
+                    : <Av name={m.name} src={m.avatar} size={30} />}
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--tm-text)' }}>{m.name}{m.id === userId ? ' (du)' : ''}</span>
                 </div>
               ))}
@@ -1486,7 +1505,10 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
           <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, padding: 20 }}>Lädt…</p>
         ) : filtered.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 13, padding: 20 }}>
-            {mediaFehler ? 'Die Medien konnten nicht geladen werden. Bitte öffne die Gruppen-Info gleich noch einmal.' : media.length === 0 ? 'Noch keine Medien in dieser Gruppe.' : 'Keine Treffer.'}
+            {mediaFehler ? 'Die Medien konnten nicht geladen werden. Bitte öffne die Gruppen-Info gleich noch einmal.' : media.length === 0 ? 'Noch keine Medien in dieser Gruppe – Fotos, Videos und Dateien aus dem Chat sammeln sich hier.' : 'Keine Treffer – probier einen anderen Begriff oder Reiter.'}
+            {!mediaFehler && media.length > 0 && q && (
+              <button type="button" onClick={() => { haptic(); setQ('') }} style={{ display: 'block', margin: '10px auto 0', border: 'none', borderRadius: 999, padding: '7px 14px', background: 'var(--tm-accent-soft)', color: 'var(--tm-accent-dark)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Suche leeren</button>
+            )}
           </p>
         ) : tab === 'image' ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>

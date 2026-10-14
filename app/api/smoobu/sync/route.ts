@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateListings } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
@@ -106,6 +107,7 @@ export async function POST() {
         // Listing existiert bereits (manuell erstellt) — nur smoobu_id verknüpfen, alles andere unangetastet lassen
         if (!existingByTitle.smoobu_id) {
           await supabase.from('listings').update({ smoobu_id: smoobuId }).eq('id', existingByTitle.id)
+          revalidateListings() // Data-Cache der öffentlichen Seiten (lib/public-data.ts)
         }
         skipped++
         continue

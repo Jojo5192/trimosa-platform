@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import type { SmoobuRateMap } from '@/lib/smoobu'
-import { t, MONTHS, DAYS_SHORT, type UiLang } from '@/lib/i18n'
+import { t, MONTHS, DAYS_SHORT, type UiLang, langHref } from '@/lib/i18n'
+import { policyText, type CancelPolicy } from '@/lib/cancel-policy'
 
 interface BookingBoxProps {
   listingId: string
@@ -14,6 +15,8 @@ interface BookingBoxProps {
   allowRequests?: boolean
   minRequestNights?: number
   cancellationPolicy?: string
+  /** Effektive Stornierungsbedingungen (resolvePolicy) — derselbe Text wie Mail/Gastbereich/Erstattung */
+  cancelPolicy?: CancelPolicy
   initialCheckIn?: string
   initialCheckOut?: string
   initialGuests?: number
@@ -32,12 +35,6 @@ function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1)
 }
 function today(): string { return isoDate(new Date()) }
-
-const POLICY_LABELS: Record<string, string> = {
-  flexibel: 'Kostenlose Stornierung bis 24h vor Check-in',
-  moderat:  'Kostenlose Stornierung bis 5 Tage vor Check-in',
-  strikt:   'Kostenlose Stornierung innerhalb 48h nach Buchung (mind. 14 Tage vor Check-in)',
-}
 
 /* ── Mini calendar ─────────────────────────────────────────── */
 function CalendarMonth({
@@ -128,6 +125,7 @@ export default function BookingBox({
   allowRequests = true,
   minRequestNights = 1,
   cancellationPolicy = 'moderat',
+  cancelPolicy,
   initialCheckIn,
   initialCheckOut,
   initialGuests,
@@ -307,6 +305,7 @@ export default function BookingBox({
           body: JSON.stringify({
             listingId, checkIn, checkOut, adults, children, message,
             booking_type: mode,
+            lang,
             guest_price_suggestion: mode === 'request' && priceSuggestion ? parseFloat(priceSuggestion) : undefined,
             ...(discount ? { discount_code: discount.code } : {}),
             guest: g,
@@ -360,6 +359,7 @@ export default function BookingBox({
         children,
         message,
         booking_type: mode,
+        lang,
         guest_price_suggestion: mode === 'request' && priceSuggestion ? parseFloat(priceSuggestion) : undefined,
         ...(discount ? { discount_code: discount.code } : {}),
       }),
@@ -775,26 +775,26 @@ export default function BookingBox({
 
       {/* Footer info */}
       <div style={{ marginTop: '12px' }}>
-        {guestOpen && (
-          <p style={{ textAlign: 'center', fontSize: '10.5px', color: '#BBB', margin: '0 0 6px' }}>
-            {t(lang, 'Mit deiner Buchung akzeptierst du unsere')}{' '}
-            <a href="/agb" target="_blank" rel="noreferrer" style={{ color: '#999', textDecoration: 'underline' }}>{t(lang, 'AGB')}</a>
-            {' & '}
-            <a href="/datenschutz" target="_blank" rel="noreferrer" style={{ color: '#999', textDecoration: 'underline' }}>{t(lang, 'Datenschutz')}</a>.
-          </p>
-        )}
+        {/* AGB-Einbeziehung + Widerrufshinweis für JEDEN Bucher (vorher nur im Gast-Formular; Audit 14.10.2026) */}
+        <p style={{ textAlign: 'center', fontSize: '11px', color: '#6E6E73', margin: '0 0 6px', lineHeight: 1.5 }}>
+          {t(lang, 'Mit deiner Buchung bzw. Anfrage akzeptierst du unsere')}{' '}
+          <a href={langHref(lang, '/agb')} target="_blank" rel="noreferrer" style={{ color: '#555', textDecoration: 'underline' }}>{t(lang, 'AGB')}</a>.{' '}
+          {t(lang, 'Es gilt unsere')}{' '}
+          <a href={langHref(lang, '/datenschutz')} target="_blank" rel="noreferrer" style={{ color: '#555', textDecoration: 'underline' }}>{t(lang, 'Datenschutzerklärung')}</a>.{' '}
+          {t(lang, 'Kein gesetzliches Widerrufsrecht bei Beherbergung zu festem Termin (§ 312g Abs. 2 Nr. 9 BGB) — es gelten die Stornierungsbedingungen dieses Inserats.')}
+        </p>
         {mode === 'instant' ? (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
             {t(lang, 'Sofortige Bestätigung · Keine versteckten Gebühren')}
           </p>
         ) : (
           <p style={{ textAlign: 'center', fontSize: '11px', color: '#BBB', margin: '0 0 6px' }}>
-            {t(lang, 'Noch keine Zahlung · Der Gastgeber antwortet in der Regel binnen 24h')}
+            {t(lang, 'Zahlung bei Anfrage · bei Ablehnung volle Erstattung · Antwort in der Regel binnen 24h')}
           </p>
         )}
-        {cancellationPolicy && POLICY_LABELS[cancellationPolicy] && (
-          <p style={{ textAlign: 'center', fontSize: '11px', color: '#AAA', margin: 0 }}>
-            🛡 {t(lang, POLICY_LABELS[cancellationPolicy])}
+        {cancelPolicy && (
+          <p style={{ textAlign: 'center', fontSize: '11px', color: '#6E6E73', margin: 0 }}>
+            🛡 {policyText(cancelPolicy, lang)}
           </p>
         )}
       </div>

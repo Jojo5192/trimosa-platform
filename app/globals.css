@@ -1155,6 +1155,18 @@ html.tm-dark { color-scheme: dark; }
   .tm-fly { display: none; }
   .tm-done-flash, .tm-peek { animation: none; }
 }
+/* Pascal 7.10. Gestaltung 3: Erfolgsmoment im leeren Zustand („Alles erledigt") — erst nach Server-Bestätigung
+   gesetzt (EmptyState feiern). Kreis zeichnet sich, dann der Haken, dann der Titel; fertig nach ~1,05 s. */
+@keyframes tmZeichnen { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes tmFeiernTitel { from { opacity: 0; transform: translateY(4px) scale(0.97); } to { opacity: 1; transform: none; } }
+.tm-empty.tm-feiern svg { color: var(--tm-green); }
+.tm-feiern svg path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tmZeichnen 0.5s var(--tm-ease) forwards; }
+.tm-feiern svg path:nth-child(2) { stroke-width: 2.2; animation-duration: 0.38s; animation-delay: 0.42s; }
+.tm-feiern .tm-feiern-titel { animation: tmFeiernTitel 0.32s var(--tm-ease) 0.72s backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .tm-feiern svg path { animation: none; stroke-dashoffset: 0; }
+  .tm-feiern .tm-feiern-titel { animation: none; }
+}
 
 /* Paragraph 308 (Pascal 9.9.): Update-Streifen - laeuft von links nach rechts, solange eine neue Version installiert */
 .tm-update-stripe {

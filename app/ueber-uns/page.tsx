@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
+import { getActiveListings } from '@/lib/public-data'
 import Link from 'next/link'
 import Image from 'next/image'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import NavBar from '@/components/NavBar'
 import { buildCardRating } from '@/lib/rating'
 import { REGIONS } from '@/lib/regions'
 import { getUiLang } from '@/lib/i18n-server'
-import { isUiLang, type UiLang } from '@/lib/i18n'
+import { isUiLang, type UiLang, langHref } from '@/lib/i18n'
 import { t } from '@/lib/i18n'
 import { makeTr } from '@/lib/static-translate'
 import { getHostTeam } from '@/lib/hosts'
@@ -80,12 +80,8 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
     'Regionsfotos: Wikimedia Commons — Urheber und Lizenz auf den jeweiligen Erlebnis-Seiten.',
     'Alle Unterkünfte ansehen →',
   ])
-  const { data: listings } = await supabaseAdmin
-    .from('listings')
-    .select('*')
-    .eq('is_active', true)
-
-  const all = listings ?? []
+  // Gecacht (lib/public-data.ts) statt Supabase-Roundtrip je Anfrage
+  const all = await getActiveListings().catch((e) => { console.error('[ueber-uns] listings:', e); return [] })
   const apartmentCount = all.length
   // Aggregate review stats across all listings (weighted)
   let totalScore = 0
@@ -182,7 +178,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
           <p style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: '0 0 12px' }}>
             {T(STORY_2A)}{' '}
             <em>{T(STORY_2_EM)}</em>{T(STORY_2B)}{' '}
-            <Link href="/region/saar" style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{T('Kanzem an der Saar')}</Link>{' '}
+            <Link href={langHref(lang, '/region/saar')} style={{ color: 'var(--gold-dark)', fontWeight: 600 }}>{T('Kanzem an der Saar')}</Link>{' '}
             {T(STORY_2C)}
           </p>
           <p style={{ fontSize: '15px', lineHeight: 1.8, color: '#3A3427', margin: 0 }}>
@@ -227,7 +223,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
               .map((s) => r.pois.find((p) => p.slug === s)?.image)
               .find((i) => !!i) ?? r.pois.find((p) => p.image)?.image
             return (
-              <Link key={r.slug} href={`/region/${r.slug}`} className="listing-card" style={{ display: 'block', textDecoration: 'none', background: '#fff', borderRadius: '16px', border: '1px solid #EDE9DE', overflow: 'hidden' }}>
+              <Link key={r.slug} href={langHref(lang, `/region/${r.slug}`)} className="listing-card" style={{ display: 'block', textDecoration: 'none', background: '#fff', borderRadius: '16px', border: '1px solid #EDE9DE', overflow: 'hidden' }}>
                 {img && (
                   <div style={{ position: 'relative', aspectRatio: '16/9' }}>
                     <Image src={img.src} alt={r.name} fill sizes="(max-width: 768px) 100vw, 220px" style={{ objectFit: 'cover' }} />
@@ -248,7 +244,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
 
         {/* ── CTA ── */}
         <div style={{ textAlign: 'center' }}>
-          <Link href="/?view=map" style={{
+          <Link href={langHref(lang, '/?view=map')} style={{
             display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '14px', fontWeight: 700,
             padding: '14px 30px', borderRadius: '999px', color: '#1A1400',
             background: 'var(--gold)', textDecoration: 'none',
@@ -266,7 +262,7 @@ export default async function UeberUnsPage({ searchParams }: { searchParams?: Pr
           </div>
           <span style={{ fontSize: '11px', color: '#AAA6A0' }}>© 2026 TRIMOSA Apartments &amp; Homes</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            {[{ label: t(lang, 'Impressum'), href: '/impressum' }, { label: t(lang, 'Datenschutz'), href: '/datenschutz' }, { label: t(lang, 'AGB'), href: '/agb' }, { label: 'FAQ', href: '/faq' }, { label: t(lang, 'Barrierefreiheit'), href: '/barrierefreiheit' }].map((item) => (
+            {[{ label: t(lang, 'Impressum'), href: langHref(lang, '/impressum') }, { label: t(lang, 'Datenschutz'), href: langHref(lang, '/datenschutz') }, { label: t(lang, 'AGB'), href: langHref(lang, '/agb') }, { label: 'FAQ', href: langHref(lang, '/faq') }, { label: t(lang, 'Barrierefreiheit'), href: langHref(lang, '/barrierefreiheit') }].map((item) => (
               <Link key={item.href} href={item.href} style={{ fontSize: '11px', color: '#AAA6A0', textDecoration: 'none' }}>{item.label}</Link>
             ))}
           </div>

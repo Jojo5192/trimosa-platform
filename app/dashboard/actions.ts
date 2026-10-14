@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidateListings } from '@/lib/public-data'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
@@ -219,4 +220,5 @@ export async function createListing(formData: {
 
   revalidatePath('/dashboard')
   revalidatePath('/')
+  revalidateListings() // Data-Cache der öffentlichen Seiten (lib/public-data.ts)
 }

@@ -18,6 +18,30 @@ export const UI_LANG_META: Record<UiLang, { flag: string; label: string }> = {
   nl: { flag: '🇳🇱', label: 'Nederlands' },
 }
 
+/** Routen mit Sprachvarianten unter /en|fr|nl (app/[lang]/…) — Rest bleibt deutsch (Landingpages, Gastbereich, Team). */
+const LANG_PATH = /^\/(listing|region|erlebnis)\//
+const LANG_EXACT = new Set(['/', '/faq', '/ueber-uns', '/agb', '/impressum', '/datenschutz', '/stornierung', '/barrierefreiheit'])
+
+/**
+ * Interner Link in der Sprache des Besuchers (Audit 14.10.2026, Hoch-Punkt 3): Vorher zeigten ALLE Links auf
+ * /en-, /fr-, /nl-Seiten auf deutsche URLs — nach dem ersten Klick war die Sprache weg, 162 Sprachseiten
+ * hatten keinen eingehenden Link. de → unverändert; sonst /<lang><Pfad>, aber nur für Routen, die es
+ * mehrsprachig gibt. Query/Hash bleiben erhalten.
+ */
+export function hasLangVariant(path: string): boolean {
+  const base = path.split(/[?#]/)[0]
+  return LANG_PATH.test(base) || LANG_EXACT.has(base)
+}
+
+export function langHref(lang: UiLang | undefined | null, path: string): string {
+  if (!lang || lang === 'de') return path
+  const m = path.match(/^([^?#]*)(.*)$/)
+  const base = m ? m[1] : path
+  const rest = m ? m[2] : ''
+  if (!hasLangVariant(base)) return path
+  return `/${lang}${base === '/' ? '' : base}${rest}`
+}
+
 export function isUiLang(v: unknown): v is UiLang {
   return v === 'de' || v === 'en' || v === 'fr' || v === 'nl'
 }
@@ -451,6 +475,21 @@ addTranslations({
   'Ausstehend': ['Pending', 'En attente', 'In afwachting'],
   'Zahlung ausstehend': ['Payment pending', 'Paiement en attente', 'Betaling in afwachting'],
   'Buchung abbrechen': ['Cancel booking attempt', 'Annuler la tentative', 'Boeking afbreken'],
+  'Echtheit: Über trimosa.de können nur Gäste bewerten, deren abgeschlossenen Aufenthalt wir einer Buchung zuordnen (eine Bewertung je Gast und Unterkunft). Bewertungen von Airbnb, Booking.com und FeWo-direkt (Vrbo) übernehmen wir automatisch per Schnittstelle ohne inhaltliche Änderung, für andere Sprachen maschinell übersetzt; nur Dubletten und Fehlzuordnungen entfernen wir. Dort können nur Gäste nach einem Aufenthalt bewerten. Google-Rezensionen prüfen wir nicht auf einen tatsächlichen Aufenthalt.': [
+    'Authenticity: On trimosa.de only guests whose completed stay we can match to a booking may leave a review (one review per guest and property). Reviews from Airbnb, Booking.com and Vrbo are imported automatically via their interfaces without editing the content, machine-translated for other languages; we only remove duplicates and mismatches. There, only guests who completed a stay can review. We do not verify Google reviews against an actual stay.',
+    'Authenticité : sur trimosa.de, seuls les clients dont nous pouvons rattacher le séjour terminé à une réservation peuvent laisser un avis (un avis par client et par logement). Les avis Airbnb, Booking.com et Vrbo sont importés automatiquement via leurs interfaces sans modification du contenu, traduits automatiquement pour les autres langues ; nous ne supprimons que les doublons et les erreurs d\'attribution. Là-bas, seuls des clients ayant séjourné peuvent évaluer. Nous ne vérifions pas les avis Google quant à un séjour réel.',
+    'Echtheid: Op trimosa.de kunnen alleen gasten beoordelen van wie wij het afgeronde verblijf aan een boeking kunnen koppelen (één beoordeling per gast en accommodatie). Beoordelingen van Airbnb, Booking.com en Vrbo nemen wij automatisch via hun interfaces over zonder inhoudelijke wijziging, voor andere talen automatisch vertaald; alleen dubbele en verkeerd toegewezen beoordelingen verwijderen wij. Daar kunnen alleen gasten na een verblijf beoordelen. Google-recensies controleren wij niet op een daadwerkelijk verblijf.',
+  ],
+  'Bewertung nach Aufenthalt über': ['Reviewed after a stay via', 'Avis après séjour via', 'Beoordeling na verblijf via'],
+  'Mit deiner Buchung bzw. Anfrage akzeptierst du unsere': ['By booking or sending a request you accept our', 'En réservant ou en envoyant une demande, vous acceptez nos', 'Met je boeking of aanvraag accepteer je onze'],
+  'Es gilt unsere': ['See also our', 'Voir aussi notre', 'Zie ook onze'],
+  'Datenschutzerklärung': ['privacy policy', 'politique de confidentialité', 'privacyverklaring'],
+  'Zahlung bei Anfrage · bei Ablehnung volle Erstattung · Antwort in der Regel binnen 24h': ['Payment with your request · full refund if declined · reply usually within 24h', 'Paiement à la demande · remboursement intégral en cas de refus · réponse en général sous 24h', 'Betaling bij aanvraag · volledige terugbetaling bij afwijzing · antwoord meestal binnen 24u'],
+  'Kein gesetzliches Widerrufsrecht bei Beherbergung zu festem Termin (§ 312g Abs. 2 Nr. 9 BGB) — es gelten die Stornierungsbedingungen dieses Inserats.': [
+    'No statutory right of withdrawal for accommodation booked for a specific date (Sec. 312g (2) no. 9 German Civil Code) — the cancellation policy of this listing applies.',
+    'Pas de droit de rétractation légal pour un hébergement à date fixe (§ 312g al. 2 n° 9 BGB) — les conditions d\'annulation de cette annonce s\'appliquent.',
+    'Geen wettelijk herroepingsrecht bij accommodatie voor een vaste datum (§ 312g lid 2 nr. 9 BGB) — de annuleringsvoorwaarden van deze advertentie gelden.',
+  ],
   'Buchung wirklich abbrechen?': ['Really cancel this booking attempt?', 'Vraiment annuler cette tentative ?', 'Boeking echt afbreken?'],
   'Die Zahlung wurde noch nicht abgeschlossen — es wird nichts berechnet.': ['The payment was not completed — nothing will be charged.', 'Le paiement n\'a pas été finalisé — rien ne sera facturé.', 'De betaling is niet afgerond — er wordt niets in rekening gebracht.'],
   'Buchungsart': ['Booking type', 'Type de réservation', 'Boekingstype'],

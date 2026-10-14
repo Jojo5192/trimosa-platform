@@ -543,7 +543,9 @@ export default function HeutePanel({ role, visible, onCount }: {
 
         {d && nothing && (
           <section style={CARD}>
-            <EmptyState icon="house" title={istHeute ? 'Heute keine An- oder Abreisen.' : 'Keine An- oder Abreisen an diesem Tag.'} />
+            <EmptyState icon="house" title={istHeute ? 'Heute keine An- oder Abreisen.' : 'Keine An- oder Abreisen an diesem Tag.'}
+              hint={view === 'cleaning' ? 'Ein ruhiger Tag. Mit den Pfeilen oben siehst du die nächsten Tage.' : 'Ein ruhiger Tag – Zeit für offene Aufgaben. Mit den Pfeilen oben siehst du die nächsten Tage.'}
+              action={view === 'cleaning' ? undefined : { label: 'Zu den Aufgaben', onClick: () => openTab('aufgaben') }} />
           </section>
         )}
 
@@ -605,7 +607,7 @@ export default function HeutePanel({ role, visible, onCount }: {
           }
         >
           {dayTasks.length === 0
-            ? <Empty text={istHeute ? 'Keine Aufgaben für heute geplant.' : 'Keine Aufgaben für diesen Tag geplant.'} />
+            ? <Empty text={istHeute ? 'Keine Aufgaben für heute geplant – mit „＋ Neu“ planst du eine ein.' : 'Keine Aufgaben für diesen Tag geplant – mit „＋ Neu“ planst du eine ein.'} />
             : dayTasks.map((t, i) => taskRow(t, i === dayTasks.length - 1))}
         </Card>
 

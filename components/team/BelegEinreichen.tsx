@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { haptic } from '@/components/team/ux'
+import { haptic, rueckmeldung } from '@/components/team/ux'
 import DocScanner from '@/components/DocScanner'
 
 /**
@@ -87,10 +87,11 @@ export default function BelegEinreichen({ onClose }: { onClose: () => void }) {
           throw new Error(`HTTP ${r.status}`)
         }
       }
-      haptic()
+      haptic('success') // Server hat den Beleg angenommen → deutlichere Bestätigung (Pascal 7.10.)
       setFertig(true)
     } catch (e) {
       console.error('beleg-einreichen', e)
+      rueckmeldung('fehler')
       setErr(anzeige ?? (e instanceof TypeError
         ? 'Keine Verbindung. Bitte prüf dein Internet und versuch es noch einmal.'
         : 'Der Beleg konnte nicht vorbereitet werden. Bitte versuch es noch einmal oder lade ihn als PDF hoch.'))
