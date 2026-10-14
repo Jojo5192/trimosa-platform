@@ -252,6 +252,17 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   // Check-out-/Danke-Nachricht mehr zum alten Abreisetag schicken (der Gast bleibt ja), die Zusatzbuchung keine
   // Buchungs-/Anreise-Nachrichten (der Gast ist schon da) — nur ihre Check-out- und Danke-Nachricht.
   const verl = await import('@/lib/zahlungen').then((m) => m.verlaengerungsIndex()).catch(() => ({ urspruenge: new Set<string>(), zusaetze: new Set<string>() }))
+  // Zusatzbuchung → Ursprungsbuchung: Nachrichten der Verlängerung gehen über den Kanal/Thread der URSPRÜNGLICHEN
+  // Buchung (Airbnb-/Booking-Gäste erreicht die neue Direkt-Reservierung sonst nur per Mail) und nutzen deren
+  // Kanal-Vorlagen (z. B. die Airbnb-Danke-Nachricht statt der Website-Variante)
+  const verlUrsprung = verl.zusaetze.size
+    ? await import('@/lib/zahlungen').then((m) => m.verlaengerungsUrsprung()).catch(() => new Map<string, string>())
+    : new Map<string, string>()
+  const bookingById = new Map(bookings.map((x) => [x.id, x]))
+  const zielVon = (x: BookingRow): BookingRow => {
+    const o = verlUrsprung.get(x.id)
+    return (o && bookingById.get(o)) || x
+  }
 
   const { data: lRows } = await supabaseAdmin
     .from('listings').select('id, title, address, location, check_in_time, check_out_time, google_place_id')
@@ -331,7 +342,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       const nights = dayDiff(b.check_in, b.check_out)
       if (!isReinigung && t.min_nights && nights < t.min_nights) continue
       if (!isReinigung && t.channel_filter?.length) {
-        const ch = normChannel(b.channel ?? b.source)
+        const kb = zielVon(b)
+        const ch = normChannel(kb.channel ?? kb.source)
         if (!t.channel_filter.map(normChannel).includes(ch)) continue
       }
       // Website-Buchungen erst nach Zahlungseingang (§132-Muster)
@@ -392,7 +404,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
 
   // Conversations der fälligen Buchungen (Website-Gäste)
   const convByBooking = new Map<string, ConvRow>()
-  const dueBIds = [...new Set(due.map(d => d.b.id))]
+  const dueBIds = [...new Set(due.flatMap(d => [d.b.id, zielVon(d.b).id]))]
   for (let i = 0; i < dueBIds.length; i += 300) {
     const { data: convs } = await supabaseAdmin
       .from('conversations').select('id, guest_id, host_id, booking_id')
@@ -401,6 +413,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
   }
 
   for (const { t, b } of due) {
+    // 🌙 Verlängerung: Daten (Abreise, Nächte) von der Zusatzbuchung, Zustellung über die Ursprungsbuchung
+    const ziel = zielVon(b)
     const listing = b.listing_id ? listings.get(b.listing_id) : undefined
     const gast = b.guest_name || 'Gast'
     const zeitraum = `${fmtDate(b.check_in)}–${fmtDate(b.check_out)}`
@@ -427,7 +441,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         checkin: listing?.check_in_time ?? '16:00',
         checkout: listing?.check_out_time ?? '10:00',
         tuercode: code ?? '',
-        mappe: b.portal_token ? `${siteUrl}/mappe/${b.portal_token}` : '',
+        mappe: ziel.portal_token ? `${siteUrl}/mappe/${ziel.portal_token}` : '',
         adresse: listing?.address || listing?.location || '',
         google_bewertung: listing?.google_place_id
           ? `https://search.google.com/local/writereview?placeid=${listing.google_place_id}`
@@ -442,8 +456,8 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
       german = german.replace(/\{\w+\}/g, '').replace(/\n{3,}/g, '\n\n').trim()
       if (!german) { report.postponed++; continue }
 
-      const conv = convByBooking.get(b.id)
-      const kanal = conv ? (t.send_email ? 'chat+email' : 'chat') : b.smoobu_reservation_id && !isFewoRelayEmail(b.guest_email) ? 'smoobu' : 'email'
+      const conv = convByBooking.get(ziel.id)
+      const kanal = conv ? (t.send_email ? 'chat+email' : 'chat') : ziel.smoobu_reservation_id && !isFewoRelayEmail(ziel.guest_email) ? 'smoobu' : 'email'
       if (dryRun) {
         report.due.push({
           vorlage: t.name, gast, wohnung: listing?.title ?? '—', zeitraum, kanal,
@@ -472,7 +486,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         if (claimErr) continue
       }
 
-      const lang = await guestLangFor(b, conv?.id, conv?.guest_id)
+      const lang = await guestLangFor(ziel, conv?.id, conv?.guest_id)
       const tr = await translateProtected(german, lang)
       // §208: eigener Betreff — auflösen + in Gastsprache übersetzen
       let mailSubject: string | null = null
@@ -496,7 +510,7 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
         })
         await supabaseAdmin.from('conversations')
           .update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
-        const to = t.send_email ? await guestEmailFor(b) : null
+        const to = t.send_email ? await guestEmailFor(ziel) : null
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
@@ -504,28 +518,28 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           }).catch(e => console.error('[auto-messages] email:', e))
           outcome = 'chat+email'
         } else outcome = 'chat'
-      } else if (b.smoobu_reservation_id && !isFewoRelayEmail(b.guest_email)) {
+      } else if (ziel.smoobu_reservation_id && !isFewoRelayEmail(ziel.guest_email)) {
         // Paragraph 294: FeWo-Relay-Gaeste laufen unten direkt ueber die Mail-Bruecke, nicht ueber Smoobu
         // §210: „gesendet" entscheidet der HTTP-Erfolg — NICHT das Vorhandensein
         // einer Message-ID (Smoobu liefert sie nicht immer). Ohne ID adoptiert
         // der nächste Sync unsere Zeile per Zwillings-Claim (§57/§131).
-        const push = await sendMessageToGuest(Number(b.smoobu_reservation_id), chatText)
+        const push = await sendMessageToGuest(Number(ziel.smoobu_reservation_id), chatText)
         if (push.sent) {
           await supabaseAdmin.from('messages').insert({
-            booking_id: b.id, sender_type: 'host', content: chatText,
+            booking_id: ziel.id, sender_type: 'host', content: chatText,
             content_de: msgDe, lang: msgLang,
             ...(push.id !== null ? { smoobu_message_id: String(push.id) } : {}),
           })
           outcome = push.id !== null ? 'smoobu' : 'smoobu (ohne id)'
         } else {
-          const to = await guestEmailFor(b)
+          const to = await guestEmailFor(ziel)
           if (to) {
             await sendAutoMessageEmail({
               to, guestName: gast, listingTitle: listing?.title, text: tr.text,
               mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
             })
             await supabaseAdmin.from('messages').insert({
-              booking_id: b.id, sender_type: 'host', content: chatText,
+              booking_id: ziel.id, sender_type: 'host', content: chatText,
               content_de: msgDe, lang: msgLang,
             })
             outcome = 'email (smoobu-fehler)'
@@ -535,14 +549,14 @@ export async function runAutoMessages(opts: { dryRun?: boolean } = {}): Promise<
           }
         }
       } else {
-        const to = await guestEmailFor(b)
+        const to = await guestEmailFor(ziel)
         if (to) {
           await sendAutoMessageEmail({
             to, guestName: gast, listingTitle: listing?.title, text: tr.text,
             mappeUrl: ctx.mappe || null, reviewUrl: ctx.google_bewertung || null, subject: mailSubject, lang,
           })
           await supabaseAdmin.from('messages').insert({
-            booking_id: b.id, sender_type: 'host', content: chatText,
+            booking_id: ziel.id, sender_type: 'host', content: chatText,
             content_de: msgDe, lang: msgLang,
           })
           outcome = 'email'

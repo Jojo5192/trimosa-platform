@@ -31,6 +31,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     .from('bookings').select('id, status, check_in, smoobu_reservation_id').eq('portal_token', token).maybeSingle()
   if (!b || b.status === 'cancelled') return NextResponse.json({ error: 'Nicht gefunden.' }, { status: 404 })
 
+  // 💶 ?zusatz=<Zahllink-ID>: Rechnung einer Zusatzzahlung (lib/zahlungen.ts) — nur Links DIESER Buchung
+  const zusatz = req.nextUrl.searchParams.get('zusatz')
+  if (zusatz) {
+    const { listeZahllinks } = await import('@/lib/zahlungen')
+    const e = (await listeZahllinks(String(b.id))).find((x) => x.id === zusatz)
+    const sevId = e?.rechnung?.sevdeskId
+    if (!sevId) return NextResponse.json({ error: 'Noch keine Rechnung vorhanden.' }, { status: 404 })
+    const pdf = await getSevInvoicePdf(sevId)
+    if (!pdf.ok || !pdf.pdf) return NextResponse.json({ error: 'Rechnung derzeit nicht abrufbar.' }, { status: 502 })
+    return pdfResponse(pdf.pdf, `Rechnung-${e?.rechnung?.number ?? 'Zusatz'}.pdf`.replace(/[^\w.-]/g, '_'))
+  }
+
   // Paragraph 300: Alt-Buchung mit sevdesk-Rechnung aus dem Jahres-Neuaufbau -> sevdesk-PDF liefern
   // (lexoffice antwortet seit dem Umzug 401; Zengler 13.-16.4. bekam deshalb monatelang keinen Download)
   if (String(b.check_in) < SEV_ENGINE_STICHTAG) {

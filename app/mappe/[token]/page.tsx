@@ -213,6 +213,25 @@ export default async function MappePage({ params, searchParams }: {
       }
     }
   } catch (e) { console.error('[mappe] verlaengerungen:', e) }
+  // 🧾 Weitere Rechnungen: bezahlte Zahllinks (Extras) und Verlängerungen (eigene Zusatzbuchung, Rechnung ab deren Start)
+  const weitereRechnungen: { href: string; label: string; nummer: string | null }[] = []
+  try {
+    const { listeZahllinks, verlaengerungenVon } = await import('@/lib/zahlungen')
+    for (const z of await listeZahllinks(String(booking.id))) {
+      if (z.status === 'bezahlt' && z.rechnung?.sevdeskId) weitereRechnungen.push({ href: `/api/rechnung/${token}?zusatz=${encodeURIComponent(z.id)}`, label: `${z.zweck} (${z.betrag.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €)`, nummer: z.rechnung.number ?? null })
+    }
+    for (const v of await verlaengerungenVon(String(booking.id))) {
+      if (!v.extId) continue
+      const [{ data: ext }, { data: inv }] = await Promise.all([
+        supabaseAdmin.from('bookings').select('portal_token, status').eq('id', v.extId).maybeSingle(),
+        supabaseAdmin.from('sevdesk_invoices').select('sevdesk_id, invoice_number').eq('booking_id', v.extId).maybeSingle(),
+      ])
+      if (ext?.portal_token && ext.status !== 'cancelled' && inv?.sevdesk_id) {
+        weitereRechnungen.push({ href: `/api/rechnung/${ext.portal_token}`, label: `VERL:${fmtDate(v.von)}–${fmtDate(v.bis)}`, nummer: (inv.invoice_number as string | null) ?? null })
+      }
+    }
+  } catch (e) { console.error('[mappe] weitere Rechnungen:', e) }
+
   const verlStartRoh = Number(verlParam)
   const verlStart = Number.isFinite(verlStartRoh) && verlStartRoh >= 1 ? Math.min(14, Math.round(verlStartRoh)) : null
   const verlZeigen = verlMoeglich || verlBestehend.length > 0 || verlBezahlt === '1'
@@ -265,6 +284,7 @@ export default async function MappePage({ params, searchParams }: {
     contactTitle: 'Kontakt',
     navLabel: 'Kontakt & Chat',
   }
+  const WEITERE_DE = { titel: 'Weitere Rechnungen', verlaengerung: 'Verlängerung', ansehen: 'ansehen (PDF)' }
   // 🌙 Verlängerung (Pascal 6.10.) — {n}/{datum} sind Platzhalter, die die Übersetzung stehen lässt
   const VERL_DE: MappeVerlaengernLabels = {
     navLabel: 'Verlängern',
@@ -311,10 +331,11 @@ export default async function MappePage({ params, searchParams }: {
   let chatLabels = CHAT_DE
   let invLabels = INV_DE
   let verlLabels = VERL_DE
+  let weitereLabels = WEITERE_DE
   if (lang !== 'de') {
     const tr = await makeTr(lang, [
       ...collectGuideTexts(blocksAll), ...rules,
-      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE), ...Object.values(INV_DE), ...Object.values(VERL_DE),
+      ...Object.values(DE_LABELS), ...Object.values(UI_DE), ...Object.values(CHAT_DE), ...Object.values(INV_DE), ...Object.values(VERL_DE), ...Object.values(WEITERE_DE),
       ctxDe.regionClaim ?? '', ctxDe.doorNote ?? '',
     ])
     blocks = translateBlocks(blocksAll, tr)
@@ -328,6 +349,7 @@ export default async function MappePage({ params, searchParams }: {
     chatLabels = Object.fromEntries(Object.entries(CHAT_DE).map(([k, v]) => [k, tr(v)])) as typeof CHAT_DE
     invLabels = Object.fromEntries(Object.entries(INV_DE).map(([k, v]) => [k, tr(v)])) as unknown as MappeInvoiceLabels
     verlLabels = Object.fromEntries(Object.entries(VERL_DE).map(([k, v]) => [k, tr(v)])) as unknown as MappeVerlaengernLabels
+    weitereLabels = Object.fromEntries(Object.entries(WEITERE_DE).map(([k, v]) => [k, tr(v)])) as typeof WEITERE_DE
   }
 
   // §136: Bausteine nach Aufenthalts-Phase + Mindest-Nächten filtern —
@@ -368,7 +390,7 @@ export default async function MappePage({ params, searchParams }: {
     }
   }
   if (verlZeigen) navItems.push({ id: 'verlaengern', label: verlLabels.navLabel, icon: '🌙' })
-  if (invoiceStatus) navItems.push({ id: 'mb-rechnung', label: invLabels.navLabel, icon: '🧾' })
+  if (invoiceStatus || weitereRechnungen.length) navItems.push({ id: 'mb-rechnung', label: invLabels.navLabel, icon: '🧾' })
   const hasChatBlock = blocks.some((b) => b.type === 'chat')
   if (!hasChatBlock) navItems.push({ id: 'mb-chat', label: chatLabels.navLabel, icon: '💬' })
 
@@ -441,6 +463,17 @@ export default async function MappePage({ params, searchParams }: {
               initial={invoiceRecipient}
               canEdit={invoiceCanEdit}
             />
+          </div>
+        )}
+        {weitereRechnungen.length > 0 && (
+          <div id={invoiceStatus ? undefined : 'mb-rechnung'} style={{ scrollMarginTop: 70, margin: '14px 0', background: '#fff', borderRadius: 16, padding: '16px 18px', boxShadow: '0 1px 4px rgba(35,28,10,0.06)' }}>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: '#2A2620', marginBottom: 8 }}>🧾 {weitereLabels.titel}</div>
+            {weitereRechnungen.map((r) => (
+              <a key={r.href} href={r.href} target="_blank" rel="noreferrer" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderTop: '1px solid #F0EBDF', textDecoration: 'none', fontSize: 14, color: '#2A2620' }}>
+                <span>{r.label.startsWith('VERL:') ? `${weitereLabels.verlaengerung} ${r.label.slice(5)}` : r.label}{r.nummer ? <span style={{ color: '#8A8065' }}> · {r.nummer}</span> : null}</span>
+                <span style={{ color: 'var(--gold, #AE8D2D)', fontWeight: 700, whiteSpace: 'nowrap' }}>{weitereLabels.ansehen}</span>
+              </a>
+            ))}
           </div>
         )}
         {/* 💬 Direkter Draht zum Team (§136) — Position folgt dem chat-Baustein (§163) */}

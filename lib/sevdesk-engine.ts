@@ -52,6 +52,8 @@ function channelLabel(b: { channel?: string | null; source?: string | null }): s
   if (/direct|direkt|website|trimosa/.test(v)) return 'die TRIMOSA-Website'
   if (/hometogo/.test(v)) return 'HomeToGo'
   if (/booking/.test(v)) return 'Booking.com'
+  // 🌙 Verlängerungen (Kanal „Verlängerung") und andere eigene Buchungen wurden online über Stripe bezahlt
+  if ((b.source ?? '').toLowerCase() === 'trimosa') return 'die TRIMOSA-Website (Online-Zahlung)'
   return 'den Buchungskanal'
 }
 
@@ -183,6 +185,70 @@ async function nextFreeInvoiceNumber(): Promise<string> {
 
 export interface SevCreateResult {
   ok: boolean; sevdeskId?: string; number?: string | null; skipped?: string; error?: string
+}
+
+/**
+ * 💶 Rechnung für eine ZUSATZZAHLUNG (Zahllink aus dem Gäste-Chat, lib/zahlungen.ts) — eigener Beleg in derselben
+ * Nummernserie, 7 % wie die Übernachtung (Inhaber-Entscheid 14.10.2026: alle Extras 7 %), sofort gegen
+ * „Verrechnung Direkt/Website" (Stripe) als bezahlt gebucht. Empfänger wie bei der Buchungs-Rechnung (Override aus
+ * der Gästemappe > Profil > Gastname). Die Zeile in sevdesk_invoices trägt KEINE booking_id (die gehört der
+ * Übernachtungs-Rechnung, Unique-Index) — die Zuordnung steht im Zahllink-Eintrag.
+ */
+export async function createSevZusatzRechnung(input: {
+  bookingId: string; betrag: number; zweck: string; text?: string | null
+}): Promise<SevCreateResult> {
+  if (!sevdeskConfigured()) return { ok: false, error: 'SEVDESK_API_TOKEN fehlt' }
+  const { data: bRaw } = await supabaseAdmin
+    .from('bookings')
+    .select('id, status, source, payment_status, check_in, check_out, guest_name, guest_id, total_price, channel, listing_id, adults, children, smoobu_reservation_id')
+    .eq('id', input.bookingId).maybeSingle()
+  const b = bRaw as BookingRow | null
+  if (!b) return { ok: false, error: 'Buchung nicht gefunden' }
+  const amount = Math.round(Number(input.betrag) * 100) / 100
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'kein Betrag' }
+
+  const { data: l } = b.listing_id
+    ? await supabaseAdmin.from('listings').select('title, location_group').eq('id', b.listing_id).maybeSingle()
+    : { data: null }
+  const lRow = l as { title?: string; location_group?: string | null } | null
+  const listingTitle = lRow?.title ?? 'Ferienwohnung'
+  const rec = await resolveSevRecipient(b, await getSevRow(b.id))
+  const today = berlinToday()
+  const num = await nextFreeInvoiceNumber()
+  // Nummer sofort reservieren (die nächste Rechnung sieht sie im DB-Maximum)
+  const { data: res, error: resErr } = await supabaseAdmin.from('sevdesk_invoices')
+    .insert({ booking_id: null, smoobu_reservation_id: null, invoice_number: num, amount, status: 'angelegt', updated_at: new Date().toISOString() })
+    .select('id').single()
+  if (resErr || !res) return { ok: false, error: `sevdesk_invoices-Schreibfehler: ${resErr?.message ?? '—'}` }
+
+  const zusatz = input.text?.trim() ? ` · ${input.text.trim()}` : ''
+  const inp: SevInvoiceInput = {
+    invoiceNumber: num,
+    invoiceDate: today,
+    contactName: rec.name,
+    apartmentTitle: lRow?.location_group || listingTitle,
+    clearingLabel: 'Verrechnung Direkt/Website',
+    amountGross: amount,
+    positionName: `${input.zweck} · ${listingTitle}`.slice(0, 255),
+    positionText: `Zusatzleistung zum Aufenthalt ${fmtDate(b.check_in)}–${fmtDate(b.check_out)}${zusatz}`.slice(0, 1000),
+    addressText: addressTextFor(rec),
+    footText: 'Bereits bezahlt per Online-Zahlung. Vielen Dank!',
+    deliveryDate: today,
+    deliveryDateUntil: today,
+  }
+  try {
+    const result = await createPaidInvoice(inp, { book: true })
+    await supabaseAdmin.from('sevdesk_invoices')
+      .update({ sevdesk_id: result.sevdeskId, invoice_number: result.number, status: 'gebucht', error: null, updated_at: new Date().toISOString() })
+      .eq('id', res.id)
+    console.log('[sevdesk-engine] Zusatz-Rechnung erstellt:', result.number, '→', rec.name, amount, '€', input.zweck)
+    return { ok: true, sevdeskId: result.sevdeskId, number: result.number }
+  } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e).slice(0, 400)
+    console.error('[sevdesk-engine] Zusatz-Rechnung fehlgeschlagen:', b.id.slice(0, 8), msg)
+    await supabaseAdmin.from('sevdesk_invoices').update({ status: 'fehler', error: msg, updated_at: new Date().toISOString() }).eq('id', res.id)
+    return { ok: false, error: msg }
+  }
 }
 
 /**
