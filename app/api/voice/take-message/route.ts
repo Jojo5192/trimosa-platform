@@ -1,4 +1,4 @@
-import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, pushOncall } from '@/lib/voice'
+import { requireVoiceAuth, findBookingByPhone, findBookingByDetails, pushOncall, normalizePhone } from '@/lib/voice'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -94,6 +94,40 @@ export async function POST(request: Request) {
     })
     if (hits.length === 1) listingId = String(hits[0].id)
   } catch { /* best effort */ }
+
+  // Erneuter Anruf desselben Anrufers (Chefsache-Prüfung 9.10.: „☎️ Anruf: Daniel Heller" dreimal offen am 6.10.):
+  // gibt es binnen 24 h schon eine offene Anruf-Aufgabe mit derselben Rufnummer (Schlüssel = letzte 9 Ziffern)
+  // bzw. — bei unterdrückter Nummer — demselben Namen, wird SIE ergänzt statt eine zweite anzulegen.
+  try {
+    const seit = new Date(Date.now() - 24 * 3_600_000).toISOString()
+    const { data: offene } = await supabaseAdmin
+      .from('tasks').select('id, title, description, source_ref, prio')
+      .eq('source', 'anruf').in('status', ['offen', 'in_arbeit']).gte('created_at', seit)
+      .order('created_at', { ascending: false }).limit(30)
+    const key = number !== 'unterdrückt' ? normalizePhone(number).slice(-9) : ''
+    const gleich = (offene ?? []).find((t) => (key && normalizePhone(String(t.source_ref ?? '')).slice(-9) === key)
+      || (!key && name !== 'Unbekannt' && String(t.title ?? '').endsWith(`: ${name}`)))
+    if (gleich) {
+      const alt = String(gleich.description ?? '')
+      const zahl = (alt.match(/— erneuter Anruf /g) ?? []).length + 2
+      const zeit = new Date().toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })
+      const { error: uErr } = await supabaseAdmin.from('tasks').update({
+        description: `${alt}\n\n— erneuter Anruf ${zeit} (${zahl}. Anruf): ${message}`.slice(0, 2000),
+        prio: 'hoch',
+        ...(urgent && !String(gleich.title).startsWith('🚨') ? { title: `🚨 Notfall-Anruf: ${name}`.slice(0, 120) } : {}),
+      }).eq('id', gleich.id)
+      if (!uErr) {
+        await pushOncall(
+          `${icon} Erneuter Anruf (${zahl}.): ${name}`,
+          message.replace(/\s+/g, ' ').slice(0, 120),
+          '/team?task=' + gleich.id,
+        ).catch(() => {})
+        return Response.json({ ok: true, delivered: 'task', note: `Der Anrufer hatte schon eine offene Aufgabe (${zahl}. Anruf) — sie wurde ergänzt, das Team ist erneut benachrichtigt.` })
+      }
+    }
+  } catch (e) {
+    console.error('[voice] take-message Dedupe:', e)
+  }
 
   const { error } = await supabaseAdmin.from('tasks').insert({
     title: `${urgent ? '🚨 Notfall-Anruf' : '☎️ Anruf'}: ${name}`.slice(0, 120),

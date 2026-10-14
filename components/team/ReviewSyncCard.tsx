@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { haptic, tmToast } from '@/components/team/ux'
+import { haptic, tmToast, useHydrated } from '@/components/team/ux'
 
 /**
  * ⭐ Bewertungs-Abruf (§314) — kompakte, einklappbare Karte im Kalender-Reiter unter den Kennzahlen.
@@ -106,12 +106,15 @@ export default function ReviewSyncCard() {
   const [ok, setOk] = useState<boolean | null>(null)
   const [data, setData] = useState<Status | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Zustand erst NACH dem Mount aus localStorage: der Server kennt ihn nicht — ein offener Stand im ersten
-  // Client-Render erzeugte einen Hydrations-Fehler (#418, Pfeil ▾/▸), Live-Konsole 9.10.
-  const [open, setOpen] = useState<boolean>(false)
-  useEffect(() => {
-    try { if (localStorage.getItem(OPEN_KEY) === '1') setOpen(true) } catch { /* kein Speicher */ }
-  }, [])
+  // Gemerkter Aufklapp-Zustand erst NACH der Hydration wirksam: der Server kennt localStorage nicht — ein
+  // offener Stand im ersten Client-Render erzeugte einen Hydrations-Fehler (#418, Pfeil ▾/▸), Live-Konsole 9.10.
+  const hydrated = useHydrated()
+  const [openPref] = useState<boolean>(() => {
+    try { return typeof localStorage !== 'undefined' && localStorage.getItem(OPEN_KEY) === '1' } catch { return false }
+  })
+  const [openState, setOpenState] = useState<boolean | null>(null)
+  const open = openState ?? (hydrated && openPref)
+  const setOpen = (v: boolean) => setOpenState(v)
   const [busy, setBusy] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<{ id: string; zeilen: SyncResult[]; hinweis: string | null } | null>(null)
   const [mehr, setMehr] = useState<string | null>(null)
@@ -148,10 +151,9 @@ export default function ReviewSyncCard() {
 
   const toggle = () => {
     haptic()
-    setOpen((v) => {
-      try { localStorage.setItem(OPEN_KEY, v ? '0' : '1') } catch { /* egal */ }
-      return !v
-    })
+    const neu = !open
+    try { localStorage.setItem(OPEN_KEY, neu ? '1' : '0') } catch { /* egal */ }
+    setOpen(neu)
   }
 
   const abrufen = async (z: Zeile) => {

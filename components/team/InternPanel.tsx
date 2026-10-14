@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 import { useSwipeBack } from '@/components/team/useSwipeBack'
 import { haptic, tmToast, usePullToRefresh, PullHint, SkeletonRows, EmptyState } from '@/components/team/ux'
+import { openLightbox } from '@/components/team/Lightbox'
 import { useOutbox, enqueueOutbox, isNetworkError, isOnline, shouldPoll, OUTBOX_SENT_EVENT } from '@/lib/offline'
 
 /** §280 Sofortstart: letzter Gruppen-Stand im Gerätespeicher */
@@ -947,10 +948,15 @@ export default function InternPanel({ userId, onUnread, onMobileThread, initialC
                         )
                       })()}
                       {m.attachmentType === 'image' && m.attachmentUrl && (
-                        <a href={m.attachmentUrl} target="_blank" rel="noopener noreferrer">
+                        // 🖼 Vollbild in der App statt Browser-Link (Pascal 10.10.): alle Bilder des Threads blätterbar
+                        <button type="button" aria-label="Foto groß anzeigen" onClick={(e) => {
+                          e.stopPropagation(); haptic()
+                          const bilder = msgs.filter((x) => x.attachmentType === 'image' && x.attachmentUrl).map((x) => ({ url: x.attachmentUrl!, caption: x.content || null }))
+                          openLightbox(bilder, Math.max(0, bilder.findIndex((x) => x.url === m.attachmentUrl)))
+                        }} style={{ border: 'none', background: 'none', padding: 0, cursor: 'zoom-in', display: 'block', maxWidth: '100%' }}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={m.attachmentUrl} alt="" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 14, display: 'block' }} />
-                        </a>
+                        </button>
                       )}
                       {m.attachmentType === 'video' && m.attachmentUrl && (
                         <video src={m.attachmentUrl} controls playsInline style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 14, display: 'block' }} />
@@ -1361,10 +1367,11 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
         ) : tab === 'image' ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
             {filtered.map((m) => (
-              <a key={m.id} href={m.attachmentUrl!} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '1', borderRadius: 10, overflow: 'hidden' }}>
+              <button key={m.id} type="button" aria-label="Foto groß anzeigen" onClick={() => { haptic(); const bilder = filtered.map((x) => ({ url: x.attachmentUrl!, caption: x.content || null })); openLightbox(bilder, filtered.indexOf(m)) }}
+                style={{ display: 'block', aspectRatio: '1', borderRadius: 10, overflow: 'hidden', border: 'none', padding: 0, background: 'var(--tm-surface2)', cursor: 'zoom-in' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={m.attachmentUrl!} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              </a>
+              </button>
             ))}
           </div>
         ) : (
@@ -1372,10 +1379,11 @@ function GroupInfo({ chat, isAdmin, directory, userId, onClose, onUpdate, onDele
             {filtered.map((m) => (
               <div key={m.id} style={{ background: 'var(--tm-card)', borderRadius: 12, padding: '9px 12px', boxShadow: '0 0 0 0.5px var(--tm-line)', display: 'flex', alignItems: 'center', gap: 10 }}>
                 {m.attachmentType === 'image' ? (
-                  <a href={m.attachmentUrl!} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                  <button type="button" aria-label="Foto groß anzeigen" onClick={() => { haptic(); openLightbox([{ url: m.attachmentUrl!, caption: m.content || null }], 0) }}
+                    style={{ flexShrink: 0, border: 'none', padding: 0, background: 'none', cursor: 'zoom-in' }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={m.attachmentUrl!} alt="" loading="lazy" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
-                  </a>
+                  </button>
                 ) : (
                   <span style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--tm-surface2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                     {m.attachmentType === 'video' ? '🎬' : m.attachmentType === 'audio' ? '🎙️' : '📄'}

@@ -112,6 +112,17 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
   // ⚡ Wallbox (§185) — nur Admins (probe liefert sonst 403 → Bereich + Toggles bleiben aus)
   const [showWallbox, setShowWallbox] = useState(false)
   const [showCalls, setShowCalls] = useState(false)
+  // 🎧 „Mitschnitt" an einer Anruf-Aufgabe bzw. /team?call=<id>: Telefonate öffnen und den Anruf aufklappen
+  const [callFocus, setCallFocus] = useState<{ id?: string; phone?: string | null; at?: string; name?: string } | null>(null)
+  useEffect(() => {
+    const onOpenCall = (e: Event) => {
+      const d = (e as CustomEvent<{ id?: string; phone?: string | null; at?: string; name?: string }>).detail ?? {}
+      setCallFocus({ ...d, at: d.at ?? new Date().toISOString() })
+      setShowCalls(true)
+    }
+    window.addEventListener('trimosa-open-call', onOpenCall)
+    return () => window.removeEventListener('trimosa-open-call', onOpenCall)
+  }, [])
   const [showBeleg, setShowBeleg] = useState(false)
   // 🔑 Türschlösser (§253) — Admins/Hosts/Staff (probe 403 → Eintrag bleibt aus)
   const [locksOk, setLocksOk] = useState(false)
@@ -581,7 +592,7 @@ export default function SettingsPanel({ role, vorschau = null, darfVorschau = fa
       {showQs && <QsArchive onClose={() => setShowQs(false)} />}
       {showTrends && <ScoreTrends onClose={() => setShowTrends(false)} />}
       {showWallbox && <WallboxPanel onClose={() => setShowWallbox(false)} />}
-      {showCalls && <CallsPanel onClose={() => setShowCalls(false)} />}
+      {showCalls && <CallsPanel onClose={() => { setShowCalls(false); setCallFocus(null) }} focus={callFocus} />}
       {showBeleg && <BelegEinreichen onClose={() => setShowBeleg(false)} />}
       {showLocks && <LocksPanel onClose={() => setShowLocks(false)} />}
       {showMaterial && <MaterialPanel onClose={() => setShowMaterial(false)} />}

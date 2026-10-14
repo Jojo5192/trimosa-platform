@@ -30,6 +30,7 @@ import InternPanel from '@/components/team/InternPanel'
 import TasksPanel from '@/components/team/TasksPanel'
 import CalendarPanel from '@/components/team/CalendarPanel'
 import SettingsPanel from '@/components/team/SettingsPanel'
+import LightboxHost from '@/components/team/Lightbox'
 import { VORSCHAU_NAME, type VorschauRolle } from '@/lib/rollen-vorschau-namen'
 import SearchOverlay from '@/components/team/SearchOverlay'
 import HeutePanel from '@/components/team/HeutePanel'
@@ -411,7 +412,13 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
     const conv = u.searchParams.get('conv')
     const chat = u.searchParams.get('chat')
     const task = u.searchParams.get('task')
+    const call = u.searchParams.get('call')
     const wunschTab = u.searchParams.get('tab')
+    // 🎧 /team?call=<id> → Telefonate öffnen und den Anruf aufklappen (Push/Aufgaben-Link)
+    if (call) {
+      window.dispatchEvent(new CustomEvent('trimosa-open-call', { detail: { id: call } }))
+      return
+    }
     // §274: Überbuchungs-Push → direkt auf die Aufgabe (Fokus + Scroll)
     if (task && tabs.some((t) => t.id === 'aufgaben')) {
       setTaskFocus(task)
@@ -636,6 +643,7 @@ export default function TeamShell({ userId, role, vorschau = null, darfVorschau 
       paddingTop: 'env(safe-area-inset-top)',
     }}>
       {updating && <div className="tm-update-stripe" aria-hidden="true" />}
+      <LightboxHost />
       {linkSheet && (
         <div role="dialog" aria-label="Link" style={{ position: 'fixed', inset: 0, zIndex: 11000, display: 'flex', flexDirection: 'column', background: 'var(--tm-bg, #F3F4F6)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(env(safe-area-inset-top) + 8px) 10px 8px', background: 'var(--tm-glass)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderBottom: '0.5px solid var(--tm-line)' }}>

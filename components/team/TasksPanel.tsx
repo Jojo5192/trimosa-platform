@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties }
 import { createPortal } from 'react-dom'
 import QsBlock from '@/components/team/QsPanel'
 import { haptic, usePullToRefresh, PullHint, SkeletonRows, Segmented, EmptyState } from '@/components/team/ux'
+import { openLightbox } from '@/components/team/Lightbox'
 
 export interface Task {
   id: string
@@ -559,10 +560,11 @@ export default function TasksPanel({ role, userId, focusTaskId, onFocusConsumed,
               {(t.photos?.length ?? 0) > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 9, marginLeft: 19, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                   {(t.photos ?? []).slice(0, 4).map((p, i) => (
-                    <a key={i} href={p.url} target="_blank" rel="noreferrer">
+                    <button key={i} type="button" aria-label="Foto groß anzeigen" onClick={() => { haptic(); openLightbox((t.photos ?? []).map((x) => ({ url: x.url })), i) }}
+                      style={{ border: 'none', padding: 0, background: 'none', cursor: 'zoom-in' }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={p.url} alt="" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
-                    </a>
+                    </button>
                   ))}
                   {(t.photos?.length ?? 0) > 4 && (
                     <span style={{ alignSelf: 'center', fontSize: 11, fontWeight: 700, color: 'var(--tm-accent-dark)' }}>+{(t.photos ?? []).length - 4}</span>
@@ -992,8 +994,11 @@ function TaskSheet({ task, limited = false, people, listings, groups, onClose, o
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {photos.map((p) => (
                   <div key={p.url} style={{ position: 'relative' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                    <button type="button" aria-label="Foto groß anzeigen" onClick={() => { haptic(); openLightbox(photos.map((x) => ({ url: x.url })), photos.indexOf(p)) }}
+                      style={{ border: 'none', padding: 0, background: 'none', cursor: 'zoom-in', display: 'block' }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                    </button>
                     <button type="button" onClick={async () => {
                       const res = await fetch(`/api/tasks/${task.id}/photos`, {
                         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
@@ -1280,6 +1285,10 @@ function CallCard({ task, onDone, onError }: {
             background: 'var(--tm-text)', color: 'var(--tm-bg)',
           }}>📞 Zurückrufen</a>
         )}
+        {/* 🎧 Dominik 12.10.: Mitschnitt zur Anruf-Aufgabe war nicht auffindbar (Anruf ohne Buchungs-Zuordnung) —
+            öffnet Telefonate und springt zum Anruf dieser Rufnummer um die Anlegezeit der Aufgabe */}
+        <button onClick={() => { haptic(); window.dispatchEvent(new CustomEvent('trimosa-open-call', { detail: { phone: phone || null, at: task.created_at, name: callerName } })) }}
+          style={{ ...goldBtn, background: 'var(--tm-surface2)', color: 'var(--tm-text)' }}>🎧 Mitschnitt</button>
         <button onClick={toggleAi} style={{
           ...goldBtn,
           background: open ? 'var(--tm-navy)' : 'rgba(18,34,46,0.08)',

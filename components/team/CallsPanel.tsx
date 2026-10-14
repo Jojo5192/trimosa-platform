@@ -48,16 +48,26 @@ export function parseTranscript(t: string): { who: 'anrufer' | 'bot'; text: stri
   return out
 }
 
-export default function CallsPanel({ onClose, bookingId, title }: {
+/** Rufnummern-Schlüssel wie in lib/voice.ts: nur Ziffern, letzte 9 (übersteht +49/0049/Leerzeichen) */
+function phoneKey(raw: string | null | undefined): string {
+  let d = String(raw ?? '').replace(/\D/g, '')
+  if (d.startsWith('00')) d = d.slice(2)
+  return d.slice(-9)
+}
+
+export default function CallsPanel({ onClose, bookingId, title, focus }: {
   onClose: () => void
   bookingId?: string
   title?: string
+  /** 🎧 Anruf gezielt aufklappen: per id (Deep-Link) oder Rufnummer + Zeitpunkt (Anruf-Aufgabe; nächster Anruf binnen 3 h) */
+  focus?: { id?: string; phone?: string | null; at?: string; name?: string } | null
 }) {
   const [calls, setCalls] = useState<Call[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [audioErr, setAudioErr] = useState<Record<string, boolean>>({})
+  const [fokusFehlt, setFokusFehlt] = useState(false)
 
   useEffect(() => {
     const url = bookingId ? `/api/voice/calls?bookingId=${bookingId}` : '/api/voice/calls'
@@ -65,12 +75,33 @@ export default function CallsPanel({ onClose, bookingId, title }: {
       .then(async (r) => {
         const j = await r.json()
         if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
-        setCalls(j.calls ?? [])
-        if (bookingId && (j.calls ?? []).length === 1) setOpenId(j.calls[0].id)
+        const liste: Call[] = j.calls ?? []
+        setCalls(liste)
+        if (bookingId && liste.length === 1) setOpenId(liste[0].id)
+        if (focus) {
+          let treffer: Call | undefined = focus.id ? liste.find((c) => c.id === focus.id) : undefined
+          if (!treffer && focus.phone && phoneKey(focus.phone)) {
+            const at = focus.at ? Date.parse(focus.at) : Date.now()
+            treffer = liste
+              .filter((c) => phoneKey(c.caller) === phoneKey(focus.phone) && Math.abs(Date.parse(c.createdAt) - at) < 3 * 3_600_000)
+              .sort((x, y) => Math.abs(Date.parse(x.createdAt) - at) - Math.abs(Date.parse(y.createdAt) - at))[0]
+          }
+          if (!treffer && focus.name) {
+            const n = focus.name.trim().toLowerCase().split(/\s+/).pop() ?? ''
+            if (n.length >= 4) treffer = liste.find((c) => `${c.summary ?? ''} ${c.transcript ?? ''}`.toLowerCase().includes(n))
+          }
+          if (treffer) {
+            setOpenId(treffer.id)
+            setTimeout(() => document.getElementById(`tm-call-${treffer!.id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80)
+          } else {
+            setFokusFehlt(true)
+          }
+        }
         setError(null)
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus nur beim Öffnen auswerten
   }, [bookingId])
 
   const body = (
@@ -98,6 +129,11 @@ export default function CallsPanel({ onClose, bookingId, title }: {
               ⚠️ {error}
             </div>
           )}
+          {fokusFehlt && !loading && (
+            <div style={{ padding: '11px 14px', borderRadius: 12, background: 'var(--tm-accent-soft)', color: 'var(--tm-text)', fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+              🎧 Zu dieser Aufgabe wurde kein passender Anruf gefunden (gleiche Rufnummer, ±3 Stunden). Unten stehen alle Anrufe.
+            </div>
+          )}
           {!loading && !error && calls.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--tm-muted)', fontSize: 14, padding: '40px 0' }}>
               {bookingId ? 'Zu dieser Buchung gibt es keine Telefonate.' : 'Noch keine Telefonate aufgezeichnet.'}
@@ -107,9 +143,10 @@ export default function CallsPanel({ onClose, bookingId, title }: {
           {calls.map((c) => {
             const open = openId === c.id
             return (
-              <div key={c.id} style={{
+              <div key={c.id} id={`tm-call-${c.id}`} style={{
                 background: 'var(--tm-card)', borderRadius: 14, marginBottom: 10, overflow: 'hidden',
-                boxShadow: '0 0 0 0.5px var(--tm-line)',
+                boxShadow: focus && openId === c.id ? '0 0 0 2px var(--tm-accent)' : '0 0 0 0.5px var(--tm-line)',
+                scrollMarginTop: 12,
               }}>
                 <button onClick={() => setOpenId(open ? null : c.id)} style={{
                   width: '100%', textAlign: 'left', border: 'none', background: 'none',

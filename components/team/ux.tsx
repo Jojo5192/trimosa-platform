@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { pickSpruch } from '@/lib/start-curtain'
 
 /**
@@ -313,11 +313,17 @@ const EMPTY_ART: Record<'house' | 'check' | 'chat' | 'calendar', string[]> = {
   chat: ['M14 18 h36 a6 6 0 0 1 6 6 v12 a6 6 0 0 1 -6 6 h-22 l-8 7 v-7 h-6 a6 6 0 0 1 -6 -6 v-12 a6 6 0 0 1 6 -6 z', 'M60 30 h10 a5 5 0 0 1 5 5 v10 a5 5 0 0 1 -5 5 h-4 v6 l-7 -6 h-12 a5 5 0 0 1 -5 -5 v-3'],
   calendar: ['M18 16 h52 a4 4 0 0 1 4 4 v34 a4 4 0 0 1 -4 4 h-52 a4 4 0 0 1 -4 -4 v-34 a4 4 0 0 1 4 -4 z', 'M14 28 h60', 'M30 10 v10', 'M58 10 v10', 'M28 40 h6', 'M41 40 h6', 'M54 40 h6', 'M28 48 h6', 'M41 48 h6'],
 }
+const keinAbo = () => () => {}
+/** true erst nach der Hydration — fürs Rendern von Werten, die der Server nicht kennt (localStorage, Zufall). */
+export function useHydrated(): boolean {
+  return useSyncExternalStore(keinAbo, () => true, () => false)
+}
+
 export function EmptyState({ title, hint, icon = 'house' }: { title: string; hint?: string; icon?: keyof typeof EMPTY_ART }) {
-  // Spruch erst NACH dem Mount wählen: pickSpruch würfelt — Server-HTML und erster Client-Render wichen sonst
-  // voneinander ab (React-Fehler #418 „Hydration failed … text", Live-Konsole 9.10.)
-  const [spruch, setSpruch] = useState('')
-  useEffect(() => { setSpruch(pickSpruch(new Date(), null).text) }, [])
+  // Spruch erst NACH der Hydration zeigen: pickSpruch würfelt — Server-HTML und erster Client-Render wichen
+  // sonst voneinander ab (React-Fehler #418 „Hydration failed … text", Live-Konsole 9.10.)
+  const hydrated = useHydrated()
+  const [spruch] = useState(() => pickSpruch(new Date(), null).text)
   return (
     <div className="tm-empty tm-enter" style={{ textAlign: 'center', padding: '40px 24px 32px' }}>
       <svg width="88" height="64" viewBox="0 0 88 64" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto' }}>
@@ -325,7 +331,7 @@ export function EmptyState({ title, hint, icon = 'house' }: { title: string; hin
       </svg>
       <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tm-text, #171a1f)', marginTop: 14 }}>{title}</div>
       {hint && <div style={{ fontSize: 13, color: 'var(--tm-muted, #646b76)', marginTop: 6, lineHeight: 1.5 }}>{hint}</div>}
-      {spruch && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>}
+      {hydrated && spruch && <div style={{ fontSize: 12.5, color: 'var(--tm-muted2, #959ca7)', marginTop: 10, fontStyle: 'italic' }}>{spruch}</div>}
     </div>
   )
 }
