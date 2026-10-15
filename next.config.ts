@@ -49,6 +49,16 @@ const nextConfig: NextConfig = {
       { source: '/template-info/datenschutzerklarung', destination: '/datenschutz', permanent: true },
       { source: '/template-info/agb', destination: '/agb', permanent: true },
       { source: '/template-info/:path*', destination: '/impressum', permanent: true },
+      // Marketing-Auswertung 14.10.: weitere Alt-Adressen landeten auf der 404 (Vercel Analytics, 30 Tage:
+      // /cozy-flat 8, /sunrise-suite 7, /sweet-spot-1 7, /about 7, /panorama-home 6 Besucher …) — vermutlich
+      // alte Links in Portal-Texten/Mails. Feste Liste statt Catch-all, damit /en, /fr, /nl ([lang]) unberührt bleiben.
+      { source: '/:slug(cozy-flat|magnolia-flat|panorama-home|city-home|sweet-spot|river-retreat|sunrise-suite)', destination: '/listing/:slug', permanent: true },
+      { source: '/sweet-spot-1', destination: '/listing/sweet-spot', permanent: true },
+      { source: '/sunrisesuite', destination: '/listing/sunrise-suite', permanent: true },
+      { source: '/about', destination: '/ueber-uns', permanent: true },
+      { source: '/infos', destination: '/faq', permanent: true },
+      { source: '/ferienwohnungen', destination: '/', permanent: true },
+      { source: '/mappe', destination: '/', permanent: true },
     ]
   },
   async headers() {

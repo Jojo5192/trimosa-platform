@@ -52,7 +52,12 @@ export default function StartCurtain({ initialShow, firstName, initialGreeting, 
   const leave = useCallback(() => {
     setLeaving((l) => {
       if (l) return l
-      try { (navigator as Navigator & { vibrate?: (n: number) => boolean }).vibrate?.(6) } catch { /* egal */ }
+      // nur nach einer Nutzer-Geste (Tipp auf den Vorhang) — beim automatischen Ausblenden blockt Chrome vibrate()
+      // sonst mit Konsolen-Fehler (gleiche Prüfung wie haptic() in ux.tsx)
+      try {
+        const nav = navigator as Navigator & { vibrate?: (n: number) => boolean; userActivation?: { hasBeenActive: boolean } }
+        if (!nav.userActivation || nav.userActivation.hasBeenActive) nav.vibrate?.(6)
+      } catch { /* egal */ }
       leaveTimer.current = setTimeout(() => { setShown(null); setLeaving(false) }, 820)
       return true
     })
